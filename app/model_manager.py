@@ -227,6 +227,16 @@ class ModelManager(_CoreModelManager):
             ratio=ratio,
             sym=sym,
         )
+        if not was_downloaded or weight_format is not None:
+            try:
+                model_load_safety.invalidate_load_profile(initial_cfg, BASE_DIR)
+            except RuntimeError as exc:
+                message = str(exc)
+                self._set_status(model_id, "error", error=message)
+                self._set_progress(model_id, "error", message)
+                self.emit_event("error", f"Could not prepare {initial_cfg.name} for conversion")
+                _core.logger.exception("Could not invalidate load profile for '%s'", model_id)
+                return
         # The core schedules load immediately after conversion, before this subclass
         # can record the NPU-safe profile. Defer loading until the marker is durable.
         await super()._convert_task(
