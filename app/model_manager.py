@@ -9,12 +9,13 @@ after successful real-hardware loads.
 from __future__ import annotations
 
 import asyncio
+import gc
 import threading
 import time
 from dataclasses import replace
 from typing import Any
 
-from app import model_manager_core as _core, model_registry as registry
+from app import model_load_safety, model_manager_core as _core, model_registry as registry
 from app.config import BASE_DIR, Settings
 from app.hardware_advisor import HardwareAdvisor, parse_auto_model
 from app.model_manager_core import *  # noqa: F401,F403 - preserve the public module contract
@@ -23,6 +24,8 @@ from app.model_manager_core import (
     NoModelsLoaded,
     UnknownModel,
 )
+from runtime import device_check
+from runtime.openvino_engine import BaseEngine, GenParams, StreamHandle
 
 
 class ModelManager(_CoreModelManager):
@@ -33,6 +36,35 @@ class ModelManager(_CoreModelManager):
         self._catalog_lock = threading.RLock()
         self.advisor = HardwareAdvisor(settings, self.catalog, force_mock=self.force_mock)
         self._install_advisor_load_hook()
+
+    def _build_engine(
+        self, model_id: str, device: str, draft_model_path: str | None = None
+    ) -> BaseEngine:
+        """Preflight crash-prone model/device combinations before native compilation."""
+
+        if self.force_mock:
+            engine = super()._build_engine(model_id, device, draft_model_path)
+            setattr(engine, "_ovllm_draft_model_path", draft_model_path)
+            return engine
+
+        cfg = self.catalog[model_id]
+        requested = device_check.normalize_device(device)
+        safe_device = model_load_safety.safe_load_device(
+            cfg,
+            BASE_DIR,
+            requested,
+            available=device_check.available_devices(),
+        )
+        if safe_device != requested:
+            message = (
+                f"Excluded NPU while loading {cfg.name} because its local INT4 artifact "
+                f"does not have a verified NPU conversion profile; using {safe_device}."
+            )
+            _core.logger.warning(message)
+            self.emit_event("warning", message)
+        engine = super()._build_engine(model_id, safe_device, draft_model_path)
+        setattr(engine, "_ovllm_draft_model_path", draft_model_path)
+        return engine
 
     def _install_advisor_load_hook(self) -> None:
         """Observe the final composed load scheduler without replacing lifecycle guards.
@@ -153,8 +185,8 @@ class ModelManager(_CoreModelManager):
             selected = self.advisor.select_loaded_model(profile, self.engines, self.devices)
             if selected is None:
                 raise NoModelsLoaded(
-                    f"No loaded text-generation model is available for advisor profile '{profile}'. "
-                    "Load at least one compatible generation model first."
+                    "No loaded text-generation model is available for advisor profile "
+                    f"'{profile}'. Load at least one compatible generation model first."
                 )
             return self.engines[selected]
         return super().resolve_engine(model_id)
@@ -186,6 +218,15 @@ class ModelManager(_CoreModelManager):
         sym: bool | None = None,
         trust_remote_code: bool | None = None,
     ) -> None:
+        initial_cfg = self.catalog[model_id]
+        was_downloaded = registry.is_downloaded(initial_cfg, BASE_DIR)
+        effective_format, group_size, ratio, sym = model_load_safety.resolve_conversion_profile(
+            initial_cfg,
+            weight_format=weight_format,
+            group_size=group_size,
+            ratio=ratio,
+            sym=sym,
+        )
         await super()._convert_task(
             model_id,
             device,
@@ -200,6 +241,10 @@ class ModelManager(_CoreModelManager):
         # of re-raising. An older IR directory can still exist after a failed
         # requantization, so never relabel or re-certify it as the requested format.
         if self.status_overrides.get(model_id, {}).get("status") == "error":
+            return
+        # A direct call can discover an already-converted model after scheduling. Do
+        # not retroactively stamp portable defaults onto an artifact we did not create.
+        if was_downloaded and weight_format is None:
             return
         cfg = self.catalog.get(model_id)
         if cfg is None:
@@ -242,6 +287,15 @@ class ModelManager(_CoreModelManager):
             from app.model_library import record_conversion_metadata
 
             await asyncio.to_thread(record_conversion_metadata, cfg, self.settings)
+            await asyncio.to_thread(
+                model_load_safety.record_load_profile,
+                cfg,
+                BASE_DIR,
+                weight_format=effective_format,
+                group_size=group_size,
+                ratio=ratio,
+                sym=sym,
+            )
         except Exception:  # noqa: BLE001 - metadata must not fail a successful conversion
             _core.logger.exception(
                 "Could not record conversion compatibility metadata for '%s'", model_id
@@ -278,6 +332,145 @@ class ModelManager(_CoreModelManager):
         with self._catalog_lock:
             super().reload_catalog()
             self.advisor.catalog = self.catalog
+
+    @staticmethod
+    async def _await_resilient_future(future):
+        """Await one future to completion while retaining any cancellation request."""
+
+        pending_cancellation: asyncio.CancelledError | None = None
+        while True:
+            try:
+                return await asyncio.shield(future), pending_cancellation
+            except asyncio.CancelledError as exc:
+                pending_cancellation = pending_cancellation or exc
+
+    async def _finish_stream_handle(
+        self,
+        engine: BaseEngine,
+        handle: StreamHandle,
+        loop: asyncio.AbstractEventLoop,
+    ) -> asyncio.CancelledError | None:
+        """Stop a worker and resist task cancellation until the native request exits."""
+
+        handle.request_stop()
+        waiter = loop.run_in_executor(None, handle.wait_closed)
+        closed, pending_cancellation = await self._await_resilient_future(waiter)
+
+        if not closed:
+            model_id = engine.model_id
+            if self.engines.get(model_id) is engine:
+                self.engines.pop(model_id, None)
+                self.devices.pop(model_id, None)
+                message = (
+                    "The cancelled generation did not stop within 30 seconds. The model was "
+                    "quarantined; reload it before sending another request."
+                )
+                self._set_status(model_id, "error", error=message)
+                self._set_progress(model_id, "error", message)
+                self.emit_event(
+                    "error", f"Quarantined {model_id} after stream cancellation timeout"
+                )
+                _core.logger.error("Quarantined '%s' after stream cancellation timeout", model_id)
+
+        return pending_cancellation
+
+    async def _recover_cancelled_npu_engine(
+        self,
+        engine: BaseEngine,
+        loop: asyncio.AbstractEventLoop,
+    ) -> asyncio.CancelledError | None:
+        """Rebuild a direct-NPU pipeline after an interrupted stream.
+
+        OpenVINO GenAI may report that the next NPU infer request is still busy even
+        after the streamer callback stops and ``generate`` returns. Recreating the
+        pipeline under the same model lock gives the next request a clean infer state.
+        """
+
+        if self.force_mock or str(engine.device).split(".", 1)[0].upper() != "NPU":
+            return None
+        model_id = engine.model_id
+        if self.engines.get(model_id) is not engine:
+            return None
+        draft_model_path = getattr(engine, "_ovllm_draft_model_path", None)
+
+        def rebuild() -> BaseEngine:
+            try:
+                engine.close()
+            finally:
+                gc.collect()
+            return self._build_engine(model_id, engine.device, draft_model_path)
+
+        future = loop.run_in_executor(None, rebuild)
+        try:
+            replacement, pending_cancellation = await self._await_resilient_future(future)
+        except Exception as exc:  # noqa: BLE001 - leave the model quarantined, not process-fatal
+            self.engines.pop(model_id, None)
+            self.devices.pop(model_id, None)
+            message = (
+                "The NPU pipeline could not be rebuilt after stream cancellation. "
+                "Reload the model before retrying."
+            )
+            self._set_status(model_id, "error", error=message)
+            self._set_progress(model_id, "error", message)
+            self.emit_event("error", f"NPU cancellation recovery failed for {model_id}")
+            _core.logger.exception(
+                "Could not rebuild NPU engine '%s' after cancellation: %s", model_id, exc
+            )
+            return None
+
+        if self.engines.get(model_id) is engine:
+            self.engines[model_id] = replacement
+            self.devices[model_id] = replacement.device
+            cfg = self.catalog.get(model_id)
+            name = cfg.name if cfg else model_id
+            self._set_progress(
+                model_id,
+                "ready",
+                f"{name} recovered after stream cancellation on {replacement.device}.",
+                percent=100,
+            )
+            self._clear_status(model_id)
+            self.emit_event("warning", f"Rebuilt {name} after NPU stream cancellation")
+        else:
+            try:
+                replacement.close()
+            except Exception:
+                pass
+        return pending_cancellation
+
+    async def stream(self, engine: BaseEngine, prompt: str, params: GenParams):
+        """Yield chunks while keeping cancellation recovery inside the model lock."""
+
+        async with self._track_generation():
+            loop = asyncio.get_running_loop()
+            lock = self.get_lock(engine.model_id)
+            async with lock:
+                handle: StreamHandle = await loop.run_in_executor(
+                    None, engine.stream, prompt, params
+                )
+                completed = False
+                generation_failed = False
+                pending_cancellation: asyncio.CancelledError | None = None
+                try:
+                    while True:
+                        chunk = await loop.run_in_executor(None, handle.next_chunk)
+                        if chunk is None:
+                            completed = True
+                            break
+                        yield chunk
+                    if handle.error is not None:
+                        generation_failed = True
+                        raise handle.error
+                finally:
+                    cleanup_cancellation = await self._finish_stream_handle(engine, handle, loop)
+                    pending_cancellation = pending_cancellation or cleanup_cancellation
+                    if not completed or generation_failed:
+                        recovery_cancellation = await self._recover_cancelled_npu_engine(
+                            engine, loop
+                        )
+                        pending_cancellation = pending_cancellation or recovery_cancellation
+                    if pending_cancellation is not None:
+                        raise pending_cancellation
 
     async def shutdown(self) -> None:
         await self.advisor.shutdown()
