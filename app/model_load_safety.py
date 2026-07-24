@@ -24,6 +24,18 @@ def load_profile_path(cfg: registry.ModelConfig, base_dir: Path) -> Path:
     return cfg.abs_path(base_dir) / LOAD_PROFILE_FILENAME
 
 
+def invalidate_load_profile(cfg: registry.ModelConfig, base_dir: Path) -> None:
+    """Remove compatibility evidence before replacing an existing IR artifact."""
+
+    try:
+        load_profile_path(cfg, base_dir).unlink(missing_ok=True)
+    except OSError as exc:
+        raise RuntimeError(
+            f"Could not invalidate the existing load profile for {cfg.name}. "
+            "Check model-directory permissions before converting again."
+        ) from exc
+
+
 def resolve_conversion_profile(
     cfg: registry.ModelConfig,
     *,
