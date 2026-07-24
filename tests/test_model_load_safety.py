@@ -151,13 +151,52 @@ def test_manager_passes_portable_int4_defaults_to_converter(monkeypatch, tmp_pat
     assert captured == {
         "model_id": cfg.id,
         "device": "NPU",
-        "load_after": True,
+        "load_after": False,
         "weight_format": None,
         "group_size": 128,
         "ratio": 1.0,
         "sym": True,
         "trust_remote_code": None,
     }
+
+
+def test_load_after_waits_for_npu_profile_marker(monkeypatch, tmp_path) -> None:
+    from types import SimpleNamespace
+
+    from app import model_library
+
+    cfg = _config(tmp_path)
+    manager = object.__new__(ModelManager)
+    manager.catalog = {cfg.id: cfg}
+    manager.status_overrides = {}
+    manager.settings = SimpleNamespace()
+    manager.advisor = SimpleNamespace(measure_converted_size=lambda _cfg: None)
+    scheduled = []
+
+    async def fake_convert(
+        self,
+        model_id,
+        device,
+        load_after,
+        **_kwargs,
+    ):
+        assert load_after is False
+        _mark_converted(cfg, tmp_path)
+
+    def schedule_load(model_id, device):
+        assert model_load_safety.load_profile_path(cfg, tmp_path).is_file()
+        scheduled.append((model_id, device))
+        return None
+
+    monkeypatch.setattr(
+        model_manager_core.ModelManager, "_convert_task", fake_convert, raising=False
+    )
+    monkeypatch.setattr(model_library, "record_conversion_metadata", lambda *_args: None)
+    manager.schedule_load = schedule_load
+
+    asyncio.run(ModelManager._convert_task(manager, cfg.id, "NPU", True))
+
+    assert scheduled == [(cfg.id, "NPU")]
 
 
 class _SlowCancellationEngine(BaseEngine):
