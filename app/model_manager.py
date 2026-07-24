@@ -227,10 +227,12 @@ class ModelManager(_CoreModelManager):
             ratio=ratio,
             sym=sym,
         )
+        # The core schedules load immediately after conversion, before this subclass
+        # can record the NPU-safe profile. Defer loading until the marker is durable.
         await super()._convert_task(
             model_id,
             device,
-            load_after,
+            False,
             weight_format=weight_format,
             group_size=group_size,
             ratio=ratio,
@@ -245,6 +247,8 @@ class ModelManager(_CoreModelManager):
         # A direct call can discover an already-converted model after scheduling. Do
         # not retroactively stamp portable defaults onto an artifact we did not create.
         if was_downloaded and weight_format is None:
+            if load_after:
+                self.schedule_load(model_id, device)
             return
         cfg = self.catalog.get(model_id)
         if cfg is None:
@@ -279,11 +283,6 @@ class ModelManager(_CoreModelManager):
                 return
 
         try:
-            await asyncio.to_thread(self.advisor.measure_converted_size, cfg)
-        except Exception:  # noqa: BLE001 - advisory evidence must not fail conversion
-            _core.logger.exception("Could not measure converted size for '%s'", model_id)
-
-        try:
             from app.model_library import record_conversion_metadata
 
             await asyncio.to_thread(record_conversion_metadata, cfg, self.settings)
@@ -300,6 +299,14 @@ class ModelManager(_CoreModelManager):
             _core.logger.exception(
                 "Could not record conversion compatibility metadata for '%s'", model_id
             )
+
+        if load_after:
+            self.schedule_load(model_id, device)
+
+        try:
+            await asyncio.to_thread(self.advisor.measure_converted_size, cfg)
+        except Exception:  # noqa: BLE001 - advisory evidence must not fail conversion
+            _core.logger.exception("Could not measure converted size for '%s'", model_id)
 
     def _persist_converted_weight_format(
         self, model_id: str, weight_format: str
