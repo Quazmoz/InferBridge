@@ -44,7 +44,7 @@ class ModelManager(_CoreModelManager):
 
         if self.force_mock:
             engine = super()._build_engine(model_id, device, draft_model_path)
-            setattr(engine, "_ovllm_draft_model_path", draft_model_path)
+            engine._ovllm_draft_model_path = draft_model_path  # type: ignore[attr-defined]
             return engine
 
         cfg = self.catalog[model_id]
@@ -63,7 +63,7 @@ class ModelManager(_CoreModelManager):
             _core.logger.warning(message)
             self.emit_event("warning", message)
         engine = super()._build_engine(model_id, safe_device, draft_model_path)
-        setattr(engine, "_ovllm_draft_model_path", draft_model_path)
+        engine._ovllm_draft_model_path = draft_model_path  # type: ignore[attr-defined]
         return engine
 
     def _install_advisor_load_hook(self) -> None:
