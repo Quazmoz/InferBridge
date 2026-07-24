@@ -112,6 +112,24 @@ def test_tampered_profile_is_revalidated_before_npu_load(tmp_path) -> None:
         model_load_safety.safe_load_device(cfg, tmp_path, "NPU", available=["CPU", "NPU"])
 
 
+def test_reconversion_invalidates_previous_npu_profile(tmp_path) -> None:
+    cfg = _config(tmp_path)
+    _mark_converted(cfg, tmp_path)
+    model_load_safety.record_load_profile(
+        cfg,
+        tmp_path,
+        weight_format="int4",
+        group_size=128,
+        ratio=1.0,
+        sym=True,
+    )
+
+    model_load_safety.invalidate_load_profile(cfg, tmp_path)
+
+    with pytest.raises(RuntimeError, match="Delete and reconvert"):
+        model_load_safety.safe_load_device(cfg, tmp_path, "NPU", available=["CPU", "NPU"])
+
+
 def test_manager_passes_portable_int4_defaults_to_converter(monkeypatch, tmp_path) -> None:
     cfg = _config(tmp_path)
     manager = object.__new__(ModelManager)
