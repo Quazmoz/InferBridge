@@ -235,7 +235,11 @@ def test_interrupted_npu_stream_rebuilds_pipeline_before_unlock() -> None:
         replacement.device = "NPU"
         manager = _bare_manager(engine)
         manager.devices[engine.model_id] = "NPU"
-        manager._build_engine = lambda *_args, **_kwargs: replacement  # type: ignore[method-assign]
+
+        def build_replacement(*_args, **_kwargs):
+            return replacement
+
+        manager._build_engine = build_replacement  # type: ignore[method-assign]
 
         stream = manager.stream(engine, "prompt", GenParams(max_new_tokens=8))
         assert await anext(stream) == "first"
