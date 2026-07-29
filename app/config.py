@@ -13,6 +13,7 @@ from app.chat_guard_ui import install_chat_guard_extension
 from app.chat_queue_ui import install_chat_queue_extension
 from app.desktop_operations_ui import install_desktop_operations_ui_extension
 from app.doctor_ui import install_system_doctor_extension
+from app.gui_stability import install_gui_stability_extension
 from app.header_overflow_ui import install_header_overflow_extension
 from app.model_library_routes import install_model_library_routes_extension
 from app.model_library_ui import install_model_library_ui_extension
@@ -40,6 +41,7 @@ install_progress_ui_extension()
 install_onboarding_ui_extension()
 install_model_library_ui_extension()
 install_desktop_operations_ui_extension()
+install_gui_stability_extension()
 
 logger = logging.getLogger("ov-llm.config")
 _RUNTIME_PATHS = resolve_runtime_paths()
