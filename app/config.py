@@ -60,6 +60,45 @@ def _bool_env(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in _TRUTHY
 
 
+def _int_env(
+    name: str,
+    default: int,
+    *,
+    minimum: int | None = None,
+    maximum: int | None = None,
+) -> int:
+    """Read a bounded integer environment value without making startup brittle."""
+
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        value = int(raw.strip())
+    except ValueError:
+        logger.warning("Config: %s=%r is not an integer; using %d", name, raw, default)
+        return default
+    if minimum is not None and value < minimum:
+        logger.warning("Config: %s=%r is below %d; using %d", name, raw, minimum, default)
+        return default
+    if maximum is not None and value > maximum:
+        logger.warning("Config: %s=%r exceeds %d; using %d", name, raw, maximum, default)
+        return default
+    return value
+
+
+def _device_env(name: str = "OV_LLM_DEVICE", default: str = "NPU") -> str:
+    """Read and normalize a device target, falling back after malformed overrides."""
+
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return normalize_device(default)
+    try:
+        return normalize_device(raw)
+    except ValueError:
+        logger.warning("Config: %s=%r is invalid; using %s", name, raw, default)
+        return normalize_device(default)
+
+
 @dataclass(frozen=True)
 class Settings:
     """Immutable runtime settings. Use :meth:`replace` to apply CLI overrides."""
@@ -95,8 +134,8 @@ class Settings:
         runtime_paths = resolve_runtime_paths()
         return cls(
             host=os.environ.get("OV_LLM_HOST", "127.0.0.1"),
-            port=int(os.environ.get("OV_LLM_PORT", "8000")),
-            device=normalize_device(os.environ.get("OV_LLM_DEVICE", "NPU")),
+            port=_int_env("OV_LLM_PORT", 8000, minimum=1, maximum=65535),
+            device=_device_env(),
             models_file=_resolve(
                 os.environ.get("OV_LLM_MODELS_FILE", str(runtime_paths.models_file))
             ),
@@ -115,8 +154,8 @@ class Settings:
             force_mock=_bool_env("OV_LLM_MOCK"),
             auto_convert=_bool_env("OV_LLM_AUTO_CONVERT"),
             cors_origins=os.environ.get("OV_LLM_CORS_ORIGINS", ""),
-            rate_limit=int(os.environ.get("OV_LLM_RATE_LIMIT", "0")),
-            max_request_body_mb=int(os.environ.get("OV_LLM_MAX_REQUEST_BODY_MB", "40")),
+            rate_limit=_int_env("OV_LLM_RATE_LIMIT", 0, minimum=0),
+            max_request_body_mb=_int_env("OV_LLM_MAX_REQUEST_BODY_MB", 40, minimum=1),
         )
 
     def replace(self, **changes) -> Settings:
