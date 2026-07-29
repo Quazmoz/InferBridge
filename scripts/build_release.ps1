@@ -151,16 +151,21 @@ $VersionInfo = Join-Path $BuildRoot "version_info.txt"
 $BuildInfo = Join-Path $BuildRoot "build-info.json"
 Invoke-Checked "Generate executable version metadata" { & $ReleasePython scripts/release_tools.py write-version-info --path $VersionInfo --version $Version }
 Invoke-Checked "Generate build metadata" { & $ReleasePython scripts/release_tools.py write-build-info --path $BuildInfo --version $Version --channel $Channel --commit $GitCommit --clean ($TreeClean.ToString().ToLowerInvariant()) --dependency-inventory $InventoryJson }
+$BrandAssets = Join-Path $BuildRoot "brand"
+Invoke-Checked "Generate application icons" { & $ReleasePython scripts/generate_brand_assets.py --output-directory $BrandAssets }
+$AppIcon = Join-Path $BrandAssets "OpenVINOWindowsLLM.ico"
+if (-not (Test-Path $AppIcon)) { throw "Application icon generation did not produce $AppIcon." }
 
 Remove-Item $DistRoot -Recurse -Force -ErrorAction SilentlyContinue
 $env:OV_LLM_THIRD_PARTY_NOTICES = $Notices
 $env:OV_LLM_VERSION_INFO = $VersionInfo
 $env:OV_LLM_BUILD_INFO = $BuildInfo
+$env:OV_LLM_APP_ICON = $AppIcon
 try {
     Invoke-Checked "Build PyInstaller distribution" { & $ReleasePython -m PyInstaller --noconfirm --clean packaging/openvino_windows_llm.spec }
 }
 finally {
-    Remove-Item Env:OV_LLM_THIRD_PARTY_NOTICES, Env:OV_LLM_VERSION_INFO, Env:OV_LLM_BUILD_INFO -ErrorAction SilentlyContinue
+    Remove-Item Env:OV_LLM_THIRD_PARTY_NOTICES, Env:OV_LLM_VERSION_INFO, Env:OV_LLM_BUILD_INFO, Env:OV_LLM_APP_ICON -ErrorAction SilentlyContinue
 }
 
 $BuiltRoot = Join-Path $DistRoot "OpenVINOWindowsLLM"
@@ -235,7 +240,7 @@ if (-not $SkipInstaller) {
     $CoreVersion = ($Version -split '[-+]')[0]
     $NumericVersion = "$CoreVersion.0"
     Invoke-Checked "Compile Inno Setup installer" {
-        & $Compiler "/DMyAppVersion=$Version" "/DMyAppVersionNumeric=$NumericVersion" "/DSourceRoot=$BuiltRoot" "/DArtifactDir=$Artifacts" packaging/installer.iss
+        & $Compiler "/DMyAppVersion=$Version" "/DMyAppVersionNumeric=$NumericVersion" "/DSourceRoot=$BuiltRoot" "/DArtifactDir=$Artifacts" "/DAppIconPath=$AppIcon" packaging/installer.iss
     }
     $Installer = Join-Path $Artifacts "OpenVINO-Windows-LLM-$Version-windows-x64-installer.exe"
     if (-not (Test-Path $Installer)) { throw "Installer was not produced: $Installer" }
