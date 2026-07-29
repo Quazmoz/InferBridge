@@ -48,6 +48,13 @@ def test_unsigned_release_needs_no_signtool(tmp_path, monkeypatch):
     assert verify_release_signing(tmp_path, "9.9.9") is False
 
 
+def test_unsigned_release_is_rejected_when_signature_is_required(tmp_path, monkeypatch):
+    _write_release(tmp_path, installer=False, launcher=False)
+    monkeypatch.delenv("OV_LLM_SIGNTOOL_PATH", raising=False)
+    with pytest.raises(SigningVerificationError, match="requires verified Authenticode"):
+        verify_release_signing(tmp_path, "9.9.9", require_signed=True)
+
+
 def test_partial_signed_claim_is_rejected(tmp_path):
     _write_release(tmp_path, installer=True, launcher=False)
     with pytest.raises(SigningVerificationError, match="both installer and launcher"):
