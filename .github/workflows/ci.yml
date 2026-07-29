@@ -3,7 +3,7 @@ name: CI
 on:
   workflow_dispatch:
   push:
-    branches: ["main"]
+    branches: ["main", "development"]
     paths-ignore:
       - "**/*.md"
       - "docs/**"
@@ -174,7 +174,7 @@ jobs:
       - name: Install targeted test dependencies
         run: python -m pip install -e .[dev]
 
-      - name: Run targeted release, evidence, and cancellation tests
+      - name: Run targeted release, evidence, lifecycle, and resilience tests
         env:
           OV_LLM_MOCK: "true"
-        run: pytest tests/test_release_pipeline.py tests/test_release_signing_gate.py tests/test_release_provenance.py tests/test_hardware_advisor.py tests/test_model_library_evidence_identity.py tests/test_model_library_integrity.py tests/test_conversion_cancellation.py
+        run: pytest tests/test_release_pipeline.py tests/test_release_signing_gate.py tests/test_release_provenance.py tests/test_hardware_advisor.py tests/test_model_library_evidence_identity.py tests/test_model_library_integrity.py tests/test_conversion_cancellation.py tests/test_conversion_stream_safety.py tests/test_config_resilience.py tests/test_onboarding_state_resilience.py tests/test_update_checker_resilience.py
