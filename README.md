@@ -14,9 +14,7 @@ The project keeps OpenVINO as the inference runtime. It does not require Docker,
 
 **Current stable version: `0.6.1`.** This patch adds deterministic context-boundary and compiled-cache certification, fixes Windows conversion cancellation, and expands retained CPU/GPU evidence to Qwen 2.5 3B FP16 and TinyLlama 1.1B INT4.
 
-**Current development version: `0.6.2`.** Release preparation binds artifacts to their source
-commit, ranks exact-model evidence for device recommendations, and bounds Windows conversion
-cancellation. No 0.6.2 release has been published.
+**Current development version: `0.6.3`.** Release preparation adds shared application branding to the browser, launcher, installer, shortcuts, and uninstall registration. Stable publication now requires independently verified Authenticode signatures for both the installer and portable launcher. No 0.6.3 release has been published.
 
 Downloads (GitHub release `v0.6.1`):
 
@@ -161,7 +159,7 @@ Screenshots were captured with the mock engine. On real Windows hardware, device
 - versioned onboarding state with corruption recovery
 - conservative recommendation and explicit NPU readiness
 - actual-port connection examples for OpenAI Python, environment variables, Open WebUI, and n8n
-- PyInstaller one-directory build, portable ZIP staging, Inno Setup installer, SHA-256 manifests, and optional signing hook
+- PyInstaller one-directory build, portable ZIP staging, Inno Setup installer, SHA-256 manifests, deterministic application icons, and stable signing gate
 
 ### Browser UI
 
