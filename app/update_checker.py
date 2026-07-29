@@ -91,6 +91,10 @@ class UpdateStore:
         self._write(self.cache_path, cache)
 
 
+def _as_utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
 def check_due(
     last_checked_at: datetime | None,
     now: datetime,
@@ -98,8 +102,13 @@ def check_due(
 ) -> bool:
     if last_checked_at is None:
         return True
-    normalized = last_checked_at if last_checked_at.tzinfo else last_checked_at.replace(tzinfo=UTC)
-    return now - normalized >= interval
+    current = _as_utc(now)
+    previous = _as_utc(last_checked_at)
+    if previous > current:
+        # A corrected system clock must not suppress updates until a future cache
+        # timestamp is reached.
+        return True
+    return current - previous >= interval
 
 
 def _read_json(response) -> object:
@@ -153,7 +162,7 @@ class UpdateChecker:
         self.installation_mode = installation_mode
         self.opener = opener
         self.now = now
-        self.timeout_seconds = timeout_seconds
+        self.timeout_seconds = max(float(timeout_seconds), 0.1)
 
     def _validated_cached_manifest(self, cache: UpdateCache) -> ReleaseManifest | None:
         if not cache.manifest:
@@ -172,7 +181,7 @@ class UpdateChecker:
         preferences = self.store.load_preferences()
         cache = self.store.load_cache()
         cached_manifest = self._validated_cached_manifest(cache)
-        checked_at = self.now()
+        checked_at = _as_utc(self.now())
         if not preferences.enabled:
             return UpdateCheckResult(status="disabled", checked_at=cache.last_checked_at)
         if not force and not check_due(cache.last_checked_at, checked_at):
