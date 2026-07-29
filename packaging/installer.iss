@@ -10,6 +10,9 @@
 #ifndef ArtifactDir
   #error ArtifactDir must be supplied by scripts\build_release.ps1
 #endif
+#ifndef AppIconPath
+  #error AppIconPath must be supplied by scripts\build_release.ps1
+#endif
 
 #define MyAppName "OpenVINO Windows LLM"
 #define MyAppPublisher "Quazmoz"
@@ -37,6 +40,7 @@ WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0.19041
+SetupIconFile={#AppIconPath}
 UninstallDisplayIcon={app}\{#MyAppExeName}
 LicenseFile=..\LICENSE
 VersionInfoVersion={#MyAppVersionNumeric}
