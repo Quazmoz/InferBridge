@@ -171,7 +171,7 @@ def test_beta_user_sees_beta_release_and_installed_artifact(tmp_path):
     assert len(calls) == 2
     assert all(timeout == 4.0 for _url, timeout, _headers in calls)
     assert all(
-        "OpenVINO-Windows-LLM/0.6.2" in headers.get("User-agent", "")
+        "OpenVINO-Windows-LLM/0.6.3" in headers.get("User-agent", "")
         for _url, _timeout, headers in calls
     )
 
