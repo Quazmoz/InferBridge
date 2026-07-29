@@ -302,9 +302,9 @@ def test_advisor_size_failure_does_not_fail_successful_conversion(tmp_path, monk
         ModelDefinitionImportRequest(payload={"models": {"custom-small": _definition()}})
     )
     cfg = manager.catalog["custom-small"]
-    _converted_dir(Path(cfg.model_path))
 
     async def successful_conversion(self, model_id, *_args, **_kwargs):
+        _converted_dir(Path(self.catalog[model_id].model_path))
         self._clear_status(model_id)
 
     import app.model_manager as manager_module
