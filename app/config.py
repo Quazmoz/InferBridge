@@ -13,6 +13,7 @@ from app.chat_guard_ui import install_chat_guard_extension
 from app.chat_queue_ui import install_chat_queue_extension
 from app.desktop_operations_ui import install_desktop_operations_ui_extension
 from app.doctor_ui import install_system_doctor_extension
+from app.gui_stability import install_gui_stability_extension
 from app.header_overflow_ui import install_header_overflow_extension
 from app.model_library_routes import install_model_library_routes_extension
 from app.model_library_ui import install_model_library_ui_extension
@@ -40,6 +41,7 @@ install_progress_ui_extension()
 install_onboarding_ui_extension()
 install_model_library_ui_extension()
 install_desktop_operations_ui_extension()
+install_gui_stability_extension()
 
 logger = logging.getLogger("ov-llm.config")
 _RUNTIME_PATHS = resolve_runtime_paths()
@@ -58,6 +60,45 @@ def _resolve(path_str: str) -> Path:
 
 def _bool_env(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in _TRUTHY
+
+
+def _int_env(
+    name: str,
+    default: int,
+    *,
+    minimum: int | None = None,
+    maximum: int | None = None,
+) -> int:
+    """Read a bounded integer environment value without making startup brittle."""
+
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        value = int(raw.strip())
+    except ValueError:
+        logger.warning("Config: %s=%r is not an integer; using %d", name, raw, default)
+        return default
+    if minimum is not None and value < minimum:
+        logger.warning("Config: %s=%r is below %d; using %d", name, raw, minimum, default)
+        return default
+    if maximum is not None and value > maximum:
+        logger.warning("Config: %s=%r exceeds %d; using %d", name, raw, maximum, default)
+        return default
+    return value
+
+
+def _device_env(name: str = "OV_LLM_DEVICE", default: str = "NPU") -> str:
+    """Read and normalize a device target, falling back after malformed overrides."""
+
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return normalize_device(default)
+    try:
+        return normalize_device(raw)
+    except ValueError:
+        logger.warning("Config: %s=%r is invalid; using %s", name, raw, default)
+        return normalize_device(default)
 
 
 @dataclass(frozen=True)
@@ -80,6 +121,7 @@ class Settings:
     max_request_body_mb: int = 40
 
     def __post_init__(self) -> None:
+        from app.conversion_stream_safety import install_conversion_stream_safety
         from app.desktop_model_paths import install_desktop_model_path_extension
         from app.desktop_shutdown_safety import install_desktop_shutdown_safety
         from app.lifecycle_safety import install_model_lifecycle_safety
@@ -87,6 +129,7 @@ class Settings:
 
         install_desktop_model_path_extension()
         install_model_load_target_routing()
+        install_conversion_stream_safety()
         install_model_lifecycle_safety()
         install_desktop_shutdown_safety()
 
@@ -95,8 +138,8 @@ class Settings:
         runtime_paths = resolve_runtime_paths()
         return cls(
             host=os.environ.get("OV_LLM_HOST", "127.0.0.1"),
-            port=int(os.environ.get("OV_LLM_PORT", "8000")),
-            device=normalize_device(os.environ.get("OV_LLM_DEVICE", "NPU")),
+            port=_int_env("OV_LLM_PORT", 8000, minimum=1, maximum=65535),
+            device=_device_env(),
             models_file=_resolve(
                 os.environ.get("OV_LLM_MODELS_FILE", str(runtime_paths.models_file))
             ),
@@ -115,8 +158,8 @@ class Settings:
             force_mock=_bool_env("OV_LLM_MOCK"),
             auto_convert=_bool_env("OV_LLM_AUTO_CONVERT"),
             cors_origins=os.environ.get("OV_LLM_CORS_ORIGINS", ""),
-            rate_limit=int(os.environ.get("OV_LLM_RATE_LIMIT", "0")),
-            max_request_body_mb=int(os.environ.get("OV_LLM_MAX_REQUEST_BODY_MB", "40")),
+            rate_limit=_int_env("OV_LLM_RATE_LIMIT", 0, minimum=0),
+            max_request_body_mb=_int_env("OV_LLM_MAX_REQUEST_BODY_MB", 40, minimum=1),
         )
 
     def replace(self, **changes) -> Settings:

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from app.onboarding_models import OnboardingStatusResponse
+from runtime.device_check import normalize_device
 
 SCHEMA_VERSION = 1
 
@@ -35,6 +36,13 @@ def default_state() -> dict[str, Any]:
     }
 
 
+def _normalized_text(value: Any, *, limit: int = 1024) -> str | None:
+    if value in (None, ""):
+        return None
+    text = "".join(char for char in str(value) if char.isprintable()).strip()
+    return text[:limit] or None
+
+
 def migrate_state(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise ValueError("Onboarding state must be a JSON object.")
@@ -51,15 +59,25 @@ def migrate_state(raw: Any) -> dict[str, Any]:
     state["restart_requested"] = bool(state["restart_requested"])
     for key in (
         "selected_model",
-        "selected_device",
         "actual_device",
         "model_storage_location",
         "last_hardware_fingerprint",
         "last_benchmark_reference",
         "completed_app_version",
     ):
-        value = state.get(key)
-        state[key] = str(value)[:1024] if value not in (None, "") else None
+        state[key] = _normalized_text(state.get(key))
+
+    selected_device = _normalized_text(state.get("selected_device"))
+    if selected_device is not None:
+        try:
+            selected_device = normalize_device(selected_device)
+        except ValueError:
+            # A stale or manually edited device must not crash desktop startup.
+            # Restart first-run selection while retaining models and all other data.
+            selected_device = None
+            state["completed"] = False
+            state["restart_requested"] = True
+    state["selected_device"] = selected_device
     return state
 
 
