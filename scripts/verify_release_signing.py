@@ -76,7 +76,12 @@ def _verify(tool: str, path: Path) -> None:
         )
 
 
-def verify_release_signing(artifact_directory: Path, version: str) -> bool:
+def verify_release_signing(
+    artifact_directory: Path,
+    version: str,
+    *,
+    require_signed: bool = False,
+) -> bool:
     manifest = _load_object(
         artifact_directory / f"OpenVINO-Windows-LLM-{version}-release-manifest.json"
     )
@@ -108,6 +113,11 @@ def verify_release_signing(artifact_directory: Path, version: str) -> bool:
         raise SigningVerificationError("Launcher signature summary disagrees with the manifest.")
 
     if not installer_claim:
+        if require_signed:
+            raise SigningVerificationError(
+                "This release channel requires verified Authenticode signatures for both "
+                "installer and launcher. Rebuild with -Sign before publishing."
+            )
         print("Release metadata makes no signed claim; SignTool verification is not applicable.")
         return False
 
@@ -139,9 +149,20 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--artifact-directory", required=True, type=Path)
     parser.add_argument("--version", required=True)
+    parser.add_argument(
+        "--require-signed",
+        action="store_true",
+        help=(
+            "Reject release metadata that does not claim verified installer and launcher signatures."
+        ),
+    )
     args = parser.parse_args(argv)
     try:
-        verify_release_signing(args.artifact_directory.resolve(), args.version)
+        verify_release_signing(
+            args.artifact_directory.resolve(),
+            args.version,
+            require_signed=args.require_signed,
+        )
     except (SigningVerificationError, zipfile.BadZipFile) as exc:
         print(f"Signature verification failed: {exc}")
         return 1
