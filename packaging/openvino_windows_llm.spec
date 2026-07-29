@@ -8,10 +8,13 @@ from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_sub
 root = Path(SPECPATH).parent
 version_info = Path(os.environ.get("OV_LLM_VERSION_INFO", ""))
 build_info = Path(os.environ.get("OV_LLM_BUILD_INFO", ""))
+app_icon = Path(os.environ.get("OV_LLM_APP_ICON", ""))
 if not version_info.is_file():
     raise RuntimeError("OV_LLM_VERSION_INFO must point to generated version metadata")
 if not build_info.is_file():
     raise RuntimeError("OV_LLM_BUILD_INFO must point to generated build metadata")
+if not app_icon.is_file():
+    raise RuntimeError("OV_LLM_APP_ICON must point to a generated Windows ICO file")
 
 datas = [
     (str(root / "web"), "web"),
@@ -99,6 +102,7 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     version=str(version_info),
+    icon=str(app_icon),
 )
 collection = COLLECT(
     exe,
