@@ -119,6 +119,7 @@ class Settings:
     max_request_body_mb: int = 40
 
     def __post_init__(self) -> None:
+        from app.conversion_stream_safety import install_conversion_stream_safety
         from app.desktop_model_paths import install_desktop_model_path_extension
         from app.desktop_shutdown_safety import install_desktop_shutdown_safety
         from app.lifecycle_safety import install_model_lifecycle_safety
@@ -126,6 +127,7 @@ class Settings:
 
         install_desktop_model_path_extension()
         install_model_load_target_routing()
+        install_conversion_stream_safety()
         install_model_lifecycle_safety()
         install_desktop_shutdown_safety()
 
