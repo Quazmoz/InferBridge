@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">OpenVINO Windows LLM</title>
+  <desc id="desc">A blue local AI chat bubble with a white spark on a dark rounded tile.</desc>
+  <defs>
+    <linearGradient id="bubble" x1="92" y1="220" x2="420" y2="220" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0ea5e9"/>
+      <stop offset="1" stop-color="#6366f1"/>
+    </linearGradient>
+  </defs>
+  <rect x="18" y="18" width="476" height="476" rx="108" fill="#050c18" stroke="#2a3c54" stroke-width="8"/>
+  <path d="M160 105h192c37.56 0 68 30.44 68 68v97c0 37.56-30.44 68-68 68h-84l-88 69v-69h-20c-37.56 0-68-30.44-68-68v-97c0-37.56 30.44-68 68-68Z" fill="url(#bubble)"/>
+  <path d="m256 151 21 60 60 21-60 21-21 60-21-60-60-21 60-21 21-60Z" fill="#fff"/>
+  <circle cx="359" cy="167" r="12" fill="#fff" fill-opacity=".9"/>
+  <circle cx="155" cy="298" r="10" fill="#fff" fill-opacity=".82"/>
+</svg>
