@@ -8,6 +8,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from app.branding_ui import install_branding_extension
 from app.chat_context_ui import install_chat_context_extension
 from app.chat_guard_ui import install_chat_guard_extension
 from app.chat_queue_ui import install_chat_queue_extension
@@ -30,6 +31,7 @@ from runtime.npu_compat import install_openvino_genai_compat
 # for their APIs and remain dormant in ordinary development-server mode.
 install_openvino_genai_compat()
 install_model_library_routes_extension()
+install_branding_extension()
 install_chat_context_extension()
 install_chat_queue_extension()
 install_chat_guard_extension()
