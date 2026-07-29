@@ -40,8 +40,12 @@ if (-not (Test-Path $LibraryManifestSource)) { throw "Missing model library mani
 if ($LASTEXITCODE -ne 0) { throw "Model library manifest validation failed." }
 & $Python scripts/verify_release_provenance.py --artifact-directory $ArtifactDirectory --version $Version --channel $Channel --expected-commit $HeadCommit --source-model-manifest $LibraryManifestSource
 if ($LASTEXITCODE -ne 0) { throw "Release provenance validation failed. Rebuild from the current clean commit." }
-& $Python scripts/verify_release_signing.py --artifact-directory $ArtifactDirectory --version $Version
-if ($LASTEXITCODE -ne 0) { throw "Release signature claims were not independently verified." }
+$SigningGate = @("scripts/verify_release_signing.py", "--artifact-directory", $ArtifactDirectory, "--version", $Version)
+if ($Channel -eq "stable") { $SigningGate += "--require-signed" }
+& $Python @SigningGate
+if ($LASTEXITCODE -ne 0) {
+    throw "Release signatures were not independently verified. Stable releases require signed installer and launcher artifacts."
+}
 
 & git rev-parse --verify --quiet "refs/tags/$Tag" | Out-Null
 if ($LASTEXITCODE -eq 0) { throw "Tag $Tag already exists." }
