@@ -1,0 +1,75 @@
+"""Apply the shared OpenVINO Windows LLM brand icon to the browser client."""
+
+from __future__ import annotations
+
+from app import ui_extension
+
+_EXTENSION_ID = "ovllm-branding-extension"
+_FAVICON_ID = "ovllm-brand-favicon"
+
+BRANDING_CSS = r"""
+.ovllm-brand-icon {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+}
+
+.logo-icon.has-brand-icon {
+    padding: 0;
+    overflow: hidden;
+    background: transparent;
+}
+"""
+
+BRANDING_JS = r"""(() => {
+'use strict';
+if (window.__ovllmBrandingInstalled) return;
+window.__ovllmBrandingInstalled = true;
+
+const logoContainer = document.querySelector('.logo-icon');
+if (!logoContainer || logoContainer.querySelector('.ovllm-brand-icon')) return;
+
+const icon = document.createElement('img');
+icon.className = 'ovllm-brand-icon';
+icon.src = '/app-icon.svg';
+icon.alt = '';
+icon.width = 64;
+icon.height = 64;
+icon.decoding = 'async';
+logoContainer.classList.add('has-brand-icon');
+logoContainer.replaceChildren(icon);
+})();
+"""
+
+
+def install_branding_extension() -> None:
+    """Inject the packaged favicon and replace the legacy header glyph exactly once."""
+
+    if getattr(ui_extension, "_BRANDING_EXTENSION_INSTALLED", False):
+        return
+    previous_inject = ui_extension.inject_multimodal_ui
+
+    def inject_with_branding(html: str) -> str:
+        html = previous_inject(html)
+        if f'id="{_FAVICON_ID}"' not in html:
+            favicon = (
+                f'\n<link id="{_FAVICON_ID}" rel="icon" type="image/svg+xml" '
+                'href="/app-icon.svg">\n'
+            )
+            if "</head>" in html:
+                html = html.replace("</head>", f"{favicon}</head>", 1)
+            else:
+                html = favicon + html
+        if f'id="{_EXTENSION_ID}"' in html:
+            return html
+        payload = (
+            f'\n<style id="{_EXTENSION_ID}-styles">\n{BRANDING_CSS}\n</style>\n'
+            f'<script id="{_EXTENSION_ID}">\n{BRANDING_JS}\n</script>\n'
+        )
+        if "</body>" in html:
+            return html.replace("</body>", f"{payload}</body>", 1)
+        return html + payload
+
+    ui_extension.inject_multimodal_ui = inject_with_branding
+    ui_extension._BRANDING_EXTENSION_INSTALLED = True
