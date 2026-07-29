@@ -40,7 +40,7 @@ def test_build_script_generates_checksums_unsigned_names_and_brand_assets():
     assert "release_tools.py verify-checksums" in release
     assert "unsigned artifacts" in release
     assert "OV_LLM_SIGN_CERT_SHA1" in release
-    assert '("/tr", $Timestamp, "/td", "SHA256")' in release
+    assert '"/tr", $Timestamp, "/td", "SHA256"' in release
     assert '"signtool", "verify", "/pa", "/all"' not in release
     assert "& $SignTool verify /pa /all $Path" in release
     assert "Configure either OV_LLM_SIGN_CERT_SHA1" in release
