@@ -70,10 +70,9 @@ def test_recorded_portable_int4_profile_allows_direct_npu(tmp_path) -> None:
         sym=True,
     )
 
-    assert (
-        model_load_safety.safe_load_device(cfg, tmp_path, "NPU", available=["CPU", "NPU"])
-        == "NPU"
-    )
+    assert model_load_safety.safe_load_device(
+        cfg, tmp_path, "NPU", available=["CPU", "NPU"]
+    ) == "NPU"
 
 
 def test_auto_excludes_npu_for_unverified_int4(tmp_path) -> None:
