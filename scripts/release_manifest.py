@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import importlib.metadata
+import os
 import re
 from datetime import UTC, datetime
 from pathlib import Path
 
+from app.brand import LEGACY_REPOSITORY_NAME, REPOSITORY_NAME, REPOSITORY_OWNER
 from app.build_info import BuildInfo
 from app.release_models import (
     ApiCompatibility,
@@ -19,6 +21,22 @@ from app.release_models import (
 )
 from app.version import DATA_SCHEMA_VERSION, MINIMUM_SUPPORTED_DATA_SCHEMA_VERSION, __version__
 from scripts.release_scan import sha256_file
+
+_ALLOWED_RELEASE_REPOSITORIES = {
+    f"{REPOSITORY_OWNER}/{REPOSITORY_NAME}",
+    f"{REPOSITORY_OWNER}/{LEGACY_REPOSITORY_NAME}",
+}
+_DEFAULT_RELEASE_REPOSITORY = f"{REPOSITORY_OWNER}/{REPOSITORY_NAME}"
+
+
+def release_repository(environment: dict[str, str] | None = None) -> str:
+    values = os.environ if environment is None else environment
+    configured = str(values.get("OV_LLM_RELEASE_REPOSITORY") or "").strip()
+    automatic = str(values.get("GITHUB_REPOSITORY") or "").strip()
+    selected = configured or automatic or _DEFAULT_RELEASE_REPOSITORY
+    if selected not in _ALLOWED_RELEASE_REPOSITORIES:
+        raise ValueError("Release repository must be an approved InferBridge repository.")
+    return selected
 
 
 def validate_version(version: str, channel: str) -> SemanticVersion:
@@ -60,9 +78,9 @@ def write_version_info(path: Path, version: str) -> None:
         f"""VSVersionInfo(
   ffi=FixedFileInfo(filevers={numeric!r}, prodvers={numeric!r}, mask=0x3f, flags=0x0, OS=0x40004, fileType=0x1, subtype=0x0, date=(0, 0)),
   kids=[StringFileInfo([StringTable('040904B0', [
-    StringStruct('CompanyName', 'Quazmoz'), StringStruct('FileDescription', 'OpenVINO Windows LLM'),
-    StringStruct('FileVersion', '{version}'), StringStruct('InternalName', 'OpenVINOWindowsLLM'),
-    StringStruct('OriginalFilename', 'OpenVINOWindowsLLM.exe'), StringStruct('ProductName', 'OpenVINO Windows LLM'),
+    StringStruct('CompanyName', 'Quazmoz'), StringStruct('FileDescription', 'InferBridge'),
+    StringStruct('FileVersion', '{version}'), StringStruct('InternalName', 'InferBridge'),
+    StringStruct('OriginalFilename', 'InferBridge.exe'), StringStruct('ProductName', 'InferBridge'),
     StringStruct('ProductVersion', '{version}')])]), VarFileInfo([VarStruct('Translation', [1033, 1200])])]
 )
 """,
@@ -124,7 +142,8 @@ def build_manifest(
     if not notes.is_file():
         raise RuntimeError(f"Release notes are missing: {notes.name}")
     summary, highlights = _notes(notes)
-    base = f"https://github.com/Quazmoz/openvino-windows-llm/releases/download/v{version}"
+    repository = release_repository()
+    base = f"https://github.com/{repository}/releases/download/v{version}"
     artifacts = []
     for kind in ("installer", "portable", "third_party_licenses", "release_notes"):
         path = output_dir / artifact_filename(version, kind)
@@ -169,9 +188,9 @@ def build_manifest(
             model_cache_compatible=True,
             compiled_cache_policy="Invalidate compiled cache when OpenVINO, device, driver, or compilation properties change.",
         ),
-        release_notes_url=f"https://github.com/Quazmoz/openvino-windows-llm/releases/tag/v{version}",
-        known_issues_url=f"https://github.com/Quazmoz/openvino-windows-llm/blob/v{version}/docs/KNOWN_ISSUES.md",
-        compatibility_matrix_url=f"https://github.com/Quazmoz/openvino-windows-llm/blob/v{version}/docs/COMPATIBILITY_MATRIX.md",
+        release_notes_url=f"https://github.com/{repository}/releases/tag/v{version}",
+        known_issues_url=f"https://github.com/{repository}/blob/v{version}/docs/KNOWN_ISSUES.md",
+        compatibility_matrix_url=f"https://github.com/{repository}/blob/v{version}/docs/COMPATIBILITY_MATRIX.md",
         summary=summary,
         highlights=highlights,
         dependency_inventory_filename=inventory_filename,

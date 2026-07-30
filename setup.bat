@@ -1,6 +1,6 @@
 @echo off
 REM ============================================
-REM  OpenVINO Windows LLM - First-Time Setup
+REM  InferBridge - First-Time Setup
 REM ============================================
 REM Creates a Python venv, installs OpenVINO GenAI + server deps, and (optionally)
 REM the model-conversion deps. Runs the PowerShell setup with execution-policy
@@ -11,7 +11,7 @@ REM   .\setup.bat -Minimal        Install runtime deps only (skip conversion too
 REM   .\setup.bat -SkipHardwareCheck
 
 echo ==========================================
-echo   OpenVINO Windows LLM - Setup
+echo   InferBridge - Setup
 echo ==========================================
 echo.
 

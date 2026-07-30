@@ -14,9 +14,11 @@
   #error AppIconPath must be supplied by scripts\build_release.ps1
 #endif
 
-#define MyAppName "OpenVINO Windows LLM"
+#define MyAppName "InferBridge"
+#define MyLegacyAppName "OpenVINO Windows LLM"
 #define MyAppPublisher "Quazmoz"
-#define MyAppExeName "OpenVINOWindowsLLM.exe"
+#define MyAppExeName "InferBridge.exe"
+#define MyLegacyAppExeName "OpenVINOWindowsLLM.exe"
 
 [Setup]
 AppId={{F94A3938-C943-4E6D-B482-852D4AAE06F8}
@@ -24,16 +26,16 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-AppPublisherURL=https://github.com/Quazmoz/openvino-windows-llm
-AppSupportURL=https://github.com/Quazmoz/openvino-windows-llm/issues
-AppUpdatesURL=https://github.com/Quazmoz/openvino-windows-llm/releases
-DefaultDirName={localappdata}\Programs\OpenVINOWindowsLLM
+AppPublisherURL=https://github.com/Quazmoz/InferBridge
+AppSupportURL=https://github.com/Quazmoz/InferBridge/issues
+AppUpdatesURL=https://github.com/Quazmoz/InferBridge/releases
+DefaultDirName={localappdata}\Programs\InferBridge
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 OutputDir={#ArtifactDir}
-OutputBaseFilename=OpenVINO-Windows-LLM-{#MyAppVersion}-windows-x64-installer
+OutputBaseFilename=InferBridge-{#MyAppVersion}-windows-x64-installer
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -49,11 +51,11 @@ VersionInfoDescription={#MyAppName} installer
 VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppVersionNumeric}
 CloseApplications=yes
-CloseApplicationsFilter={#MyAppExeName},*.dll,*.pyd
+CloseApplicationsFilter={#MyAppExeName},{#MyLegacyAppExeName},*.dll,*.pyd
 RestartApplications=yes
 SetupLogging=yes
 UsePreviousAppDir=yes
-UsePreviousGroup=yes
+UsePreviousGroup=no
 DisableDirPage=auto
 
 [Languages]
@@ -62,7 +64,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
 
-; Mutable data is stored under %LOCALAPPDATA%\OpenVINOWindowsLLM, outside {app}.
+; Mutable data remains outside {app}; the application resolves InferBridge and legacy data roots safely.
 ; Remove the previous immutable payload before copying the new build so upgrades cannot
 ; mix Python modules with stale native extensions such as an older psutil Windows binary.
 [InstallDelete]
@@ -71,6 +73,10 @@ Type: filesandordirs; Name: "{app}\app"
 Type: filesandordirs; Name: "{app}\runtime"
 Type: filesandordirs; Name: "{app}\web"
 Type: files; Name: "{app}\{#MyAppExeName}"
+Type: files; Name: "{app}\{#MyLegacyAppExeName}"
+Type: filesandordirs; Name: "{userprograms}\{#MyLegacyAppName}"
+Type: files; Name: "{userdesktop}\{#MyLegacyAppName}.lnk"
+Type: files; Name: "{commondesktop}\{#MyLegacyAppName}.lnk"
 Type: files; Name: "{app}\portable.flag"
 Type: files; Name: "{app}\python*.dll"
 Type: files; Name: "{app}\*.pyd"
@@ -164,6 +170,9 @@ begin
       'Choose Yes to preserve data for a future installation. Choose No to remove the user data directory.',
       mbConfirmation, MB_YESNO, IDYES);
     if ResultCode = IDNO then
+    begin
+      DelTree(ExpandConstant('{localappdata}\InferBridge'), True, True, True);
       DelTree(ExpandConstant('{localappdata}\OpenVINOWindowsLLM'), True, True, True);
+    end;
   end;
 end;

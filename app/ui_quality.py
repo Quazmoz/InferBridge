@@ -186,7 +186,7 @@ connectionDetail.textContent = 'Open Settings and enter the key configured by th
 connectionAction.textContent = 'Open Settings';
 } else if (state === 'offline') {
 connectionTitle.textContent = 'Local server unavailable';
-connectionDetail.textContent = 'Check that the OpenVINO LLM process is still running, then retry the connection.';
+connectionDetail.textContent = 'Check that the InferBridge process is still running, then retry the connection.';
 connectionAction.textContent = 'Retry connection';
 }
 [loadButton, unloadButton, deleteButton].forEach(button => {

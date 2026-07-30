@@ -8,7 +8,7 @@ Update checks are optional release discovery, never forced updating. Core infere
 - The About and Updates panel also supports an explicit **Check Now** action.
 - A conservative 24-hour interval prevents repeated background requests. There is no continuous polling.
 - Requests use the official GitHub releases API with a short timeout and ETag caching.
-- Requests send only the normal HTTPS metadata and `OpenVINO-Windows-LLM/<version>` user agent. No hardware, model, prompt, chat, user ID, analytics, API key, or token is sent.
+- Requests send only the normal HTTPS metadata and `InferBridge/<version>` user agent. No hardware, model, prompt, chat, user ID, analytics, API key, or token is sent.
 - Offline and timeout failures are silent with respect to inference.
 - The application validates SemVer ordering, release channel, manifest schema, architecture, Windows floor, data schema, artifact type, checksums, and official GitHub download URLs.
 - Installed users are offered only the installer. Portable users are offered only the portable ZIP.

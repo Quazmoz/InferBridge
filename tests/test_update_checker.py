@@ -2,6 +2,7 @@ import json
 import urllib.error
 from datetime import UTC, datetime, timedelta
 
+from app.brand import USER_AGENT_PRODUCT
 from app.release_models import artifact_filename
 from app.update_checker import (
     UpdateCache,
@@ -10,6 +11,7 @@ from app.update_checker import (
     UpdateStore,
     check_due,
 )
+from app.version import __version__
 
 
 class Response:
@@ -171,7 +173,7 @@ def test_beta_user_sees_beta_release_and_installed_artifact(tmp_path):
     assert len(calls) == 2
     assert all(timeout == 4.0 for _url, timeout, _headers in calls)
     assert all(
-        "OpenVINO-Windows-LLM/0.6.3" in headers.get("User-agent", "")
+        f"{USER_AGENT_PRODUCT}/{__version__}" in headers.get("User-agent", "")
         for _url, _timeout, headers in calls
     )
 

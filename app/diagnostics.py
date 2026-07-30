@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any
 
 from app import __version__
+from app.brand import DISPLAY_NAME
+from app.brand import DISPLAY_NAME
 from app.diagnostics_privacy import (
     bounded_log_text,
     diagnostics_confirmation_summary,
@@ -62,11 +64,11 @@ class DiagnosticsCollector(DiagnosticsSectionsMixin):
         self.paths.diagnostics_dir.mkdir(parents=True, exist_ok=True)
         self._assert_safe_output_root(self.paths.diagnostics_dir)
         created = self.now().astimezone(UTC)
-        filename = f"openvino-windows-llm-diagnostics-{created.strftime('%Y%m%d-%H%M%S')}.zip"
+        filename = f"inferbridge-diagnostics-{created.strftime('%Y%m%d-%H%M%S')}.zip"
         output = self.paths.diagnostics_dir / filename
         if output.exists():
             output = self.paths.diagnostics_dir / (
-                f"openvino-windows-llm-diagnostics-{created.strftime('%Y%m%d-%H%M%S')}-"
+                f"inferbridge-diagnostics-{created.strftime('%Y%m%d-%H%M%S')}-"
                 f"{created.microsecond:06d}.zip"
             )
 
@@ -160,6 +162,7 @@ class DiagnosticsCollector(DiagnosticsSectionsMixin):
     def _application_payload(self) -> Mapping[str, Any]:
         metadata = dict(self.build_metadata or {})
         return {
+            "application_name": DISPLAY_NAME,
             "application_version": __version__,
             "packaging_version": metadata.get("packaging_version") or __version__,
             "build_metadata": {

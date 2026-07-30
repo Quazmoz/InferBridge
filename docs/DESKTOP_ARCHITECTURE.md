@@ -5,7 +5,7 @@ The desktop distribution remains a thin controller around the existing FastAPI s
 ## Process model
 
 ```text
-OpenVINOWindowsLLM.exe
+InferBridge.exe
   └─ tray controller, authoritative per-user owner
        └─ packaged server child
             ├─ existing FastAPI/OpenAI-compatible API
@@ -41,4 +41,4 @@ An unexpected child exit changes tray state to error and makes Restart available
 
 ## Installed and portable paths
 
-Installed mode uses `%LOCALAPPDATA%\OpenVINOWindowsLLM`. Portable mode uses `<portable directory>\data`. Models, configuration, onboarding state, benchmarks, logs, diagnostics, and caches remain outside packaged resources and survive ordinary upgrades.
+Installed mode uses `%LOCALAPPDATA%\InferBridge`. Portable mode uses `<portable directory>\data`. Models, configuration, onboarding state, benchmarks, logs, diagnostics, and caches remain outside packaged resources and survive ordinary upgrades.

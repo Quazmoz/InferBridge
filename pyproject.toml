@@ -1,7 +1,7 @@
 [project]
 name = "openvino-windows-llm"
 dynamic = ["version"]
-description = "Windows-first local LLM and VLM server built on OpenVINO GenAI for Intel CPU/GPU/NPU."
+description = "InferBridge is a Windows-first local AI server with an OpenAI-compatible API, powered by OpenVINO GenAI for Intel CPU/GPU/NPU."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -36,6 +36,8 @@ distribution = [
 [project.scripts]
 ov-llm = "app.server:main"
 ov-llm-desktop = "app.desktop_launcher:main"
+inferbridge = "app.server:main"
+inferbridge-desktop = "app.desktop_launcher:main"
 
 [build-system]
 requires = ["setuptools>=68"]

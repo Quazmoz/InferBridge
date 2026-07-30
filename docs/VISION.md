@@ -1,6 +1,6 @@
 # Local vision chat
 
-OpenVINO Windows LLM can serve vision-language models through the same local,
+InferBridge can serve vision-language models through the same local,
 OpenAI-compatible API used for text chat. Image bytes remain local and are held in
 memory only for the active request.
 

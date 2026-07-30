@@ -17,6 +17,7 @@ import httpx
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
+from app.brand import DISPLAY_NAME, LEGACY_DISPLAY_NAME
 from app.local_request_security import require_safe_browser_origin
 from app.model_library import (
     ConvertedModelImportRequest,
@@ -198,7 +199,7 @@ def install_model_library_routes_extension() -> None:
     @functools.wraps(original_init)
     def init_with_model_library(self: FastAPI, *args: Any, **kwargs: Any) -> None:
         original_init(self, *args, **kwargs)
-        if getattr(self, "title", "") == "OpenVINO Windows LLM":
+        if getattr(self, "title", "") in {DISPLAY_NAME, LEGACY_DISPLAY_NAME}:
             register_model_library_routes(self)
 
     FastAPI.__init__ = init_with_model_library  # type: ignore[method-assign]

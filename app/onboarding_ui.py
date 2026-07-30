@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from app import ui_extension
+from app.brand import DISPLAY_NAME
+from app.version import __version__
 
 _EXTENSION_ID = "ovllm-desktop-onboarding-extension"
 
@@ -93,3 +95,5 @@ def install_onboarding_ui_extension() -> None:
 
     ui_extension.inject_multimodal_ui = inject
     ui_extension._DESKTOP_ONBOARDING_UI_INSTALLED = True
+
+ONBOARDING_UI = ONBOARDING_UI.replace("OpenVINO Windows LLM", DISPLAY_NAME).replace("Version 0.3.0", f"Version {__version__}")

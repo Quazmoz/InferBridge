@@ -4,7 +4,7 @@ The installed and portable desktop build uses a lightweight Python system-tray c
 
 ## User workflow
 
-1. Launch **OpenVINO Windows LLM** from the Start Menu or portable directory.
+1. Launch **InferBridge** from the Start Menu or portable directory.
 2. The tray controller acquires the per-user application lock.
 3. It starts the packaged server on `127.0.0.1`, waits for liveness and readiness, and optionally opens the browser.
 4. Closing the browser does not stop the server or tray controller.
@@ -47,7 +47,7 @@ The tray terminates only the `subprocess.Popen` child it created and whose PID m
 Start with Windows is disabled by default. Enabling it creates one per-user registry value:
 
 ```text
-HKCU\Software\Microsoft\Windows\CurrentVersion\Run\OpenVINOWindowsLLM
+HKCU\Software\Microsoft\Windows\CurrentVersion\Run\InferBridge
 ```
 
 The command starts the packaged tray controller with `--startup --no-browser`. Windows startup therefore restores the tray and server in the background without opening the browser.
@@ -59,7 +59,7 @@ Disabling the option removes that value. Duplicate registrations are not created
 Automated tests can run the tray-owned lifecycle without a graphical tray backend by using:
 
 ```powershell
-OpenVINOWindowsLLM.exe --mock --headless --headless-seconds 30 --no-browser
+InferBridge.exe --mock --headless --headless-seconds 30 --no-browser
 ```
 
 Headless mode is intended for packaging and integration tests. It does not validate the native Windows notification-area backend.

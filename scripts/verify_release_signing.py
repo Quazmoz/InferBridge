@@ -82,12 +82,8 @@ def verify_release_signing(
     *,
     require_signed: bool = False,
 ) -> bool:
-    manifest = _load_object(
-        artifact_directory / f"OpenVINO-Windows-LLM-{version}-release-manifest.json"
-    )
-    summary = _load_object(
-        artifact_directory / f"OpenVINO-Windows-LLM-{version}-release-summary.json"
-    )
+    manifest = _load_object(artifact_directory / f"InferBridge-{version}-release-manifest.json")
+    summary = _load_object(artifact_directory / f"InferBridge-{version}-release-summary.json")
     installer = _artifact(manifest, "installer")
     portable = _artifact(manifest, "portable")
 
@@ -136,9 +132,9 @@ def verify_release_signing(
             ]
             if len(launchers) != 1:
                 raise SigningVerificationError(
-                    "Portable ZIP must contain exactly one OpenVINOWindowsLLM.exe."
+                    "Portable ZIP must contain exactly one InferBridge.exe."
                 )
-            extracted = Path(temporary) / "OpenVINOWindowsLLM.exe"
+            extracted = Path(temporary) / "InferBridge.exe"
             extracted.write_bytes(archive.read(launchers[0]))
         _verify(tool, extracted)
     print("Publisher independently verified installer and launcher Authenticode signatures.")

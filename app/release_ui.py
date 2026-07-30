@@ -1,5 +1,7 @@
 """Dependency-free About and Updates UI extension."""
 
+from app.brand import DISPLAY_NAME
+
 RELEASE_EXTENSION_JS = r"""
 (() => {
   if (document.getElementById('ovllm-release-button')) return;
@@ -125,3 +127,5 @@ RELEASE_EXTENSION_JS = r"""
   else setTimeout(checkOnOpen, 1200);
 })();
 """
+
+RELEASE_EXTENSION_JS = RELEASE_EXTENSION_JS.replace("OpenVINO Windows LLM", DISPLAY_NAME)

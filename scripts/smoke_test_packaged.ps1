@@ -10,7 +10,7 @@ $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 $Root = (Resolve-Path $DistributionPath).Path
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$Exe = Join-Path $Root "OpenVINOWindowsLLM.exe"
+$Exe = Join-Path $Root "InferBridge.exe"
 if (-not (Test-Path $Exe)) { throw "Executable not found: $Exe" }
 $PortableMarker = Join-Path $Root "portable.flag"
 $IsPortable = $ExpectedMode -eq "portable"

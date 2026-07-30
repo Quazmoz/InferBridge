@@ -17,8 +17,8 @@ in Windows Settings.
 ### 1. Install
 
 ```powershell
-git clone https://github.com/Quazmoz/openvino-windows-llm.git
-cd openvino-windows-llm
+git clone https://github.com/Quazmoz/InferBridge.git
+cd InferBridge
 .\setup.bat
 ```
 
@@ -96,8 +96,8 @@ sudo dnf install -y python3 python3-pip python3-devel git
 ### Setup and run
 
 ```bash
-git clone https://github.com/Quazmoz/openvino-windows-llm.git
-cd openvino-windows-llm
+git clone https://github.com/Quazmoz/InferBridge.git
+cd InferBridge
 chmod +x setup.sh start_server.sh setup/*.sh setup/linux/*.sh
 ./setup.sh --minimal
 ./start_server.sh --mock

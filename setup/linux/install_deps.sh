@@ -15,7 +15,7 @@ PLATFORM_NAME="$(linux_platform_name "$OS_ID")"
 
 usage() {
     cat <<'EOF'
-Install Python dependencies for OpenVINO Windows LLM on Linux.
+Install Python dependencies for InferBridge on Linux.
 
 Usage:
   setup/linux/install_deps.sh [options]

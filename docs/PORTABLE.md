@@ -5,7 +5,7 @@ The portable ZIP contains the packaged tray controller, FastAPI server, browser 
 ## Use
 
 1. Extract the ZIP to a writable local directory.
-2. Run `OpenVINOWindowsLLM.exe`.
+2. Run `InferBridge.exe`.
 3. Use the tray icon to open chat, inspect status, manage the owned server, or export diagnostics.
 4. Complete first-run model preparation in the existing browser UI.
 
@@ -18,8 +18,8 @@ Avoid protected directories, read-only removable media, and slow network shares.
 ## Diagnostics and mock validation
 
 ```powershell
-.\OpenVINOWindowsLLM.exe --diagnostic --portable
-.\OpenVINOWindowsLLM.exe --mock --headless --headless-seconds 30 --portable --no-browser
+.\InferBridge.exe --diagnostic --portable
+.\InferBridge.exe --mock --headless --headless-seconds 30 --portable --no-browser
 ```
 
 The diagnostics command writes a sanitized local ZIP. Headless mock mode validates lifecycle contracts but not the native Windows tray backend or real CPU/GPU/NPU execution.

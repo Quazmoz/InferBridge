@@ -34,9 +34,9 @@ def expected_release_filenames(version: str) -> set[str]:
     } | {
         artifact_filename(version, "checksums"),
         artifact_filename(version, "manifest"),
-        f"OpenVINO-Windows-LLM-{version}-dependency-inventory.json",
-        f"OpenVINO-Windows-LLM-{version}-dependency-freeze.txt",
-        f"OpenVINO-Windows-LLM-{version}-release-summary.json",
+        f"InferBridge-{version}-dependency-inventory.json",
+        f"InferBridge-{version}-dependency-freeze.txt",
+        f"InferBridge-{version}-release-summary.json",
         "model-library-manifest.json",
     }
 
@@ -50,7 +50,7 @@ def verify_release_provenance(
     source_model_manifest: Path,
 ) -> None:
     manifest_path = artifact_directory / artifact_filename(version, "manifest")
-    summary_path = artifact_directory / (f"OpenVINO-Windows-LLM-{version}-release-summary.json")
+    summary_path = artifact_directory / (f"InferBridge-{version}-release-summary.json")
     raw_manifest = _object(manifest_path, "Release manifest")
     raw_summary = _object(summary_path, "Release summary")
     try:
@@ -85,7 +85,7 @@ def verify_release_provenance(
         raise RuntimeError("Release summary artifact list is malformed.")
     built_expected = expected - {
         artifact_filename(version, "checksums"),
-        f"OpenVINO-Windows-LLM-{version}-release-summary.json",
+        f"InferBridge-{version}-release-summary.json",
     }
     if not built_expected.issubset(set(summary_artifacts)):
         raise RuntimeError("Release summary does not record the expected built artifacts.")

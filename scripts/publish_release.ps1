@@ -24,15 +24,15 @@ if ($LASTEXITCODE -ne 0 -or $HeadCommit -notmatch '^[0-9a-f]{40}$') { throw "Cou
 
 $Tag = "v$Version"
 $Expected = @(
-    "OpenVINO-Windows-LLM-$Version-windows-x64-installer.exe",
-    "OpenVINO-Windows-LLM-$Version-windows-x64-portable.zip",
-    "OpenVINO-Windows-LLM-$Version-checksums.txt",
-    "OpenVINO-Windows-LLM-$Version-release-manifest.json",
-    "OpenVINO-Windows-LLM-$Version-third-party-licenses.zip",
-    "OpenVINO-Windows-LLM-$Version-release-notes.md",
-    "OpenVINO-Windows-LLM-$Version-dependency-inventory.json",
-    "OpenVINO-Windows-LLM-$Version-dependency-freeze.txt",
-    "OpenVINO-Windows-LLM-$Version-release-summary.json",
+    "InferBridge-$Version-windows-x64-installer.exe",
+    "InferBridge-$Version-windows-x64-portable.zip",
+    "InferBridge-$Version-checksums.txt",
+    "InferBridge-$Version-release-manifest.json",
+    "InferBridge-$Version-third-party-licenses.zip",
+    "InferBridge-$Version-release-notes.md",
+    "InferBridge-$Version-dependency-inventory.json",
+    "InferBridge-$Version-dependency-freeze.txt",
+    "InferBridge-$Version-release-summary.json",
     "model-library-manifest.json"
 )
 $LibraryManifestSource = Join-Path $Root "model_library_manifest.json"
@@ -53,7 +53,7 @@ if ($LASTEXITCODE -eq 0) { throw "Tag $Tag already exists." }
 $null = cmd /c "gh release view $Tag --repo Quazmoz/openvino-windows-llm >NUL 2>NUL"
 if ($LASTEXITCODE -eq 0) { throw "GitHub release $Tag already exists." }
 
-$Notes = Join-Path $ArtifactDirectory "OpenVINO-Windows-LLM-$Version-release-notes.md"
+$Notes = Join-Path $ArtifactDirectory "InferBridge-$Version-release-notes.md"
 $Upload = $Expected | ForEach-Object { Join-Path $ArtifactDirectory $_ }
 if ($DryRun) {
     Write-Host "Dry run passed. Would create annotated tag $Tag and upload:"
@@ -61,13 +61,13 @@ if ($DryRun) {
     exit 0
 }
 
-git tag -a $Tag $HeadCommit -m "OpenVINO Windows LLM $Version"
+git tag -a $Tag $HeadCommit -m "InferBridge $Version"
 if ($LASTEXITCODE -ne 0) { throw "Annotated tag creation failed." }
 if ((git rev-list -n 1 $Tag).Trim() -ne $HeadCommit) { throw "Created tag does not target the recorded source commit." }
 git push origin $Tag
 if ($LASTEXITCODE -ne 0) { throw "Tag push failed." }
 
-$Arguments = @("release", "create", $Tag, "--repo", "Quazmoz/openvino-windows-llm", "--verify-tag", "--title", "OpenVINO Windows LLM $Version", "--notes-file", $Notes)
+$Arguments = @("release", "create", $Tag, "--repo", "Quazmoz/openvino-windows-llm", "--verify-tag", "--title", "InferBridge $Version", "--notes-file", $Notes)
 if ($Channel -ne "stable") { $Arguments += "--prerelease" }
 $Arguments += $Upload
 & gh @Arguments

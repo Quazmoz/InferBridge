@@ -35,12 +35,12 @@ The build deterministically generates a 512-pixel PNG and multi-resolution Windo
 Artifacts use deterministic names under `artifacts\release-<version>`:
 
 ```text
-OpenVINO-Windows-LLM-<version>-windows-x64-installer.exe
-OpenVINO-Windows-LLM-<version>-windows-x64-portable.zip
-OpenVINO-Windows-LLM-<version>-checksums.txt
-OpenVINO-Windows-LLM-<version>-release-manifest.json
-OpenVINO-Windows-LLM-<version>-third-party-licenses.zip
-OpenVINO-Windows-LLM-<version>-release-notes.md
+InferBridge-<version>-windows-x64-installer.exe
+InferBridge-<version>-windows-x64-portable.zip
+InferBridge-<version>-checksums.txt
+InferBridge-<version>-release-manifest.json
+InferBridge-<version>-third-party-licenses.zip
+InferBridge-<version>-release-notes.md
 ```
 
 The release environment installs pinned top-level requirements from `requirements/release.txt`. Each build records the fully resolved `pip list` and `pip freeze` results. This records exact release inputs without claiming byte-for-byte reproducibility across Windows SDK, Python, compiler, or timestamp changes.
@@ -83,8 +83,8 @@ The code-signing certificate subject becomes the Windows publisher identity. A v
 ## Verification
 
 ```powershell
-Get-FileHash .\OpenVINO-Windows-LLM-<version>-windows-x64-installer.exe -Algorithm SHA256
-python .\scripts\release_tools.py verify-checksums --path .\OpenVINO-Windows-LLM-<version>-checksums.txt
+Get-FileHash .\InferBridge-<version>-windows-x64-installer.exe -Algorithm SHA256
+python .\scripts\release_tools.py verify-checksums --path .\InferBridge-<version>-checksums.txt
 ```
 
 Confirm the generated icon appears on the installer file, installed launcher, Start Menu shortcut, optional desktop shortcut, Apps and Features uninstall entry, browser tab, and browser header. Do not treat source SVG or ICO inspection as proof that Windows resources were embedded correctly.

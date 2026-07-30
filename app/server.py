@@ -35,6 +35,8 @@ from starlette.background import BackgroundTask
 
 from app import __version__, chat_format, model_manager, multimodal, tools
 from app.body_limit import RequestBodyLimitMiddleware
+from app.brand import DISPLAY_NAME
+from app.brand import DISPLAY_NAME
 from app.config import BASE_DIR, Settings
 from app.openai_api import (
     BenchmarkRunRequest,
@@ -260,7 +262,7 @@ def create_app(settings: Settings) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         mode = "MOCK (no OpenVINO)" if manager.force_mock else f"device={settings.device}"
-        logger.info("Starting OpenVINO Windows LLM server — %s", mode)
+        logger.info("Starting %s server — %s", DISPLAY_NAME, mode)
         await manager.startup()
         try:
             yield
@@ -268,7 +270,7 @@ def create_app(settings: Settings) -> FastAPI:
             await manager.shutdown()
             logger.info("Server stopped; models unloaded.")
 
-    app = FastAPI(title="OpenVINO Windows LLM", version=__version__, lifespan=lifespan)
+    app = FastAPI(title=DISPLAY_NAME, version=__version__, lifespan=lifespan)
     app.state.settings = settings
     app.state.manager = manager
     app.state.benchmark_store = benchmark_store
@@ -927,7 +929,7 @@ def create_app(settings: Settings) -> FastAPI:
         ts_file = now.strftime("%Y%m%d-%H%M%S")
 
         lines: list[str] = []
-        lines.append("# Chat Export — OpenVINO LLM")
+        lines.append(f"# Chat Export — {DISPLAY_NAME}")
         lines.append("")
         meta_parts = [f"**Exported:** {ts_display}"]
         if request.model:
@@ -1502,7 +1504,7 @@ def main(argv: list[str] | None = None) -> int:
     _load_dotenv()
     base = Settings.from_env()
 
-    parser = argparse.ArgumentParser(description="OpenVINO Windows LLM server")
+    parser = argparse.ArgumentParser(description=f"{DISPLAY_NAME} server")
     parser.add_argument("--model", help="Model id to auto-load on startup (from models.json)")
     parser.add_argument(
         "--device",

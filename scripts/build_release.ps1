@@ -115,7 +115,7 @@ if (-not $OutputDirectory) {
     Remove-Item $Artifacts -Recurse -Force -ErrorAction SilentlyContinue
 }
 elseif (Test-Path $Artifacts) {
-    Get-ChildItem $Artifacts -File -Filter "OpenVINO-Windows-LLM-$Version-*" | Remove-Item -Force
+    Get-ChildItem $Artifacts -File -Filter "InferBridge-$Version-*" | Remove-Item -Force
 }
 New-Item $BuildRoot, $Artifacts -ItemType Directory -Force | Out-Null
 
@@ -126,8 +126,8 @@ $ReleasePython = Join-Path $Venv "Scripts\python.exe"
 Invoke-Checked "Install pinned release dependencies" { & $ReleasePython -m pip install --disable-pip-version-check -r requirements/release.txt }
 Invoke-Checked "Install project without dependency re-resolution" { & $ReleasePython -m pip install --disable-pip-version-check --no-deps --no-build-isolation . }
 
-$InventoryJson = Join-Path $Artifacts "OpenVINO-Windows-LLM-$Version-dependency-inventory.json"
-$InventoryText = Join-Path $Artifacts "OpenVINO-Windows-LLM-$Version-dependency-freeze.txt"
+$InventoryJson = Join-Path $Artifacts "InferBridge-$Version-dependency-inventory.json"
+$InventoryText = Join-Path $Artifacts "InferBridge-$Version-dependency-freeze.txt"
 & $ReleasePython -m pip list --format=json | Set-Content -Path $InventoryJson -Encoding utf8
 if ($LASTEXITCODE -ne 0) { throw "Dependency inventory generation failed." }
 & $ReleasePython -m pip freeze --all --exclude openvino-windows-llm | Set-Content -Path $InventoryText -Encoding utf8
@@ -153,7 +153,7 @@ Invoke-Checked "Generate executable version metadata" { & $ReleasePython scripts
 Invoke-Checked "Generate build metadata" { & $ReleasePython scripts/release_tools.py write-build-info --path $BuildInfo --version $Version --channel $Channel --commit $GitCommit --clean ($TreeClean.ToString().ToLowerInvariant()) --dependency-inventory $InventoryJson }
 $BrandAssets = Join-Path $BuildRoot "brand"
 Invoke-Checked "Generate application icons" { & $ReleasePython scripts/generate_brand_assets.py --output-directory $BrandAssets }
-$AppIcon = Join-Path $BrandAssets "OpenVINOWindowsLLM.ico"
+$AppIcon = Join-Path $BrandAssets "InferBridge.ico"
 if (-not (Test-Path $AppIcon)) { throw "Application icon generation did not produce $AppIcon." }
 
 Remove-Item $DistRoot -Recurse -Force -ErrorAction SilentlyContinue
@@ -168,8 +168,8 @@ finally {
     Remove-Item Env:OV_LLM_THIRD_PARTY_NOTICES, Env:OV_LLM_VERSION_INFO, Env:OV_LLM_BUILD_INFO, Env:OV_LLM_APP_ICON -ErrorAction SilentlyContinue
 }
 
-$BuiltRoot = Join-Path $DistRoot "OpenVINOWindowsLLM"
-$Launcher = Join-Path $BuiltRoot "OpenVINOWindowsLLM.exe"
+$BuiltRoot = Join-Path $DistRoot "InferBridge"
+$Launcher = Join-Path $BuiltRoot "InferBridge.exe"
 Invoke-Checked "Verify packaged native components" { & $ReleasePython scripts/release_tools.py verify-native --path $BuiltRoot }
 Invoke-Checked "Scan packaged directory" { & $ReleasePython scripts/release_tools.py scan --path $BuiltRoot }
 
@@ -196,23 +196,23 @@ $Produced = @($InventoryJson, $InventoryText)
 $SignedTypes = @()
 if (-not $SkipPortable) {
     $PortableContainer = Join-Path $BuildRoot "portable"
-    $PortableName = "OpenVINO-Windows-LLM-$Version"
+    $PortableName = "InferBridge-$Version"
     $PortableStage = Join-Path $PortableContainer $PortableName
     Remove-Item $PortableContainer -Recurse -Force -ErrorAction SilentlyContinue
     New-Item $PortableStage -ItemType Directory -Force | Out-Null
     Copy-Item (Join-Path $BuiltRoot "*") $PortableStage -Recurse -Force
     Set-Content -Path (Join-Path $PortableStage "portable.flag") -Value "portable" -Encoding ascii
     @"
-OpenVINO Windows LLM $Version portable release
+InferBridge $Version portable release
 
 1. Extract the complete directory to a writable non-administrator location.
-2. Run OpenVINOWindowsLLM.exe.
+2. Run InferBridge.exe.
 3. Mutable configuration, models, caches, logs, onboarding state, and benchmarks remain under .\data.
 4. This package does not change the registry or Start Menu and does not enable Start with Windows.
 5. See UPGRADE_ROLLBACK.md before replacing an existing portable directory.
 "@ | Set-Content -Path (Join-Path $PortableStage "PORTABLE-README.txt") -Encoding utf8
     Copy-Item docs/UPGRADE_ROLLBACK.md, docs/KNOWN_ISSUES.md, docs/COMPATIBILITY_MATRIX.md -Destination $PortableStage
-    $PortableZip = Join-Path $Artifacts "OpenVINO-Windows-LLM-$Version-windows-x64-portable.zip"
+    $PortableZip = Join-Path $Artifacts "InferBridge-$Version-windows-x64-portable.zip"
     Remove-Item $PortableZip -Force -ErrorAction SilentlyContinue
     Compress-Archive -Path $PortableStage -DestinationPath $PortableZip -CompressionLevel Optimal
     Invoke-Checked "Validate portable ZIP paths" { & $ReleasePython scripts/release_tools.py scan --path $PortableZip }
@@ -242,7 +242,7 @@ if (-not $SkipInstaller) {
     Invoke-Checked "Compile Inno Setup installer" {
         & $Compiler "/DMyAppVersion=$Version" "/DMyAppVersionNumeric=$NumericVersion" "/DSourceRoot=$BuiltRoot" "/DArtifactDir=$Artifacts" "/DAppIconPath=$AppIcon" packaging/installer.iss
     }
-    $Installer = Join-Path $Artifacts "OpenVINO-Windows-LLM-$Version-windows-x64-installer.exe"
+    $Installer = Join-Path $Artifacts "InferBridge-$Version-windows-x64-installer.exe"
     if (-not (Test-Path $Installer)) { throw "Installer was not produced: $Installer" }
     if ($Sign) {
         Sign-AndVerify $Installer
@@ -255,13 +255,13 @@ $LicenseStage = Join-Path $BuildRoot "third-party-licenses"
 Remove-Item $LicenseStage -Recurse -Force -ErrorAction SilentlyContinue
 New-Item $LicenseStage -ItemType Directory -Force | Out-Null
 Copy-Item LICENSE, $Notices, $InventoryJson, $InventoryText, docs/THIRD_PARTY_LICENSES.md -Destination $LicenseStage
-$LicenseZip = Join-Path $Artifacts "OpenVINO-Windows-LLM-$Version-third-party-licenses.zip"
+$LicenseZip = Join-Path $Artifacts "InferBridge-$Version-third-party-licenses.zip"
 Compress-Archive -Path (Join-Path $LicenseStage "*") -DestinationPath $LicenseZip -CompressionLevel Optimal -Force
 $Produced += $LicenseZip
 
 $ReleaseNotesSource = Join-Path $Root "docs\releases\$Version.md"
 if (-not (Test-Path $ReleaseNotesSource)) { throw "Structured release notes are required at docs/releases/$Version.md." }
-$ReleaseNotes = Join-Path $Artifacts "OpenVINO-Windows-LLM-$Version-release-notes.md"
+$ReleaseNotes = Join-Path $Artifacts "InferBridge-$Version-release-notes.md"
 Copy-Item $ReleaseNotesSource $ReleaseNotes -Force
 $Produced += $ReleaseNotes
 
@@ -276,10 +276,10 @@ $PublishedAt = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
 Invoke-Checked "Generate and validate release manifest" {
     & $ReleasePython scripts/release_tools.py manifest --output-dir $Artifacts --version $Version --channel $Channel --published-at $PublishedAt --commit $GitCommit --clean ($TreeClean.ToString().ToLowerInvariant()) "--signed-types=$($SignedTypes -join ',')" --inventory-filename ([IO.Path]::GetFileName($InventoryJson))
 }
-$Manifest = Join-Path $Artifacts "OpenVINO-Windows-LLM-$Version-release-manifest.json"
+$Manifest = Join-Path $Artifacts "InferBridge-$Version-release-manifest.json"
 $Produced += $Manifest
 
-$SummaryPath = Join-Path $Artifacts "OpenVINO-Windows-LLM-$Version-release-summary.json"
+$SummaryPath = Join-Path $Artifacts "InferBridge-$Version-release-summary.json"
 $Summary = [ordered]@{
     schema_version = 1
     version = $Version
@@ -308,7 +308,7 @@ $Produced += $SummaryPath
 
 # Checksums are mandatory for every release. -GenerateChecksums remains accepted for explicit scripts.
 Invoke-Checked "Generate and verify SHA-256 checksums" { & $ReleasePython scripts/release_tools.py checksums --output-dir $Artifacts --version $Version }
-$Checksums = Join-Path $Artifacts "OpenVINO-Windows-LLM-$Version-checksums.txt"
+$Checksums = Join-Path $Artifacts "InferBridge-$Version-checksums.txt"
 $Produced += $Checksums
 
 foreach ($Artifact in $Produced) {

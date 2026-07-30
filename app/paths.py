@@ -7,11 +7,14 @@ import json
 import os
 import shutil
 import sys
+import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-_APP_DIR_NAME = "OpenVINOWindowsLLM"
+from app.brand import DATA_DIR_NAME, DISPLAY_NAME, LEGACY_DATA_DIR_NAME
+
+_APP_DIR_NAME = DATA_DIR_NAME
 _TRUTHY = {"1", "true", "yes", "on"}
 
 
@@ -82,6 +85,31 @@ def _default_local_app_data(env: Mapping[str, str]) -> Path:
     return Path.home() / ".local" / "share"
 
 
+def _contains_data(path: Path) -> bool:
+    try:
+        return path.is_dir() and next(path.iterdir(), None) is not None
+    except OSError:
+        return False
+
+
+def _desktop_data_root(env: Mapping[str, str]) -> Path:
+    local_app_data = _default_local_app_data(env)
+    current = local_app_data / DATA_DIR_NAME
+    legacy = local_app_data / LEGACY_DATA_DIR_NAME
+    if current.exists():
+        if _contains_data(current) and _contains_data(legacy):
+            warnings.warn(
+                "Both InferBridge and legacy application data directories contain data; "
+                "InferBridge was selected without moving or merging files.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        return current
+    if legacy.exists():
+        return legacy
+    return current
+
+
 def resolve_runtime_paths(
     *,
     portable: bool | None = None,
@@ -100,7 +128,7 @@ def resolve_runtime_paths(
     elif portable_mode:
         data_root = executable_dir() / "data"
     elif desktop_mode:
-        data_root = _default_local_app_data(values) / _APP_DIR_NAME
+        data_root = _desktop_data_root(values)
     else:
         data_root = resource_root
 
@@ -166,7 +194,7 @@ def ensure_data_root_writable(paths: RuntimePaths) -> None:
         probe.unlink(missing_ok=True)
     except OSError as exc:
         raise RuntimeError(
-            "OpenVINO Windows LLM cannot write to its application data directory. "
+            f"{DISPLAY_NAME} cannot write to its application data directory. "
             "Choose a writable portable location or set OV_LLM_DATA_DIR."
         ) from exc
 
