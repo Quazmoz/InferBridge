@@ -7,8 +7,6 @@ construction logic.
 
 from __future__ import annotations
 
-from app.brand import DISPLAY_NAME, LEGACY_DISPLAY_NAME
-
 import asyncio
 import copy
 import functools
@@ -19,6 +17,7 @@ import httpx
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
+from app.brand import DISPLAY_NAME, LEGACY_DISPLAY_NAME
 from app.local_request_security import require_safe_browser_origin
 from app.model_library import (
     ConvertedModelImportRequest,

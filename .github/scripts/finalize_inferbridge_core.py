@@ -27,7 +27,7 @@ def main() -> None:
     replace(
         "app/desktop_launcher.py",
         'from typing import BinaryIO\n\n_APP_TITLE = "OpenVINO Windows LLM"',
-        'from typing import BinaryIO\n\nfrom app.brand import DISPLAY_NAME\n\n_APP_TITLE = DISPLAY_NAME',
+        "from typing import BinaryIO\n\nfrom app.brand import DISPLAY_NAME\n\n_APP_TITLE = DISPLAY_NAME",
     )
     replace(
         "app/desktop_launcher.py",
@@ -37,7 +37,7 @@ def main() -> None:
     replace(
         "app/tray_support.py",
         'from app.tray_state import TrayPhase\n\nAPP_TITLE = "OpenVINO Windows LLM"',
-        'from app.brand import DISPLAY_NAME\nfrom app.tray_state import TrayPhase\n\nAPP_TITLE = DISPLAY_NAME',
+        "from app.brand import DISPLAY_NAME\nfrom app.tray_state import TrayPhase\n\nAPP_TITLE = DISPLAY_NAME",
     )
     replace(
         "app/tray_menu.py",
@@ -52,7 +52,7 @@ def main() -> None:
     )
     for old, new in {
         'logger.info("Starting OpenVINO Windows LLM server — %s", mode)': 'logger.info("Starting %s server — %s", DISPLAY_NAME, mode)',
-        'FastAPI(title="OpenVINO Windows LLM", version=__version__, lifespan=lifespan)': 'FastAPI(title=DISPLAY_NAME, version=__version__, lifespan=lifespan)',
+        'FastAPI(title="OpenVINO Windows LLM", version=__version__, lifespan=lifespan)': "FastAPI(title=DISPLAY_NAME, version=__version__, lifespan=lifespan)",
         'lines.append("# Chat Export — OpenVINO LLM")': 'lines.append(f"# Chat Export — {DISPLAY_NAME}")',
         'argparse.ArgumentParser(description="OpenVINO Windows LLM server")': 'argparse.ArgumentParser(description=f"{DISPLAY_NAME} server")',
     }.items():

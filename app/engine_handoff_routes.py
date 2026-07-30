@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from app.brand import DISPLAY_NAME, LEGACY_DISPLAY_NAME
-
 import functools
 from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from app.brand import DISPLAY_NAME, LEGACY_DISPLAY_NAME
 from app.engine_handoff_safety import ModelBusyError
 
 _INSTALL_FLAG = "_ovllm_engine_handoff_routes_installed"
