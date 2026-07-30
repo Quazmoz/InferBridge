@@ -6,15 +6,13 @@
 
 OpenVINO remains the inference runtime and dependency. InferBridge does not replace or own OpenVINO and does not claim affiliation with Intel.
 
-## Compatibility strategy
+## Repository rename status
 
-The safest repository transition is to publish a compatibility-aware InferBridge release from `Quazmoz/openvino-windows-llm` before changing the GitHub slug. That client accepts both old and new repository release locations, manifest names, and artifact aliases. Older installations that predate this compatibility support may require one manual installer upgrade if GitHub's release API or embedded asset URLs do not redirect reliably after the rename.
+The repository was renamed to `Quazmoz/InferBridge` on July 30, 2026. GitHub retained the repository identity, history, branches, issues, releases, tags, and stars.
 
-The repository has not been renamed by this code migration. The final manual action is:
+No compatibility-aware public release was published before the slug changed. Older installations that predate InferBridge-aware update discovery may require one manual installer upgrade if GitHub's legacy releases API or embedded release URLs do not redirect reliably. InferBridge 0.7.0 and later accept both canonical and legacy repository release locations, manifest names, and artifact prefixes.
 
-`Repository Settings > General > Repository name > InferBridge > Rename`
-
-Never create a replacement repository at `Quazmoz/openvino-windows-llm`; GitHub needs the old path to remain available as a redirect.
+Do not create a replacement repository at `Quazmoz/openvino-windows-llm`; the old path must remain available as GitHub's redirect.
 
 ## Installer behavior
 
@@ -40,8 +38,8 @@ InferBridge uses the registry value name `InferBridge`. A recognized enabled `Op
 
 ## Post-rename verification
 
-After the manual rename, verify clone, fetch, push, web redirects, Git redirects, issues, stars, releases, tags, branches, history, release API responses, manifest downloads, checksums, and release asset redirects. Update the local clone origin to `https://github.com/Quazmoz/InferBridge.git` only after the rename succeeds.
+The GitHub connector confirms the canonical repository is `Quazmoz/InferBridge` and the legacy repository identifier resolves to the renamed repository. Before publishing 0.7.0, verify clone, fetch, push, old web and Git redirects, the legacy REST releases endpoint, manifest and checksum downloads, and release-asset redirects from a real network environment.
 
 ## Release repository selection
 
-Before the GitHub repository is renamed, release manifests default to `Quazmoz/openvino-windows-llm` so a compatibility release contains live asset and documentation URLs. After the rename, GitHub Actions selects `Quazmoz/InferBridge` through `GITHUB_REPOSITORY`. Local release builds may set `OV_LLM_RELEASE_REPOSITORY` to either approved repository during the transition.
+Release manifests now default to `Quazmoz/InferBridge`. GitHub Actions also resolves the canonical repository through `GITHUB_REPOSITORY`. `OV_LLM_RELEASE_REPOSITORY` remains a restricted transition override that accepts only `Quazmoz/InferBridge` or `Quazmoz/openvino-windows-llm` for compatibility testing and historical release verification.
