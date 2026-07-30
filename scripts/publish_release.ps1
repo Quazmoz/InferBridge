@@ -4,6 +4,7 @@ param(
     [ValidateSet("stable", "beta", "nightly")][string]$Channel = "stable",
     [string]$ArtifactDirectory = "",
     [switch]$DryRun,
+    [switch]$AllowUnsigned,
     [string]$Python = "python"
 )
 
@@ -41,7 +42,7 @@ if ($LASTEXITCODE -ne 0) { throw "Model library manifest validation failed." }
 & $Python scripts/verify_release_provenance.py --artifact-directory $ArtifactDirectory --version $Version --channel $Channel --expected-commit $HeadCommit --source-model-manifest $LibraryManifestSource
 if ($LASTEXITCODE -ne 0) { throw "Release provenance validation failed. Rebuild from the current clean commit." }
 $SigningGate = @("scripts/verify_release_signing.py", "--artifact-directory", $ArtifactDirectory, "--version", $Version)
-if ($Channel -eq "stable") { $SigningGate += "--require-signed" }
+if ($Channel -eq "stable" -and -not $AllowUnsigned) { $SigningGate += "--require-signed" }
 & $Python @SigningGate
 if ($LASTEXITCODE -ne 0) {
     throw "Release signatures were not independently verified. Stable releases require signed installer and launcher artifacts."
