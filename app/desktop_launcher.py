@@ -16,7 +16,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
 
-_APP_TITLE = "OpenVINO Windows LLM"
+from app.brand import DISPLAY_NAME
+
+_APP_TITLE = DISPLAY_NAME
 _STARTUP_TIMEOUT_SECONDS = 90
 _POLL_INTERVAL_SECONDS = 0.35
 
@@ -318,7 +320,7 @@ def main(argv: list[str] | None = None) -> int:
     if arguments[:2] == ["-m", "runtime.model_converter"]:
         return _run_packaged_converter(arguments[2:])
 
-    parser = argparse.ArgumentParser(description="OpenVINO Windows LLM desktop tray launcher")
+    parser = argparse.ArgumentParser(description=f"{DISPLAY_NAME} desktop tray launcher")
     parser.add_argument("--server-child", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--convert-model", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--port", type=int, default=8000)

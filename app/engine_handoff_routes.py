@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.brand import DISPLAY_NAME, LEGACY_DISPLAY_NAME
+
 import functools
 from typing import Any
 
@@ -36,7 +38,7 @@ def install_engine_handoff_routes_extension() -> None:
     @functools.wraps(original_init)
     def init_with_engine_handoff(self: FastAPI, *args: Any, **kwargs: Any) -> None:
         original_init(self, *args, **kwargs)
-        if getattr(self, "title", "") == "OpenVINO Windows LLM":
+        if getattr(self, "title", "") in {DISPLAY_NAME, LEGACY_DISPLAY_NAME}:
             register_engine_handoff_handlers(self)
 
     FastAPI.__init__ = init_with_engine_handoff  # type: ignore[method-assign]

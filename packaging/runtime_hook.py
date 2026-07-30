@@ -8,7 +8,9 @@ import re
 import sys
 from datetime import UTC, datetime
 
-_APP_TITLE = "OpenVINO Windows LLM"
+_APP_TITLE = "InferBridge"
+_CURRENT_DATA_DIR_NAME = "InferBridge"
+_LEGACY_DATA_DIR_NAME = "OpenVINOWindowsLLM"
 _RUNTIME_FAILURE_EXIT_CODE = 12
 _PATH_REDACTION = "[redacted path]"
 _QUOTED_WINDOWS_PATH_RE = re.compile(r"(?i)(?P<quote>[\"'])(?:[A-Z]:\\|\\\\)[^\"'\r\n]+(?P=quote)")
@@ -57,7 +59,9 @@ def _runtime_failure_log_path() -> str | None:
         local_app_data = str(os.environ.get("LOCALAPPDATA") or "").strip()
         if not local_app_data:
             return None
-        root = os.path.join(local_app_data, "OpenVINOWindowsLLM")
+        current = os.path.join(local_app_data, _CURRENT_DATA_DIR_NAME)
+        legacy = os.path.join(local_app_data, _LEGACY_DATA_DIR_NAME)
+        root = current if os.path.isdir(current) or not os.path.isdir(legacy) else legacy
     return os.path.join(root, "logs", "startup-runtime-error.log")
 
 
@@ -90,7 +94,7 @@ def _show_runtime_failure(detail: str) -> None:
     message = (
         "The installed application contains incompatible runtime files, usually because "
         "files from two versions were mixed during an older upgrade.\n\n"
-        "Close OpenVINO Windows LLM and run the latest installer over the existing installation. "
+        "Close InferBridge and run the latest installer over the existing installation. "
         "The installer will replace application files while preserving downloaded models, settings, "
         "and logs.\n\n"
         f"Technical detail: {detail}"

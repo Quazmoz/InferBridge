@@ -291,7 +291,7 @@ class TrayMenuMixin:
     def show_about(self) -> None:
         show_dialog(
             APP_TITLE,
-            f"OpenVINO Windows LLM {__version__}\n\n"
+            f"{APP_TITLE} {__version__}\n\n"
             "A local-first OpenVINO GenAI server for Windows. The tray controls only the "
             "server process it started. Prompts and chat history are not included in diagnostics. "
             "Use Check for Updates to review optional stable or beta releases.",

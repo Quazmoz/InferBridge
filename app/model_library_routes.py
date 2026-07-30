@@ -7,6 +7,8 @@ construction logic.
 
 from __future__ import annotations
 
+from app.brand import DISPLAY_NAME, LEGACY_DISPLAY_NAME
+
 import asyncio
 import copy
 import functools
@@ -198,7 +200,7 @@ def install_model_library_routes_extension() -> None:
     @functools.wraps(original_init)
     def init_with_model_library(self: FastAPI, *args: Any, **kwargs: Any) -> None:
         original_init(self, *args, **kwargs)
-        if getattr(self, "title", "") == "OpenVINO Windows LLM":
+        if getattr(self, "title", "") in {DISPLAY_NAME, LEGACY_DISPLAY_NAME}:
             register_model_library_routes(self)
 
     FastAPI.__init__ = init_with_model_library  # type: ignore[method-assign]

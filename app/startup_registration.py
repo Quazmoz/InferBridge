@@ -74,7 +74,7 @@ class WinRegBackend:
 class StartupRegistrationState:
     enabled: bool
     command: str | None
-    location: str = f"HKCU\\{RUN_KEY}\\{CURRENT_VALUE_NAME}"
+    location: str = f"HKCU\{RUN_KEY}\{CURRENT_VALUE_NAME}"
 
 
 def quote_windows_argument(value: str) -> str:

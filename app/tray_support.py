@@ -9,9 +9,10 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
 
+from app.brand import DISPLAY_NAME
 from app.tray_state import TrayPhase
 
-APP_TITLE = "OpenVINO Windows LLM"
+APP_TITLE = DISPLAY_NAME
 POLL_SECONDS = 3.0
 
 
