@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -14,8 +13,8 @@ def test_runtime_hook_registers_only_the_installed_primary_tray_for_update_resta
     assert '"--diagnostic"' in hook
     assert '"--headless"' in hook
     assert '"portable.flag"' in hook
-    assert "os.name != \"nt\"" in hook
-    assert "getattr(sys, \"frozen\", False)" in hook
+    assert 'os.name != "nt"' in hook
+    assert 'getattr(sys, "frozen", False)' in hook
 
 
 def test_runtime_hook_replaces_native_dependency_traceback_with_repair_guidance():
@@ -38,7 +37,7 @@ def test_runtime_hook_sanitizes_failure_details_and_has_a_stderr_fallback():
     assert "_POSIX_HOME_RE" in hook
     assert '_WINDOWS_PATH_RE.sub(lambda _match: "...\\\\", detail)' in hook
     assert '_POSIX_HOME_RE.sub(".../", detail)' in hook
-    assert "sys.stderr.write(message + \"\\n\")" in hook
+    assert 'sys.stderr.write(message + "\\n")' in hook
     assert "sys.stderr.flush()" in hook
 
 

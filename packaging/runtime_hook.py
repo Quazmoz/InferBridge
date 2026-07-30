@@ -8,7 +8,6 @@ import re
 import sys
 from datetime import UTC, datetime
 
-
 _APP_TITLE = "OpenVINO Windows LLM"
 _RUNTIME_FAILURE_EXIT_CODE = 12
 _WINDOWS_PATH_RE = re.compile(r"[A-Za-z]:\\(?:[^\\\s]+\\)+[^\s]*")

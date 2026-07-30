@@ -4,7 +4,6 @@ import pytest
 
 from scripts.release_scan import verify_native_distribution
 
-
 ROOT = Path(__file__).resolve().parent.parent
 
 
