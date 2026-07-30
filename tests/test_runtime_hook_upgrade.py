@@ -31,6 +31,17 @@ def test_runtime_hook_replaces_native_dependency_traceback_with_repair_guidance(
     assert "os._exit(_RUNTIME_FAILURE_EXIT_CODE)" in hook
 
 
+def test_runtime_hook_sanitizes_failure_details_and_has_a_stderr_fallback():
+    hook = (ROOT / "packaging" / "runtime_hook.py").read_text(encoding="utf-8")
+
+    assert "_WINDOWS_PATH_RE" in hook
+    assert "_POSIX_HOME_RE" in hook
+    assert '_WINDOWS_PATH_RE.sub("...\\\\", detail)' in hook
+    assert '_POSIX_HOME_RE.sub(".../", detail)' in hook
+    assert "sys.stderr.write(message + \"\\n\")" in hook
+    assert "sys.stderr.flush()" in hook
+
+
 def test_runtime_hook_keeps_restart_registration_non_fatal():
     hook = (ROOT / "packaging" / "runtime_hook.py").read_text(encoding="utf-8")
 
