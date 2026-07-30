@@ -179,10 +179,8 @@ RESPONSIVE_EXTENSION_JS = r"""
   };
 
   const updateViewportMetrics = () => {
-    const viewportHeight = Math.max(
-      320,
-      Math.round(window.visualViewport?.height || window.innerHeight || 0),
-    );
+    const measuredHeight = window.visualViewport?.height || window.innerHeight || 0;
+    const viewportHeight = Math.max(1, Math.round(measuredHeight));
     root.style.setProperty('--ovllm-viewport-height', `${viewportHeight}px`);
     root.dataset.ovllmViewport = narrowQuery.matches
       ? 'narrow'
