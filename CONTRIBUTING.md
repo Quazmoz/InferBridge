@@ -18,7 +18,7 @@ Please be respectful and welcoming to all community members in issue trackers, p
 First, fork this repository on GitHub, and then clone your fork locally:
 
 ```powershell
-git clone https://github.com/<your-username>/openvino-windows-llm.git
+git clone https://github.com/<your-username>/InferBridge.git
 cd InferBridge
 ```
 

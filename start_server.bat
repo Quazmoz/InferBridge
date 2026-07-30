@@ -1,7 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 REM ============================================
-REM   OpenVINO Windows LLM - Server Launcher
+REM   InferBridge - Server Launcher
 REM ============================================
 REM Activates the local venv and starts the server. All arguments are passed
 REM straight through to the Python CLI.
@@ -16,7 +16,7 @@ REM   start_server.bat --port 8001
 REM   start_server.bat --mock                       Force the mock engine (no OpenVINO)
 
 echo ========================================
-echo   OpenVINO Windows LLM
+echo   InferBridge
 echo ========================================
 echo.
 

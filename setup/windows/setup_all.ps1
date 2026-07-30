@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Full setup flow for the OpenVINO Windows LLM server.
+    Full setup flow for the InferBridge server.
 
 .DESCRIPTION
     1. Runs network connectivity diagnostics.

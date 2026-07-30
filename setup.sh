@@ -16,7 +16,7 @@ PLATFORM_NAME="$(linux_platform_name "$OS_ID")"
 
 usage() {
     cat <<'EOF'
-OpenVINO Windows LLM - Experimental Linux Setup
+InferBridge - Experimental Linux Setup
 
 Usage:
   ./setup.sh [options]
@@ -66,7 +66,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 echo "=========================================="
-echo "  OpenVINO Windows LLM - Linux Setup"
+echo "  InferBridge - Linux Setup"
 echo "=========================================="
 echo
 echo "Linux support is experimental and currently supports Ubuntu and Fedora."

@@ -12,6 +12,7 @@ from typing import Any
 
 from app import __version__
 from app.brand import DISPLAY_NAME
+from app.brand import DISPLAY_NAME
 from app.diagnostics_privacy import (
     bounded_log_text,
     diagnostics_confirmation_summary,

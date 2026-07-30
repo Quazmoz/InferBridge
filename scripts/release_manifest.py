@@ -8,6 +8,7 @@ import re
 from datetime import UTC, datetime
 from pathlib import Path
 
+from app.brand import LEGACY_REPOSITORY_NAME, REPOSITORY_NAME, REPOSITORY_OWNER
 from app.build_info import BuildInfo
 from app.release_models import (
     ApiCompatibility,
@@ -22,16 +23,17 @@ from app.version import DATA_SCHEMA_VERSION, MINIMUM_SUPPORTED_DATA_SCHEMA_VERSI
 from scripts.release_scan import sha256_file
 
 _ALLOWED_RELEASE_REPOSITORIES = {
-    "Quazmoz/openvino-windows-llm",
-    "Quazmoz/InferBridge",
+    f"{REPOSITORY_OWNER}/{REPOSITORY_NAME}",
+    f"{REPOSITORY_OWNER}/{LEGACY_REPOSITORY_NAME}",
 }
+_DEFAULT_RELEASE_REPOSITORY = f"{REPOSITORY_OWNER}/{REPOSITORY_NAME}"
 
 
 def release_repository(environment: dict[str, str] | None = None) -> str:
     values = os.environ if environment is None else environment
     configured = str(values.get("OV_LLM_RELEASE_REPOSITORY") or "").strip()
     automatic = str(values.get("GITHUB_REPOSITORY") or "").strip()
-    selected = configured or automatic or "Quazmoz/openvino-windows-llm"
+    selected = configured or automatic or _DEFAULT_RELEASE_REPOSITORY
     if selected not in _ALLOWED_RELEASE_REPOSITORIES:
         raise ValueError("Release repository must be an approved InferBridge repository.")
     return selected

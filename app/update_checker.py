@@ -34,7 +34,7 @@ from app.version import DATA_SCHEMA_VERSION, __version__
 
 _RELEASES_APIS = tuple(
     f"https://api.github.com/repos/{REPOSITORY_OWNER}/{repository}/releases?per_page=20"
-    for repository in (LEGACY_REPOSITORY_NAME, REPOSITORY_NAME)
+    for repository in (REPOSITORY_NAME, LEGACY_REPOSITORY_NAME)
 )
 _RELEASES_API = _RELEASES_APIS[0]
 _MANIFEST_PREFIXES = (ARTIFACT_PREFIX, *LEGACY_ARTIFACT_PREFIXES)

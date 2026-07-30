@@ -3,8 +3,8 @@ import pytest
 from scripts.release_manifest import release_repository
 
 
-def test_release_repository_defaults_to_legacy_before_rename():
-    assert release_repository({}) == "Quazmoz/openvino-windows-llm"
+def test_release_repository_defaults_to_canonical_after_rename():
+    assert release_repository({}) == "Quazmoz/InferBridge"
 
 
 def test_release_repository_uses_renamed_github_repository():

@@ -36,6 +36,7 @@ from starlette.background import BackgroundTask
 from app import __version__, chat_format, model_manager, multimodal, tools
 from app.body_limit import RequestBodyLimitMiddleware
 from app.brand import DISPLAY_NAME
+from app.brand import DISPLAY_NAME
 from app.config import BASE_DIR, Settings
 from app.openai_api import (
     BenchmarkRunRequest,
