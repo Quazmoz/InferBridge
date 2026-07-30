@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
-  <title id="title">OpenVINO Windows LLM</title>
+  <title id="title">InferBridge</title>
   <desc id="desc">A blue local AI chat bubble with a white spark on a dark rounded tile.</desc>
   <defs>
     <linearGradient id="bubble" x1="92" y1="220" x2="420" y2="220" gradientUnits="userSpaceOnUse">

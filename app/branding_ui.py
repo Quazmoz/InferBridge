@@ -1,8 +1,9 @@
-"""Apply the shared OpenVINO Windows LLM brand icon to the browser client."""
+"""Apply the shared InferBridge product identity to the browser client."""
 
 from __future__ import annotations
 
 from app import ui_extension
+from app.brand import APPLICATION_DESCRIPTION, APPLICATION_TAGLINE, DISPLAY_NAME
 
 _EXTENSION_ID = "ovllm-branding-extension"
 _FAVICON_ID = "ovllm-brand-favicon"
@@ -22,10 +23,18 @@ BRANDING_CSS = r"""
 }
 """
 
-BRANDING_JS = r"""(() => {
+BRANDING_JS = rf"""(() => {{
 'use strict';
 if (window.__ovllmBrandingInstalled) return;
 window.__ovllmBrandingInstalled = true;
+
+document.title = {DISPLAY_NAME!r};
+const description = document.querySelector('meta[name="description"]');
+if (description) description.setAttribute('content', {APPLICATION_DESCRIPTION!r});
+const productName = document.querySelector('.logo-text');
+if (productName) productName.textContent = {DISPLAY_NAME!r};
+const tagline = document.querySelector('.logo-sub');
+if (tagline) tagline.textContent = {APPLICATION_TAGLINE!r};
 
 const logoContainer = document.querySelector('.logo-icon');
 if (!logoContainer || logoContainer.querySelector('.ovllm-brand-icon')) return;
@@ -39,12 +48,12 @@ icon.height = 64;
 icon.decoding = 'async';
 logoContainer.classList.add('has-brand-icon');
 logoContainer.replaceChildren(icon);
-})();
+}})();
 """
 
 
 def install_branding_extension() -> None:
-    """Inject the packaged favicon and replace the legacy header glyph exactly once."""
+    """Inject InferBridge metadata, favicon, and header branding exactly once."""
 
     if getattr(ui_extension, "_BRANDING_EXTENSION_INSTALLED", False):
         return

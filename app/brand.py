@@ -1,0 +1,52 @@
+"""Canonical InferBridge branding and legacy compatibility identifiers."""
+
+from __future__ import annotations
+
+DISPLAY_NAME = "InferBridge"
+LEGACY_DISPLAY_NAME = "OpenVINO Windows LLM"
+
+EXECUTABLE_BASENAME = "InferBridge"
+LEGACY_EXECUTABLE_BASENAME = "OpenVINOWindowsLLM"
+DATA_DIR_NAME = EXECUTABLE_BASENAME
+LEGACY_DATA_DIR_NAME = LEGACY_EXECUTABLE_BASENAME
+
+REPOSITORY_OWNER = "Quazmoz"
+REPOSITORY_NAME = "InferBridge"
+LEGACY_REPOSITORY_NAME = "openvino-windows-llm"
+REPOSITORY_URL = f"https://github.com/{REPOSITORY_OWNER}/{REPOSITORY_NAME}"
+LEGACY_REPOSITORY_URL = f"https://github.com/{REPOSITORY_OWNER}/{LEGACY_REPOSITORY_NAME}"
+REPOSITORY_URLS = (REPOSITORY_URL, LEGACY_REPOSITORY_URL)
+RELEASE_URL_PREFIXES = tuple(f"{url}/releases/download/" for url in REPOSITORY_URLS)
+
+ARTIFACT_PREFIX = "InferBridge"
+LEGACY_ARTIFACT_PREFIXES = ("OpenVINO-Windows-LLM", "OpenVINOWindowsLLM")
+USER_AGENT_PRODUCT = "InferBridge"
+
+APPLICATION_DESCRIPTION = (
+    "Windows-first local AI server with an OpenAI-compatible API, powered by "
+    "OpenVINO GenAI for Intel CPU, GPU, NPU, and AUTO targets."
+)
+APPLICATION_TAGLINE = "Local AI for Intel hardware"
+POWERED_BY = "Powered by OpenVINO GenAI"
+
+__all__ = [
+    "APPLICATION_DESCRIPTION",
+    "APPLICATION_TAGLINE",
+    "ARTIFACT_PREFIX",
+    "DATA_DIR_NAME",
+    "DISPLAY_NAME",
+    "EXECUTABLE_BASENAME",
+    "LEGACY_ARTIFACT_PREFIXES",
+    "LEGACY_DATA_DIR_NAME",
+    "LEGACY_DISPLAY_NAME",
+    "LEGACY_EXECUTABLE_BASENAME",
+    "LEGACY_REPOSITORY_NAME",
+    "LEGACY_REPOSITORY_URL",
+    "POWERED_BY",
+    "RELEASE_URL_PREFIXES",
+    "REPOSITORY_NAME",
+    "REPOSITORY_OWNER",
+    "REPOSITORY_URL",
+    "REPOSITORY_URLS",
+    "USER_AGENT_PRODUCT",
+]

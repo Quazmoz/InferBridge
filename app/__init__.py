@@ -1,6 +1,6 @@
-"""OpenVINO Windows LLM application package.
+"""InferBridge application package.
 
-A Windows-first, OpenAI-compatible local LLM and VLM server built on OpenVINO
+A Windows-first, OpenAI-compatible local LLM and VLM server powered by OpenVINO
 GenAI. Pure request/response logic remains importable in mock mode without an
 OpenVINO runtime.
 """
@@ -9,6 +9,7 @@ from app.version import __version__
 
 __all__ = [
     "__version__",
+    "brand",
     "body_limit",
     "build_info",
     "chat_format",
