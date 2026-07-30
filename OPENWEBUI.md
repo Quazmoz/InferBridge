@@ -1,25 +1,25 @@
-# Open WebUI compatibility
+# InferBridge and Open WebUI
 
-This project exposes an OpenAI-compatible `/v1` API so Open WebUI can connect to it the same way it connects to the older [`npu-windows`](https://github.com/Quazmoz/npu-windows) server.
+InferBridge exposes an OpenAI-compatible `/v1` API that Open WebUI can use as a local model provider.
 
-## Correct Open WebUI connection type
+## Correct connection type
 
-Use the **OpenAI API / OpenAI-compatible** connection in Open WebUI.
+Use an **OpenAI API** or **OpenAI-compatible** connection in Open WebUI.
 
-Do **not** point the **Ollama API** connection at this server. This project is not an Ollama server and does not implement Ollama endpoints such as `/api/tags` or `/api/chat`. If the same URL is configured under both OpenAI API and Ollama API, Open WebUI can show confusing model behavior.
+Do not configure the InferBridge URL as an Ollama API. InferBridge does not implement Ollama endpoints such as `/api/tags` or `/api/chat`. Configuring the same URL under both connection types can produce confusing model behavior.
 
-Recommended setup:
+Recommended local setup:
 
 ```text
 OpenAI API: enabled
 Ollama API: disabled for this URL
-Base URL:   http://localhost:8000/v1
-API Key:    sk-dummy   # unless OV_LLM_API_KEY is set
+Base URL:   http://127.0.0.1:8000/v1
+API key:    sk-dummy unless OV_LLM_API_KEY is set
 ```
 
-Depending on your Open WebUI version, this may be under either **Settings > Connections** or **Admin Settings > Connections**.
+Depending on the Open WebUI version, connection settings may appear under **Settings > Connections** or **Admin Settings > Connections**.
 
-## Start the OpenVINO server
+## Start InferBridge
 
 Open WebUI discovers selectable models through:
 
@@ -27,96 +27,69 @@ Open WebUI discovers selectable models through:
 GET /v1/models
 ```
 
-The server must be running, and the model you want to chat with should be loaded before you expect a clean Open WebUI chat experience. The built-in OpenVINO UI can convert/load models, but Open WebUI itself only acts as a chat client; it does not automatically call this project's model conversion or load endpoints.
+InferBridge must be running, and a converted text-generation model should be loaded before starting a chat. Open WebUI is a client. It does not automatically call InferBridge conversion or lifecycle endpoints.
 
 Start with a converted model loaded:
 
 ```powershell
-# Example: run a converted model on Intel NPU
+# Intel NPU when the model, driver, and OpenVINO runtime support it
 .\start_server.bat --model tinyllama-1.1b-chat-fp16 --device NPU
 
-# CPU fallback while debugging drivers or model conversion
+# Conservative fallback while validating hardware or conversion
 .\start_server.bat --model tinyllama-1.1b-chat-fp16 --device CPU
 
-# Mock-mode compatibility smoke test without OpenVINO hardware
+# Contract smoke testing without real OpenVINO inference
 .\start_server.bat --mock --model tinyllama-1.1b-chat-fp16
 ```
 
-If you start the server without `--model`, open the built-in UI at `http://localhost:8000` and convert/load a model first, or call the model lifecycle endpoint directly:
+If InferBridge starts without `--model`, open the built-in UI at `http://127.0.0.1:8000` and convert or load a model first. You can also call the lifecycle API directly:
 
 ```powershell
-curl -X POST http://localhost:8000/v1/models/load `
+curl -X POST http://127.0.0.1:8000/v1/models/load `
   -H "Content-Type: application/json" `
-  -d '{"model":"tinyllama-1.1b-chat-fp16","device":"NPU"}'
+  -d '{"model":"tinyllama-1.1b-chat-fp16","device":"CPU"}'
 ```
 
 ## Configure Open WebUI
 
-In Open WebUI:
-
 1. Open **Settings** or **Admin Settings**.
-2. Go to **Connections**.
+2. Open **Connections**.
 3. Add or edit an **OpenAI API** connection.
-4. Use this base URL:
+4. Set the base URL to `http://127.0.0.1:8000/v1`.
+5. Use any non-empty placeholder key when InferBridge authentication is disabled.
+6. When `OV_LLM_API_KEY` is configured, enter that exact key in Open WebUI.
+7. Save the connection and refresh the model list.
 
-```text
-http://localhost:8000/v1
-```
+If Open WebUI shows stale models, temporarily disable **Cache Base Model List**, save the connection again, and refresh the page.
 
-For LAN access from an Open WebUI container or another machine, use the Windows host IP:
+## Multiple models
 
-```text
-http://<WINDOWS-PC-IP>:8000/v1
-```
-
-Use any dummy API key unless `OV_LLM_API_KEY` is set. If `OV_LLM_API_KEY` is set, the Open WebUI API key must match it.
-
-```text
-API Key: sk-dummy
-```
-
-After saving the connection, refresh the model list. If Open WebUI still shows stale models, temporarily disable **Cache Base Model List**, save the connection again, and refresh the page.
-
-## Multiple models in Open WebUI
-
-Open WebUI can only choose between models that it sees from `/v1/models`.
-
-For the legacy `npu-windows` repo, that means starting the backend with multiple models loaded, for example:
+Open WebUI can select only models returned by `/v1/models`. Load each model you want to expose before refreshing Open WebUI.
 
 ```powershell
-python .\intel-npu-llm\npu_server.py --models qwen1.5-1.8b,qwen2-1.5b --port 8000
-```
-
-For this OpenVINO repo, load each model you want available before refreshing Open WebUI. You can load models from the built-in UI, or by calling `/v1/models/load` for each converted model.
-
-Example:
-
-```powershell
-curl -X POST http://localhost:8000/v1/models/load `
+curl -X POST http://127.0.0.1:8000/v1/models/load `
   -H "Content-Type: application/json" `
-  -d '{"model":"tinyllama-1.1b-chat-fp16","device":"NPU"}'
+  -d '{"model":"tinyllama-1.1b-chat-fp16","device":"CPU"}'
 
-curl -X POST http://localhost:8000/v1/models/load `
+curl -X POST http://127.0.0.1:8000/v1/models/load `
   -H "Content-Type: application/json" `
-  -d '{"model":"qwen2.5-0.5b-fp16","device":"NPU"}'
+  -d '{"model":"qwen2.5-0.5b-fp16","device":"CPU"}'
+
+curl http://127.0.0.1:8000/v1/models
 ```
 
-Then check what Open WebUI should see:
+Loading multiple models consumes additional memory and device resources. InferBridge warns when another model is already loaded. On constrained hardware, unload the current model before loading another one.
 
-```powershell
-curl http://localhost:8000/v1/models
-```
+## Required compatibility endpoints
 
-## Compatibility endpoints
-
-Open WebUI primarily needs these endpoints:
+Open WebUI primarily uses:
 
 ```text
 GET  /v1/models
 POST /v1/chat/completions
 ```
 
-This server supports both streaming and non-streaming chat completions:
+InferBridge supports streaming and non-streaming chat completions:
 
 ```json
 {
@@ -128,93 +101,51 @@ This server supports both streaming and non-streaming chat completions:
 }
 ```
 
-Streaming responses are emitted as OpenAI-style Server-Sent Events:
+Streaming responses use OpenAI-style Server-Sent Events and end with:
 
 ```text
-data: {"id":"chatcmpl-...","object":"chat.completion.chunk",...}
-
 data: [DONE]
 ```
 
-## Kokoro / TTS note
+## Text-to-speech note
 
-This project and the older `npu-windows` project are LLM text-generation servers. They expose chat/model endpoints, not text-to-speech audio endpoints.
+InferBridge is an LLM and VLM inference server. It does not currently implement an OpenAI-compatible `/v1/audio/speech` endpoint.
 
-Kokoro voice generation should be configured in Open WebUI as a separate TTS/audio provider if your Open WebUI setup supports that workflow. It will not run through the `npu-windows` or `openvino-windows-llm` chat completion endpoint unless a separate TTS bridge is added, such as an OpenAI-compatible `/v1/audio/speech` service.
-
-In other words:
+Configure Kokoro or another text-to-speech engine as a separate audio provider in Open WebUI:
 
 ```text
-LLM chat:      Open WebUI -> openvino-windows-llm or npu-windows -> /v1/chat/completions
-Voice / TTS:   Open WebUI -> separate Kokoro/TTS service -> audio output
+LLM chat:    Open WebUI -> InferBridge -> /v1/chat/completions
+Voice / TTS: Open WebUI -> separate TTS service -> audio output
 ```
 
-## Quick smoke test
+The legacy `npu-windows` project is a separate historical server and is not part of the InferBridge runtime.
 
-Run the included PowerShell compatibility check:
+## Quick compatibility test
+
+Run the included PowerShell check:
 
 ```powershell
-.\scripts\test_openwebui_compat.ps1 -BaseUrl http://localhost:8000/v1
+.\scripts\test_openwebui_compat.ps1 -BaseUrl http://127.0.0.1:8000/v1
 ```
 
-Specify a model explicitly if needed:
+Specify a model and key when needed:
 
 ```powershell
 .\scripts\test_openwebui_compat.ps1 `
-  -BaseUrl http://localhost:8000/v1 `
+  -BaseUrl http://127.0.0.1:8000/v1 `
   -Model tinyllama-1.1b-chat-fp16 `
   -ApiKey sk-dummy
 ```
 
-The test verifies:
+The check verifies:
 
 - `/v1/models` returns an OpenAI-style model list
-- a selected model can answer `/v1/chat/completions`
-- streaming responses emit `data:` chunks and end with `data: [DONE]`
+- the selected model can answer `/v1/chat/completions`
+- streaming responses emit `data:` chunks and terminate with `data: [DONE]`
 
-## Troubleshooting
+## LAN or container access
 
-### No models show in Open WebUI
-
-Start the server with a loaded model:
-
-```powershell
-.\start_server.bat --model tinyllama-1.1b-chat-fp16 --device NPU
-```
-
-Then refresh the Open WebUI connection/model list.
-
-### Only one model shows, or Open WebUI will not let you switch models
-
-Confirm that `/v1/models` shows more than one model:
-
-```powershell
-curl http://localhost:8000/v1/models
-```
-
-If the server returns multiple models but Open WebUI still shows one, refresh the OpenAI connection, turn off **Cache Base Model List** temporarily, save the connection again, and reload Open WebUI.
-
-Also make sure the URL is configured only under the **OpenAI API** connection, not under both OpenAI and Ollama.
-
-### Open WebUI can see the model but chat fails
-
-Check the server directly:
-
-```powershell
-curl http://localhost:8000/v1/models
-```
-
-Then test a chat completion:
-
-```powershell
-curl -X POST http://localhost:8000/v1/chat/completions `
-  -H "Content-Type: application/json" `
-  -d '{"model":"tinyllama-1.1b-chat-fp16","messages":[{"role":"user","content":"What is 2+2?"}],"stream":false}'
-```
-
-### Open WebUI is running in Docker
-
-`localhost` from inside the Open WebUI container points to the container, not your Windows host. Use the Windows host IP address or Docker host gateway address instead.
+`localhost` inside an Open WebUI container refers to the container, not the Windows host. Use the host gateway or the Windows machine's private IP address.
 
 Example:
 
@@ -222,10 +153,44 @@ Example:
 http://192.168.1.50:8000/v1
 ```
 
-If binding beyond localhost, start the server with:
+To bind InferBridge beyond loopback:
 
 ```powershell
-.\start_server.bat --host 0.0.0.0 --port 8000 --model tinyllama-1.1b-chat-fp16 --device NPU
+$env:OV_LLM_API_KEY = "replace-with-a-local-secret"
+$env:OV_LLM_CORS_ORIGINS = "http://openwebui-host:3000"
+.\start_server.bat --host 0.0.0.0 --port 8000 --model tinyllama-1.1b-chat-fp16 --device CPU
 ```
 
-Use a trusted private network only, and set `OV_LLM_API_KEY` if exposing it over LAN.
+Use only a trusted private network. Restrict Windows Firewall to the intended subnet and port. InferBridge is not a hardened public internet gateway.
+
+## Troubleshooting
+
+### No models appear
+
+- Confirm InferBridge is running.
+- Confirm at least one model is loaded.
+- Open `http://127.0.0.1:8000/v1/models` directly.
+- Refresh the OpenAI-compatible connection.
+- Temporarily disable Open WebUI's model-list cache.
+
+### Chat fails after model discovery
+
+Test InferBridge directly:
+
+```powershell
+curl http://127.0.0.1:8000/v1/models
+
+curl -X POST http://127.0.0.1:8000/v1/chat/completions `
+  -H "Content-Type: application/json" `
+  -d '{"model":"tinyllama-1.1b-chat-fp16","messages":[{"role":"user","content":"What is 2+2?"}],"stream":false}'
+```
+
+When authentication is enabled, include `Authorization: Bearer <OV_LLM_API_KEY>`.
+
+### Only one model appears
+
+Confirm `/v1/models` returns multiple loaded models. If it does, refresh the OpenAI connection and clear the cached base model list in Open WebUI.
+
+### Connection works locally but not from a container
+
+Use the Windows host gateway or private IP instead of `localhost`. Confirm the bind address, API key, CORS configuration, and Windows Firewall rule.
