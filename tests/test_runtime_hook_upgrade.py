@@ -1,10 +1,12 @@
+import runpy
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+RUNTIME_HOOK = ROOT / "packaging" / "runtime_hook.py"
 
 
 def test_runtime_hook_registers_only_the_installed_primary_tray_for_update_restart():
-    hook = (ROOT / "packaging" / "runtime_hook.py").read_text(encoding="utf-8")
+    hook = RUNTIME_HOOK.read_text(encoding="utf-8")
 
     assert "RegisterApplicationRestart" in hook
     assert 'register("--no-browser", 0x1 | 0x2)' in hook
@@ -18,7 +20,7 @@ def test_runtime_hook_registers_only_the_installed_primary_tray_for_update_resta
 
 
 def test_runtime_hook_replaces_native_dependency_traceback_with_repair_guidance():
-    hook = (ROOT / "packaging" / "runtime_hook.py").read_text(encoding="utf-8")
+    hook = RUNTIME_HOOK.read_text(encoding="utf-8")
 
     assert "_validate_windows_native_runtime" in hook
     assert "import psutil" in hook
@@ -31,8 +33,9 @@ def test_runtime_hook_replaces_native_dependency_traceback_with_repair_guidance(
 
 
 def test_runtime_hook_sanitizes_failure_details_and_has_a_stderr_fallback():
-    hook = (ROOT / "packaging" / "runtime_hook.py").read_text(encoding="utf-8")
+    hook = RUNTIME_HOOK.read_text(encoding="utf-8")
 
+    assert "_QUOTED_WINDOWS_PATH_RE" in hook
     assert "_WINDOWS_PATH_RE" in hook
     assert "_POSIX_HOME_RE" in hook
     assert '_WINDOWS_PATH_RE.sub(lambda _match: "...\\\\", detail)' in hook
@@ -41,8 +44,34 @@ def test_runtime_hook_sanitizes_failure_details_and_has_a_stderr_fallback():
     assert "sys.stderr.flush()" in hook
 
 
+def test_runtime_hook_redacts_quoted_and_unquoted_user_paths_with_spaces():
+    namespace = runpy.run_path(str(RUNTIME_HOOK))
+    sanitize = namespace["_safe_error_detail"]
+
+    detail = sanitize(
+        RuntimeError(
+            'failed to load "C:\\Users\\Quinn Favo\\AppData\\Local\\OpenVINO\\_psutil_windows.pyd": '
+            "fallback at /home/quinn/private/runtime"
+        )
+    )
+    assert "Quinn" not in detail
+    assert "quinn" not in detail
+    assert "AppData" not in detail
+    assert "...\\" in detail
+    assert ".../" in detail
+
+    unquoted = sanitize(
+        RuntimeError(
+            "load failed at C:\\Users\\Quinn Favo\\AppData\\Local\\OpenVINO\\_psutil_windows.pyd: incompatible"
+        )
+    )
+    assert "Quinn" not in unquoted
+    assert "AppData" not in unquoted
+    assert unquoted.endswith("incompatible")
+
+
 def test_runtime_hook_keeps_restart_registration_non_fatal():
-    hook = (ROOT / "packaging" / "runtime_hook.py").read_text(encoding="utf-8")
+    hook = RUNTIME_HOOK.read_text(encoding="utf-8")
 
     assert "except (AttributeError, OSError):" in hook
     assert "must never block local inference" in hook
