@@ -36,7 +36,7 @@ def test_runtime_hook_sanitizes_failure_details_and_has_a_stderr_fallback():
 
     assert "_WINDOWS_PATH_RE" in hook
     assert "_POSIX_HOME_RE" in hook
-    assert '_WINDOWS_PATH_RE.sub("...\\\\", detail)' in hook
+    assert '_WINDOWS_PATH_RE.sub(lambda _match: "...\\\\", detail)' in hook
     assert '_POSIX_HOME_RE.sub(".../", detail)' in hook
     assert "sys.stderr.write(message + \"\\n\")" in hook
     assert "sys.stderr.flush()" in hook
