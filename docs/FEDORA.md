@@ -1,6 +1,6 @@
 # Experimental Fedora support
 
-Linux support is experimental and currently covers Ubuntu and Fedora. This page describes Fedora-specific setup; see [UBUNTU.md](UBUNTU.md) for Ubuntu.
+Linux support is experimental and currently supports Ubuntu and Fedora. This page describes Fedora-specific setup; see [UBUNTU.md](UBUNTU.md) for Ubuntu.
 
 InferBridge remains Windows-first. Fedora support is a CPU-first path for developers who want to try the Python, FastAPI, and OpenVINO stack while treating GPU and NPU execution as driver-dependent experiments.
 
