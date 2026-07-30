@@ -6,6 +6,7 @@ from pydantic import ValidationError
 
 from app.build_info import load_build_info
 from app.release_models import ReleaseManifest, artifact_filename
+from app.version import __version__
 from scripts.release_tools import (
     scan_release_path,
     verify_checksums,
@@ -16,7 +17,7 @@ from scripts.release_tools import (
 
 def test_build_info_fallback_uses_canonical_version(tmp_path):
     info = load_build_info(tmp_path)
-    assert info.application_version == "0.6.3"
+    assert info.application_version == __version__
     assert info.build_channel == "development"
     assert not info.source_tree_clean
 

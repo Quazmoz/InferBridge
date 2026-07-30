@@ -47,9 +47,9 @@ VersionInfoVersion={#MyAppVersionNumeric}
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription={#MyAppName} installer
 VersionInfoProductName={#MyAppName}
-VersionInfoProductVersion={#MyAppVersion}
+VersionInfoProductVersion={#MyAppVersionNumeric}
 CloseApplications=yes
-CloseApplicationsFilter=OpenVINOWindowsLLM.exe
+CloseApplicationsFilter={#MyAppExeName},*.dll,*.pyd
 RestartApplications=yes
 SetupLogging=yes
 UsePreviousAppDir=yes
@@ -61,6 +61,20 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
+
+; Mutable data is stored under %LOCALAPPDATA%\OpenVINOWindowsLLM, outside {app}.
+; Remove the previous immutable payload before copying the new build so upgrades cannot
+; mix Python modules with stale native extensions such as an older psutil Windows binary.
+[InstallDelete]
+Type: filesandordirs; Name: "{app}\_internal"
+Type: filesandordirs; Name: "{app}\app"
+Type: filesandordirs; Name: "{app}\runtime"
+Type: filesandordirs; Name: "{app}\web"
+Type: files; Name: "{app}\{#MyAppExeName}"
+Type: files; Name: "{app}\portable.flag"
+Type: files; Name: "{app}\python*.dll"
+Type: files; Name: "{app}\*.pyd"
+Type: files; Name: "{app}\*.dll"
 
 [Files]
 Source: "{#SourceRoot}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -121,6 +135,8 @@ begin
   Result := '';
   Key := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{F94A3938-C943-4E6D-B482-852D4AAE06F8}_is1';
   RegQueryStringValue(HKCU, Key, 'DisplayVersion', Result);
+  if Result = '' then
+    RegQueryStringValue(HKLM, Key, 'DisplayVersion', Result);
 end;
 
 function InitializeSetup(): Boolean;

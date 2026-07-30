@@ -97,6 +97,19 @@ def verify_native_distribution(root: Path) -> None:
     if missing:
         raise RuntimeError("Packaged native components are missing: " + ", ".join(missing))
 
+    psutil_extensions = list(root.rglob("_psutil_windows*.pyd"))
+    if len(psutil_extensions) != 1:
+        raise RuntimeError(
+            "Packaged runtime must contain exactly one psutil Windows extension; "
+            f"found {len(psutil_extensions)}."
+        )
+    try:
+        psutil_extensions[0].relative_to(root / "_internal")
+    except ValueError as exc:
+        raise RuntimeError(
+            "The packaged psutil Windows extension must be contained under _internal."
+        ) from exc
+
 
 def _check_name(relative: Path, suffix: str) -> None:
     dirs = {part.lower() for part in relative.parts[:-1]}

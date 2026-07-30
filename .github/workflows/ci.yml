@@ -3,7 +3,7 @@ name: CI
 on:
   workflow_dispatch:
   push:
-    branches: ["main", "development"]
+    branches: ["main", "development", "beta"]
     paths-ignore:
       - "**/*.md"
       - "docs/**"
@@ -168,13 +168,42 @@ jobs:
             }
           }
 
-      - name: Compile Python release and contract tools
-        run: python -m py_compile scripts/release_tools.py scripts/release_manifest.py scripts/release_scan.py scripts/verify_release_signing.py scripts/verify_release_provenance.py scripts/certify_context_depth.py scripts/certify_conversion_lifecycle.py scripts/validate_api_contract.py scripts/validate_model_library_manifest.py
+      - name: Compile Python release, packaging, and UI tools
+        run: >-
+          python -m py_compile
+          packaging/runtime_hook.py
+          app/model_lifecycle_ui.py
+          app/responsive_ui.py
+          scripts/release_tools.py
+          scripts/release_manifest.py
+          scripts/release_scan.py
+          scripts/verify_release_signing.py
+          scripts/verify_release_provenance.py
+          scripts/certify_context_depth.py
+          scripts/certify_conversion_lifecycle.py
+          scripts/validate_api_contract.py
+          scripts/validate_model_library_manifest.py
 
       - name: Install targeted test dependencies
         run: python -m pip install -e .[dev]
 
-      - name: Run targeted release, evidence, lifecycle, and resilience tests
+      - name: Run targeted release, packaging, UI, lifecycle, and resilience tests
         env:
           OV_LLM_MOCK: "true"
-        run: pytest tests/test_release_pipeline.py tests/test_release_signing_gate.py tests/test_release_provenance.py tests/test_hardware_advisor.py tests/test_model_library_evidence_identity.py tests/test_model_library_integrity.py tests/test_conversion_cancellation.py tests/test_conversion_stream_safety.py tests/test_config_resilience.py tests/test_onboarding_state_resilience.py tests/test_update_checker_resilience.py
+        run: >-
+          pytest
+          tests/test_release_pipeline.py
+          tests/test_release_signing_gate.py
+          tests/test_release_provenance.py
+          tests/test_installer_upgrade_contract.py
+          tests/test_runtime_hook_upgrade.py
+          tests/test_model_lifecycle_ui.py
+          tests/test_responsive_ui.py
+          tests/test_hardware_advisor.py
+          tests/test_model_library_evidence_identity.py
+          tests/test_model_library_integrity.py
+          tests/test_conversion_cancellation.py
+          tests/test_conversion_stream_safety.py
+          tests/test_config_resilience.py
+          tests/test_onboarding_state_resilience.py
+          tests/test_update_checker_resilience.py

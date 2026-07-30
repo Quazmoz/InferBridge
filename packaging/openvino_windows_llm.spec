@@ -37,6 +37,14 @@ for package in ("openvino", "openvino_genai"):
     binaries += package_binaries
     hiddenimports += package_hidden
 
+# psutil has a version-coupled Python wrapper and native Windows extension. Collect both
+# from the same isolated release environment so a fresh package cannot combine mismatched
+# files. The installer separately removes the old _internal directory during upgrades.
+psutil_datas, psutil_binaries, psutil_hidden = collect_all("psutil")
+datas += psutil_datas
+binaries += psutil_binaries
+hiddenimports += psutil_hidden
+
 # pystray selects its Windows backend dynamically at runtime.
 hiddenimports += collect_submodules("pystray")
 datas += collect_data_files("pystray", include_py_files=False)
@@ -64,6 +72,7 @@ for distribution in (
     "nncf",
     "transformers",
     "huggingface-hub",
+    "psutil",
     "pystray",
 ):
     try:

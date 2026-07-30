@@ -20,6 +20,26 @@ if ($IsPortable -and -not (Test-Path $PortableMarker)) {
 if (-not $IsPortable -and (Test-Path $PortableMarker)) {
     throw "Installed-mode smoke test refuses a distribution containing portable.flag."
 }
+
+$InternalRoot = (Join-Path $Root "_internal").TrimEnd('\')
+if (-not (Test-Path $InternalRoot -PathType Container)) {
+    throw "Packaged distribution is missing the PyInstaller _internal directory."
+}
+$PsutilWindowsBinaries = @(Get-ChildItem $Root -Recurse -File -Filter "_psutil_windows*.pyd")
+if ($PsutilWindowsBinaries.Count -ne 1) {
+    $Found = if ($PsutilWindowsBinaries.Count) {
+        ($PsutilWindowsBinaries | ForEach-Object { $_.FullName.Substring($Root.Length).TrimStart('\') }) -join ", "
+    } else {
+        "none"
+    }
+    throw "Packaged distribution must contain exactly one psutil Windows extension; found $($PsutilWindowsBinaries.Count): $Found"
+}
+$InternalPrefix = $InternalRoot + [IO.Path]::DirectorySeparatorChar
+$PsutilWindowsPath = [IO.Path]::GetFullPath($PsutilWindowsBinaries[0].FullName)
+if (-not $PsutilWindowsPath.StartsWith($InternalPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "The psutil Windows extension must be contained under _internal."
+}
+
 $Data = Join-Path ([IO.Path]::GetTempPath()) ("OV LLM Packaged Smoke " + [guid]::NewGuid().ToString("N"))
 New-Item $Data -ItemType Directory -Force | Out-Null
 $Process = $null
