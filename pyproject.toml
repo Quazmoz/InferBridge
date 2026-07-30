@@ -1,4 +1,5 @@
 [project]
+# Retained for Python distribution upgrade compatibility. The public product name is InferBridge.
 name = "openvino-windows-llm"
 dynamic = ["version"]
 description = "InferBridge is a Windows-first local AI server with an OpenAI-compatible API, powered by OpenVINO GenAI for Intel CPU/GPU/NPU."
@@ -17,6 +18,13 @@ dependencies = [
     "pystray>=0.19.5",
 ]
 
+[project.urls]
+Homepage = "https://github.com/Quazmoz/InferBridge"
+Repository = "https://github.com/Quazmoz/InferBridge"
+Documentation = "https://github.com/Quazmoz/InferBridge#documentation"
+Issues = "https://github.com/Quazmoz/InferBridge/issues"
+Releases = "https://github.com/Quazmoz/InferBridge/releases"
+
 [project.optional-dependencies]
 convert = [
     "optimum-intel[openvino]>=1.21.0",
@@ -34,6 +42,7 @@ distribution = [
 ]
 
 [project.scripts]
+# Legacy commands remain supported; the InferBridge commands are canonical for new usage.
 ov-llm = "app.server:main"
 ov-llm-desktop = "app.desktop_launcher:main"
 inferbridge = "app.server:main"
