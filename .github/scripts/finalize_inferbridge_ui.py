@@ -15,30 +15,28 @@ def write(path: str, text: str) -> None:
     (ROOT / path).write_text(text, encoding="utf-8")
 
 
-def replace(path: str, old: str, new: str) -> None:
-    text = read(path)
-    if old not in text:
-        raise RuntimeError(f"Expected text not found in {path}: {old[:100]!r}")
-    write(path, text.replace(old, new, 1))
-
-
 def main() -> None:
-    replace(
-        "app/release_ui.py",
-        "from __future__ import annotations\n",
-        "from __future__ import annotations\n\nfrom app.brand import DISPLAY_NAME\n",
-    )
     text = read("app/release_ui.py")
+    if "from app.brand import DISPLAY_NAME" not in text:
+        text = text.replace(
+            '"""Dependency-free About and Updates UI extension."""\n',
+            '"""Dependency-free About and Updates UI extension."""\n\nfrom app.brand import DISPLAY_NAME\n',
+            1,
+        )
     if "RELEASE_EXTENSION_JS = RELEASE_EXTENSION_JS.replace" not in text:
         text += '\nRELEASE_EXTENSION_JS = RELEASE_EXTENSION_JS.replace("OpenVINO Windows LLM", DISPLAY_NAME)\n'
     write("app/release_ui.py", text)
 
-    replace(
-        "app/onboarding_ui.py",
-        "from app import ui_extension\n",
-        "from app import ui_extension\nfrom app.brand import DISPLAY_NAME\nfrom app.version import __version__\n",
-    )
     text = read("app/onboarding_ui.py")
+    if "from app.brand import DISPLAY_NAME" not in text:
+        marker = "from app import ui_extension\n"
+        if marker not in text:
+            raise RuntimeError("Onboarding import marker not found")
+        text = text.replace(
+            marker,
+            marker + "from app.brand import DISPLAY_NAME\nfrom app.version import __version__\n",
+            1,
+        )
     if "ONBOARDING_UI = ONBOARDING_UI.replace" not in text:
         text += (
             '\nONBOARDING_UI = ONBOARDING_UI.replace("OpenVINO Windows LLM", DISPLAY_NAME).replace('
