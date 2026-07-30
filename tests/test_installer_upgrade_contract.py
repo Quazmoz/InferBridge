@@ -72,9 +72,20 @@ def test_native_release_gate_requires_one_psutil_windows_extension(tmp_path):
         verify_native_distribution(root)
 
 
-def test_native_release_gate_rejects_psutil_extension_outside_internal(tmp_path):
+@pytest.mark.parametrize(
+    "relative_path",
+    (
+        "_psutil_windows.pyd",
+        "_internal-old/psutil/_psutil_windows.pyd",
+    ),
+)
+def test_native_release_gate_rejects_psutil_extension_outside_internal(
+    tmp_path, relative_path
+):
     root = _native_distribution(tmp_path)
-    (root / "_psutil_windows.pyd").write_bytes(b"pyd")
+    extension = root / relative_path
+    extension.parent.mkdir(parents=True, exist_ok=True)
+    extension.write_bytes(b"pyd")
 
     with pytest.raises(RuntimeError, match="must be contained under _internal"):
         verify_native_distribution(root)
