@@ -2,11 +2,25 @@
 
 from __future__ import annotations
 
+from base64 import b64encode
+
 from app import ui_extension
 from app.brand import APPLICATION_DESCRIPTION, APPLICATION_TAGLINE, DISPLAY_NAME
+from app.config import BASE_DIR
 
 _EXTENSION_ID = "ovllm-branding-extension"
 _FAVICON_ID = "ovllm-brand-favicon"
+
+
+def _load_brand_icon_data_uri() -> str:
+    """Return the bundled SVG as a self-contained browser-safe data URI."""
+
+    icon_bytes = (BASE_DIR / "web" / "app-icon.svg").read_bytes()
+    encoded = b64encode(icon_bytes).decode("ascii")
+    return f"data:image/svg+xml;base64,{encoded}"
+
+
+BRAND_ICON_DATA_URI = _load_brand_icon_data_uri()
 
 BRANDING_CSS = r"""
 .ovllm-brand-icon {
@@ -41,7 +55,7 @@ if (!logoContainer || logoContainer.querySelector('.ovllm-brand-icon')) return;
 
 const icon = document.createElement('img');
 icon.className = 'ovllm-brand-icon';
-icon.src = '/app-icon.svg';
+icon.src = {BRAND_ICON_DATA_URI!r};
 icon.alt = '';
 icon.width = 64;
 icon.height = 64;
@@ -79,7 +93,7 @@ def install_branding_extension() -> None:
         if f'id="{_FAVICON_ID}"' not in html:
             favicon = (
                 f'\n<link id="{_FAVICON_ID}" rel="icon" type="image/svg+xml" '
-                'href="/app-icon.svg">\n'
+                f'href="{BRAND_ICON_DATA_URI}">\n'
             )
             if "</head>" in html:
                 html = html.replace("</head>", f"{favicon}</head>", 1)
