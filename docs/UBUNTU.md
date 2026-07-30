@@ -1,16 +1,16 @@
-# Experimental Ubuntu Support
+# Experimental Ubuntu support
 
-Linux support is experimental and currently supports Ubuntu and Fedora. This page covers Ubuntu-specific setup; see [FEDORA.md](FEDORA.md) for Fedora.
+Linux support is experimental and currently covers Ubuntu and Fedora. This page describes Ubuntu-specific setup; see [FEDORA.md](FEDORA.md) for Fedora.
 
-This repository remains Windows-first. Ubuntu support is intended as a basic, early path for developers who want to try the Python/FastAPI/OpenVINO stack on Ubuntu while keeping CPU inference as the first validation target.
+InferBridge remains Windows-first. Ubuntu support is an early CPU-first path for developers who want to try the Python, FastAPI, and OpenVINO stack while treating GPU and NPU execution as driver-dependent experiments.
 
-## Expected Baseline
+## Expected baseline
 
 - Ubuntu 22.04 or 24.04 is expected.
 - Python 3.11, 3.12, or 3.13 is expected.
 - CPU inference is the recommended first path.
-- GPU/NPU can work only when the system has compatible Intel hardware and Linux drivers.
-- Ubuntu GPU/NPU support is experimental and hardware/driver-dependent.
+- GPU or NPU execution requires compatible Intel hardware and Linux drivers.
+- Ubuntu GPU and NPU support is experimental and hardware-dependent.
 
 ## Install
 
@@ -18,27 +18,27 @@ This repository remains Windows-first. Ubuntu support is intended as a basic, ea
 sudo apt update
 sudo apt install -y python3 python3-venv python3-pip git
 
-git clone https://github.com/Quazmoz/openvino-windows-llm.git
-cd openvino-windows-llm
-chmod +x setup.sh start_server.sh setup/*.sh
+git clone https://github.com/Quazmoz/InferBridge.git
+cd InferBridge
+chmod +x setup.sh start_server.sh setup/*.sh setup/linux/*.sh
 ./setup.sh --minimal
 ```
 
-If Ubuntu 22.04 only provides Python 3.10 from `python3`, install a supported Python 3.11-3.13 interpreter and pass it explicitly:
+If Ubuntu 22.04 only provides Python 3.10 through `python3`, install Python 3.11 through 3.13 and pass it explicitly:
 
 ```bash
 ./setup.sh --minimal --python python3.11
 ```
 
-## Device Check
+## Device check
 
 ```bash
 ./start_server.sh --check-devices
 ```
 
-Device visibility is determined by OpenVINO. If OpenVINO does not list a device, the app cannot use it.
+Device visibility is determined by OpenVINO. InferBridge cannot use a target that OpenVINO does not expose.
 
-## Model Conversion
+## Model conversion
 
 Install conversion dependencies and convert a catalog model:
 
@@ -47,9 +47,9 @@ Install conversion dependencies and convert a catalog model:
 ./setup/linux/convert_model.sh --id tinyllama-1.1b-chat-fp16
 ```
 
-Gated Hugging Face models require accepting the model terms and configuring `HF_TOKEN` in `.env` or your shell.
+Gated Hugging Face models require accepted model terms and an `HF_TOKEN` configured in `.env` or the shell.
 
-## Start The Server
+## Start InferBridge
 
 ```bash
 ./start_server.sh --model tinyllama-1.1b-chat-fp16 --device CPU
@@ -57,28 +57,30 @@ Gated Hugging Face models require accepting the model terms and configuring `HF_
 ./start_server.sh --mock
 ```
 
-Open the built-in UI at http://localhost:8000.
+Open the built-in InferBridge UI at `http://localhost:8000`.
 
 ## Open WebUI
 
 ```text
-API Base URL: http://localhost:8000/v1
-API Key:      sk-dummy unless OV_LLM_API_KEY is set
+API base URL: http://localhost:8000/v1
+API key:      sk-dummy unless OV_LLM_API_KEY is set
 ```
 
-## Driver Caveats
+See the repository's [Open WebUI guide](../OPENWEBUI.md) for model loading, authentication, LAN access, and troubleshooting.
 
-- CPU should work once the Python/OpenVINO packages install.
-- GPU requires Intel's Linux GPU runtime/driver stack and render-device permissions.
-- NPU requires Intel's NPU Linux driver, supported hardware, and a compatible kernel.
-- Do not assume NPU availability on every Ubuntu machine, even when `lspci` shows an AI/NPU-like device.
-- GPU/NPU validation should start with `./start_server.sh --check-devices`.
+## Driver caveats
+
+- CPU should work once the Python and OpenVINO packages install.
+- GPU requires Intel's Linux GPU runtime and driver stack plus render-device permissions.
+- NPU requires Intel's Linux NPU driver, supported hardware, and a compatible kernel.
+- Do not assume NPU availability merely because `lspci` shows an AI or NPU-like device.
+- Start GPU and NPU validation with `./start_server.sh --check-devices`.
 
 ## Troubleshooting
 
 - Permission denied on scripts: run `chmod +x setup.sh start_server.sh setup/*.sh setup/linux/*.sh`.
-- Missing venv: run `./setup.sh --minimal`.
-- OpenVINO sees only CPU: install or verify Intel GPU/NPU drivers, then rerun `./start_server.sh --check-devices`.
+- Missing virtual environment: run `./setup.sh --minimal`.
+- OpenVINO sees only CPU: install or verify Intel GPU or NPU drivers, then rerun device discovery.
 - Import errors: remove and recreate `.venv`, then rerun setup.
-- Hugging Face gated models: set `HF_TOKEN=hf_...` in `.env` after accepting the model license.
-- Corporate TLS/proxy: set `REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE`, and/or `HTTPS_PROXY` before installing dependencies or converting models.
+- Gated Hugging Face models: set `HF_TOKEN=hf_...` only after accepting the model license.
+- Corporate TLS or proxy failures: configure `REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE`, and/or `HTTPS_PROXY` before installing dependencies or converting models.
