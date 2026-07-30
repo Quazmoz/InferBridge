@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
+import re
 import sys
 from datetime import UTC, datetime
 
 
 _APP_TITLE = "OpenVINO Windows LLM"
 _RUNTIME_FAILURE_EXIT_CODE = 12
+_WINDOWS_PATH_RE = re.compile(r"[A-Za-z]:\\(?:[^\\\s]+\\)+[^\s]*")
+_POSIX_HOME_RE = re.compile(r"(?<![A-Za-z0-9_])/(?:home|Users)/[^/\s]+(?:/[^\s]+)*")
 
 
 def _restore_output(name: str, descriptor: int) -> None:
@@ -56,6 +60,8 @@ def _runtime_failure_log_path() -> str | None:
 def _safe_error_detail(error: BaseException) -> str:
     detail = str(error or error.__class__.__name__).replace("\r", " ").replace("\n", " ")
     detail = " ".join(detail.split())
+    detail = _WINDOWS_PATH_RE.sub("...\\", detail)
+    detail = _POSIX_HOME_RE.sub(".../", detail)
     return detail[:180]
 
 
@@ -86,8 +92,10 @@ def _show_runtime_failure(detail: str) -> None:
 
         ctypes.windll.user32.MessageBoxW(None, message, _APP_TITLE, 0x10)
     except (AttributeError, OSError):
-        with open(os.devnull, "w", encoding="utf-8") as fallback:
-            fallback.write(message)
+        with contextlib.suppress(OSError):
+            if sys.stderr is not None:
+                sys.stderr.write(message + "\n")
+                sys.stderr.flush()
 
 
 def _validate_windows_native_runtime() -> None:
