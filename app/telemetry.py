@@ -5,6 +5,9 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import threading
+import time
+from collections import OrderedDict
 from pathlib import Path
 
 try:
@@ -13,6 +16,15 @@ except ImportError:  # pragma: no cover - psutil is a hard dependency at runtime
     psutil = None  # type: ignore[assignment]
 
 logger = logging.getLogger("ov-llm.telemetry")
+
+# The browser polls system status frequently. Converted model directories can contain
+# many files, so repeatedly walking the same tree wastes I/O and can contend with model
+# conversion. Keep a very short, bounded cache while preserving an explicit bypass and
+# invalidation hook for callers that require an immediate refresh.
+_DIR_SIZE_CACHE_TTL_SECONDS = 2.0
+_DIR_SIZE_CACHE_MAX_ENTRIES = 16
+_dir_size_cache: OrderedDict[str, tuple[float, int]] = OrderedDict()
+_dir_size_cache_lock = threading.Lock()
 
 
 def dir_size_bytes(path: str | Path) -> int:
@@ -30,8 +42,55 @@ def dir_size_bytes(path: str | Path) -> int:
     return total
 
 
-def dir_size_gb(path: str | Path) -> float:
-    return round(dir_size_bytes(path) / (1024**3), 2)
+def _dir_size_cache_key(path: str | Path) -> str:
+    return os.path.normcase(os.path.abspath(os.fspath(path)))
+
+
+def clear_dir_size_cache(path: str | Path | None = None) -> None:
+    """Clear one cached directory-size result or the complete bounded cache."""
+
+    with _dir_size_cache_lock:
+        if path is None:
+            _dir_size_cache.clear()
+        else:
+            _dir_size_cache.pop(_dir_size_cache_key(path), None)
+
+
+def cached_dir_size_bytes(
+    path: str | Path,
+    *,
+    cache_seconds: float = _DIR_SIZE_CACHE_TTL_SECONDS,
+) -> int:
+    """Return a briefly cached directory size to avoid duplicate polling scans.
+
+    A non-positive ``cache_seconds`` value bypasses the cache. The directory walk is
+    serialized so simultaneous status requests cannot launch duplicate scans of a
+    multi-gigabyte model tree.
+    """
+
+    ttl = max(float(cache_seconds), 0.0)
+    if ttl <= 0:
+        return dir_size_bytes(path)
+
+    key = _dir_size_cache_key(path)
+    with _dir_size_cache_lock:
+        now = time.monotonic()
+        cached = _dir_size_cache.get(key)
+        if cached is not None and now - cached[0] < ttl:
+            _dir_size_cache.move_to_end(key)
+            return cached[1]
+
+        size = dir_size_bytes(path)
+        _dir_size_cache[key] = (time.monotonic(), size)
+        _dir_size_cache.move_to_end(key)
+        while len(_dir_size_cache) > _DIR_SIZE_CACHE_MAX_ENTRIES:
+            _dir_size_cache.popitem(last=False)
+        return size
+
+
+def dir_size_gb(path: str | Path, *, cache_seconds: float = 0.0) -> float:
+    size = cached_dir_size_bytes(path, cache_seconds=cache_seconds)
+    return round(size / (1024**3), 2)
 
 
 def _first_existing(path: Path) -> Path | None:
@@ -42,10 +101,18 @@ def _first_existing(path: Path) -> Path | None:
     return None
 
 
-def disk_stats(models_dir: str | Path) -> dict:
+def disk_stats(
+    models_dir: str | Path,
+    *,
+    cache_seconds: float = _DIR_SIZE_CACHE_TTL_SECONDS,
+) -> dict:
     """Converted-model footprint plus the real free/total space on its volume."""
     models_dir = Path(models_dir)
-    stats = {"models_gb": dir_size_gb(models_dir), "total_gb": 0.0, "free_gb": 0.0}
+    stats = {
+        "models_gb": dir_size_gb(models_dir, cache_seconds=cache_seconds),
+        "total_gb": 0.0,
+        "free_gb": 0.0,
+    }
     target = _first_existing(models_dir)
     if target is not None:
         try:
