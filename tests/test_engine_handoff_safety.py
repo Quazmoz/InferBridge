@@ -3,9 +3,11 @@ from contextlib import asynccontextmanager
 
 import pytest
 
-from app.config import Settings  # noqa: F401 - installs lifecycle extensions
+from app.engine_handoff_safety import install_engine_handoff_safety
 from app.model_manager import ModelManager
 from app.model_manager_core import ModelNotLoaded
+
+install_engine_handoff_safety()
 
 
 class FakeHandle:
@@ -64,76 +66,86 @@ class FakeManager:
         return None
 
 
-@pytest.mark.asyncio
-async def test_queued_generation_rebinds_to_replacement_engine():
-    old_engine = FakeEngine("demo", "old")
-    new_engine = FakeEngine("demo", "new")
-    manager = FakeManager(old_engine)
-    old_lock = manager.locks["demo"]
-    await old_lock.acquire()
+def test_queued_generation_rebinds_to_replacement_engine():
+    async def scenario():
+        old_engine = FakeEngine("demo", "old")
+        new_engine = FakeEngine("demo", "new")
+        manager = FakeManager(old_engine)
+        old_lock = manager.locks["demo"]
+        await old_lock.acquire()
 
-    task = asyncio.create_task(ModelManager.generate(manager, old_engine, "hello", object()))
-    await manager.tracking_started.wait()
-    await asyncio.sleep(0)
+        task = asyncio.create_task(ModelManager.generate(manager, old_engine, "hello", object()))
+        await manager.tracking_started.wait()
+        await asyncio.sleep(0)
 
-    manager.engines["demo"] = new_engine
-    manager.locks["demo"] = asyncio.Lock()
-    old_lock.release()
+        manager.engines["demo"] = new_engine
+        manager.locks["demo"] = asyncio.Lock()
+        old_lock.release()
 
-    assert await task == "new"
-    assert old_engine.generate_calls == []
-    assert len(new_engine.generate_calls) == 1
+        assert await task == "new"
+        assert old_engine.generate_calls == []
+        assert len(new_engine.generate_calls) == 1
 
-
-@pytest.mark.asyncio
-async def test_queued_stream_rebinds_to_replacement_engine():
-    old_engine = FakeEngine("demo", "old")
-    new_engine = FakeEngine("demo", "new")
-    manager = FakeManager(old_engine)
-    old_lock = manager.locks["demo"]
-    await old_lock.acquire()
-
-    stream = ModelManager.stream(manager, old_engine, "hello", object())
-    first_chunk = asyncio.create_task(anext(stream))
-    await manager.tracking_started.wait()
-    await asyncio.sleep(0)
-
-    manager.engines["demo"] = new_engine
-    manager.locks["demo"] = asyncio.Lock()
-    old_lock.release()
-
-    assert await first_chunk == "new"
-    with pytest.raises(StopAsyncIteration):
-        await anext(stream)
-    assert old_engine.stream_calls == []
-    assert len(new_engine.stream_calls) == 1
+    asyncio.run(scenario())
 
 
-@pytest.mark.asyncio
-async def test_managed_request_fails_cleanly_after_unload():
-    engine = FakeEngine("demo", "old")
-    manager = FakeManager(None)
+def test_queued_stream_rebinds_to_replacement_engine():
+    async def scenario():
+        old_engine = FakeEngine("demo", "old")
+        new_engine = FakeEngine("demo", "new")
+        manager = FakeManager(old_engine)
+        old_lock = manager.locks["demo"]
+        await old_lock.acquire()
 
-    with pytest.raises(ModelNotLoaded, match="no longer loaded"):
-        await ModelManager.generate(manager, engine, "hello", object())
+        stream = ModelManager.stream(manager, old_engine, "hello", object())
+        first_chunk = asyncio.create_task(anext(stream))
+        await manager.tracking_started.wait()
+        await asyncio.sleep(0)
+
+        manager.engines["demo"] = new_engine
+        manager.locks["demo"] = asyncio.Lock()
+        old_lock.release()
+
+        assert await first_chunk == "new"
+        with pytest.raises(StopAsyncIteration):
+            await anext(stream)
+        assert old_engine.stream_calls == []
+        assert len(new_engine.stream_calls) == 1
+
+    asyncio.run(scenario())
 
 
-@pytest.mark.asyncio
-async def test_unmanaged_temporary_engine_remains_supported():
-    engine = FakeEngine("demo", "temporary")
-    manager = FakeManager(None, managed=False)
+def test_managed_request_fails_cleanly_after_unload():
+    async def scenario():
+        engine = FakeEngine("demo", "old")
+        manager = FakeManager(None)
 
-    assert await ModelManager.generate(manager, engine, "hello", object()) == "temporary"
+        with pytest.raises(ModelNotLoaded, match="no longer loaded"):
+            await ModelManager.generate(manager, engine, "hello", object())
+
+    asyncio.run(scenario())
 
 
-@pytest.mark.asyncio
-async def test_unload_is_rejected_while_model_lock_is_busy():
-    engine = FakeEngine("demo", "old")
-    manager = FakeManager(engine)
-    lock = manager.locks["demo"]
-    await lock.acquire()
-    try:
-        with pytest.raises(ValueError, match="Wait for the request to finish"):
-            ModelManager.unload(manager, "demo")
-    finally:
-        lock.release()
+def test_unmanaged_temporary_engine_remains_supported():
+    async def scenario():
+        engine = FakeEngine("demo", "temporary")
+        manager = FakeManager(None, managed=False)
+
+        assert await ModelManager.generate(manager, engine, "hello", object()) == "temporary"
+
+    asyncio.run(scenario())
+
+
+def test_unload_is_rejected_while_model_lock_is_busy():
+    async def scenario():
+        engine = FakeEngine("demo", "old")
+        manager = FakeManager(engine)
+        lock = manager.locks["demo"]
+        await lock.acquire()
+        try:
+            with pytest.raises(ValueError, match="Wait for the request to finish"):
+                ModelManager.unload(manager, "demo")
+        finally:
+            lock.release()
+
+    asyncio.run(scenario())
