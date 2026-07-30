@@ -17,6 +17,8 @@ jobs:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      OV_LLM_MOCK: "true"
     steps:
       - name: Checkout migration branch
         uses: actions/checkout@v4
@@ -31,58 +33,160 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
 
-      - name: Apply post-rename corrections
+      - name: Apply idempotent final migration cleanup
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
 
-          def replace(path: str, old: str, new: str) -> None:
-              file = Path(path)
-              text = file.read_text(encoding="utf-8")
-              if old not in text:
-                  raise SystemExit(f"Expected text not found in {path}: {old[:100]!r}")
-              file.write_text(text.replace(old, new, 1), encoding="utf-8")
+          ROOT = Path.cwd()
 
-          replace(
+          def read(path: str) -> str:
+              return (ROOT / path).read_text(encoding="utf-8")
+
+          def write(path: str, text: str) -> None:
+              (ROOT / path).write_text(text, encoding="utf-8")
+
+          def replace_if_present(path: str, old: str, new: str) -> None:
+              text = read(path)
+              if old in text:
+                  write(path, text.replace(old, new))
+
+          # Public embedded UI branding. Use placeholders where Python constants
+          # should remain authoritative without retaining the legacy display literal.
+          release_ui = read("app/release_ui.py")
+          if "from app.brand import DISPLAY_NAME" not in release_ui:
+              marker = '"""Dependency-free About and Updates UI extension."""\n\n'
+              release_ui = release_ui.replace(
+                  marker,
+                  marker + "from app.brand import DISPLAY_NAME\n\n",
+                  1,
+              )
+          release_ui = release_ui.replace(
+              "OpenVINO Windows LLM", "__INFERBRIDGE_DISPLAY_NAME__"
+          )
+          if "__INFERBRIDGE_DISPLAY_NAME__" in release_ui and (
+              "RELEASE_EXTENSION_JS = RELEASE_EXTENSION_JS.replace" not in release_ui
+          ):
+              release_ui += (
+                  '\nRELEASE_EXTENSION_JS = RELEASE_EXTENSION_JS.replace('
+                  '"__INFERBRIDGE_DISPLAY_NAME__", DISPLAY_NAME)\n'
+              )
+          write("app/release_ui.py", release_ui)
+
+          onboarding = read("app/onboarding_ui.py")
+          if "from app.brand import DISPLAY_NAME" not in onboarding:
+              onboarding = onboarding.replace(
+                  "from app import ui_extension\n",
+                  "from app import ui_extension\nfrom app.brand import DISPLAY_NAME\n"
+                  "from app.version import __version__\n",
+                  1,
+              )
+          onboarding = onboarding.replace(
+              "OpenVINO Windows LLM", "__INFERBRIDGE_DISPLAY_NAME__"
+          ).replace("Version 0.3.0", "Version __INFERBRIDGE_VERSION__")
+          if "ONBOARDING_UI = ONBOARDING_UI.replace" not in onboarding:
+              onboarding += (
+                  '\nONBOARDING_UI = ONBOARDING_UI.replace('
+                  '"__INFERBRIDGE_DISPLAY_NAME__", DISPLAY_NAME).replace('
+                  '"__INFERBRIDGE_VERSION__", __version__)\n'
+              )
+          write("app/onboarding_ui.py", onboarding)
+
+          for path in ("app/ui_quality.py", "app/ui_polish.py", "app/doctor_ui.py"):
+              text = read(path)
+              text = text.replace("OpenVINO Windows LLM", "InferBridge")
+              text = text.replace("OpenVINO LLM process", "InferBridge process")
+              write(path, text)
+
+          web = read("web/index.html")
+          web = web.replace("<title>OpenVINO LLM</title>", "<title>InferBridge</title>")
+          web = web.replace(">OpenVINO LLM<", ">InferBridge<")
+          web = web.replace(">OpenVINO GenAI<", ">Local AI for Intel hardware<")
+          write("web/index.html", web)
+
+          current_files = (
+              "setup.bat",
+              "setup.sh",
+              "start_server.bat",
+              "setup/linux/install_deps.sh",
+              "setup/windows/setup_all.ps1",
+              "QUICKSTART.md",
+              "CONTRIBUTING.md",
+              "OPENWEBUI.md",
+              "docs/TRAY.md",
+              "docs/PORTABLE.md",
+              "docs/INSTALLER.md",
+              "docs/DATA_PATHS.md",
+              "docs/UPGRADE_ROLLBACK.md",
+              "docs/DESKTOP_ARCHITECTURE.md",
+              "docs/TROUBLESHOOTING_DESKTOP.md",
+              "docs/UPDATE_POLICY.md",
+              "docs/RELEASE_PROCESS.md",
+              "docs/DIAGNOSTICS.md",
+              "docs/MODEL_LIBRARY.md",
+              "docs/VISION.md",
+          )
+          for path in current_files:
+              target = ROOT / path
+              if not target.is_file():
+                  continue
+              text = target.read_text(encoding="utf-8")
+              text = text.replace("OpenVINO Windows LLM", "InferBridge")
+              text = text.replace("OpenVINO LLM server", "InferBridge server")
+              target.write_text(text, encoding="utf-8")
+
+          replace_if_present(
               "CONTRIBUTING.md",
               "git clone https://github.com/<your-username>/openvino-windows-llm.git",
               "git clone https://github.com/<your-username>/InferBridge.git",
           )
-
-          replace(
+          replace_if_present(
               "README.md",
               "**Current development version: `0.7.0`.** This branch rebrands the product as InferBridge",
               "**Current development version: `0.7.0`.** Version 0.7.0 rebrands the product as InferBridge",
           )
 
-          release_manifest = Path("scripts/release_manifest.py")
-          text = release_manifest.read_text(encoding="utf-8")
-          text = text.replace(
-              "from app.build_info import BuildInfo\n",
-              "from app.brand import LEGACY_REPOSITORY_NAME, REPOSITORY_NAME, REPOSITORY_OWNER\nfrom app.build_info import BuildInfo\n",
-              1,
+          release_manifest = read("scripts/release_manifest.py")
+          if "from app.brand import LEGACY_REPOSITORY_NAME" not in release_manifest:
+              release_manifest = release_manifest.replace(
+                  "from app.build_info import BuildInfo\n",
+                  "from app.brand import LEGACY_REPOSITORY_NAME, REPOSITORY_NAME, REPOSITORY_OWNER\n"
+                  "from app.build_info import BuildInfo\n",
+                  1,
+              )
+          release_manifest = release_manifest.replace(
+              '_ALLOWED_RELEASE_REPOSITORIES = {\n    "Quazmoz/openvino-windows-llm",\n'
+              '    "Quazmoz/InferBridge",\n}\n',
+              '_ALLOWED_RELEASE_REPOSITORIES = {\n'
+              '    f"{REPOSITORY_OWNER}/{REPOSITORY_NAME}",\n'
+              '    f"{REPOSITORY_OWNER}/{LEGACY_REPOSITORY_NAME}",\n}\n'
+              '_DEFAULT_RELEASE_REPOSITORY = f"{REPOSITORY_OWNER}/{REPOSITORY_NAME}"\n',
           )
-          text = text.replace(
-              '''_ALLOWED_RELEASE_REPOSITORIES = {\n    "Quazmoz/openvino-windows-llm",\n    "Quazmoz/InferBridge",\n}\n''',
-              '''_ALLOWED_RELEASE_REPOSITORIES = {\n    f"{REPOSITORY_OWNER}/{REPOSITORY_NAME}",\n    f"{REPOSITORY_OWNER}/{LEGACY_REPOSITORY_NAME}",\n}\n_DEFAULT_RELEASE_REPOSITORY = f"{REPOSITORY_OWNER}/{REPOSITORY_NAME}"\n''',
-              1,
-          )
-          text = text.replace(
+          release_manifest = release_manifest.replace(
               '    selected = configured or automatic or "Quazmoz/openvino-windows-llm"\n',
               '    selected = configured or automatic or _DEFAULT_RELEASE_REPOSITORY\n',
-              1,
           )
-          release_manifest.write_text(text, encoding="utf-8")
+          write("scripts/release_manifest.py", release_manifest)
 
-          replace(
+          replace_if_present(
               "app/update_checker.py",
               "    for repository in (LEGACY_REPOSITORY_NAME, REPOSITORY_NAME)\n",
               "    for repository in (REPOSITORY_NAME, LEGACY_REPOSITORY_NAME)\n",
           )
 
-          Path("docs/INFERBRIDGE_MIGRATION.md").write_text(
+          startup = read("app/startup_registration.py").splitlines()
+          startup = [
+              '    location: str = f"HKCU\\\\{RUN_KEY}\\\\{CURRENT_VALUE_NAME}"'
+              if "location: str =" in line
+              else line
+              for line in startup
+          ]
+          write("app/startup_registration.py", "\n".join(startup) + "\n")
+
+          write(
+              "docs/INFERBRIDGE_MIGRATION.md",
               '''# InferBridge migration and repository-rename plan
 
 ## Product positioning
@@ -123,16 +227,16 @@ InferBridge uses the registry value name `InferBridge`. A recognized enabled `Op
 
 ## Post-rename verification
 
-The GitHub connector confirms the canonical repository is `Quazmoz/InferBridge` and the migration branch remains based on the original repository history. Before publishing 0.7.0, verify clone, fetch, push, old web and Git redirects, the legacy REST releases endpoint, manifest and checksum downloads, and release-asset redirects from a real network environment.
+The GitHub connector confirms the canonical repository is `Quazmoz/InferBridge` and the old repository identifier resolves to the renamed repository. Before publishing 0.7.0, verify clone, fetch, push, old web and Git redirects, the legacy REST releases endpoint, manifest and checksum downloads, and release-asset redirects from a real network environment.
 
 ## Release repository selection
 
 Release manifests now default to `Quazmoz/InferBridge`. GitHub Actions also resolves the canonical repository through `GITHUB_REPOSITORY`. `OV_LLM_RELEASE_REPOSITORY` remains a restricted transition override that accepts only `Quazmoz/InferBridge` or `Quazmoz/openvino-windows-llm` for compatibility testing and historical release verification.
 ''',
-              encoding="utf-8",
           )
 
-          Path("tests/test_inferbridge_release_repository.py").write_text(
+          write(
+              "tests/test_inferbridge_release_repository.py",
               '''import pytest
 
 from scripts.release_manifest import release_repository
@@ -157,64 +261,79 @@ def test_release_repository_rejects_lookalike_repository():
     with pytest.raises(ValueError):
         release_repository({"OV_LLM_RELEASE_REPOSITORY": "Quazmoz/InferBridge-malicious"})
 ''',
-              encoding="utf-8",
           )
 
-          update_tests = Path("tests/test_update_checker.py")
-          text = update_tests.read_text(encoding="utf-8")
-          text = text.replace(
-              "from app.release_models import artifact_filename\n",
-              "from app.brand import USER_AGENT_PRODUCT\nfrom app.release_models import artifact_filename\nfrom app.version import __version__\n",
-              1,
-          )
-          text = text.replace(
+          update_tests = read("tests/test_update_checker.py")
+          if "from app.brand import USER_AGENT_PRODUCT" not in update_tests:
+              update_tests = update_tests.replace(
+                  "from app.release_models import artifact_filename\n",
+                  "from app.brand import USER_AGENT_PRODUCT\n"
+                  "from app.release_models import artifact_filename\n"
+                  "from app.version import __version__\n",
+                  1,
+              )
+          update_tests = update_tests.replace(
               '        "OpenVINO-Windows-LLM/0.6.3" in headers.get("User-agent", "")\n',
               '        f"{USER_AGENT_PRODUCT}/{__version__}" in headers.get("User-agent", "")\n',
-              1,
           )
-          update_tests.write_text(text, encoding="utf-8")
+          write("tests/test_update_checker.py", update_tests)
 
-          compatibility_tests = Path("tests/test_inferbridge_update_compatibility.py")
-          text = compatibility_tests.read_text(encoding="utf-8")
-          text = text.replace(
+          compatibility_tests = read("tests/test_inferbridge_update_compatibility.py")
+          compatibility_tests = compatibility_tests.replace(
               "from app.update_checker import _candidate_manifest_url\n",
               "from app.update_checker import _RELEASES_APIS, _candidate_manifest_url\n",
-              1,
           )
-          addition = '''\n\ndef test_canonical_release_api_is_checked_before_legacy_fallback():\n    assert "/Quazmoz/InferBridge/releases" in _RELEASES_APIS[0]\n    assert "/Quazmoz/openvino-windows-llm/releases" in _RELEASES_APIS[1]\n'''
-          if "test_canonical_release_api_is_checked_before_legacy_fallback" not in text:
-              text += addition
-          compatibility_tests.write_text(text, encoding="utf-8")
+          if "test_canonical_release_api_is_checked_before_legacy_fallback" not in compatibility_tests:
+              compatibility_tests += (
+                  '\n\ndef test_canonical_release_api_is_checked_before_legacy_fallback():\n'
+                  '    assert "/Quazmoz/InferBridge/releases" in _RELEASES_APIS[0]\n'
+                  '    assert "/Quazmoz/openvino-windows-llm/releases" in _RELEASES_APIS[1]\n'
+              )
+          write("tests/test_inferbridge_update_compatibility.py", compatibility_tests)
           PY
+
+          rm -f \
+            .github/scripts/finalize_inferbridge_core.py \
+            .github/scripts/finalize_inferbridge_ui.py \
+            .github/scripts/write_inferbridge_final_tests.py \
+            .github/workflows/inferbridge-public-branding-finalize.yml
 
       - name: Install development dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e .[dev]
 
-      - name: Run final validation
-        env:
-          OV_LLM_MOCK: "true"
+      - name: Format and validate complete migration
         run: |
+          ruff check . --fix
+          ruff format .
           ruff check .
           ruff format --check .
           python -m py_compile \
             app/brand.py \
+            app/desktop_launcher.py \
+            app/diagnostics.py \
             app/paths.py \
-            app/startup_registration.py \
             app/release_models.py \
+            app/server.py \
+            app/startup_registration.py \
             app/update_checker.py \
+            packaging/runtime_hook.py \
             scripts/release_manifest.py \
             scripts/release_scan.py \
             scripts/verify_release_signing.py \
             scripts/verify_release_provenance.py
+          python scripts/release_tools.py verify-version-consistency --root . --version 0.7.0
           pytest
 
-      - name: Commit validated corrections and remove bootstrap
+      - name: Commit validated final state and remove bootstrap
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           rm .github/workflows/inferbridge-post-rename-finalize.yml
+          if [ -d .github/scripts ] && [ -z "$(find .github/scripts -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+            rmdir .github/scripts
+          fi
           git add -A
           git commit -m "fix: finalize InferBridge repository rename"
           git push origin HEAD:rename/inferbridge
