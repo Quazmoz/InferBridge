@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -19,6 +18,8 @@ def write(path: str, text: str) -> None:
 def replace(path: str, old: str, new: str) -> None:
     text = read(path)
     if old not in text:
+        if new in text:
+            return
         raise RuntimeError(f"Expected text not found in {path}: {old[:100]!r}")
     write(path, text.replace(old, new, 1))
 
@@ -27,7 +28,7 @@ def main() -> None:
     replace(
         "app/desktop_launcher.py",
         'from typing import BinaryIO\n\n_APP_TITLE = "OpenVINO Windows LLM"',
-        "from typing import BinaryIO\n\nfrom app.brand import DISPLAY_NAME\n\n_APP_TITLE = DISPLAY_NAME",
+        'from typing import BinaryIO\n\nfrom app.brand import DISPLAY_NAME\n\n_APP_TITLE = DISPLAY_NAME',
     )
     replace(
         "app/desktop_launcher.py",
@@ -37,7 +38,7 @@ def main() -> None:
     replace(
         "app/tray_support.py",
         'from app.tray_state import TrayPhase\n\nAPP_TITLE = "OpenVINO Windows LLM"',
-        "from app.brand import DISPLAY_NAME\nfrom app.tray_state import TrayPhase\n\nAPP_TITLE = DISPLAY_NAME",
+        'from app.brand import DISPLAY_NAME\nfrom app.tray_state import TrayPhase\n\nAPP_TITLE = DISPLAY_NAME',
     )
     replace(
         "app/tray_menu.py",
@@ -52,12 +53,13 @@ def main() -> None:
     )
     for old, new in {
         'logger.info("Starting OpenVINO Windows LLM server — %s", mode)': 'logger.info("Starting %s server — %s", DISPLAY_NAME, mode)',
-        'FastAPI(title="OpenVINO Windows LLM", version=__version__, lifespan=lifespan)': "FastAPI(title=DISPLAY_NAME, version=__version__, lifespan=lifespan)",
+        'FastAPI(title="OpenVINO Windows LLM", version=__version__, lifespan=lifespan)': 'FastAPI(title=DISPLAY_NAME, version=__version__, lifespan=lifespan)',
         'lines.append("# Chat Export — OpenVINO LLM")': 'lines.append(f"# Chat Export — {DISPLAY_NAME}")',
         'argparse.ArgumentParser(description="OpenVINO Windows LLM server")': 'argparse.ArgumentParser(description=f"{DISPLAY_NAME} server")',
     }.items():
         replace("app/server.py", old, new)
 
+    current_guard = 'getattr(self, "title", "") in {DISPLAY_NAME, LEGACY_DISPLAY_NAME}'
     for path in ("app/engine_handoff_routes.py", "app/model_library_routes.py"):
         text = read(path)
         import_line = "from app.brand import DISPLAY_NAME, LEGACY_DISPLAY_NAME"
@@ -67,16 +69,12 @@ def main() -> None:
                 f"from __future__ import annotations\n\n{import_line}\n",
                 1,
             )
-        old = 'getattr(self, "title", "") == "OpenVINO Windows LLM"'
-        if old not in text:
+        legacy_guard = 'getattr(self, "title", "") == "OpenVINO Windows LLM"'
+        if legacy_guard in text:
+            text = text.replace(legacy_guard, current_guard)
+        elif current_guard not in text:
             raise RuntimeError(f"Expected title guard not found in {path}")
-        write(
-            path,
-            text.replace(
-                old,
-                'getattr(self, "title", "") in {DISPLAY_NAME, LEGACY_DISPLAY_NAME}',
-            ),
-        )
+        write(path, text)
 
     replace(
         "app/diagnostics.py",
@@ -86,46 +84,46 @@ def main() -> None:
     text = read("app/diagnostics.py").replace(
         "openvino-windows-llm-diagnostics-", "inferbridge-diagnostics-"
     )
-    old = 'return {\n            "application_version": __version__,'
-    if old not in text:
+    legacy_payload = 'return {\n            "application_version": __version__,'
+    current_payload = 'return {\n            "application_name": DISPLAY_NAME,\n            "application_version": __version__,'
+    if legacy_payload in text:
+        text = text.replace(legacy_payload, current_payload, 1)
+    elif current_payload not in text:
         raise RuntimeError("Diagnostics application payload marker not found")
-    write(
-        "app/diagnostics.py",
-        text.replace(
-            old,
-            'return {\n            "application_name": DISPLAY_NAME,\n            "application_version": __version__,',
-            1,
-        ),
-    )
+    write("app/diagnostics.py", text)
 
     text = read("packaging/runtime_hook.py")
     text = text.replace('_APP_TITLE = "OpenVINO Windows LLM"', '_APP_TITLE = "InferBridge"')
-    text = text.replace(
-        "_RUNTIME_FAILURE_EXIT_CODE = 12",
-        '_CURRENT_DATA_DIR_NAME = "InferBridge"\n_LEGACY_DATA_DIR_NAME = "OpenVINOWindowsLLM"\n_RUNTIME_FAILURE_EXIT_CODE = 12',
-        1,
+    if "_CURRENT_DATA_DIR_NAME" not in text:
+        text = text.replace(
+            "_RUNTIME_FAILURE_EXIT_CODE = 12",
+            '_CURRENT_DATA_DIR_NAME = "InferBridge"\n_LEGACY_DATA_DIR_NAME = "OpenVINOWindowsLLM"\n_RUNTIME_FAILURE_EXIT_CODE = 12',
+            1,
+        )
+    legacy_root = '        root = os.path.join(local_app_data, "OpenVINOWindowsLLM")'
+    current_root = "        current = os.path.join(local_app_data, _CURRENT_DATA_DIR_NAME)"
+    if legacy_root in text:
+        text = text.replace(
+            legacy_root,
+            current_root
+            + "\n        legacy = os.path.join(local_app_data, _LEGACY_DATA_DIR_NAME)"
+            + "\n        root = current if os.path.isdir(current) or not os.path.isdir(legacy) else legacy",
+            1,
+        )
+    elif current_root not in text:
+        raise RuntimeError("Runtime-hook data root marker not found")
+    write(
+        "packaging/runtime_hook.py",
+        text.replace("Close OpenVINO Windows LLM", "Close InferBridge"),
     )
-    old_root = '        root = os.path.join(local_app_data, "OpenVINOWindowsLLM")'
-    if old_root not in text:
-        raise RuntimeError("Legacy runtime-hook data root marker not found")
-    text = text.replace(
-        old_root,
-        "        current = os.path.join(local_app_data, _CURRENT_DATA_DIR_NAME)\n"
-        "        legacy = os.path.join(local_app_data, _LEGACY_DATA_DIR_NAME)\n"
-        "        root = current if os.path.isdir(current) or not os.path.isdir(legacy) else legacy",
-        1,
-    ).replace("Close OpenVINO Windows LLM", "Close InferBridge")
-    write("packaging/runtime_hook.py", text)
 
     text = read("app/startup_registration.py")
-    text, changes = re.subn(
-        r'location: str = f"HKCU.*CURRENT_VALUE_NAME\}"',
-        r'location: str = f"HKCU\\{RUN_KEY}\\{CURRENT_VALUE_NAME}"',
-        text,
-        count=1,
-    )
-    if changes != 1:
-        raise RuntimeError("Startup registry location marker not found")
+    old_location = 'location: str = f"HKCU\\{RUN_KEY}\\{CURRENT_VALUE_NAME}"'
+    new_location = 'location: str = f"HKCU\\\\{RUN_KEY}\\\\{CURRENT_VALUE_NAME}"'
+    if new_location not in text:
+        if old_location not in text:
+            raise RuntimeError("Startup registry location marker not found")
+        text = text.replace(old_location, new_location, 1)
     write("app/startup_registration.py", text)
 
 
