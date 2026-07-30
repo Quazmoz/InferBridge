@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 
 _APP_TITLE = "OpenVINO Windows LLM"
 _RUNTIME_FAILURE_EXIT_CODE = 12
+_PATH_REDACTION = "[redacted path]"
 _QUOTED_WINDOWS_PATH_RE = re.compile(
     r"(?i)(?P<quote>[\"'])(?:[A-Z]:\\|\\\\)[^\"'\r\n]+(?P=quote)"
 )
@@ -66,11 +67,11 @@ def _safe_error_detail(error: BaseException) -> str:
     detail = str(error or error.__class__.__name__).replace("\r", " ").replace("\n", " ")
     detail = " ".join(detail.split())
     detail = _QUOTED_WINDOWS_PATH_RE.sub(
-        lambda match: f"{match.group('quote')}...\\{match.group('quote')}",
+        lambda match: f"{match.group('quote')}{_PATH_REDACTION}{match.group('quote')}",
         detail,
     )
-    detail = _WINDOWS_PATH_RE.sub(lambda _match: "...\\", detail)
-    detail = _POSIX_HOME_RE.sub(".../", detail)
+    detail = _WINDOWS_PATH_RE.sub(_PATH_REDACTION, detail)
+    detail = _POSIX_HOME_RE.sub(_PATH_REDACTION, detail)
     return detail[:180]
 
 
