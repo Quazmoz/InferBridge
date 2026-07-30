@@ -4,7 +4,7 @@
 
 [▶ Watch the OpenVINO Windows LLM walkthrough](https://youtu.be/rya6rJhkQrw)
 
-**OpenVINO Windows LLM turns Intel Windows PCs into local AI workstations.** It wraps OpenVINO GenAI in a Windows-first, OpenAI-compatible server with streaming chat, model conversion and lifecycle management, CPU/GPU/NPU targeting, hardware benchmarking, a built-in browser UI, and a deterministic mock engine.
+**OpenVINO Windows LLM turns Intel Windows PCs into local AI workstations.** It wraps OpenVINO GenAI in a Windows-first, OpenAI-compatible server with streaming chat, local vision chat, text embeddings, model lifecycle management, CPU/GPU/NPU device targeting, System Doctor hardware diagnostics, hardware benchmarking, a built-in browser UI, and a deterministic mock engine.
 
 The project keeps OpenVINO as the inference runtime. It does not require Docker, cloud inference, Electron, or a Node frontend toolchain.
 
@@ -89,11 +89,15 @@ Use `NPU`, `GPU`, or `AUTO` only when OpenVINO reports the target:
 
 ## Visual preview
 
-Screenshots were captured with the mock engine. On real Windows hardware, device status reflects the active OpenVINO target.
+The screenshots below demonstrate the application running live OpenVINO GenAI inference on Intel hardware (CPU, GPU, and NPU).
 
 ### Main chat interface
 
 ![OpenVINO Windows LLM Chat Interface](screenshots/chat_preview.png)
+
+### Hardware diagnostics and System Doctor
+
+![OpenVINO Windows LLM System Doctor Hardware Diagnostics](screenshots/system_doctor.png)
 
 ### Settings and system information
 
@@ -103,9 +107,13 @@ Screenshots were captured with the mock engine. On real Windows hardware, device
 
 ![OpenVINO Windows LLM Empty State](screenshots/empty_state.png)
 
-### Light theme and responsive layout
+### Light theme
 
 ![OpenVINO Windows LLM Light Theme](screenshots/light_theme.png)
+
+### Responsive layout
+
+![OpenVINO Windows LLM Responsive Layout](screenshots/responsive_preview.png)
 
 ## Documentation
 
@@ -131,44 +139,48 @@ Screenshots were captured with the mock engine. On real Windows hardware, device
 
 ### Inference and compatibility
 
-- OpenVINO GenAI text generation on `CPU`, `GPU`, `NPU`, `AUTO`, and accepted advanced OpenVINO expressions
-- `POST /v1/chat/completions` with streaming and non-streaming output
+- OpenVINO GenAI text generation on `CPU`, `GPU`, `NPU`, `AUTO`, and advanced composite target expressions (`AUTO:NPU,GPU,CPU`, `MULTI:NPU,GPU,CPU`, `HETERO:NPU,GPU,CPU`)
+- `POST /v1/chat/completions` with streaming and non-streaming responses
 - `POST /v1/responses` with streaming and non-streaming output
-- `POST /v1/embeddings` for embedding catalog models
-- OpenAI-compatible image content parts for `openvino-vlm` models
-- stop sequences, seed, temperature, top-p, token limits, tool-call compatibility, and supported structured-output fields
-- safe-by-default Hugging Face conversion with remote code disabled unless a reviewed entry and the user explicitly enable it
+- `POST /v1/embeddings` supporting catalog embedding models (e.g., `bge-small-en-v1.5`)
+- OpenAI-compatible image content parts for local vision chat (`openvino-vlm` models)
+- Stop sequences, seed, temperature, top-p, token limits, tool-call compatibility, and structured output fields
+- Safe-by-default Hugging Face conversion with remote code execution disabled unless explicitly permitted for reviewed models
 
 ### Model and device operations
 
-- model catalog and custom Hugging Face registration
-- background conversion with sanitized progress
-- optional conversion on load
-- load, unload, delete, cancellation, and serialized lifecycle locks
-- OpenVINO device discovery and hardware-aware preflight
-- local benchmark persistence and recommendation profiles
+- Model catalog and custom Hugging Face model registration
+- Actionable **System Doctor** hardware diagnostics covering OpenVINO runtime, device enumeration, explicit/fallback routing, memory, disk, and model readiness
+- Background conversion with sanitized progress tracking and cancellation support
+- Optional on-demand conversion upon model load
+- Load, unload, delete, cancellation, and serialized lifecycle locks
+- OpenVINO hardware discovery, system scan, and NPU readiness checks
+- Local benchmark persistence with automated target recommendation profiles
 
 ### Desktop distribution
 
-- hidden-console Windows launcher
-- per-user single-instance lock with live nonce verification
-- bounded liveness and readiness polling
-- safe loopback port fallback
-- user-visible startup dialogs and rotating logs
-- installed and portable writable path strategies
-- versioned onboarding state with corruption recovery
-- conservative recommendation and explicit NPU readiness
-- actual-port connection examples for OpenAI Python, environment variables, Open WebUI, and n8n
-- PyInstaller one-directory build, portable ZIP staging, Inno Setup installer, SHA-256 manifests, deterministic application icons, and stable signing gate
+- Hidden-console Windows launcher with loopback port binding (`127.0.0.1`)
+- Per-user single-instance lock with live nonce verification
+- Bounded liveness (`/health/live`) and readiness (`/health/ready`) polling
+- Safe loopback port fallback and duplicate-instance prevention
+- User-visible startup dialogs, system tray integration, and rotating logs
+- Privacy-safe diagnostic ZIP export for issue reporting
+- Installed (`%LOCALAPPDATA%`) and portable (`<dir>\data`) writable path strategies
+- Versioned onboarding state with automatic corruption recovery
+- Conservative hardware recommendation engine and explicit NPU readiness verification
+- Connection code generation for OpenAI Python SDK, environment variables, Open WebUI, and n8n
+- PyInstaller executable packaging, portable ZIP staging, Inno Setup per-user installer, SHA-256 checksum manifests, and Authenticode signing gate
 
 ### Browser UI
 
-- responsive local chat with browser-local conversation history
-- light and dark themes
-- model and device controls
-- dependency-free Markdown and code-copy actions
-- request metrics, system telemetry, safe activity, and lifecycle progress
-- keyboard-operable first-run wizard with visible focus and accessible live progress
+- Responsive local chat with browser-stored conversation history
+- Dynamic light and dark theme switching
+- Model selection, device targeting, load, unload, and deletion controls
+- Built-in **System Doctor** modal for comprehensive 10-point hardware diagnostic checks and privacy-safe support report copying
+- Integrated **Hardware Benchmark** tool with multi-device performance comparison (TTFT, tok/s) and target recommendations
+- Dependency-free Markdown rendering, syntax highlighting, and one-click code block copying
+- Real-time token metrics (tok/s, prompt/completion tokens), system resource telemetry (RAM/Disk), and request latency
+- First-run onboarding wizard with accessible keyboard navigation and visible live progress
 
 ## Data paths
 
