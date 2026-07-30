@@ -21,7 +21,7 @@ if (-not $IsPortable -and (Test-Path $PortableMarker)) {
     throw "Installed-mode smoke test refuses a distribution containing portable.flag."
 }
 
-$InternalRoot = Join-Path $Root "_internal"
+$InternalRoot = (Join-Path $Root "_internal").TrimEnd('\')
 if (-not (Test-Path $InternalRoot -PathType Container)) {
     throw "Packaged distribution is missing the PyInstaller _internal directory."
 }
@@ -34,7 +34,9 @@ if ($PsutilWindowsBinaries.Count -ne 1) {
     }
     throw "Packaged distribution must contain exactly one psutil Windows extension; found $($PsutilWindowsBinaries.Count): $Found"
 }
-if (-not $PsutilWindowsBinaries[0].FullName.StartsWith($InternalRoot, [StringComparison]::OrdinalIgnoreCase)) {
+$InternalPrefix = $InternalRoot + [IO.Path]::DirectorySeparatorChar
+$PsutilWindowsPath = [IO.Path]::GetFullPath($PsutilWindowsBinaries[0].FullName)
+if (-not $PsutilWindowsPath.StartsWith($InternalPrefix, [StringComparison]::OrdinalIgnoreCase)) {
     throw "The psutil Windows extension must be contained under _internal."
 }
 
