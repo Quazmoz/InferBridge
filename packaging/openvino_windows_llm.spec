@@ -99,7 +99,7 @@ exe = EXE(
     analysis.scripts,
     [],
     exclude_binaries=True,
-    name="OpenVINOWindowsLLM",
+    name="InferBridge",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -120,5 +120,5 @@ collection = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name="OpenVINOWindowsLLM",
+    name="InferBridge",
 )
