@@ -50,7 +50,7 @@ if ($LASTEXITCODE -ne 0) {
 
 & git rev-parse --verify --quiet "refs/tags/$Tag" | Out-Null
 if ($LASTEXITCODE -eq 0) { throw "Tag $Tag already exists." }
-$ReleaseCheck = & gh release view $Tag --repo Quazmoz/openvino-windows-llm 2>&1
+$null = cmd /c "gh release view $Tag --repo Quazmoz/openvino-windows-llm >NUL 2>NUL"
 if ($LASTEXITCODE -eq 0) { throw "GitHub release $Tag already exists." }
 
 $Notes = Join-Path $ArtifactDirectory "OpenVINO-Windows-LLM-$Version-release-notes.md"
