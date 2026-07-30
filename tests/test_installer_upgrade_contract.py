@@ -80,10 +80,12 @@ def test_native_release_gate_rejects_psutil_extension_outside_internal(tmp_path)
         verify_native_distribution(root)
 
 
-def test_packaged_smoke_rejects_missing_or_duplicate_psutil_windows_extensions():
+def test_packaged_smoke_rejects_missing_duplicate_or_sibling_psutil_extensions():
     script = (ROOT / "scripts" / "smoke_test_packaged.ps1").read_text(encoding="utf-8")
 
     assert 'Get-ChildItem $Root -Recurse -File -Filter "_psutil_windows*.pyd"' in script
     assert "$PsutilWindowsBinaries.Count -ne 1" in script
     assert "must contain exactly one psutil Windows extension" in script
+    assert "$InternalPrefix = $InternalRoot + [IO.Path]::DirectorySeparatorChar" in script
+    assert ".StartsWith($InternalPrefix, [StringComparison]::OrdinalIgnoreCase)" in script
     assert "must be contained under _internal" in script
