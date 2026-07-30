@@ -31,7 +31,9 @@ def test_responsive_styles_cover_width_height_and_dynamic_viewports():
 def test_dynamic_viewport_height_is_not_artificially_clamped_to_320_pixels():
     script = RESPONSIVE_EXTENSION_JS
 
-    assert "const measuredHeight = window.visualViewport?.height || window.innerHeight || 0" in script
+    assert (
+        "const measuredHeight = window.visualViewport?.height || window.innerHeight || 0" in script
+    )
     assert "Math.max(1, Math.round(measuredHeight))" in script
     assert "Math.max(\n      320" not in script
 
