@@ -79,9 +79,7 @@ def test_native_release_gate_requires_one_psutil_windows_extension(tmp_path):
         "_internal-old/psutil/_psutil_windows.pyd",
     ),
 )
-def test_native_release_gate_rejects_psutil_extension_outside_internal(
-    tmp_path, relative_path
-):
+def test_native_release_gate_rejects_psutil_extension_outside_internal(tmp_path, relative_path):
     root = _native_distribution(tmp_path)
     extension = root / relative_path
     extension.parent.mkdir(parents=True, exist_ok=True)
