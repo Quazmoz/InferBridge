@@ -11,10 +11,10 @@ def test_release_repository_uses_renamed_github_repository():
     assert release_repository({"GITHUB_REPOSITORY": "Quazmoz/InferBridge"}) == "Quazmoz/InferBridge"
 
 
-def test_release_repository_allows_explicit_transition_override():
+def test_release_repository_allows_explicit_legacy_transition_override():
     assert (
-        release_repository({"OV_LLM_RELEASE_REPOSITORY": "Quazmoz/InferBridge"})
-        == "Quazmoz/InferBridge"
+        release_repository({"OV_LLM_RELEASE_REPOSITORY": "Quazmoz/openvino-windows-llm"})
+        == "Quazmoz/openvino-windows-llm"
     )
 
 
