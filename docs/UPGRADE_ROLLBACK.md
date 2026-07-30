@@ -2,11 +2,15 @@
 
 ## Installed releases
 
-The installer uses a stable application ID and upgrades application files in place. Mutable data remains under `%LOCALAPPDATA%\OpenVINOWindowsLLM`, outside the installation directory. Models, configuration, onboarding state, benchmark history, caches, logs, diagnostics, and small configuration backups therefore survive ordinary upgrades.
+The installer uses a stable application ID and upgrades the registered installation in place. Before copying a new release, it removes the previous immutable PyInstaller payload from the installation directory. This prevents stale Python modules, DLLs, or native extensions from being mixed with the new build.
+
+Mutable data remains under `%LOCALAPPDATA%\OpenVINOWindowsLLM`, outside the installation directory. Models, configuration, onboarding state, benchmark history, caches, logs, diagnostics, and small configuration backups therefore survive ordinary upgrades. The installer cleanup does not target that data directory.
 
 Inno Setup asks Windows Restart Manager to close and restart the packaged executable. Quit the tray before upgrading when possible. A reboot should occur only when Windows cannot replace a locked file. Review the setup log if an upgrade is partial.
 
 The installer warns before a detected core-version downgrade. It never deletes the user-data directory during an upgrade. Interactive uninstall preserves data by default.
+
+A `psutil_windows` missing-attribute error after installing an older package indicates that Python code and a native extension from different dependency versions were present together. Install the latest build over the existing registered installation. The clean replacement step removes the stale runtime payload while preserving application data.
 
 ## Portable releases
 
