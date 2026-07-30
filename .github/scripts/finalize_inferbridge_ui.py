@@ -23,8 +23,12 @@ def main() -> None:
             '"""Dependency-free About and Updates UI extension."""\n\nfrom app.brand import DISPLAY_NAME\n',
             1,
         )
+    text = text.replace("OpenVINO Windows LLM", "__INFERBRIDGE_DISPLAY_NAME__")
     if "RELEASE_EXTENSION_JS = RELEASE_EXTENSION_JS.replace" not in text:
-        text += '\nRELEASE_EXTENSION_JS = RELEASE_EXTENSION_JS.replace("OpenVINO Windows LLM", DISPLAY_NAME)\n'
+        text += (
+            '\nRELEASE_EXTENSION_JS = RELEASE_EXTENSION_JS.replace('
+            '"__INFERBRIDGE_DISPLAY_NAME__", DISPLAY_NAME)\n'
+        )
     write("app/release_ui.py", text)
 
     text = read("app/onboarding_ui.py")
@@ -37,10 +41,13 @@ def main() -> None:
             marker + "from app.brand import DISPLAY_NAME\nfrom app.version import __version__\n",
             1,
         )
+    text = text.replace("OpenVINO Windows LLM", "__INFERBRIDGE_DISPLAY_NAME__")
+    text = text.replace("Version 0.3.0", "Version __INFERBRIDGE_VERSION__")
     if "ONBOARDING_UI = ONBOARDING_UI.replace" not in text:
         text += (
-            '\nONBOARDING_UI = ONBOARDING_UI.replace("OpenVINO Windows LLM", DISPLAY_NAME).replace('
-            '"Version 0.3.0", f"Version {__version__}")\n'
+            '\nONBOARDING_UI = ONBOARDING_UI.replace('
+            '"__INFERBRIDGE_DISPLAY_NAME__", DISPLAY_NAME).replace('
+            '"__INFERBRIDGE_VERSION__", __version__)\n'
         )
     write("app/onboarding_ui.py", text)
 
