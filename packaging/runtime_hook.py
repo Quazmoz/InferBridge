@@ -11,9 +11,7 @@ from datetime import UTC, datetime
 _APP_TITLE = "OpenVINO Windows LLM"
 _RUNTIME_FAILURE_EXIT_CODE = 12
 _PATH_REDACTION = "[redacted path]"
-_QUOTED_WINDOWS_PATH_RE = re.compile(
-    r"(?i)(?P<quote>[\"'])(?:[A-Z]:\\|\\\\)[^\"'\r\n]+(?P=quote)"
-)
+_QUOTED_WINDOWS_PATH_RE = re.compile(r"(?i)(?P<quote>[\"'])(?:[A-Z]:\\|\\\\)[^\"'\r\n]+(?P=quote)")
 _WINDOWS_PATH_RE = re.compile(
     r'(?i)(?<![A-Za-z0-9_])(?:[A-Z]:\\|\\\\[^\\/:*?"<>|\r\n]+\\)'
     r'(?:[^\\/:*?"<>|\r\n]+\\)*[^\\/:*?"<>|\r\n]*'
