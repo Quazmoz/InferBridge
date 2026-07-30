@@ -49,9 +49,8 @@ VersionInfoDescription={#MyAppName} installer
 VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppVersion}
 CloseApplications=yes
-CloseApplicationsFilter={#MyAppExeName}
+CloseApplicationsFilter={#MyAppExeName},*.dll,*.pyd
 RestartApplications=yes
-RestartManagerSupport=yes
 SetupLogging=yes
 UsePreviousAppDir=yes
 UsePreviousGroup=yes
@@ -85,7 +84,7 @@ Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{a
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent runascurrentuser
 
 [Code]
 function CoreVersionPart(const Value: String; PartIndex: Integer): Integer;
