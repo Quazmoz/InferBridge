@@ -1,75 +1,88 @@
 """Simple per-IP sliding-window rate limiter for the FastAPI server.
 
 Configurable via ``OV_LLM_RATE_LIMIT`` (requests per minute, 0 = disabled).
-Uses an in-memory dict of timestamps per IP, cleaned periodically.
+Uses a bounded-lifetime in-memory dict of timestamps per IP.
 """
 
 from __future__ import annotations
 
 import logging
+import math
+import threading
 import time
 from collections import defaultdict, deque
 
-from fastapi import Request, Response
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.responses import JSONResponse
 
 logger = logging.getLogger("ov-llm.ratelimit")
 
 
-class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Sliding-window rate limiter keyed by client IP address.
+class RateLimitMiddleware:
+    """Sliding-window ASGI rate limiter keyed by client IP address.
 
-    Only applies to ``/v1/`` API routes; static pages and health checks are exempt.
+    Only applies to ``/v1/`` API routes. Static pages, health checks, and browser
+    CORS preflight requests are exempt. A direct ASGI middleware avoids the response
+    buffering and context propagation overhead of ``BaseHTTPMiddleware``, which is
+    important for InferBridge's streaming endpoints.
     """
 
     def __init__(self, app, requests_per_minute: int = 60) -> None:
-        super().__init__(app)
-        self.rpm = max(requests_per_minute, 0)
-        self.window = 60.0  # seconds
+        self.app = app
+        self.rpm = max(int(requests_per_minute), 0)
+        self.window = 60.0
         self._hits: dict[str, deque[float]] = defaultdict(deque)
         self._last_cleanup = time.monotonic()
+        self._lock = threading.Lock()
 
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        if self.rpm <= 0:
-            return await call_next(request)
+    async def __call__(self, scope, receive, send) -> None:
+        if scope.get("type") != "http" or self.rpm <= 0:
+            await self.app(scope, receive, send)
+            return
 
-        path = request.url.path
-        # Only rate-limit API endpoints, not UI / health
-        if not path.startswith("/v1/"):
-            return await call_next(request)
+        path = str(scope.get("path") or "")
+        method = str(scope.get("method") or "GET").upper()
+        if not path.startswith("/v1/") or method == "OPTIONS":
+            await self.app(scope, receive, send)
+            return
 
-        client_ip = request.client.host if request.client else "unknown"
-        now = time.monotonic()
-
-        # Periodic cleanup of stale entries (every 60s)
-        if now - self._last_cleanup > 60.0:
-            self._cleanup(now)
-            self._last_cleanup = now
-
-        window = self._hits[client_ip]
-        # Remove timestamps outside the sliding window
-        cutoff = now - self.window
-        while window and window[0] < cutoff:
-            window.popleft()
-
-        if len(window) >= self.rpm:
-            retry_after = int(window[0] + self.window - now) + 1
-            logger.warning(
-                "Rate limit exceeded for %s (%d/%d rpm)", client_ip, len(window), self.rpm
-            )
-            return Response(
-                content=f'{{"detail":"Rate limit exceeded. Try again in {retry_after}s."}}',
+        client = scope.get("client")
+        client_ip = str(client[0]) if client else "unknown"
+        retry_after = self._record_request(client_ip, time.monotonic())
+        if retry_after is not None:
+            logger.warning("Rate limit exceeded for %s (%d rpm)", client_ip, self.rpm)
+            response = JSONResponse(
+                {"detail": f"Rate limit exceeded. Try again in {retry_after}s."},
                 status_code=429,
-                media_type="application/json",
                 headers={"Retry-After": str(retry_after)},
             )
+            await response(scope, receive, send)
+            return
 
-        window.append(now)
-        return await call_next(request)
+        await self.app(scope, receive, send)
 
-    def _cleanup(self, now: float) -> None:
-        """Remove IPs with no recent activity to avoid unbounded memory growth."""
+    def _record_request(self, client_ip: str, now: float) -> int | None:
+        """Record an allowed request or return its retry delay when blocked."""
+
+        with self._lock:
+            if now - self._last_cleanup > self.window:
+                self._cleanup_locked(now)
+                self._last_cleanup = now
+
+            window = self._hits[client_ip]
+            cutoff = now - self.window
+            while window and window[0] < cutoff:
+                window.popleft()
+
+            if len(window) >= self.rpm:
+                return max(1, math.ceil(window[0] + self.window - now))
+
+            window.append(now)
+            return None
+
+    def _cleanup_locked(self, now: float) -> None:
+        """Remove clients with no recent activity while ``self._lock`` is held."""
+
         cutoff = now - self.window
-        stale = [ip for ip, dq in self._hits.items() if not dq or dq[-1] < cutoff]
+        stale = [ip for ip, hits in self._hits.items() if not hits or hits[-1] < cutoff]
         for ip in stale:
             del self._hits[ip]
