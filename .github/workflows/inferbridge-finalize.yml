@@ -1,0 +1,109 @@
+name: Finalize InferBridge release migration
+
+on:
+  push:
+    branches: ["rename/inferbridge"]
+    paths: [".github/workflows/inferbridge-finalize.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: rename/inferbridge
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Update release tooling and current documentation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          exact_files = [
+              Path('scripts/build_release.ps1'),
+              Path('scripts/publish_release.ps1'),
+              Path('scripts/release_manifest.py'),
+              Path('scripts/release_scan.py'),
+              Path('scripts/verify_release_signing.py'),
+              Path('scripts/verify_release_provenance.py'),
+              Path('scripts/smoke_test_packaged.ps1'),
+              Path('scripts/generate_brand_assets.py'),
+          ]
+          replacements = (
+              ('OpenVINO-Windows-LLM', 'InferBridge'),
+              ('OpenVINOWindowsLLM.exe', 'InferBridge.exe'),
+              ('OpenVINOWindowsLLM.ico', 'InferBridge.ico'),
+              ('OpenVINOWindowsLLM', 'InferBridge'),
+              ('OpenVINO Windows LLM', 'InferBridge'),
+              ('https://github.com/Quazmoz/openvino-windows-llm', 'https://github.com/Quazmoz/InferBridge'),
+          )
+          for path in exact_files:
+              text = path.read_text(encoding='utf-8')
+              for old, new in replacements:
+                  text = text.replace(old, new)
+              path.write_text(text, encoding='utf-8')
+
+          current_docs = [
+              Path('README.md'), Path('QUICKSTART.md'), Path('CONTRIBUTING.md'),
+              Path('OPENWEBUI.md'), Path('docs/INSTALLER.md'), Path('docs/PORTABLE.md'),
+              Path('docs/DATA_PATHS.md'), Path('docs/TRAY.md'),
+              Path('docs/DESKTOP_ARCHITECTURE.md'), Path('docs/TROUBLESHOOTING_DESKTOP.md'),
+              Path('docs/UPDATE_POLICY.md'), Path('docs/RELEASE_PROCESS.md'),
+              Path('docs/DIAGNOSTICS.md'), Path('docs/UPGRADE_ROLLBACK.md'),
+          ]
+          for path in current_docs:
+              if not path.exists():
+                  continue
+              text = path.read_text(encoding='utf-8')
+              for old, new in replacements:
+                  text = text.replace(old, new)
+              text = text.replace('cd openvino-windows-llm', 'cd InferBridge')
+              path.write_text(text, encoding='utf-8')
+
+          build = Path('scripts/build_release.ps1')
+          text = build.read_text(encoding='utf-8')
+          text = text.replace('$BuiltRoot = Join-Path $DistRoot "InferBridge"', '$BuiltRoot = Join-Path $DistRoot "InferBridge"')
+          text = text.replace('$Launcher = Join-Path $BuiltRoot "InferBridge.exe"', '$Launcher = Join-Path $BuiltRoot "InferBridge.exe"')
+          text = text.replace('$PortableName = "InferBridge-$Version"', '$PortableName = "InferBridge-$Version"')
+          build.write_text(text, encoding='utf-8')
+          PY
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "build: migrate InferBridge release artifact identity"
+          git push origin HEAD:rename/inferbridge
+
+      - name: Validate migration
+        shell: bash
+        env:
+          OV_LLM_MOCK: "true"
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev]
+          ruff check .
+          ruff format --check .
+          pytest
+
+      - name: Remove one-time finalizer
+        if: success()
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm .github/workflows/inferbridge-finalize.yml
+          git add -A
+          git commit -m "chore: remove InferBridge release finalizer"
+          git push origin HEAD:rename/inferbridge
