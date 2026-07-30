@@ -16,6 +16,10 @@ from typing import Any
 _INSTALL_FLAG = "_ENGINE_HANDOFF_SAFETY_INSTALLED"
 
 
+class ModelBusyError(ValueError):
+    """Raised when an unload would close an engine with queued or active work."""
+
+
 @asynccontextmanager
 async def current_engine_lease(manager: Any, requested_engine: Any) -> AsyncIterator[Any]:
     """Yield a stable current engine while holding its matching model lock.
@@ -127,7 +131,7 @@ def install_engine_handoff_safety() -> None:
 
         lock = self.locks.get(model_id)
         if lock is not None and lock.locked():
-            raise ValueError(
+            raise ModelBusyError(
                 f"Model '{model_id}' is serving or waiting on a request. "
                 "Wait for the request to finish before unloading it."
             )
