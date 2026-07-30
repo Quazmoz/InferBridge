@@ -9,8 +9,9 @@ never resume against an engine that has just been closed.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator
+from typing import Any
 
 _INSTALL_FLAG = "_ENGINE_HANDOFF_SAFETY_INSTALLED"
 
