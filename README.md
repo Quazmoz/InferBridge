@@ -14,13 +14,13 @@ The project keeps OpenVINO as the inference runtime. It does not require Docker,
 
 **Current stable version: `0.6.1`.** This patch adds deterministic context-boundary and compiled-cache certification, fixes Windows conversion cancellation, and expands retained CPU/GPU evidence to Qwen 2.5 3B FP16 and TinyLlama 1.1B INT4.
 
-**Current development version: `0.6.3`.** Release preparation adds shared application branding to the browser, launcher, installer, shortcuts, and uninstall registration. Stable publication now requires independently verified Authenticode signatures for both the installer and portable launcher. No 0.6.3 release has been published.
+**Current development version: `0.7.0`.** This branch rebrands the product as InferBridge while preserving OpenVINO GenAI, existing models and settings, legacy command-line interfaces, installer upgrade identity, and old/new update sources. No 0.7.0 release has been published.
 
-Downloads (GitHub release `v0.6.1`):
+Downloads (GitHub release `v0.6.1`; historical assets retain the original product filenames):
 
-- [Windows installer (.exe)](https://github.com/Quazmoz/InferBridge/releases/download/v0.6.1/InferBridge-0.6.1-windows-x64-installer.exe)
-- [Portable ZIP](https://github.com/Quazmoz/InferBridge/releases/download/v0.6.1/InferBridge-0.6.1-windows-x64-portable.zip)
-- [SHA-256 checksums](https://github.com/Quazmoz/InferBridge/releases/download/v0.6.1/InferBridge-0.6.1-checksums.txt)
+- [Windows installer (.exe)](https://github.com/Quazmoz/openvino-windows-llm/releases/download/v0.6.1/OpenVINO-Windows-LLM-0.6.1-windows-x64-installer.exe)
+- [Portable ZIP](https://github.com/Quazmoz/openvino-windows-llm/releases/download/v0.6.1/OpenVINO-Windows-LLM-0.6.1-windows-x64-portable.zip)
+- [SHA-256 checksums](https://github.com/Quazmoz/openvino-windows-llm/releases/download/v0.6.1/OpenVINO-Windows-LLM-0.6.1-checksums.txt)
 
 References: [compatibility matrix](docs/COMPATIBILITY_MATRIX.md) · [expanded certification evidence](docs/certification/0.6.1/expanded-coverage-issue17/)
 

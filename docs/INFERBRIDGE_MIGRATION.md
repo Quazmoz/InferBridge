@@ -41,3 +41,7 @@ InferBridge uses the registry value name `InferBridge`. A recognized enabled `Op
 ## Post-rename verification
 
 After the manual rename, verify clone, fetch, push, web redirects, Git redirects, issues, stars, releases, tags, branches, history, release API responses, manifest downloads, checksums, and release asset redirects. Update the local clone origin to `https://github.com/Quazmoz/InferBridge.git` only after the rename succeeds.
+
+## Release repository selection
+
+Before the GitHub repository is renamed, release manifests default to `Quazmoz/openvino-windows-llm` so a compatibility release contains live asset and documentation URLs. After the rename, GitHub Actions selects `Quazmoz/InferBridge` through `GITHUB_REPOSITORY`. Local release builds may set `OV_LLM_RELEASE_REPOSITORY` to either approved repository during the transition.
