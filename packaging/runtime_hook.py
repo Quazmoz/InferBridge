@@ -10,7 +10,13 @@ from datetime import UTC, datetime
 
 _APP_TITLE = "OpenVINO Windows LLM"
 _RUNTIME_FAILURE_EXIT_CODE = 12
-_WINDOWS_PATH_RE = re.compile(r"[A-Za-z]:\\(?:[^\\\s]+\\)+[^\s]*")
+_QUOTED_WINDOWS_PATH_RE = re.compile(
+    r"(?i)(?P<quote>[\"'])(?:[A-Z]:\\|\\\\)[^\"'\r\n]+(?P=quote)"
+)
+_WINDOWS_PATH_RE = re.compile(
+    r'(?i)(?<![A-Za-z0-9_])(?:[A-Z]:\\|\\\\[^\\/:*?"<>|\r\n]+\\)'
+    r'(?:[^\\/:*?"<>|\r\n]+\\)*[^\\/:*?"<>|\r\n]*'
+)
 _POSIX_HOME_RE = re.compile(r"(?<![A-Za-z0-9_])/(?:home|Users)/[^/\s]+(?:/[^\s]+)*")
 
 
@@ -59,6 +65,10 @@ def _runtime_failure_log_path() -> str | None:
 def _safe_error_detail(error: BaseException) -> str:
     detail = str(error or error.__class__.__name__).replace("\r", " ").replace("\n", " ")
     detail = " ".join(detail.split())
+    detail = _QUOTED_WINDOWS_PATH_RE.sub(
+        lambda match: f"{match.group('quote')}...\\{match.group('quote')}",
+        detail,
+    )
     detail = _WINDOWS_PATH_RE.sub(lambda _match: "...\\", detail)
     detail = _POSIX_HOME_RE.sub(".../", detail)
     return detail[:180]
