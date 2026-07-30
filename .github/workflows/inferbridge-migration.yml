@@ -33,19 +33,44 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
 
-      - name: Harden one-time migration script compatibility aliases
+      - name: Configure migration commits
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Apply and validate migration
+        shell: bash
+        run: |
+          set -o pipefail
+          exec > >(tee /tmp/inferbridge-migration.log) 2>&1
+
+          report_failure() {
+            status=$?
+            if [ "$status" -eq 0 ]; then
+              return
+            fi
+            git reset --hard origin/rename/inferbridge
+            cp /tmp/inferbridge-migration.log .github/inferbridge-migration-failure.log
+            git add .github/inferbridge-migration-failure.log
+            git commit -m "chore: record InferBridge migration failure"
+            git push origin HEAD:rename/inferbridge
+            exit "$status"
+          }
+          trap report_failure EXIT
+          set -euo pipefail
+
           python - <<'PY'
           from pathlib import Path
 
           path = Path('.github/scripts/apply_inferbridge_migration.py')
           text = path.read_text(encoding='utf-8')
 
-          duplicate = '''    text = _replace_required(text, '    name="OpenVINOWindowsLLM",', '    name="InferBridge",', path=path)\n    text = _replace_required(text, '    name="OpenVINOWindowsLLM",', '    name="InferBridge",', path=path)\n'''
-          single = '''    text = _replace_required(text, '    name="OpenVINOWindowsLLM",', '    name="InferBridge",', path=path)\n'''
-          if duplicate not in text:
-              raise SystemExit('Expected PyInstaller migration block not found')
-          text = text.replace(duplicate, single)
+          duplicate_line = "    text = _replace_required(text, '    name=\"OpenVINOWindowsLLM\",', '    name=\"InferBridge\",', path=path)\n"
+          if text.count(duplicate_line) != 2:
+              raise SystemExit('Expected two PyInstaller name replacements')
+          first = text.find(duplicate_line)
+          second = text.find(duplicate_line, first + len(duplicate_line))
+          text = text[:second] + text[second + len(duplicate_line):]
 
           startup = 'CURRENT_VALUE_NAME = "InferBridge"\n        LEGACY_VALUE_NAME = "OpenVINOWindowsLLM"\n'
           startup_with_aliases = (
@@ -55,40 +80,25 @@ jobs:
               '        _VALUE_NAME = CURRENT_VALUE_NAME\n'
           )
           if startup not in text:
-              raise SystemExit('Expected startup constants block not found')
-          text = text.replace(startup, startup_with_aliases)
+              raise SystemExit('Expected startup constants block')
+          text = text.replace(startup, startup_with_aliases, 1)
 
-          paths_import = 'from app.brand import DATA_DIR_NAME, DISPLAY_NAME, LEGACY_DATA_DIR_NAME",\n'
-          paths_with_alias = (
-              'from app.brand import DATA_DIR_NAME, DISPLAY_NAME, LEGACY_DATA_DIR_NAME\\n\\n'
-              '_APP_DIR_NAME = DATA_DIR_NAME",\n'
-          )
-          if paths_import not in text:
-              raise SystemExit('Expected path import replacement not found')
-          text = text.replace(paths_import, paths_with_alias)
+          old_paths = '"from pathlib import Path\\n\\nfrom app.brand import DATA_DIR_NAME, DISPLAY_NAME, LEGACY_DATA_DIR_NAME",'
+          new_paths = '"from pathlib import Path\\n\\nfrom app.brand import DATA_DIR_NAME, DISPLAY_NAME, LEGACY_DATA_DIR_NAME\\n\\n_APP_DIR_NAME = DATA_DIR_NAME",'
+          if old_paths not in text:
+              raise SystemExit('Expected path import replacement')
+          text = text.replace(old_paths, new_paths, 1)
 
-          release_apis = ")\n_MANIFEST_PREFIXES = (ARTIFACT_PREFIX, *LEGACY_ARTIFACT_PREFIXES)',\n"
-          release_apis_with_alias = (
-              ")\\n_RELEASES_API = _RELEASES_APIS[0]\\n"
-              "_MANIFEST_PREFIXES = (ARTIFACT_PREFIX, *LEGACY_ARTIFACT_PREFIXES)',\\n"
-          )
-          if release_apis not in text:
-              raise SystemExit('Expected release API constants block not found')
-          text = text.replace(release_apis, release_apis_with_alias)
+          old_apis = ')\\n_MANIFEST_PREFIXES = (ARTIFACT_PREFIX, *LEGACY_ARTIFACT_PREFIXES)\','
+          new_apis = ')\\n_RELEASES_API = _RELEASES_APIS[0]\\n_MANIFEST_PREFIXES = (ARTIFACT_PREFIX, *LEGACY_ARTIFACT_PREFIXES)\','
+          if old_apis not in text:
+              raise SystemExit('Expected release API constants replacement')
+          text = text.replace(old_apis, new_apis, 1)
 
           path.write_text(text, encoding='utf-8')
           PY
           python -m py_compile .github/scripts/apply_inferbridge_migration.py
 
-      - name: Configure migration commits
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-      - name: Apply focused migration stages
-        shell: bash
-        run: |
-          set -euo pipefail
           commit_stage() {
             local stage="$1"
             local message="$2"
@@ -96,18 +106,14 @@ jobs:
             git add -A
             git commit -m "$message"
           }
+
           commit_stage brand "refactor: centralize InferBridge branding metadata"
           commit_stage compatibility "feat: preserve legacy data startup and update compatibility"
           commit_stage packaging "build: migrate executable and installer identity"
           commit_stage docs-tests "docs: document and test InferBridge migration"
 
-      - name: Install test dependencies
-        run: |
           python -m pip install --upgrade pip
           python -m pip install -e .[dev]
-
-      - name: Format and lint migration
-        run: |
           ruff check . --fix
           ruff format .
           git add -A
@@ -117,8 +123,6 @@ jobs:
           ruff check .
           ruff format --check .
 
-      - name: Compile changed Python contracts
-        run: |
           python -m py_compile \
             app/brand.py \
             app/paths.py \
@@ -132,36 +136,27 @@ jobs:
             scripts/verify_release_signing.py \
             scripts/verify_release_provenance.py
 
-      - name: Run full mock test suite
-        env:
-          OV_LLM_MOCK: "true"
-        run: pytest
+          OV_LLM_MOCK=true pytest
+          OV_LLM_MOCK=true pytest \
+            tests/test_inferbridge_brand.py \
+            tests/test_inferbridge_paths.py \
+            tests/test_inferbridge_startup.py \
+            tests/test_inferbridge_update_compatibility.py \
+            tests/test_inferbridge_packaging_contract.py \
+            tests/test_release_pipeline.py \
+            tests/test_release_signing_gate.py \
+            tests/test_release_provenance.py \
+            tests/test_installer_upgrade_contract.py \
+            tests/test_update_checker.py \
+            tests/test_update_checker_resilience.py \
+            tests/test_release_models.py
 
-      - name: Run targeted migration and release tests
-        env:
-          OV_LLM_MOCK: "true"
-        run: >-
-          pytest
-          tests/test_inferbridge_brand.py
-          tests/test_inferbridge_paths.py
-          tests/test_inferbridge_startup.py
-          tests/test_inferbridge_update_compatibility.py
-          tests/test_inferbridge_packaging_contract.py
-          tests/test_release_pipeline.py
-          tests/test_release_signing_gate.py
-          tests/test_release_provenance.py
-          tests/test_installer_upgrade_contract.py
-          tests/test_update_checker.py
-          tests/test_update_checker_resilience.py
-          tests/test_release_models.py
-
-      - name: Remove migration bootstrap and push validated commits
-        shell: bash
-        run: |
-          set -euo pipefail
           rm .github/scripts/apply_inferbridge_migration.py
           rm .github/workflows/inferbridge-migration.yml
+          rm -f MIGRATION_FETCH.md
           rmdir .github/scripts 2>/dev/null || true
           git add -A
           git commit -m "chore: remove one-time InferBridge migration bootstrap"
           git push origin HEAD:rename/inferbridge
+
+          trap - EXIT
