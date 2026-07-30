@@ -24,6 +24,25 @@ def replace(path: str, old: str, new: str) -> None:
     write(path, text.replace(old, new, 1))
 
 
+def ensure_single_import(path: str, anchor: str, import_line: str) -> None:
+    text = read(path)
+    lines = text.splitlines()
+    filtered: list[str] = []
+    seen = False
+    for line in lines:
+        if line == import_line:
+            if seen:
+                continue
+            seen = True
+        filtered.append(line)
+    text = "\n".join(filtered) + "\n"
+    if not seen:
+        if anchor not in text:
+            raise RuntimeError(f"Import anchor not found in {path}: {anchor!r}")
+        text = text.replace(anchor, anchor + import_line + "\n", 1)
+    write(path, text)
+
+
 def main() -> None:
     replace(
         "app/desktop_launcher.py",
@@ -46,10 +65,10 @@ def main() -> None:
         'f"{APP_TITLE} {__version__}\\n\\n"',
     )
 
-    replace(
+    ensure_single_import(
         "app/server.py",
         "from app.body_limit import RequestBodyLimitMiddleware\n",
-        "from app.body_limit import RequestBodyLimitMiddleware\nfrom app.brand import DISPLAY_NAME\n",
+        "from app.brand import DISPLAY_NAME",
     )
     for old, new in {
         'logger.info("Starting OpenVINO Windows LLM server — %s", mode)': 'logger.info("Starting %s server — %s", DISPLAY_NAME, mode)',
@@ -63,7 +82,17 @@ def main() -> None:
     for path in ("app/engine_handoff_routes.py", "app/model_library_routes.py"):
         text = read(path)
         import_line = "from app.brand import DISPLAY_NAME, LEGACY_DISPLAY_NAME"
-        if import_line not in text:
+        lines = text.splitlines()
+        deduplicated: list[str] = []
+        seen_import = False
+        for line in lines:
+            if line == import_line:
+                if seen_import:
+                    continue
+                seen_import = True
+            deduplicated.append(line)
+        text = "\n".join(deduplicated) + "\n"
+        if not seen_import:
             text = text.replace(
                 "from __future__ import annotations\n",
                 f"from __future__ import annotations\n\n{import_line}\n",
@@ -76,10 +105,10 @@ def main() -> None:
             raise RuntimeError(f"Expected title guard not found in {path}")
         write(path, text)
 
-    replace(
+    ensure_single_import(
         "app/diagnostics.py",
         "from app import __version__\n",
-        "from app import __version__\nfrom app.brand import DISPLAY_NAME\n",
+        "from app.brand import DISPLAY_NAME",
     )
     text = read("app/diagnostics.py").replace(
         "openvino-windows-llm-diagnostics-", "inferbridge-diagnostics-"
