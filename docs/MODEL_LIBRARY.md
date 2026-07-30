@@ -1,6 +1,6 @@
 # Verified Model Library
 
-The Verified Model Library is a curated browser layered over the mutable runtime catalog. It is intentionally not a public marketplace.
+The Verified Model Library is a curated browser layered over the mutable InferBridge runtime catalog. It is intentionally not a public marketplace.
 
 ## Evidence states
 
@@ -25,13 +25,15 @@ Rankings prefer local benchmark evidence when it exists and otherwise use conser
 
 ## Official manifest
 
-The server downloads only this fixed project release asset:
+InferBridge downloads only the fixed canonical project release asset:
 
 ```text
-https://github.com/Quazmoz/openvino-windows-llm/releases/latest/download/model-library-manifest.json
+https://github.com/Quazmoz/InferBridge/releases/latest/download/model-library-manifest.json
 ```
 
-The response must remain on an official GitHub release host, stay below 1 MB, use the supported schema, contain at most 50 entries, and pass the SHA-256 checksum of its canonical catalog. Release publication also includes this asset in the versioned SHA-256 checksum file. A valid copy is cached beside the writable model catalog. If it is unavailable or invalid, the bundled manifest remains the offline fallback.
+For compatibility with installations and releases from before the rename, the updater may also attempt the legacy repository location. Users cannot supply an arbitrary manifest URL.
+
+The response must remain on an approved GitHub release host, stay below 1 MB, use the supported schema, contain at most 50 entries, and pass the SHA-256 checksum of its canonical catalog. Release publication also includes this asset in the versioned SHA-256 checksum file. A valid copy is cached beside the writable model catalog. If it is unavailable or invalid, the bundled manifest remains the offline fallback.
 
 Checksums protect against corruption and inconsistent publication. They are not substitutes for HTTPS, GitHub account security, release signing, or Authenticode verification.
 
@@ -45,7 +47,7 @@ New conversions and imported OpenVINO IR directories receive a local `.ovllm-con
 - OpenVINO and OpenVINO GenAI versions
 - recording date
 
-The library reports conversions as compatible, legacy/untracked, stale after a runtime major/minor change, definition-mismatched, incomplete, or metadata-damaged. A warning does not delete or silently reconvert a model.
+The library reports conversions as compatible, legacy or untracked, stale after a runtime major or minor change, definition-mismatched, incomplete, or metadata-damaged. A warning does not delete or silently reconvert a model.
 
 ## Import and export
 
