@@ -30,6 +30,8 @@ def test_model_options_have_color_and_text_status_fallbacks():
     assert "● Not converted" in script
     assert "MutationObserver" in script
     assert "forced-colors:active" in script
+    assert '[data-theme="light"] #model-select.ovllm-model-state-loaded' in script
+    assert '[data-theme="light"] #model-select.ovllm-model-state-error' in script
 
 
 def test_loading_or_converting_a_second_model_requires_an_explicit_choice():
@@ -43,6 +45,15 @@ def test_loading_or_converting_a_second_model_requires_an_explicit_choice():
     assert "High-memory systems may handle this" in script
     assert "reduce generation speed" in script
     assert "guardBypass" in script
+
+
+def test_queued_prompt_is_guarded_before_chat_ui_state_is_mutated():
+    script = MODEL_LIFECYCLE_EXTENSION_JS
+
+    assert "chatFormElement.addEventListener('submit'" in script
+    assert "event.stopImmediatePropagation()" in script
+    assert "() => sendMessage()" in script
+    assert "targetModel.can_convert ? 'convert' : 'load'" in script
 
 
 def test_recommended_action_unloads_other_models_through_authenticated_api():
@@ -64,3 +75,4 @@ def test_multi_model_warning_is_accessible_and_keyboard_dismissible():
     assert "event.key === 'Escape'" in script
     assert "lastFocusedElement.focus()" in script
     assert "aria-describedby" in script
+    assert "!modalCancelButton.disabled" in script
