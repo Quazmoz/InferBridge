@@ -7,7 +7,7 @@ Installed application files may be read-only. Desktop mode therefore separates p
 The default data root is:
 
 ```text
-%LOCALAPPDATA%\OpenVINOWindowsLLM
+%LOCALAPPDATA%\InferBridge
 ```
 
 Subdirectories:

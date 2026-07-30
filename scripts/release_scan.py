@@ -84,7 +84,7 @@ def verify_release_requirements(path: Path) -> None:
 
 
 def verify_native_distribution(root: Path) -> None:
-    if not (root / "OpenVINOWindowsLLM.exe").is_file():
+    if not (root / "InferBridge.exe").is_file():
         raise RuntimeError("Packaged launcher executable is missing.")
     names = {item.name.lower() for item in root.rglob("*.dll")}
     required = {

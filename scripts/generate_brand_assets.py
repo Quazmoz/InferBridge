@@ -76,8 +76,8 @@ def generate_brand_assets(output_directory: Path) -> tuple[Path, Path]:
     """Write a 512px PNG and a multi-resolution Windows ICO file."""
 
     output_directory.mkdir(parents=True, exist_ok=True)
-    png_path = output_directory / "OpenVINOWindowsLLM.png"
-    ico_path = output_directory / "OpenVINOWindowsLLM.ico"
+    png_path = output_directory / "InferBridge.png"
+    ico_path = output_directory / "InferBridge.ico"
 
     icon = render_brand_icon()
     icon.save(png_path, format="PNG", optimize=True)

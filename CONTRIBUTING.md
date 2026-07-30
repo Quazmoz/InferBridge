@@ -1,6 +1,6 @@
-# Contributing to OpenVINO Windows LLM
+# Contributing to InferBridge
 
-Thank you for your interest in contributing to OpenVINO Windows LLM! We welcome all contributions, including bug fixes, documentation improvements, feature requests, and code enhancements.
+Thank you for your interest in contributing to InferBridge! We welcome all contributions, including bug fixes, documentation improvements, feature requests, and code enhancements.
 
 This document provides guidelines for contributing to this project.
 
@@ -19,7 +19,7 @@ First, fork this repository on GitHub, and then clone your fork locally:
 
 ```powershell
 git clone https://github.com/<your-username>/openvino-windows-llm.git
-cd openvino-windows-llm
+cd InferBridge
 ```
 
 ### 2. Set Up Your Environment

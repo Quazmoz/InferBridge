@@ -1,10 +1,10 @@
-# OpenVINO Windows LLM
+# InferBridge
 
 ## Video walkthrough
 
-[▶ Watch the OpenVINO Windows LLM walkthrough](https://youtu.be/rya6rJhkQrw)
+[▶ Watch the InferBridge walkthrough](https://youtu.be/rya6rJhkQrw)
 
-**OpenVINO Windows LLM turns Intel Windows PCs into local AI workstations.** It wraps OpenVINO GenAI in a Windows-first, OpenAI-compatible server with streaming chat, local vision chat, text embeddings, model lifecycle management, CPU/GPU/NPU device targeting, System Doctor hardware diagnostics, hardware benchmarking, a built-in browser UI, and a deterministic mock engine.
+**InferBridge turns Intel Windows PCs into local AI workstations.** It wraps OpenVINO GenAI in a Windows-first, OpenAI-compatible server with streaming chat, local vision chat, text embeddings, model lifecycle management, CPU/GPU/NPU device targeting, System Doctor hardware diagnostics, hardware benchmarking, a built-in browser UI, and a deterministic mock engine.
 
 The project keeps OpenVINO as the inference runtime. It does not require Docker, cloud inference, Electron, or a Node frontend toolchain.
 
@@ -18,9 +18,9 @@ The project keeps OpenVINO as the inference runtime. It does not require Docker,
 
 Downloads (GitHub release `v0.6.1`):
 
-- [Windows installer (.exe)](https://github.com/Quazmoz/openvino-windows-llm/releases/download/v0.6.1/OpenVINO-Windows-LLM-0.6.1-windows-x64-installer.exe)
-- [Portable ZIP](https://github.com/Quazmoz/openvino-windows-llm/releases/download/v0.6.1/OpenVINO-Windows-LLM-0.6.1-windows-x64-portable.zip)
-- [SHA-256 checksums](https://github.com/Quazmoz/openvino-windows-llm/releases/download/v0.6.1/OpenVINO-Windows-LLM-0.6.1-checksums.txt)
+- [Windows installer (.exe)](https://github.com/Quazmoz/InferBridge/releases/download/v0.6.1/InferBridge-0.6.1-windows-x64-installer.exe)
+- [Portable ZIP](https://github.com/Quazmoz/InferBridge/releases/download/v0.6.1/InferBridge-0.6.1-windows-x64-portable.zip)
+- [SHA-256 checksums](https://github.com/Quazmoz/InferBridge/releases/download/v0.6.1/InferBridge-0.6.1-checksums.txt)
 
 References: [compatibility matrix](docs/COMPATIBILITY_MATRIX.md) · [expanded certification evidence](docs/certification/0.6.1/expanded-coverage-issue17/)
 
@@ -35,7 +35,7 @@ Support remains specific to your hardware, model, driver, and OpenVINO version: 
 The P0 desktop distribution is a thin Windows launcher around the existing FastAPI server and browser UI.
 
 1. Download a versioned portable ZIP or installer artifact.
-2. Run `OpenVINOWindowsLLM.exe` from the extracted package or Start Menu.
+2. Run `InferBridge.exe` from the extracted package or Start Menu.
 3. Review the hardware and OpenVINO system scan.
 4. Confirm whether an Intel NPU is usable or select the offered CPU/GPU fallback.
 5. Accept the conservative model recommendation or choose another compatible model.
@@ -51,13 +51,13 @@ The first model setup can take significant time. NPU support depends on the actu
 
 ### Windows installer
 
-The Inno Setup configuration installs per-user under `%LOCALAPPDATA%\Programs\OpenVINOWindowsLLM`, creates a Start Menu shortcut, optionally creates a desktop shortcut, and preserves models and user data by default during upgrades and uninstall.
+The Inno Setup configuration installs per-user under `%LOCALAPPDATA%\Programs\InferBridge`, creates a Start Menu shortcut, optionally creates a desktop shortcut, and preserves models and user data by default during upgrades and uninstall.
 
 See [Windows installer guide](docs/INSTALLER.md).
 
 ### Portable ZIP
 
-Extract the ZIP to a writable directory and run `OpenVINOWindowsLLM.exe`. Portable mode stores mutable data under a sibling `data` directory.
+Extract the ZIP to a writable directory and run `InferBridge.exe`. Portable mode stores mutable data under a sibling `data` directory.
 
 See [portable package guide](docs/PORTABLE.md).
 
@@ -66,8 +66,8 @@ See [portable package guide](docs/PORTABLE.md).
 Windows remains the primary source-development target:
 
 ```powershell
-git clone https://github.com/Quazmoz/openvino-windows-llm.git
-cd openvino-windows-llm
+git clone https://github.com/Quazmoz/InferBridge.git
+cd InferBridge
 .\setup.bat
 .\start_server.bat --mock
 ```
@@ -93,27 +93,27 @@ The screenshots below demonstrate the application running live OpenVINO GenAI in
 
 ### Main chat interface
 
-![OpenVINO Windows LLM Chat Interface](screenshots/chat_preview.png)
+![InferBridge Chat Interface](screenshots/chat_preview.png)
 
 ### Hardware diagnostics and System Doctor
 
-![OpenVINO Windows LLM System Doctor Hardware Diagnostics](screenshots/system_doctor.png)
+![InferBridge System Doctor Hardware Diagnostics](screenshots/system_doctor.png)
 
 ### Settings and system information
 
-![OpenVINO Windows LLM Settings](screenshots/settings_preview.png)
+![InferBridge Settings](screenshots/settings_preview.png)
 
 ### First-run model flow
 
-![OpenVINO Windows LLM Empty State](screenshots/empty_state.png)
+![InferBridge Empty State](screenshots/empty_state.png)
 
 ### Light theme
 
-![OpenVINO Windows LLM Light Theme](screenshots/light_theme.png)
+![InferBridge Light Theme](screenshots/light_theme.png)
 
 ### Responsive layout
 
-![OpenVINO Windows LLM Responsive Layout](screenshots/responsive_preview.png)
+![InferBridge Responsive Layout](screenshots/responsive_preview.png)
 
 ## Documentation
 
@@ -187,7 +187,7 @@ The screenshots below demonstrate the application running live OpenVINO GenAI in
 Installed mode uses:
 
 ```text
-%LOCALAPPDATA%\OpenVINOWindowsLLM
+%LOCALAPPDATA%\InferBridge
 ```
 
 Portable mode uses:
@@ -288,7 +288,7 @@ The desktop distribution copies the bundled catalog into writable configuration.
 
 ```powershell
 .\scripts\build_windows_distribution.ps1
-.\scripts\smoke_test_packaged.ps1 -DistributionPath .\dist\OpenVINOWindowsLLM
+.\scripts\smoke_test_packaged.ps1 -DistributionPath .\dist\InferBridge
 ```
 
 The build script produces a versioned portable ZIP and, when Inno Setup is available, a per-user installer. It generates SHA-256 checksums and labels unsigned builds accurately.
@@ -320,8 +320,8 @@ Real hardware evidence:
 ## Experimental Linux
 
 ```bash
-git clone https://github.com/Quazmoz/openvino-windows-llm.git
-cd openvino-windows-llm
+git clone https://github.com/Quazmoz/InferBridge.git
+cd InferBridge
 chmod +x setup.sh start_server.sh setup/*.sh setup/linux/*.sh
 ./setup.sh --minimal
 ./start_server.sh --mock

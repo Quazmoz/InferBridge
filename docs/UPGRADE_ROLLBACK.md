@@ -4,7 +4,7 @@
 
 The installer uses a stable application ID and upgrades the registered installation in place. Before copying a new release, it removes the previous immutable PyInstaller payload from the installation directory. This prevents stale Python modules, DLLs, or native extensions from being mixed with the new build.
 
-Mutable data remains under `%LOCALAPPDATA%\OpenVINOWindowsLLM`, outside the installation directory. Models, configuration, onboarding state, benchmark history, caches, logs, diagnostics, and small configuration backups therefore survive ordinary upgrades. The installer cleanup does not target that data directory.
+Mutable data remains under `%LOCALAPPDATA%\InferBridge`, outside the installation directory. Models, configuration, onboarding state, benchmark history, caches, logs, diagnostics, and small configuration backups therefore survive ordinary upgrades. The installer cleanup does not target that data directory.
 
 Inno Setup asks Windows Restart Manager to close and restart the packaged executable. Quit the tray before upgrading when possible. A reboot should occur only when Windows cannot replace a locked file. Review the setup log if an upgrade is partial.
 
@@ -25,7 +25,7 @@ A release refuses to start when the data schema is newer than it understands. Fu
 ## Rollback procedure
 
 1. Quit the tray and confirm the local server has stopped.
-2. Preserve `%LOCALAPPDATA%\OpenVINOWindowsLLM\config` or the portable `data\config` directory.
+2. Preserve `%LOCALAPPDATA%\InferBridge\config` or the portable `data\config` directory.
 3. Review the target release manifest data-schema fields and known issues.
 4. Install or extract the prior release.
 5. Reuse models only when the target manifest says model cache is compatible.

@@ -2,7 +2,7 @@
 
 ## Tray icon does not appear
 
-Review `%LOCALAPPDATA%\OpenVINOWindowsLLM\logs\tray.log` or the portable `data\logs\tray.log`. A native error dialog should identify a missing or failed tray dependency. Reinstall a complete artifact rather than installing Python packages manually into the packaged directory.
+Review `%LOCALAPPDATA%\InferBridge\logs\tray.log` or the portable `data\logs\tray.log`. A native error dialog should identify a missing or failed tray dependency. Reinstall a complete artifact rather than installing Python packages manually into the packaged directory.
 
 ## Application data is not writable
 
@@ -22,7 +22,7 @@ Active generation requests receive bounded drain time. Model conversion, loading
 
 ## Start with Windows fails
 
-The registration is stored in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\OpenVINOWindowsLLM`. No administrator access is required. Portable mode deliberately disables this option. Security software or managed Windows policy may block registry writes; the tray reports the sanitized error.
+The registration is stored in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\InferBridge`. No administrator access is required. Portable mode deliberately disables this option. Security software or managed Windows policy may block registry writes; the tray reports the sanitized error.
 
 ## Diagnostics export fails
 

@@ -4,7 +4,7 @@ The Inno Setup configuration targets Windows x64-compatible systems on build 190
 
 ## Installation behavior
 
-- per-user installation under `%LOCALAPPDATA%\Programs\OpenVINOWindowsLLM`
+- per-user installation under `%LOCALAPPDATA%\Programs\InferBridge`
 - no administrator rights required for the normal path
 - Start Menu shortcut launching the system-tray controller
 - optional desktop shortcut
@@ -30,6 +30,6 @@ Before compiling the installer, the release pipeline runs the packaged executabl
 
 ## Upgrade and uninstall
 
-Installer upgrades replace application files only. Mutable data remains under `%LOCALAPPDATA%\OpenVINOWindowsLLM`.
+Installer upgrades replace application files only. Mutable data remains under `%LOCALAPPDATA%\InferBridge`.
 
 Interactive uninstall asks whether to retain downloaded models, settings, logs, benchmarks, onboarding state, and diagnostics. Preservation is the default. Disable Start with Windows from the tray before uninstall when possible; the per-user Run value can also be removed manually.

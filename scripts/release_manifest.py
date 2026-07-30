@@ -60,9 +60,9 @@ def write_version_info(path: Path, version: str) -> None:
         f"""VSVersionInfo(
   ffi=FixedFileInfo(filevers={numeric!r}, prodvers={numeric!r}, mask=0x3f, flags=0x0, OS=0x40004, fileType=0x1, subtype=0x0, date=(0, 0)),
   kids=[StringFileInfo([StringTable('040904B0', [
-    StringStruct('CompanyName', 'Quazmoz'), StringStruct('FileDescription', 'OpenVINO Windows LLM'),
-    StringStruct('FileVersion', '{version}'), StringStruct('InternalName', 'OpenVINOWindowsLLM'),
-    StringStruct('OriginalFilename', 'OpenVINOWindowsLLM.exe'), StringStruct('ProductName', 'OpenVINO Windows LLM'),
+    StringStruct('CompanyName', 'Quazmoz'), StringStruct('FileDescription', 'InferBridge'),
+    StringStruct('FileVersion', '{version}'), StringStruct('InternalName', 'InferBridge'),
+    StringStruct('OriginalFilename', 'InferBridge.exe'), StringStruct('ProductName', 'InferBridge'),
     StringStruct('ProductVersion', '{version}')])]), VarFileInfo([VarStruct('Translation', [1033, 1200])])]
 )
 """,
@@ -124,7 +124,7 @@ def build_manifest(
     if not notes.is_file():
         raise RuntimeError(f"Release notes are missing: {notes.name}")
     summary, highlights = _notes(notes)
-    base = f"https://github.com/Quazmoz/openvino-windows-llm/releases/download/v{version}"
+    base = f"https://github.com/Quazmoz/InferBridge/releases/download/v{version}"
     artifacts = []
     for kind in ("installer", "portable", "third_party_licenses", "release_notes"):
         path = output_dir / artifact_filename(version, kind)
@@ -169,9 +169,9 @@ def build_manifest(
             model_cache_compatible=True,
             compiled_cache_policy="Invalidate compiled cache when OpenVINO, device, driver, or compilation properties change.",
         ),
-        release_notes_url=f"https://github.com/Quazmoz/openvino-windows-llm/releases/tag/v{version}",
-        known_issues_url=f"https://github.com/Quazmoz/openvino-windows-llm/blob/v{version}/docs/KNOWN_ISSUES.md",
-        compatibility_matrix_url=f"https://github.com/Quazmoz/openvino-windows-llm/blob/v{version}/docs/COMPATIBILITY_MATRIX.md",
+        release_notes_url=f"https://github.com/Quazmoz/InferBridge/releases/tag/v{version}",
+        known_issues_url=f"https://github.com/Quazmoz/InferBridge/blob/v{version}/docs/KNOWN_ISSUES.md",
+        compatibility_matrix_url=f"https://github.com/Quazmoz/InferBridge/blob/v{version}/docs/COMPATIBILITY_MATRIX.md",
         summary=summary,
         highlights=highlights,
         dependency_inventory_filename=inventory_filename,
