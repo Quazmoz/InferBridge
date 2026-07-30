@@ -1,0 +1,220 @@
+name: Finalize InferBridge post-rename migration
+
+on:
+  push:
+    branches: ["rename/inferbridge"]
+    paths: [".github/workflows/inferbridge-post-rename-finalize.yml"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: inferbridge-post-rename-finalize
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout migration branch
+        uses: actions/checkout@v4
+        with:
+          ref: rename/inferbridge
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Apply post-rename corrections
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              if old not in text:
+                  raise SystemExit(f"Expected text not found in {path}: {old[:100]!r}")
+              file.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          replace(
+              "CONTRIBUTING.md",
+              "git clone https://github.com/<your-username>/openvino-windows-llm.git",
+              "git clone https://github.com/<your-username>/InferBridge.git",
+          )
+
+          replace(
+              "README.md",
+              "**Current development version: `0.7.0`.** This branch rebrands the product as InferBridge",
+              "**Current development version: `0.7.0`.** Version 0.7.0 rebrands the product as InferBridge",
+          )
+
+          release_manifest = Path("scripts/release_manifest.py")
+          text = release_manifest.read_text(encoding="utf-8")
+          text = text.replace(
+              "from app.build_info import BuildInfo\n",
+              "from app.brand import LEGACY_REPOSITORY_NAME, REPOSITORY_NAME, REPOSITORY_OWNER\nfrom app.build_info import BuildInfo\n",
+              1,
+          )
+          text = text.replace(
+              '''_ALLOWED_RELEASE_REPOSITORIES = {\n    "Quazmoz/openvino-windows-llm",\n    "Quazmoz/InferBridge",\n}\n''',
+              '''_ALLOWED_RELEASE_REPOSITORIES = {\n    f"{REPOSITORY_OWNER}/{REPOSITORY_NAME}",\n    f"{REPOSITORY_OWNER}/{LEGACY_REPOSITORY_NAME}",\n}\n_DEFAULT_RELEASE_REPOSITORY = f"{REPOSITORY_OWNER}/{REPOSITORY_NAME}"\n''',
+              1,
+          )
+          text = text.replace(
+              '    selected = configured or automatic or "Quazmoz/openvino-windows-llm"\n',
+              '    selected = configured or automatic or _DEFAULT_RELEASE_REPOSITORY\n',
+              1,
+          )
+          release_manifest.write_text(text, encoding="utf-8")
+
+          replace(
+              "app/update_checker.py",
+              "    for repository in (LEGACY_REPOSITORY_NAME, REPOSITORY_NAME)\n",
+              "    for repository in (REPOSITORY_NAME, LEGACY_REPOSITORY_NAME)\n",
+          )
+
+          Path("docs/INFERBRIDGE_MIGRATION.md").write_text(
+              '''# InferBridge migration and repository-rename plan
+
+## Product positioning
+
+**InferBridge** is local AI for Intel hardware: a Windows-first local AI server with an OpenAI-compatible API, powered by OpenVINO GenAI.
+
+OpenVINO remains the inference runtime and dependency. InferBridge does not replace or own OpenVINO and does not claim affiliation with Intel.
+
+## Repository rename status
+
+The repository was renamed to `Quazmoz/InferBridge` on July 30, 2026. GitHub retained the repository identity, history, branches, issues, releases, tags, and stars.
+
+No compatibility-aware public release was published before the slug changed. Older installations that predate InferBridge-aware update discovery may require one manual installer upgrade if GitHub's legacy releases API or embedded release URLs do not redirect reliably. InferBridge 0.7.0 and later accept both the canonical and legacy repository release locations, manifest names, and artifact prefixes.
+
+Do not create a replacement repository at `Quazmoz/openvino-windows-llm`; the old path must remain available as GitHub's redirect.
+
+## Installer behavior
+
+- Preserve `AppId={{F94A3938-C943-4E6D-B482-852D4AAE06F8}` exactly.
+- New installs default to `%LOCALAPPDATA%\\Programs\\InferBridge`.
+- Existing installs may retain their previous install directory through the preserved `AppId` and `UsePreviousAppDir=yes`.
+- Upgrade cleanup recognizes `InferBridge.exe` and `OpenVINOWindowsLLM.exe` and removes legacy executable and shortcut remnants.
+- Uninstall preserves mutable data by default. Explicit removal deletes only the exact InferBridge and legacy application-data directories.
+
+## Data-directory selection
+
+1. `OV_LLM_DATA_DIR` remains the highest-priority override.
+2. Portable mode continues using `<portable root>\\data`.
+3. Installed mode uses `%LOCALAPPDATA%\\InferBridge` when that directory already exists.
+4. If the new directory does not exist and `%LOCALAPPDATA%\\OpenVINOWindowsLLM` exists, the legacy directory remains active.
+5. A clean install uses `%LOCALAPPDATA%\\InferBridge`.
+6. No automatic multi-gigabyte move or merge occurs.
+7. If both directories contain data, InferBridge is selected and a privacy-safe warning is emitted.
+
+## Start with Windows
+
+InferBridge uses the registry value name `InferBridge`. A recognized enabled `OpenVINOWindowsLLM` value that points to the previous executable is migrated to the new value and command. Disabled users remain disabled, portable mode remains ineligible, and unrelated registry values are untouched.
+
+## Post-rename verification
+
+The GitHub connector confirms the canonical repository is `Quazmoz/InferBridge` and the migration branch remains based on the original repository history. Before publishing 0.7.0, verify clone, fetch, push, old web and Git redirects, the legacy REST releases endpoint, manifest and checksum downloads, and release-asset redirects from a real network environment.
+
+## Release repository selection
+
+Release manifests now default to `Quazmoz/InferBridge`. GitHub Actions also resolves the canonical repository through `GITHUB_REPOSITORY`. `OV_LLM_RELEASE_REPOSITORY` remains a restricted transition override that accepts only `Quazmoz/InferBridge` or `Quazmoz/openvino-windows-llm` for compatibility testing and historical release verification.
+''',
+              encoding="utf-8",
+          )
+
+          Path("tests/test_inferbridge_release_repository.py").write_text(
+              '''import pytest
+
+from scripts.release_manifest import release_repository
+
+
+def test_release_repository_defaults_to_canonical_after_rename():
+    assert release_repository({}) == "Quazmoz/InferBridge"
+
+
+def test_release_repository_uses_renamed_github_repository():
+    assert release_repository({"GITHUB_REPOSITORY": "Quazmoz/InferBridge"}) == "Quazmoz/InferBridge"
+
+
+def test_release_repository_allows_explicit_legacy_transition_override():
+    assert (
+        release_repository({"OV_LLM_RELEASE_REPOSITORY": "Quazmoz/openvino-windows-llm"})
+        == "Quazmoz/openvino-windows-llm"
+    )
+
+
+def test_release_repository_rejects_lookalike_repository():
+    with pytest.raises(ValueError):
+        release_repository({"OV_LLM_RELEASE_REPOSITORY": "Quazmoz/InferBridge-malicious"})
+''',
+              encoding="utf-8",
+          )
+
+          update_tests = Path("tests/test_update_checker.py")
+          text = update_tests.read_text(encoding="utf-8")
+          text = text.replace(
+              "from app.release_models import artifact_filename\n",
+              "from app.brand import USER_AGENT_PRODUCT\nfrom app.release_models import artifact_filename\nfrom app.version import __version__\n",
+              1,
+          )
+          text = text.replace(
+              '        "OpenVINO-Windows-LLM/0.6.3" in headers.get("User-agent", "")\n',
+              '        f"{USER_AGENT_PRODUCT}/{__version__}" in headers.get("User-agent", "")\n',
+              1,
+          )
+          update_tests.write_text(text, encoding="utf-8")
+
+          compatibility_tests = Path("tests/test_inferbridge_update_compatibility.py")
+          text = compatibility_tests.read_text(encoding="utf-8")
+          text = text.replace(
+              "from app.update_checker import _candidate_manifest_url\n",
+              "from app.update_checker import _RELEASES_APIS, _candidate_manifest_url\n",
+              1,
+          )
+          addition = '''\n\ndef test_canonical_release_api_is_checked_before_legacy_fallback():\n    assert "/Quazmoz/InferBridge/releases" in _RELEASES_APIS[0]\n    assert "/Quazmoz/openvino-windows-llm/releases" in _RELEASES_APIS[1]\n'''
+          if "test_canonical_release_api_is_checked_before_legacy_fallback" not in text:
+              text += addition
+          compatibility_tests.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Install development dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev]
+
+      - name: Run final validation
+        env:
+          OV_LLM_MOCK: "true"
+        run: |
+          ruff check .
+          ruff format --check .
+          python -m py_compile \
+            app/brand.py \
+            app/paths.py \
+            app/startup_registration.py \
+            app/release_models.py \
+            app/update_checker.py \
+            scripts/release_manifest.py \
+            scripts/release_scan.py \
+            scripts/verify_release_signing.py \
+            scripts/verify_release_provenance.py
+          pytest
+
+      - name: Commit validated corrections and remove bootstrap
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm .github/workflows/inferbridge-post-rename-finalize.yml
+          git add -A
+          git commit -m "fix: finalize InferBridge repository rename"
+          git push origin HEAD:rename/inferbridge
