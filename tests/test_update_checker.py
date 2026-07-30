@@ -149,7 +149,7 @@ def test_fresh_update_checks_are_disabled_and_make_no_request(tmp_path):
 def test_stable_user_ignores_beta_release(tmp_path):
     store = UpdateStore(tmp_path)
     store.save_preferences(UpdatePreferences(enabled=True))
-    opener, _calls = opener_for("0.7.0-beta.1", "beta")
+    opener, _calls = opener_for("0.8.0-beta.1", "beta")
     result = UpdateChecker(
         store=store,
         installation_mode="installed",
@@ -162,7 +162,7 @@ def test_stable_user_ignores_beta_release(tmp_path):
 def test_beta_user_sees_beta_release_and_installed_artifact(tmp_path):
     store = UpdateStore(tmp_path)
     store.save_preferences(UpdatePreferences(enabled=True, channel="beta"))
-    opener, calls = opener_for("0.7.0-beta.1", "beta")
+    opener, calls = opener_for("0.8.0-beta.1", "beta")
     result = UpdateChecker(
         store=store,
         installation_mode="installed",
@@ -181,7 +181,7 @@ def test_beta_user_sees_beta_release_and_installed_artifact(tmp_path):
 def test_portable_user_receives_portable_artifact(tmp_path):
     store = UpdateStore(tmp_path)
     store.save_preferences(UpdatePreferences(enabled=True))
-    opener, _calls = opener_for("0.7.0", "stable")
+    opener, _calls = opener_for("0.8.0", "stable")
     result = UpdateChecker(
         store=store,
         installation_mode="portable",
@@ -193,15 +193,15 @@ def test_portable_user_receives_portable_artifact(tmp_path):
 
 def test_skip_version_persists_and_suppresses_prompt(tmp_path):
     store = UpdateStore(tmp_path)
-    store.save_preferences(UpdatePreferences(enabled=True, skipped_versions=["0.7.0"]))
-    opener, _calls = opener_for("0.7.0", "stable")
+    store.save_preferences(UpdatePreferences(enabled=True, skipped_versions=["0.8.0"]))
+    opener, _calls = opener_for("0.8.0", "stable")
     result = UpdateChecker(
         store=store,
         installation_mode="installed",
         opener=opener,
     ).check(force=True)
     assert result.status == "current"
-    assert store.load_preferences().skipped_versions == ["0.7.0"]
+    assert store.load_preferences().skipped_versions == ["0.8.0"]
 
 
 def test_disabled_update_checks_make_no_request(tmp_path):
@@ -241,7 +241,7 @@ def test_malformed_manifest_is_rejected(tmp_path):
 
     def opener(request, timeout):
         if "api.github.com" in request.full_url:
-            return Response(release_payload("0.7.0", False))
+            return Response(release_payload("0.8.0", False))
         return Response({"schema_version": 999})
 
     result = UpdateChecker(
@@ -263,7 +263,7 @@ def test_malformed_cached_manifest_is_cleared_and_refetched(tmp_path):
             manifest={"schema_version": 999},
         )
     )
-    opener, calls = opener_for("0.7.0", "stable")
+    opener, calls = opener_for("0.8.0", "stable")
 
     result = UpdateChecker(
         store=store,
@@ -274,4 +274,4 @@ def test_malformed_cached_manifest_is_cleared_and_refetched(tmp_path):
     assert result.status == "available"
     assert len(calls) == 2
     assert "If-none-match" not in calls[0][2]
-    assert store.load_cache().latest_checked_version == "0.7.0"
+    assert store.load_cache().latest_checked_version == "0.8.0"

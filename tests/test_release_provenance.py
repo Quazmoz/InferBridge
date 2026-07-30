@@ -32,12 +32,12 @@ def _artifacts(tmp_path: Path, *, commit: str = COMMIT) -> tuple[Path, Path]:
         commit=commit,
         clean=True,
         signed_types=set(),
-        inventory_filename=f"OpenVINO-Windows-LLM-{version}-dependency-inventory.json",
+        inventory_filename=f"InferBridge-{version}-dependency-inventory.json",
     )
     (tmp_path / artifact_filename(version, "manifest")).write_text(
         manifest.model_dump_json(indent=2) + "\n", encoding="utf-8"
     )
-    summary_path = tmp_path / f"OpenVINO-Windows-LLM-{version}-release-summary.json"
+    summary_path = tmp_path / f"InferBridge-{version}-release-summary.json"
     summary_path.write_text(
         json.dumps(
             {

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ntpath
 import os
 import re
 import subprocess
@@ -107,7 +108,7 @@ def _command_executable_name(command: str | None) -> str | None:
     match = re.match(r'^\s*(?:"([^"]+)"|([^\s]+))', value)
     if not match:
         return None
-    return Path(match.group(1) or match.group(2)).name.casefold()
+    return ntpath.basename(match.group(1) or match.group(2)).casefold()
 
 
 def _recognized_legacy_command(command: str | None) -> bool:

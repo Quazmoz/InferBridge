@@ -13,7 +13,7 @@ def test_installer_reuses_identity_and_removes_only_immutable_runtime_payload():
     assert "AppId={{F94A3938-C943-4E6D-B482-852D4AAE06F8}" in script
     assert "UsePreviousAppDir=yes" in script
     assert "CloseApplications=yes" in script
-    assert "CloseApplicationsFilter={#MyAppExeName},*.dll,*.pyd" in script
+    assert "CloseApplicationsFilter={#MyAppExeName},{#MyLegacyAppExeName},*.dll,*.pyd" in script
     assert "RestartApplications=yes" in script
     assert "Flags: nowait postinstall skipifsilent" in script
     assert "runascurrentuser" not in script
@@ -46,7 +46,7 @@ def test_pyinstaller_collects_psutil_python_and_native_files_from_one_environmen
 
 
 def _native_distribution(tmp_path: Path) -> Path:
-    (tmp_path / "OpenVINOWindowsLLM.exe").write_bytes(b"exe")
+    (tmp_path / "InferBridge.exe").write_bytes(b"exe")
     native = tmp_path / "_internal" / "native"
     native.mkdir(parents=True)
     for name in (

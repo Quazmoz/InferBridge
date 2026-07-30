@@ -128,7 +128,7 @@ def verify_release_signing(
             launchers = [
                 name
                 for name in archive.namelist()
-                if Path(name.replace("\\", "/")).name.lower() == "openvinowindowsllm.exe"
+                if Path(name.replace("\\", "/")).name.lower() == "inferbridge.exe"
             ]
             if len(launchers) != 1:
                 raise SigningVerificationError(

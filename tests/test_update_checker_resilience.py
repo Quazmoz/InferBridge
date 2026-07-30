@@ -35,4 +35,4 @@ def test_checker_normalizes_naive_clock_and_clamps_timeout(tmp_path):
 
     assert result.status == "offline"
     assert result.checked_at == datetime(2026, 7, 29, 12, tzinfo=UTC)
-    assert calls == [0.1]
+    assert calls == [0.1, 0.1]

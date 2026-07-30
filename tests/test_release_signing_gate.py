@@ -9,11 +9,11 @@ from scripts.verify_release_signing import SigningVerificationError, verify_rele
 
 def _write_release(tmp_path: Path, *, installer: bool, launcher: bool) -> None:
     version = "9.9.9"
-    installer_name = f"OpenVINO-Windows-LLM-{version}-windows-x64-installer.exe"
-    portable_name = f"OpenVINO-Windows-LLM-{version}-windows-x64-portable.zip"
+    installer_name = f"InferBridge-{version}-windows-x64-installer.exe"
+    portable_name = f"InferBridge-{version}-windows-x64-portable.zip"
     (tmp_path / installer_name).write_bytes(b"installer")
     with zipfile.ZipFile(tmp_path / portable_name, "w") as archive:
-        archive.writestr(f"OpenVINO-Windows-LLM-{version}/OpenVINOWindowsLLM.exe", b"launcher")
+        archive.writestr(f"InferBridge-{version}/InferBridge.exe", b"launcher")
     manifest = {
         "artifacts": [
             {
@@ -34,10 +34,10 @@ def _write_release(tmp_path: Path, *, installer: bool, launcher: bool) -> None:
         "installer_signature_verified": installer,
         "launcher_signature_verified": launcher,
     }
-    (tmp_path / f"OpenVINO-Windows-LLM-{version}-release-manifest.json").write_text(
+    (tmp_path / f"InferBridge-{version}-release-manifest.json").write_text(
         json.dumps(manifest), encoding="utf-8"
     )
-    (tmp_path / f"OpenVINO-Windows-LLM-{version}-release-summary.json").write_text(
+    (tmp_path / f"InferBridge-{version}-release-summary.json").write_text(
         json.dumps(summary), encoding="utf-8"
     )
 

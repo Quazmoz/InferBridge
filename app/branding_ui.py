@@ -63,6 +63,7 @@ def _apply_static_branding(html: str) -> str:
     )
     html = html.replace(">OpenVINO LLM<", f">{DISPLAY_NAME}<")
     html = html.replace(">OpenVINO GenAI<", f">{APPLICATION_TAGLINE}<")
+    html = html.replace(">Local &bull; Private &bull; Intel<", f">{APPLICATION_TAGLINE}<")
     return html
 
 

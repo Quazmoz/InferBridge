@@ -19,7 +19,7 @@ def test_installed_and_portable_paths_are_writable_locations(monkeypatch, tmp_pa
     )
     portable = desktop_paths.resolve_runtime_paths(desktop=True, portable=True, env={})
 
-    assert installed.data_root == (tmp_path / "local" / "OpenVINOWindowsLLM").resolve()
+    assert installed.data_root == (tmp_path / "local" / "InferBridge").resolve()
     assert installed.models_file == installed.config_dir / "models.json"
     assert portable.data_root == (executable / "data").resolve()
     assert portable.models_dir == portable.data_root / "models"

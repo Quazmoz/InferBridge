@@ -85,15 +85,9 @@ def test_release_channel_filtering():
 
 
 def test_artifact_names_are_deterministic():
-    assert (
-        artifact_filename("0.3.0", "installer")
-        == "OpenVINO-Windows-LLM-0.3.0-windows-x64-installer.exe"
-    )
-    assert (
-        artifact_filename("0.3.0", "portable")
-        == "OpenVINO-Windows-LLM-0.3.0-windows-x64-portable.zip"
-    )
-    assert artifact_filename("0.3.0", "checksums") == "OpenVINO-Windows-LLM-0.3.0-checksums.txt"
+    assert artifact_filename("0.3.0", "installer") == "InferBridge-0.3.0-windows-x64-installer.exe"
+    assert artifact_filename("0.3.0", "portable") == "InferBridge-0.3.0-windows-x64-portable.zip"
+    assert artifact_filename("0.3.0", "checksums") == "InferBridge-0.3.0-checksums.txt"
 
 
 def test_signed_state_requires_verified_signature():

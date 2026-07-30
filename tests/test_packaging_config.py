@@ -26,7 +26,7 @@ def test_windowed_runtime_hook_restores_redirected_child_streams():
 def test_installer_is_per_user_and_preserves_data_by_default():
     script = (ROOT / "packaging" / "installer.iss").read_text(encoding="utf-8")
     assert "PrivilegesRequired=lowest" in script
-    assert "{localappdata}\\Programs\\OpenVINOWindowsLLM" in script
+    assert "{localappdata}\\Programs\\InferBridge" in script
     assert "Create a desktop shortcut" in script
     assert "IDYES" in script
     assert "DelTree" in script

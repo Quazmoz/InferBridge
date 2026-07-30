@@ -26,4 +26,4 @@ def test_web_brand_icon_is_packaged_as_svg():
     icon = (ROOT / "web" / "app-icon.svg").read_text(encoding="utf-8")
     assert 'viewBox="0 0 512 512"' in icon
     assert "linearGradient" in icon
-    assert "OpenVINO Windows LLM" in icon
+    assert "InferBridge" in icon
