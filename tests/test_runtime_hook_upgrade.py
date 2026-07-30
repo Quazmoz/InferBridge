@@ -35,11 +35,12 @@ def test_runtime_hook_replaces_native_dependency_traceback_with_repair_guidance(
 def test_runtime_hook_sanitizes_failure_details_and_has_a_stderr_fallback():
     hook = RUNTIME_HOOK.read_text(encoding="utf-8")
 
+    assert '_PATH_REDACTION = "[redacted path]"' in hook
     assert "_QUOTED_WINDOWS_PATH_RE" in hook
     assert "_WINDOWS_PATH_RE" in hook
     assert "_POSIX_HOME_RE" in hook
-    assert '_WINDOWS_PATH_RE.sub(lambda _match: "...\\\\", detail)' in hook
-    assert '_POSIX_HOME_RE.sub(".../", detail)' in hook
+    assert "_WINDOWS_PATH_RE.sub(_PATH_REDACTION, detail)" in hook
+    assert "_POSIX_HOME_RE.sub(_PATH_REDACTION, detail)" in hook
     assert 'sys.stderr.write(message + "\\n")' in hook
     assert "sys.stderr.flush()" in hook
 
@@ -57,8 +58,7 @@ def test_runtime_hook_redacts_quoted_and_unquoted_user_paths_with_spaces():
     assert "Quinn" not in detail
     assert "quinn" not in detail
     assert "AppData" not in detail
-    assert "...\\" in detail
-    assert ".../" in detail
+    assert detail.count("[redacted path]") == 2
 
     unquoted = sanitize(
         RuntimeError(
@@ -67,6 +67,7 @@ def test_runtime_hook_redacts_quoted_and_unquoted_user_paths_with_spaces():
     )
     assert "Quinn" not in unquoted
     assert "AppData" not in unquoted
+    assert "[redacted path]" in unquoted
     assert unquoted.endswith("incompatible")
 
 
