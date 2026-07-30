@@ -79,8 +79,8 @@ def _record_runtime_failure(detail: str) -> None:
 
 def _show_runtime_failure(detail: str) -> None:
     message = (
-        "The installed application contains incompatible runtime files, usually because files "
-        "from two versions were mixed during an older upgrade.\n\n"
+        "The installed application contains incompatible runtime files, usually because "
+        "files from two versions were mixed during an older upgrade.\n\n"
         "Close OpenVINO Windows LLM and run the latest installer over the existing installation. "
         "The installer will replace application files while preserving downloaded models, settings, "
         "and logs.\n\n"
