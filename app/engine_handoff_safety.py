@@ -119,6 +119,11 @@ def install_engine_handoff_safety() -> None:
                         raise pending_cancellation
 
     def unload_when_idle(self, model_id: str) -> bool:
+        # Shutdown must remain able to force cleanup after its bounded generation
+        # drain timeout. Normal API requests still reject unloading a busy engine.
+        if getattr(self, "_model_manager_shutting_down", False):
+            return original_unload(self, model_id)
+
         lock = self.locks.get(model_id)
         if lock is not None and lock.locked():
             raise ValueError(
