@@ -1,0 +1,185 @@
+name: Finalize InferBridge public branding
+
+on:
+  push:
+    branches: ["rename/inferbridge"]
+    paths: [".github/workflows/inferbridge-public-branding-finalize.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      OV_LLM_MOCK: "true"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: rename/inferbridge
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Apply final identity changes
+        shell: pwsh
+        run: |
+          python -m py_compile .github/scripts/finalize_inferbridge_core.py .github/scripts/finalize_inferbridge_ui.py .github/scripts/write_inferbridge_final_tests.py
+          python .github/scripts/finalize_inferbridge_core.py
+          python .github/scripts/finalize_inferbridge_ui.py
+          python .github/scripts/write_inferbridge_final_tests.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: complete InferBridge public branding"
+          git push origin HEAD:rename/inferbridge
+
+      - name: Install development dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev]
+
+      - name: Format generated changes
+        shell: pwsh
+        run: |
+          ruff check . --fix
+          ruff format .
+          git add -A
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "style: format InferBridge public branding"
+            git push origin HEAD:rename/inferbridge
+          }
+
+      - name: Run complete code validation
+        shell: pwsh
+        run: |
+          $Validation = "$env:RUNNER_TEMP\inferbridge-validation"
+          New-Item -ItemType Directory -Force -Path $Validation | Out-Null
+          ruff check .
+          if ($LASTEXITCODE -ne 0) { throw "Ruff lint failed." }
+          ruff format --check .
+          if ($LASTEXITCODE -ne 0) { throw "Ruff format check failed." }
+          python -m py_compile app/brand.py app/paths.py app/startup_registration.py app/release_models.py app/update_checker.py app/diagnostics.py app/server.py packaging/runtime_hook.py scripts/release_manifest.py scripts/release_scan.py scripts/verify_release_signing.py scripts/verify_release_provenance.py
+          if ($LASTEXITCODE -ne 0) { throw "Python compile validation failed." }
+          python scripts/release_tools.py verify-version-consistency --root . --version 0.7.0 2>&1 | Tee-Object -FilePath "$Validation\version.txt"
+          if ($LASTEXITCODE -ne 0) { throw "Version consistency failed." }
+          python -m pytest 2>&1 | Tee-Object -FilePath "$Validation\full-pytest.txt"
+          if ($LASTEXITCODE -ne 0) { throw "Full pytest failed." }
+          python -m pytest tests/test_inferbridge_brand.py tests/test_inferbridge_paths.py tests/test_inferbridge_startup.py tests/test_inferbridge_update_compatibility.py tests/test_inferbridge_packaging_contract.py tests/test_inferbridge_release_repository.py tests/test_inferbridge_public_branding.py tests/test_inferbridge_runtime_hook_paths.py tests/test_release_pipeline.py tests/test_release_signing_gate.py tests/test_release_provenance.py tests/test_installer_upgrade_contract.py tests/test_runtime_hook_upgrade.py tests/test_update_checker.py tests/test_update_checker_resilience.py tests/test_release_models.py 2>&1 | Tee-Object -FilePath "$Validation\targeted-pytest.txt"
+          if ($LASTEXITCODE -ne 0) { throw "Targeted pytest failed." }
+
+      - name: Build and scan unsigned Windows artifacts
+        shell: pwsh
+        run: |
+          $Validation = "$env:RUNNER_TEMP\inferbridge-validation"
+          $Candidates = @(
+            "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+          )
+          $Iscc = $Candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+          $Arguments = @{
+            Version = "0.7.0"
+            Channel = "stable"
+            Clean = $true
+            Unsigned = $true
+            SkipTests = $true
+            MockSmokeTest = $true
+          }
+          if ($Iscc) {
+            $Arguments.IsccPath = $Iscc
+            "available" | Set-Content "$Validation\inno.txt"
+          } else {
+            $Arguments.SkipInstaller = $true
+            "unavailable; installer compilation skipped" | Set-Content "$Validation\inno.txt"
+          }
+          & .\scripts\build_release.ps1 @Arguments 2>&1 | Tee-Object -FilePath "$Validation\build.txt"
+          if ($LASTEXITCODE -ne 0) { throw "Unsigned Windows release build failed." }
+
+      - name: Record results and remove one-time files
+        shell: pwsh
+        run: |
+          $Validation = "$env:RUNNER_TEMP\inferbridge-validation"
+          $Artifacts = Get-ChildItem "artifacts\release-0.7.0" -File | Sort-Object Name
+          $FullSummary = (Get-Content "$Validation\full-pytest.txt" | Select-Object -Last 5) -join "`n"
+          $TargetedSummary = (Get-Content "$Validation\targeted-pytest.txt" | Select-Object -Last 5) -join "`n"
+          $BuildSummary = (Get-Content "$Validation\build.txt" | Select-Object -Last 20) -join "`n"
+          $Inno = (Get-Content "$Validation\inno.txt" -Raw).Trim()
+          $Commit = (git rev-parse HEAD).Trim()
+          $ArtifactRows = ($Artifacts | ForEach-Object { "- ``$($_.Name)``: $($_.Length) bytes" }) -join "`n"
+          New-Item -ItemType Directory -Force -Path "docs\validation" | Out-Null
+          @"
+          # InferBridge branch validation
+
+          - Repository: ``Quazmoz/InferBridge``
+          - Branch: ``rename/inferbridge``
+          - Validated commit: ``$Commit``
+          - Platform: GitHub-hosted ``windows-latest`` runner
+          - Python: 3.11
+          - Mock mode: enabled
+          - Inno Setup: $Inno
+          - Authenticode signing: not performed; artifacts are explicitly unsigned
+          - Real Intel CPU/GPU/NPU validation: not performed
+
+          ## Completed validation
+
+          - Ruff lint and format checks
+          - Python compile checks
+          - canonical version consistency
+          - full pytest suite
+          - targeted migration, updater, installer, runtime-hook, signing, provenance, and release tests
+          - PyInstaller one-directory build
+          - installed packaged mock smoke when Inno Setup was available
+          - portable packaged mock smoke
+          - native-component verification
+          - release artifact scanning
+          - manifest and checksum generation and verification
+
+          ## Full pytest summary
+
+          ```text
+          $FullSummary
+          ```
+
+          ## Targeted pytest summary
+
+          ```text
+          $TargetedSummary
+          ```
+
+          ## Release build tail
+
+          ```text
+          $BuildSummary
+          ```
+
+          ## Produced artifacts
+
+          $ArtifactRows
+
+          ## Still unverified
+
+          - Upgrade from the latest published legacy installer on a persistent Windows VM
+          - Real shortcut, Add or Remove Programs, startup-registry, and uninstall migration
+          - Trusted Authenticode signing and verification
+          - Real Intel CPU, GPU, NPU, and AUTO inference
+          - Repository-rename redirect behavior using a disposable test repository
+          "@ | Set-Content "docs\validation\inferbridge-branch-validation.md" -Encoding utf8
+
+          Remove-Item .github\scripts\finalize_inferbridge_core.py
+          Remove-Item .github\scripts\finalize_inferbridge_ui.py
+          Remove-Item .github\scripts\write_inferbridge_final_tests.py
+          Remove-Item .github\workflows\inferbridge-public-branding-finalize.yml
+          if ((Get-ChildItem .github\scripts -Force | Measure-Object).Count -eq 0) {
+            Remove-Item .github\scripts
+          }
+          git add -A
+          git commit -m "test: record InferBridge Windows validation"
+          git push origin HEAD:rename/inferbridge
