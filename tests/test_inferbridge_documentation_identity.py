@@ -72,7 +72,9 @@ def test_current_docs_do_not_present_legacy_identity_as_canonical():
         for value in forbidden:
             if value in text:
                 failures.append(f"{relative}: {value}")
-    assert not failures, "Legacy identity remains canonical in current docs:\n" + "\n".join(failures)
+    assert not failures, "Legacy identity remains canonical in current docs:\n" + "\n".join(
+        failures
+    )
 
 
 def test_package_metadata_points_to_canonical_repository():
