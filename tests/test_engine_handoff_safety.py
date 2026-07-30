@@ -92,9 +92,7 @@ def test_queued_generation_rebinds_to_replacement_engine():
         old_lock = manager.locks["demo"]
         await old_lock.acquire()
 
-        task = asyncio.create_task(
-            ModelManager.generate(manager, old_engine, "hello", object())
-        )
+        task = asyncio.create_task(ModelManager.generate(manager, old_engine, "hello", object()))
         await manager.tracking_started.wait()
         await asyncio.sleep(0)
 
