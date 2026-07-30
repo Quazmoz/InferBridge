@@ -1,5 +1,9 @@
 from pathlib import Path
 
+import pytest
+
+from scripts.release_scan import verify_native_distribution
+
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -40,6 +44,41 @@ def test_pyinstaller_collects_psutil_python_and_native_files_from_one_environmen
     assert "psutil_binaries" in spec
     assert "binaries += psutil_binaries" in spec
     assert '"psutil",' in spec
+
+
+def _native_distribution(tmp_path: Path) -> Path:
+    (tmp_path / "OpenVINOWindowsLLM.exe").write_bytes(b"exe")
+    native = tmp_path / "_internal" / "native"
+    native.mkdir(parents=True)
+    for name in (
+        "openvino.dll",
+        "openvino_intel_cpu_plugin.dll",
+        "openvino_intel_gpu_plugin.dll",
+        "openvino_intel_npu_plugin.dll",
+    ):
+        (native / name).write_bytes(b"dll")
+    return tmp_path
+
+
+def test_native_release_gate_requires_one_psutil_windows_extension(tmp_path):
+    root = _native_distribution(tmp_path)
+    psutil_dir = root / "_internal" / "psutil"
+    psutil_dir.mkdir()
+    (psutil_dir / "_psutil_windows.cp313-win_amd64.pyd").write_bytes(b"pyd")
+
+    verify_native_distribution(root)
+
+    (psutil_dir / "_psutil_windows_duplicate.pyd").write_bytes(b"pyd")
+    with pytest.raises(RuntimeError, match="exactly one psutil Windows extension"):
+        verify_native_distribution(root)
+
+
+def test_native_release_gate_rejects_psutil_extension_outside_internal(tmp_path):
+    root = _native_distribution(tmp_path)
+    (root / "_psutil_windows.pyd").write_bytes(b"pyd")
+
+    with pytest.raises(RuntimeError, match="must be contained under _internal"):
+        verify_native_distribution(root)
 
 
 def test_packaged_smoke_rejects_missing_or_duplicate_psutil_windows_extensions():
