@@ -60,7 +60,7 @@ def _runtime_failure_log_path() -> str | None:
 def _safe_error_detail(error: BaseException) -> str:
     detail = str(error or error.__class__.__name__).replace("\r", " ").replace("\n", " ")
     detail = " ".join(detail.split())
-    detail = _WINDOWS_PATH_RE.sub("...\\", detail)
+    detail = _WINDOWS_PATH_RE.sub(lambda _match: "...\\", detail)
     detail = _POSIX_HOME_RE.sub(".../", detail)
     return detail[:180]
 
