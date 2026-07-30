@@ -160,3 +160,5 @@ jobs:
           git push origin HEAD:rename/inferbridge
 
           trap - EXIT
+
+# Re-emitted through the contents API to trigger the one-time branch workflow.
