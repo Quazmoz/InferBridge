@@ -52,6 +52,20 @@ logoContainer.replaceChildren(icon);
 """
 
 
+def _apply_static_branding(html: str) -> str:
+    """Replace legacy static shell labels before the first browser paint."""
+
+    html = html.replace("<title>OpenVINO LLM</title>", f"<title>{DISPLAY_NAME}</title>", 1)
+    html = html.replace(
+        'content="Local AI chat powered by OpenVINO GenAI with an OpenAI-compatible API."',
+        f'content="{APPLICATION_DESCRIPTION}"',
+        1,
+    )
+    html = html.replace(">OpenVINO LLM<", f">{DISPLAY_NAME}<")
+    html = html.replace(">OpenVINO GenAI<", f">{APPLICATION_TAGLINE}<")
+    return html
+
+
 def install_branding_extension() -> None:
     """Inject InferBridge metadata, favicon, and header branding exactly once."""
 
@@ -60,7 +74,7 @@ def install_branding_extension() -> None:
     previous_inject = ui_extension.inject_multimodal_ui
 
     def inject_with_branding(html: str) -> str:
-        html = previous_inject(html)
+        html = _apply_static_branding(previous_inject(html))
         if f'id="{_FAVICON_ID}"' not in html:
             favicon = (
                 f'\n<link id="{_FAVICON_ID}" rel="icon" type="image/svg+xml" '
