@@ -1,8 +1,6 @@
-# API Contract
+# InferBridge API contract
 
-OpenVINO Windows LLM implements a practical subset of the OpenAI API plus local model,
-device, benchmark, and diagnostics routes. The contract is tested in mock mode by CI and
-can be certified against real Windows hardware with `scripts/validate_windows.ps1`.
+InferBridge implements a practical subset of the OpenAI API plus local model, device, benchmark, diagnostics, onboarding, and desktop-operation routes. CI tests the contract in mock mode, and `scripts/validate_windows.ps1` can certify it against real Windows hardware.
 
 ## Compatibility levels
 
@@ -20,7 +18,7 @@ A mock contract result is not evidence that a driver or hardware target works.
 
 ### `GET /v1/models`
 
-Returns an OpenAI-style model list. Local status is included as an additional field.
+Returns an OpenAI-style model list. InferBridge includes local lifecycle status as an additional field.
 
 ### `POST /v1/chat/completions`
 
@@ -41,21 +39,13 @@ Supported request fields:
 - `lora_path`
 - `lora_alpha`
 
-Streaming uses Server-Sent Events with `chat.completion.chunk` payloads and terminates
-with `data: [DONE]`.
+Streaming uses Server-Sent Events with `chat.completion.chunk` payloads and terminates with `data: [DONE]`.
 
-Tool calling is implemented with a prompt and parser shim because OpenVINO GenAI does
-not provide native OpenAI tool-call semantics. Whether a model reliably emits a valid
-call depends on the model and prompt. Malformed calls receive bounded retry handling.
+Tool calling is implemented with a prompt and parser shim because OpenVINO GenAI does not provide native OpenAI tool-call semantics. Whether a model reliably emits a valid call depends on the model and prompt. Malformed calls receive bounded retry handling.
 
-`response_format` is passed to OpenVINO structured-output support when the installed
-OpenVINO GenAI version exposes it. Older versions or unsuitable models may accept the
-request without producing strict JSON. The certification report records that as a
-warning rather than claiming schema enforcement.
+`response_format` is passed to OpenVINO structured-output support when the installed OpenVINO GenAI version exposes it. Older versions or unsuitable models may accept the request without producing strict JSON. The certification report records that as a warning rather than claiming schema enforcement.
 
-Dynamic LoRA and speculative decoding depend on the installed OpenVINO GenAI version
-and compatible model artifacts. They are API-supported but require separate real-runtime
-validation for each adapter or draft-model combination.
+Dynamic LoRA and speculative decoding depend on the installed OpenVINO GenAI version and compatible model artifacts. They are API-supported but require separate real-runtime validation for each adapter or draft-model combination.
 
 ### `POST /v1/responses`
 
@@ -78,22 +68,20 @@ Non-streaming responses return an OpenAI-style response object. Streaming emits:
 - `response.completed`
 - `data: [DONE]`
 
-This route is the recommended compatibility path for n8n workflows that use the
-Responses API.
+This route is the recommended compatibility path for n8n workflows that use the Responses API.
 
 ### `POST /v1/embeddings`
 
-Supported fields:
+Supported fields and limits:
 
 - `model`
 - `input` as one string or a list of strings
 - at most 256 input strings and 2,000,000 combined characters
 - empty strings are rejected
 - `encoding_format` as `float` or `base64`
-- `user` accepted for client compatibility
+- `user` is accepted for client compatibility
 
-The selected model must use the `openvino-embeddings` backend. Text-generation models
-are rejected, and embedding models are rejected by generation routes.
+The selected model must use the `openvino-embeddings` backend. Text-generation models are rejected, and embedding models are rejected by generation routes.
 
 ## Local management routes
 
@@ -109,20 +97,15 @@ are rejected, and embedding models are rejected by generation routes.
 | `GET` | `/v1/devices` | Return OpenVINO discovery and device suggestions. |
 | `GET` | `/v1/system/status` | Return telemetry, lifecycle progress, metrics, and recent safe events. |
 | `GET` | `/v1/keys/stats` | Return per-key usage counters without exposing keys. |
-| `POST` | `/v1/benchmarks/run` | Benchmark model/device combinations. |
+| `POST` | `/v1/benchmarks/run` | Benchmark model and device combinations. |
 | `GET` | `/v1/benchmarks` | List locally persisted benchmark runs. |
 | `GET` | `/v1/benchmarks/latest` | Return the latest run and recommendation. |
 | `DELETE` | `/v1/benchmarks` | Clear saved benchmark runs. |
 | `POST` | `/v1/chat/export` | Export a supplied conversation as Markdown. |
 
-Model conversion and loading are asynchronous. Clients should poll
-`/v1/system/status` and inspect the matching catalog entry until `is_loaded` is true or
-an error state is returned.
+Model conversion and loading are asynchronous. Clients should poll `/v1/system/status` and inspect the matching catalog entry until `is_loaded` is true or an error state is returned.
 
-Custom registration and download requests accept `trust_remote_code`. It defaults to
-`false`; set it to `true` only for a reviewed Hugging Face repository whose custom
-Python code is explicitly trusted. `/v1/models/convert` accepts `null` to use the
-catalog policy or a boolean to override it for that conversion.
+Custom registration and download requests accept `trust_remote_code`. It defaults to `false`; set it to `true` only for a reviewed Hugging Face repository whose custom Python code is explicitly trusted. `/v1/models/convert` accepts `null` to use the catalog policy or a boolean to override it for that conversion.
 
 ## Health routes
 
@@ -130,35 +113,27 @@ catalog policy or a boolean to override it for that conversion.
 - `GET /health/live` is an unauthenticated liveness probe.
 - `GET /health/ready` returns 503 while model preparation is active and 200 otherwise.
 
-Health routes remain available without an API key so local supervisors can check the
-process. `/v1/*` routes are protected when `OV_LLM_API_KEY` is set.
+Health routes remain available without an API key so local supervisors can check the process. `/v1/*` routes are protected when `OV_LLM_API_KEY` is set.
 
 ## Authentication, CORS, and rate limiting
 
-Set one or more comma-separated keys with `OV_LLM_API_KEY`. Protected requests must
-send:
+Set one or more comma-separated keys with `OV_LLM_API_KEY`. Protected requests must send:
 
 ```text
 Authorization: Bearer <key>
 ```
 
-Repeated failed authentication attempts are throttled. Keys are compared using a
-constant-time comparison and are not returned by usage endpoints.
+Repeated failed authentication attempts are throttled. Keys are compared using a constant-time comparison and are not returned by usage endpoints.
 
-`OV_LLM_CORS_ORIGINS` is blank by default, so cross-origin browser access is disabled.
-The bundled UI is served from the API origin and does not need CORS. Configure explicit
-comma-separated origins for Open WebUI or another browser client. Wildcard CORS is
-supported for compatibility but should be paired with an API key and avoided when
-possible.
+`OV_LLM_CORS_ORIGINS` is blank by default, so cross-origin browser access is disabled. The bundled UI is served from the API origin and does not need CORS. Configure explicit comma-separated origins for Open WebUI or another browser client. Wildcard CORS is supported for compatibility but should be paired with an API key and avoided when possible.
 
-`OV_LLM_RATE_LIMIT` applies a per-IP requests-per-minute limit when greater than zero.
-It is a local safety control, not a replacement for a hardened reverse proxy.
+`OV_LLM_RATE_LIMIT` applies a per-IP requests-per-minute limit when greater than zero. It is a local safety control, not a replacement for a hardened reverse proxy.
 
 ## Error behavior
 
-The server uses conventional status codes:
+InferBridge uses conventional status codes:
 
-- `400` invalid request, device expression, model/backend pairing, or conversion option
+- `400` invalid request, device expression, model or backend pairing, or conversion option
 - `401` missing or invalid API key
 - `404` unknown model
 - `409` model is unloaded, busy, loading, or in a conflicting lifecycle state
@@ -167,8 +142,7 @@ The server uses conventional status codes:
 - `500` inference, conversion, deletion, or internal runtime failure
 - `503` no model is available or readiness is temporarily blocked
 
-Responses include an `X-Request-ID`. Safe client-supplied IDs are preserved; invalid
-values are replaced to prevent log injection.
+Responses include an `X-Request-ID`. Safe client-supplied IDs are preserved; invalid values are replaced to prevent log injection.
 
 ## Automated validation profiles
 
@@ -179,7 +153,4 @@ python scripts/validate_api_contract.py --profile n8n
 python scripts/validate_api_contract.py --profile full
 ```
 
-The `full` profile covers both external-client request shapes, streaming cancellation,
-optional embeddings, optional benchmarks, and optional lifecycle exercise. The
-validator records metadata and assertions only. It does not save prompts or model
-output.
+The `full` profile covers both external-client request shapes, streaming cancellation, optional embeddings, optional benchmarks, and optional lifecycle exercise. The validator records metadata and assertions only. It does not save prompts or model output.
