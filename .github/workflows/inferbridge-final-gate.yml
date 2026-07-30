@@ -183,3 +183,5 @@ jobs:
           git add -A
           git commit -m "test: record final InferBridge Windows validation"
           git push origin HEAD:rename/inferbridge
+
+# Retry after idempotency repair.
