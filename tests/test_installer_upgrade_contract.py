@@ -9,8 +9,10 @@ def test_installer_reuses_identity_and_removes_only_immutable_runtime_payload():
 
     assert "AppId={{F94A3938-C943-4E6D-B482-852D4AAE06F8}" in script
     assert "UsePreviousAppDir=yes" in script
-    assert "RestartManagerSupport=yes" in script
-    assert "CloseApplicationsFilter={#MyAppExeName}" in script
+    assert "CloseApplications=yes" in script
+    assert "CloseApplicationsFilter={#MyAppExeName},*.dll,*.pyd" in script
+    assert "RestartApplications=yes" in script
+    assert "runascurrentuser" in script
 
     install_delete = script.split("[InstallDelete]", 1)[1].split("[Files]", 1)[0]
     assert 'Name: "{app}\\_internal"' in install_delete
