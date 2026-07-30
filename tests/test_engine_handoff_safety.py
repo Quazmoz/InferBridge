@@ -30,6 +30,7 @@ class FakeEngine:
         self.model_id = model_id
         self.device = "CPU"
         self.label = label
+        self.closed = False
         self.generate_calls = []
         self.stream_calls = []
 
@@ -41,12 +42,19 @@ class FakeEngine:
         self.stream_calls.append((prompt, params))
         return FakeHandle([self.label])
 
+    def close(self):
+        self.closed = True
+
 
 class FakeManager:
     def __init__(self, engine: FakeEngine | None, *, managed: bool = True):
         self.engines = {engine.model_id: engine} if engine is not None else {}
         self.catalog = {"demo": object()} if managed else {}
         self.locks = {"demo": asyncio.Lock()}
+        self.devices = {"demo": "CPU"} if engine is not None else {}
+        self.status_overrides = {}
+        self.progress = {}
+        self.events = []
         self.tracking_started = asyncio.Event()
 
     def get_lock(self, model_id: str):
@@ -65,6 +73,15 @@ class FakeManager:
     async def _recover_cancelled_npu_engine(self, _engine, _loop):
         return None
 
+    def _clear_status(self, model_id: str):
+        self.status_overrides.pop(model_id, None)
+
+    def _clear_progress(self, model_id: str):
+        self.progress.pop(model_id, None)
+
+    def emit_event(self, level: str, message: str):
+        self.events.append((level, message))
+
 
 def test_queued_generation_rebinds_to_replacement_engine():
     async def scenario():
@@ -74,7 +91,9 @@ def test_queued_generation_rebinds_to_replacement_engine():
         old_lock = manager.locks["demo"]
         await old_lock.acquire()
 
-        task = asyncio.create_task(ModelManager.generate(manager, old_engine, "hello", object()))
+        task = asyncio.create_task(
+            ModelManager.generate(manager, old_engine, "hello", object())
+        )
         await manager.tracking_started.wait()
         await asyncio.sleep(0)
 
@@ -147,5 +166,24 @@ def test_unload_is_rejected_while_model_lock_is_busy():
                 ModelManager.unload(manager, "demo")
         finally:
             lock.release()
+
+    asyncio.run(scenario())
+
+
+def test_shutdown_can_force_unload_after_generation_drain_timeout():
+    async def scenario():
+        engine = FakeEngine("demo", "old")
+        manager = FakeManager(engine)
+        manager._model_manager_shutting_down = True
+        lock = manager.locks["demo"]
+        await lock.acquire()
+        try:
+            assert ModelManager.unload(manager, "demo") is True
+        finally:
+            lock.release()
+
+        assert engine.closed is True
+        assert "demo" not in manager.engines
+        assert "demo" not in manager.devices
 
     asyncio.run(scenario())
