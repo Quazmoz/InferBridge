@@ -18,6 +18,19 @@ def test_runtime_hook_registers_only_the_installed_primary_tray_for_update_resta
     assert "getattr(sys, \"frozen\", False)" in hook
 
 
+def test_runtime_hook_replaces_native_dependency_traceback_with_repair_guidance():
+    hook = (ROOT / "packaging" / "runtime_hook.py").read_text(encoding="utf-8")
+
+    assert "_validate_windows_native_runtime" in hook
+    assert "import psutil" in hook
+    assert "psutil.Process(os.getpid()).create_time()" in hook
+    assert "files from two versions were mixed" in hook
+    assert "preserving downloaded models, settings" in hook
+    assert "MessageBoxW" in hook
+    assert "startup-runtime-error.log" in hook
+    assert "os._exit(_RUNTIME_FAILURE_EXIT_CODE)" in hook
+
+
 def test_runtime_hook_keeps_restart_registration_non_fatal():
     hook = (ROOT / "packaging" / "runtime_hook.py").read_text(encoding="utf-8")
 
