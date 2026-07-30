@@ -1,6 +1,6 @@
 # Privacy-safe diagnostics bundles
 
-The tray and browser desktop-operations panel can create a fully local support ZIP.
+The InferBridge tray and browser desktop-operations panel can create a fully local support ZIP.
 
 ```text
 Tray icon → Export Diagnostics → Review the ZIP → Attach it to a GitHub issue
@@ -10,19 +10,19 @@ Do not upload model files, tokens, certificates, source images, prompts, or chat
 
 ## Confirmation
 
-Before export, the tray lists the operational categories that will be included and explicitly states that prompts, chat history, API keys, Hugging Face tokens, images, model files, caches, certificates, and browser localStorage are excluded.
+Before export, InferBridge lists the operational categories that will be included and explicitly states that prompts, chat history, API keys, Hugging Face tokens, images, model files, caches, certificates, and browser localStorage are excluded.
 
-The output is created under the writable diagnostics directory with a deterministic timestamped name:
+The output is created under the writable diagnostics directory with a timestamped InferBridge filename:
 
 ```text
-openvino-windows-llm-diagnostics-YYYYMMDD-HHMMSS.zip
+inferbridge-diagnostics-YYYYMMDD-HHMMSS.zip
 ```
 
 The application never uploads the bundle.
 
 ## Included categories
 
-Best-effort collection may include application and packaging metadata, Windows and hardware information, OpenVINO versions and visible devices, NPU readiness, hardware fingerprint, model and preparation state, bounded sanitized events and logs, benchmark summaries, non-secret configuration, redacted storage paths, liveness/readiness/controller state, certification summaries, and a machine-readable manifest.
+Best-effort collection may include application and packaging metadata, Windows and hardware information, OpenVINO versions and visible devices, NPU readiness, hardware fingerprint, model and preparation state, bounded sanitized events and logs, benchmark summaries, non-secret configuration, redacted storage paths, liveness, readiness, controller state, certification summaries, and a machine-readable manifest.
 
 ## Exclusions
 
