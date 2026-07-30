@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import pytest
 
 from app.startup_registration import (
@@ -14,8 +12,7 @@ from app.startup_registration import (
 def test_enabled_legacy_value_migrates_to_inferbridge(tmp_path):
     backend = MemoryRegistryBackend()
     backend.values[(RUN_KEY, LEGACY_VALUE_NAME)] = (
-        '"C:\\Program Files\\OpenVINO Windows LLM\\OpenVINOWindowsLLM.exe" '
-        "--startup --no-browser"
+        '"C:\\Program Files\\OpenVINO Windows LLM\\OpenVINOWindowsLLM.exe" --startup --no-browser'
     )
     registration = StartupRegistration(executable=tmp_path / "InferBridge.exe", backend=backend)
     state = registration.state()

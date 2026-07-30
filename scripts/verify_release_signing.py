@@ -82,12 +82,8 @@ def verify_release_signing(
     *,
     require_signed: bool = False,
 ) -> bool:
-    manifest = _load_object(
-        artifact_directory / f"InferBridge-{version}-release-manifest.json"
-    )
-    summary = _load_object(
-        artifact_directory / f"InferBridge-{version}-release-summary.json"
-    )
+    manifest = _load_object(artifact_directory / f"InferBridge-{version}-release-manifest.json")
+    summary = _load_object(artifact_directory / f"InferBridge-{version}-release-summary.json")
     installer = _artifact(manifest, "installer")
     portable = _artifact(manifest, "portable")
 

@@ -21,7 +21,6 @@ from app.release_models import (
 from app.version import DATA_SCHEMA_VERSION, MINIMUM_SUPPORTED_DATA_SCHEMA_VERSION, __version__
 from scripts.release_scan import sha256_file
 
-
 _ALLOWED_RELEASE_REPOSITORIES = {
     "Quazmoz/openvino-windows-llm",
     "Quazmoz/InferBridge",

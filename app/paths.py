@@ -85,7 +85,6 @@ def _default_local_app_data(env: Mapping[str, str]) -> Path:
     return Path.home() / ".local" / "share"
 
 
-
 def _contains_data(path: Path) -> bool:
     try:
         return path.is_dir() and next(path.iterdir(), None) is not None

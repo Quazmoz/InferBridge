@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 APP_ID = "{F94A3938-C943-4E6D-B482-852D4AAE06F8}"
 
 

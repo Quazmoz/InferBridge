@@ -20,7 +20,6 @@ from app.brand import (
     REPOSITORY_OWNER,
     USER_AGENT_PRODUCT,
 )
-
 from app.release_models import (
     InstallationMode,
     ReleaseChannel,
@@ -195,6 +194,7 @@ def _fetch_release_index(*, opener: Callable, timeout_seconds: float, etag: str 
     if last_error is not None:
         raise last_error
     raise OSError("No approved GitHub release endpoint was available.")
+
 
 class UpdateChecker:
     def __init__(

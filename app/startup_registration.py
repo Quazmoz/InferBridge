@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from app.brand import EXECUTABLE_BASENAME, LEGACY_EXECUTABLE_BASENAME
+from app.brand import LEGACY_EXECUTABLE_BASENAME
 
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 CURRENT_VALUE_NAME = "InferBridge"

@@ -12,7 +12,10 @@ def test_release_repository_uses_renamed_github_repository():
 
 
 def test_release_repository_allows_explicit_transition_override():
-    assert release_repository({"OV_LLM_RELEASE_REPOSITORY": "Quazmoz/InferBridge"}) == "Quazmoz/InferBridge"
+    assert (
+        release_repository({"OV_LLM_RELEASE_REPOSITORY": "Quazmoz/InferBridge"})
+        == "Quazmoz/InferBridge"
+    )
 
 
 def test_release_repository_rejects_lookalike_repository():

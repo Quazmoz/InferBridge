@@ -131,13 +131,10 @@ def artifact_filename(version: str, artifact_type: ArtifactType) -> str:
     return prefix + suffixes[artifact_type]
 
 
-
 def artifact_filenames(version: str, artifact_type: ArtifactType) -> tuple[str, ...]:
     canonical = artifact_filename(version, artifact_type)
     suffix = canonical.removeprefix(f"{ARTIFACT_PREFIX}-{version}")
-    aliases = tuple(
-        f"{prefix}-{version}{suffix}" for prefix in LEGACY_ARTIFACT_PREFIXES
-    )
+    aliases = tuple(f"{prefix}-{version}{suffix}" for prefix in LEGACY_ARTIFACT_PREFIXES)
     return (canonical, *aliases)
 
 
