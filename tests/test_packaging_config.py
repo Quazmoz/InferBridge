@@ -52,7 +52,9 @@ def test_build_script_generates_checksums_unsigned_names_and_brand_assets():
 
     publisher = (ROOT / "scripts" / "publish_release.ps1").read_text(encoding="utf-8")
     assert "verify_release_signing.py" in publisher
-    assert 'if ($Channel -eq "stable") { $SigningGate += "--require-signed" }' in publisher
+    assert (
+        'if ($Channel -eq "stable" -and -not $AllowUnsigned) { $SigningGate += "--require-signed" }'
+    ) in publisher
 
     wrapper = (ROOT / "scripts" / "build_windows_distribution.ps1").read_text(encoding="utf-8")
     assert "build_release.ps1" in wrapper
