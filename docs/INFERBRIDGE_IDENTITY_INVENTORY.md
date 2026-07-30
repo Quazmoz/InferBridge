@@ -1,6 +1,6 @@
 # InferBridge identity inventory
 
-This inventory records the repository-wide identity review performed before the public product rename from **OpenVINO Windows LLM** to **InferBridge**. It distinguishes product branding from the OpenVINO GenAI runtime and from identifiers that must remain compatible.
+This inventory records the repository-wide identity review performed for the public product rename from **OpenVINO Windows LLM** to **InferBridge**. It distinguishes current product branding from the OpenVINO GenAI runtime and from identifiers that remain for backward compatibility or historical accuracy.
 
 ## Search scope
 
@@ -17,25 +17,26 @@ The reviewed terms and identifier families were:
 - `OV_LLM`
 - repository, release, executable, installer, shortcut, data-directory, registry, user-agent, manifest, diagnostics, icon, and asset identifiers
 
-## 1. Public display branding changed to InferBridge
+## 1. Public display branding uses InferBridge
 
-Current public-facing identity was migrated in these areas:
+Current public-facing identity is canonicalized in these areas:
 
-- `app/brand.py`: canonical product, executable, repository, description, tagline, and artifact constants
+- `app/brand.py`: product, executable, repository, description, tagline, and artifact constants
 - `app/__init__.py`: package description
 - `app/branding_ui.py`: browser title, metadata description, header name, tagline, favicon, and application icon injection
-- `app/desktop_launcher.py`, `app/desktop_shell.py`, `app/tray_support.py`, `app/tray_menu.py`: desktop dialogs, tray title, tooltip, About presentation, and launcher help
+- `app/desktop_launcher.py`, `app/desktop_shell.py`, `app/tray_support.py`, and `app/tray_menu.py`: desktop dialogs, tray title, tooltip, About presentation, and launcher help
 - `app/diagnostics.py`: current diagnostic archive and product presentation
-- `web/index.html`, `web/app-icon.svg`: browser fallback markup and accessible icon title
-- `packaging/openvino_windows_llm.spec`: emitted executable and distribution directory
-- `packaging/installer.iss`: installer, Add or Remove Programs, shortcut, launch, and default installation names
-- `scripts/generate_brand_assets.py`, `scripts/build_release.ps1`, `scripts/publish_release.ps1`, `scripts/release_manifest.py`, `scripts/release_scan.py`, `scripts/verify_release_signing.py`, `scripts/verify_release_provenance.py`, and `scripts/smoke_test_packaged.ps1`: generated product metadata and canonical release artifacts
-- `README.md`, `QUICKSTART.md`, `CONTRIBUTING.md`, `OPENWEBUI.md`, and current installation, portable, tray, diagnostics, troubleshooting, update, release, architecture, and rollback documentation
-- `docs/releases/0.7.0.md`: current rename release notes
+- `web/index.html` and `web/app-icon.svg`: browser fallback markup and accessible icon title
+- `packaging/openvino_windows_llm.spec`: emitted InferBridge executable and distribution directory
+- `packaging/installer.iss`: installer, Add or Remove Programs, shortcuts, launch entry, and default installation names
+- release, signing, manifest, checksum, and packaged-smoke scripts: generated InferBridge product metadata and release artifacts
+- `README.md`, `QUICKSTART.md`, `CONTRIBUTING.md`, `OPENWEBUI.md`, and current installation, portable, tray, diagnostics, troubleshooting, update, release, architecture, rollback, Linux, API, and model-library documentation
+- `.claude/skills/use_memoryops.md` and `.gemini/skills/use_memoryops.md`: canonical repository and agent metadata
+- `docs/releases/0.7.0.md`: rename release notes and completed repository transition
 
-## 2. Technical OpenVINO terminology retained
+## 2. Technical OpenVINO terminology remains
 
-These are runtime or ecosystem terms, not legacy product branding, and remain unchanged:
+These are runtime or ecosystem terms, not legacy product branding:
 
 - `openvino` and `openvino-genai` package and distribution names
 - OpenVINO GenAI imports, runtime adapters, model conversion, compiled-model behavior, and dependency metadata
@@ -45,9 +46,9 @@ These are runtime or ecosystem terms, not legacy product branding, and remain un
 - OpenVINO-compatible model manifests and retained certification evidence
 - “Powered by OpenVINO GenAI” and equivalent accurate runtime descriptions
 
-No global replacement of `OpenVINO` was performed.
+No global replacement of `OpenVINO` is appropriate.
 
-## 3. Compatibility-sensitive legacy identity retained
+## 3. Compatibility-sensitive legacy identity remains
 
 The following identifiers deliberately remain accepted or preserved:
 
@@ -60,31 +61,34 @@ The following identifiers deliberately remain accepted or preserved:
 - Python distribution name: `openvino-windows-llm`
 - console commands: `ov-llm` and `ov-llm-desktop`
 - all existing `OV_LLM_*` environment variables
+- internal `.ovllm-*` metadata filenames and browser storage keys whose renaming would break existing installations
 - existing OpenAI-compatible endpoints, JSON schemas, API-key behavior, streaming behavior, tool-call behavior, model IDs, stored data schema, host binding, and mock contracts
 
 New aliases `inferbridge` and `inferbridge-desktop` call the same implementations as the legacy commands.
 
-## 4. Historical records preserved accurately
+## 4. Historical records remain accurate
 
-The following remain historical records and are not rewritten to imply that older releases shipped as InferBridge:
+The following are historical records and must not be rewritten to imply that older releases shipped as InferBridge:
 
-- `docs/releases/0.4.0.md` through the existing `0.6.x` release notes
+- release notes for versions before 0.7.0
 - retained Windows certification and compatibility evidence under `docs/certification/`
 - Git history, tags, releases, issues, and existing release asset names
-- README links to already-published releases, which retain their original repository location and filenames
+- README links to already-published releases whose asset names use the former product identity
 
-A migration note may explain the subsequent rename without changing the historical product name of an old release.
+A migration note may explain the subsequent rename without changing the historical product name of an older release.
 
-## 5. Generated or transient content not manually migrated
+## 5. Generated or transient content is rebuilt
 
-The following are generated, local, or transient and are rebuilt from canonical sources rather than edited as identity sources:
+The following are generated, local, or transient and are rebuilt from canonical sources rather than treated as identity sources:
 
 - `build/`, `dist/`, `artifacts/`, virtual environments, caches, logs, and temporary smoke-test directories
 - generated PyInstaller version metadata and build metadata
 - generated ICO and release inventory files
 - locally downloaded or converted models and compiled caches
-- one-time migration and validation workflows, which remove themselves after successful validation
+- one-time migration and validation workflows
 
 ## Repository transition rule
 
-The product can be released as InferBridge while the repository still uses `Quazmoz/openvino-windows-llm`. Release generation defaults to that live repository before the rename and accepts `Quazmoz/InferBridge` after the rename. The updater trusts only those exact owner/repository combinations and their exact GitHub release paths.
+The canonical repository is `Quazmoz/InferBridge`. Release generation, documentation, clone instructions, support links, and new manifests must use that repository by default.
+
+The old `Quazmoz/openvino-windows-llm` path is retained only as a GitHub redirect and as a restricted compatibility source for previously published releases and older installations. Do not create a replacement repository at the old path because doing so would consume the redirect and break migration behavior.
