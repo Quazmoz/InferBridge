@@ -37,8 +37,9 @@ def test_compact_layout_closes_overlays_without_losing_desktop_state():
     assert "!compact && wasCompact" in script
     assert "setChatsOpenDirect(false)" in script
     assert "setSettingsOpenDirect(false)" in script
-    assert "setChatsOpenDirect(desktopChatsOpen)" in script
-    assert "setSettingsOpenDirect(desktopSettingsOpen)" in script
+    assert "keepCompactChoice" in script
+    assert "keepCompactChoice ? compactChatsOpen : desktopChatsOpen" in script
+    assert "keepCompactChoice ? compactSettingsOpen : desktopSettingsOpen" in script
 
 
 def test_compact_sidebars_have_scrim_and_accessible_state_sync():
