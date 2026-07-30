@@ -14,6 +14,7 @@ from app.chat_guard_ui import install_chat_guard_extension
 from app.chat_queue_ui import install_chat_queue_extension
 from app.desktop_operations_ui import install_desktop_operations_ui_extension
 from app.doctor_ui import install_system_doctor_extension
+from app.engine_handoff_routes import install_engine_handoff_routes_extension
 from app.gui_stability import install_gui_stability_extension
 from app.header_overflow_ui import install_header_overflow_extension
 from app.model_library_routes import install_model_library_routes_extension
@@ -31,6 +32,7 @@ from runtime.npu_compat import install_openvino_genai_compat
 # for their APIs and remain dormant in ordinary development-server mode.
 install_openvino_genai_compat()
 install_model_library_routes_extension()
+install_engine_handoff_routes_extension()
 install_branding_extension()
 install_chat_context_extension()
 install_chat_queue_extension()
