@@ -1,5 +1,6 @@
 import asyncio
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 
 import pytest
 
@@ -49,7 +50,7 @@ class FakeEngine:
 class FakeManager:
     def __init__(self, engine: FakeEngine | None, *, managed: bool = True):
         self.engines = {engine.model_id: engine} if engine is not None else {}
-        self.catalog = {"demo": object()} if managed else {}
+        self.catalog = {"demo": SimpleNamespace(name="Demo")} if managed else {}
         self.locks = {"demo": asyncio.Lock()}
         self.devices = {"demo": "CPU"} if engine is not None else {}
         self.status_overrides = {}
