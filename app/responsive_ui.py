@@ -27,7 +27,7 @@ RESPONSIVE_EXTENSION_JS = r"""
   const style = document.createElement('style');
   style.id = 'ovllm-responsive-style';
   style.textContent = `
-    html,body{min-width:280px;min-height:0;overscroll-behavior:none}
+    html,body{min-width:0;min-height:0;overscroll-behavior:none}
     body{overflow:hidden}
     #app{width:100%;min-width:0;min-height:0;height:100vh;height:100dvh;max-height:var(--ovllm-viewport-height,100dvh);overflow:hidden}
     header,.header-left,.header-right,.logo,.model-select-wrap,.device-select-wrap,.main-body,.chat-column,#chat-area,#input-area,.chat-inner,.input-row,.footer-meta,.footer-right{min-width:0}
@@ -125,7 +125,7 @@ RESPONSIVE_EXTENSION_JS = r"""
       .empty-state .suggestion-chips{display:none}
       .footer-meta>span:first-child{display:none}
       #user-input{max-height:min(88px,22vh)}
-      #ovllm-release-button{display:none!important}
+      #ovllm-release-button{padding:7px 10px!important;font-size:11px!important}
     }
 
     @media (prefers-reduced-motion:reduce){
@@ -204,8 +204,11 @@ RESPONSIVE_EXTENSION_JS = r"""
       setChatsOpenDirect(false);
       setSettingsOpenDirect(false);
     } else if (!compact && wasCompact) {
-      setChatsOpenDirect(desktopChatsOpen);
-      setSettingsOpenDirect(desktopSettingsOpen);
+      const compactChatsOpen = !chatsSidebarElement.classList.contains('collapsed');
+      const compactSettingsOpen = !settingsSidebarElement.classList.contains('closed');
+      const keepCompactChoice = compactChatsOpen || compactSettingsOpen;
+      setChatsOpenDirect(keepCompactChoice ? compactChatsOpen : desktopChatsOpen);
+      setSettingsOpenDirect(keepCompactChoice ? compactSettingsOpen : desktopSettingsOpen);
     }
     wasCompact = compact;
     updateViewportMetrics();
