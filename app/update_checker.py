@@ -12,6 +12,15 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.brand import (
+    ARTIFACT_PREFIX,
+    LEGACY_ARTIFACT_PREFIXES,
+    LEGACY_REPOSITORY_NAME,
+    REPOSITORY_NAME,
+    REPOSITORY_OWNER,
+    USER_AGENT_PRODUCT,
+)
+
 from app.release_models import (
     InstallationMode,
     ReleaseChannel,
@@ -24,7 +33,12 @@ from app.release_models import (
 )
 from app.version import DATA_SCHEMA_VERSION, __version__
 
-_RELEASES_API = "https://api.github.com/repos/Quazmoz/openvino-windows-llm/releases?per_page=20"
+_RELEASES_APIS = tuple(
+    f"https://api.github.com/repos/{REPOSITORY_OWNER}/{repository}/releases?per_page=20"
+    for repository in (LEGACY_REPOSITORY_NAME, REPOSITORY_NAME)
+)
+_RELEASES_API = _RELEASES_APIS[0]
+_MANIFEST_PREFIXES = (ARTIFACT_PREFIX, *LEGACY_ARTIFACT_PREFIXES)
 _MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 _DEFAULT_INTERVAL = timedelta(hours=24)
 
@@ -121,7 +135,7 @@ def _read_json(response) -> object:
 def _candidate_manifest_url(releases: object, channel: ReleaseChannel) -> tuple[str, str] | None:
     if not isinstance(releases, list):
         raise ValueError("GitHub releases response is not a list.")
-    candidates: list[tuple[SemanticVersion, str, str]] = []
+    candidates: list[tuple[SemanticVersion, int, str, str]] = []
     for release in releases:
         if not isinstance(release, dict) or release.get("draft"):
             continue
@@ -135,18 +149,52 @@ def _candidate_manifest_url(releases: object, channel: ReleaseChannel) -> tuple[
             continue
         if not channel_accepts(channel, version):
             continue
-        expected = f"OpenVINO-Windows-LLM-{version}-release-manifest.json"
+        expected = {
+            f"{prefix}-{version}-release-manifest.json": priority
+            for priority, prefix in enumerate(reversed(_MANIFEST_PREFIXES), start=1)
+        }
         for asset in release.get("assets") or []:
-            if not isinstance(asset, dict) or asset.get("name") != expected:
+            if not isinstance(asset, dict):
+                continue
+            priority = expected.get(str(asset.get("name") or ""))
+            if priority is None:
                 continue
             url = str(asset.get("browser_download_url") or "")
             if is_official_release_url(url):
-                candidates.append((parsed, version, url))
+                candidates.append((parsed, priority, version, url))
     if not candidates:
         return None
-    _parsed, version, url = max(candidates, key=lambda item: item[0])
+    _parsed, _priority, version, url = max(candidates, key=lambda item: (item[0], item[1]))
     return version, url
 
+
+def _fetch_release_index(*, opener: Callable, timeout_seconds: float, etag: str | None):
+    last_error: BaseException | None = None
+    for index, releases_api in enumerate(_RELEASES_APIS):
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "User-Agent": f"{USER_AGENT_PRODUCT}/{__version__}",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+        if index == 0 and etag:
+            headers["If-None-Match"] = etag
+        request = urllib.request.Request(releases_api, headers=headers)
+        try:
+            with opener(request, timeout=timeout_seconds) as response:
+                return _read_json(response), response.headers.get("ETag")
+        except urllib.error.HTTPError as exc:
+            if exc.code == 304:
+                raise
+            if exc.code in {301, 302, 307, 308, 404}:
+                last_error = exc
+                continue
+            raise
+        except (TimeoutError, OSError) as exc:
+            last_error = exc
+            continue
+    if last_error is not None:
+        raise last_error
+    raise OSError("No approved GitHub release endpoint was available.")
 
 class UpdateChecker:
     def __init__(
@@ -189,18 +237,12 @@ class UpdateChecker:
                 cached_manifest, preferences, "not_due", cache.last_checked_at
             )
 
-        headers = {
-            "Accept": "application/vnd.github+json",
-            "User-Agent": f"OpenVINO-Windows-LLM/{__version__}",
-            "X-GitHub-Api-Version": "2022-11-28",
-        }
-        if cache.releases_etag:
-            headers["If-None-Match"] = cache.releases_etag
-        request = urllib.request.Request(_RELEASES_API, headers=headers)
         try:
-            with self.opener(request, timeout=self.timeout_seconds) as response:
-                releases = _read_json(response)
-                etag = response.headers.get("ETag")
+            releases, etag = _fetch_release_index(
+                opener=self.opener,
+                timeout_seconds=self.timeout_seconds,
+                etag=cache.releases_etag,
+            )
             candidate = _candidate_manifest_url(releases, preferences.channel)
             if candidate is None:
                 cache.last_checked_at = checked_at
@@ -214,7 +256,7 @@ class UpdateChecker:
                 manifest_url,
                 headers={
                     "Accept": "application/json",
-                    "User-Agent": f"OpenVINO-Windows-LLM/{__version__}",
+                    "User-Agent": f"{USER_AGENT_PRODUCT}/{__version__}",
                 },
             )
             with self.opener(manifest_request, timeout=self.timeout_seconds) as response:

@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from app.brand import ARTIFACT_PREFIX
+
 _VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
 
 
@@ -18,11 +20,11 @@ def validate_version(value: str) -> str:
 def artifact_names(version: str, *, signed: bool) -> dict[str, str]:
     version = validate_version(version)
     suffix = "signed" if signed else "unsigned"
-    stem = f"OpenVINOWindowsLLM-{version}-windows-x64"
+    stem = f"{ARTIFACT_PREFIX}-{version}-windows-x64"
     return {
         "portable": f"{stem}-portable-{suffix}.zip",
         "installer": f"{stem}-setup-{suffix}.exe",
-        "checksums": f"OpenVINOWindowsLLM-{version}-SHA256SUMS.txt",
+        "checksums": f"{ARTIFACT_PREFIX}-{version}-SHA256SUMS.txt",
     }
 
 

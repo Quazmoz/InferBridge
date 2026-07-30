@@ -1,15 +1,22 @@
-"""Per-user Windows startup registration for the tray controller."""
+"""Per-user Windows startup registration with InferBridge legacy migration."""
 
 from __future__ import annotations
 
 import os
+import re
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-_RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
-_VALUE_NAME = "OpenVINOWindowsLLM"
+from app.brand import EXECUTABLE_BASENAME, LEGACY_EXECUTABLE_BASENAME
+
+RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+CURRENT_VALUE_NAME = "InferBridge"
+LEGACY_VALUE_NAME = "OpenVINOWindowsLLM"
+_RUN_KEY = RUN_KEY
+_VALUE_NAME = CURRENT_VALUE_NAME
 
 
 class RegistryBackend(Protocol):
@@ -67,7 +74,7 @@ class WinRegBackend:
 class StartupRegistrationState:
     enabled: bool
     command: str | None
-    location: str = f"HKCU\\{_RUN_KEY}\\{_VALUE_NAME}"
+    location: str = f"HKCU\{RUN_KEY}\{CURRENT_VALUE_NAME}"
 
 
 def quote_windows_argument(value: str) -> str:
@@ -80,9 +87,6 @@ def quote_windows_argument(value: str) -> str:
 
 
 def subprocess_list2cmdline(arguments: list[str]) -> str:
-    # Python's implementation is the closest representation of CreateProcess parsing.
-    import subprocess
-
     return subprocess.list2cmdline(arguments)
 
 
@@ -94,6 +98,21 @@ def startup_command(executable: Path, *, portable: bool, open_browser: bool = Fa
     if not open_browser:
         command.append("--no-browser")
     return subprocess_list2cmdline(command)
+
+
+def _command_executable_name(command: str | None) -> str | None:
+    value = str(command or "").strip()
+    if not value:
+        return None
+    match = re.match(r'^\s*(?:"([^"]+)"|([^\s]+))', value)
+    if not match:
+        return None
+    return Path(match.group(1) or match.group(2)).name.casefold()
+
+
+def _recognized_legacy_command(command: str | None) -> bool:
+    executable_name = _command_executable_name(command)
+    return executable_name == f"{LEGACY_EXECUTABLE_BASENAME}.exe".casefold()
 
 
 class StartupRegistration:
@@ -112,8 +131,18 @@ class StartupRegistration:
     def expected_command(self) -> str:
         return startup_command(self.executable, portable=self.portable, open_browser=False)
 
+    def _migrate_legacy_if_enabled(self) -> None:
+        current = self.backend.read(RUN_KEY, CURRENT_VALUE_NAME)
+        legacy = self.backend.read(RUN_KEY, LEGACY_VALUE_NAME)
+        if current is None and _recognized_legacy_command(legacy):
+            self.backend.write(RUN_KEY, CURRENT_VALUE_NAME, self.expected_command)
+            self.backend.delete(RUN_KEY, LEGACY_VALUE_NAME)
+        elif current == self.expected_command and _recognized_legacy_command(legacy):
+            self.backend.delete(RUN_KEY, LEGACY_VALUE_NAME)
+
     def state(self) -> StartupRegistrationState:
-        current = self.backend.read(_RUN_KEY, _VALUE_NAME)
+        self._migrate_legacy_if_enabled()
+        current = self.backend.read(RUN_KEY, CURRENT_VALUE_NAME)
         return StartupRegistrationState(
             enabled=current == self.expected_command,
             command=current,
@@ -126,9 +155,13 @@ class StartupRegistration:
                 "per-user before enabling automatic startup."
             )
         if enabled:
-            self.backend.write(_RUN_KEY, _VALUE_NAME, self.expected_command)
+            self.backend.write(RUN_KEY, CURRENT_VALUE_NAME, self.expected_command)
+            legacy = self.backend.read(RUN_KEY, LEGACY_VALUE_NAME)
+            if _recognized_legacy_command(legacy):
+                self.backend.delete(RUN_KEY, LEGACY_VALUE_NAME)
         else:
-            self.backend.delete(_RUN_KEY, _VALUE_NAME)
+            self.backend.delete(RUN_KEY, CURRENT_VALUE_NAME)
+            self.backend.delete(RUN_KEY, LEGACY_VALUE_NAME)
         return self.state()
 
 

@@ -308,7 +308,7 @@ def stage_compatibility() -> None:
     text = _replace_required(
         text,
         "from pathlib import Path\n\n_APP_DIR_NAME = \"OpenVINOWindowsLLM\"",
-        "from pathlib import Path\n\nfrom app.brand import DATA_DIR_NAME, DISPLAY_NAME, LEGACY_DATA_DIR_NAME",
+        "from pathlib import Path\n\nfrom app.brand import DATA_DIR_NAME, DISPLAY_NAME, LEGACY_DATA_DIR_NAME\n\n_APP_DIR_NAME = DATA_DIR_NAME",
         path=path,
     )
     marker = '''def _default_local_app_data(env: Mapping[str, str]) -> Path:
@@ -381,6 +381,8 @@ def _desktop_data_root(env: Mapping[str, str]) -> Path:
         RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
         CURRENT_VALUE_NAME = "InferBridge"
         LEGACY_VALUE_NAME = "OpenVINOWindowsLLM"
+        _RUN_KEY = RUN_KEY
+        _VALUE_NAME = CURRENT_VALUE_NAME
 
 
         class RegistryBackend(Protocol):
@@ -667,7 +669,7 @@ def is_official_repository_url(value: str) -> bool:
     text = _replace_required(
         text,
         '_RELEASES_API = "https://api.github.com/repos/Quazmoz/openvino-windows-llm/releases?per_page=20"',
-        '_RELEASES_APIS = tuple(\n    f"https://api.github.com/repos/{REPOSITORY_OWNER}/{repository}/releases?per_page=20"\n    for repository in (LEGACY_REPOSITORY_NAME, REPOSITORY_NAME)\n)\n_MANIFEST_PREFIXES = (ARTIFACT_PREFIX, *LEGACY_ARTIFACT_PREFIXES)',
+        '_RELEASES_APIS = tuple(\n    f"https://api.github.com/repos/{REPOSITORY_OWNER}/{repository}/releases?per_page=20"\n    for repository in (LEGACY_REPOSITORY_NAME, REPOSITORY_NAME)\n)\n_RELEASES_API = _RELEASES_APIS[0]\n_MANIFEST_PREFIXES = (ARTIFACT_PREFIX, *LEGACY_ARTIFACT_PREFIXES)',
         path=path,
     )
     candidate_start = "def _candidate_manifest_url(releases: object, channel: ReleaseChannel) -> tuple[str, str] | None:\n"
@@ -792,7 +794,6 @@ def _fetch_release_index(*, opener: Callable, timeout_seconds: float, etag: str 
 def stage_packaging() -> None:
     path = "packaging/openvino_windows_llm.spec"
     text = _read(path)
-    text = _replace_required(text, '    name="OpenVINOWindowsLLM",', '    name="InferBridge",', path=path)
     text = _replace_required(text, '    name="OpenVINOWindowsLLM",', '    name="InferBridge",', path=path)
     _write(path, text)
 

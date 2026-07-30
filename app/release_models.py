@@ -16,13 +16,25 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
+from app.brand import (
+    ARTIFACT_PREFIX,
+    LEGACY_ARTIFACT_PREFIXES,
+    LEGACY_REPOSITORY_NAME,
+    REPOSITORY_NAME,
+    REPOSITORY_OWNER,
+)
+
 _VERSION_RE = re.compile(
     r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
     r"(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?"
     r"(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$"
 )
 _ALLOWED_RELEASE_HOST = "github.com"
-_ALLOWED_RELEASE_PREFIX = "/Quazmoz/openvino-windows-llm/releases/download/"
+_ALLOWED_REPOSITORY_NAMES = (REPOSITORY_NAME, LEGACY_REPOSITORY_NAME)
+_ALLOWED_RELEASE_PREFIXES = tuple(
+    f"/{REPOSITORY_OWNER}/{repository}/releases/download/"
+    for repository in _ALLOWED_REPOSITORY_NAMES
+)
 
 
 @total_ordering
@@ -107,7 +119,7 @@ def channel_accepts(channel: ReleaseChannel, version: str) -> bool:
 
 def artifact_filename(version: str, artifact_type: ArtifactType) -> str:
     SemanticVersion.parse(version)
-    prefix = f"OpenVINO-Windows-LLM-{version}"
+    prefix = f"{ARTIFACT_PREFIX}-{version}"
     suffixes = {
         "installer": "-windows-x64-installer.exe",
         "portable": "-windows-x64-portable.zip",
@@ -119,6 +131,16 @@ def artifact_filename(version: str, artifact_type: ArtifactType) -> str:
     return prefix + suffixes[artifact_type]
 
 
+
+def artifact_filenames(version: str, artifact_type: ArtifactType) -> tuple[str, ...]:
+    canonical = artifact_filename(version, artifact_type)
+    suffix = canonical.removeprefix(f"{ARTIFACT_PREFIX}-{version}")
+    aliases = tuple(
+        f"{prefix}-{version}{suffix}" for prefix in LEGACY_ARTIFACT_PREFIXES
+    )
+    return (canonical, *aliases)
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -127,15 +149,34 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def is_official_release_url(value: str) -> bool:
+def _safe_github_url(value: str) -> tuple[bool, str]:
     parsed = urlparse(value)
-    return (
+    valid = (
         parsed.scheme == "https"
         and parsed.hostname == _ALLOWED_RELEASE_HOST
-        and parsed.path.startswith(_ALLOWED_RELEASE_PREFIX)
         and not parsed.username
         and not parsed.password
         and parsed.port is None
+        and not parsed.params
+        and not parsed.query
+        and not parsed.fragment
+    )
+    return valid, parsed.path
+
+
+def is_official_release_url(value: str) -> bool:
+    valid, path = _safe_github_url(value)
+    return valid and any(path.startswith(prefix) for prefix in _ALLOWED_RELEASE_PREFIXES)
+
+
+def is_official_repository_url(value: str) -> bool:
+    valid, path = _safe_github_url(value)
+    if not valid:
+        return False
+    return any(
+        path == f"/{REPOSITORY_OWNER}/{repository}"
+        or path.startswith(f"/{REPOSITORY_OWNER}/{repository}/")
+        for repository in _ALLOWED_REPOSITORY_NAMES
     )
 
 
@@ -235,7 +276,7 @@ class ReleaseManifest(BaseModel):
             if artifact.type in seen:
                 raise ValueError(f"duplicate artifact type: {artifact.type}")
             seen.add(artifact.type)
-            if artifact.filename != artifact_filename(self.version, artifact.type):
+            if artifact.filename not in artifact_filenames(self.version, artifact.type):
                 raise ValueError(f"unexpected filename for {artifact.type}")
         if not {"installer", "portable"}.intersection(seen):
             raise ValueError("manifest must contain an installer or portable artifact")
@@ -244,9 +285,10 @@ class ReleaseManifest(BaseModel):
             self.known_issues_url,
             self.compatibility_matrix_url,
         ):
-            parsed_url = urlparse(str(value))
-            if parsed_url.scheme != "https" or parsed_url.hostname != "github.com":
-                raise ValueError("release documentation URLs must use the official GitHub host")
+            if not is_official_repository_url(str(value)):
+                raise ValueError(
+                    "release documentation URLs must use an approved InferBridge repository"
+                )
         return self
 
     def select_artifact(self, installation_mode: InstallationMode) -> ReleaseArtifact | None:
