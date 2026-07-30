@@ -12,7 +12,8 @@ def test_installer_reuses_identity_and_removes_only_immutable_runtime_payload():
     assert "CloseApplications=yes" in script
     assert "CloseApplicationsFilter={#MyAppExeName},*.dll,*.pyd" in script
     assert "RestartApplications=yes" in script
-    assert "runascurrentuser" in script
+    assert "Flags: nowait postinstall skipifsilent" in script
+    assert "runascurrentuser" not in script
 
     install_delete = script.split("[InstallDelete]", 1)[1].split("[Files]", 1)[0]
     assert 'Name: "{app}\\_internal"' in install_delete
