@@ -7,6 +7,15 @@ from app.model_manager import ModelManager
 from runtime.progress_protocol import ProgressEventEmitter
 
 
+class _Stream:
+    def __init__(self, text: str) -> None:
+        self._lines = [line.encode("utf-8") for line in text.splitlines(keepends=True)]
+        self._lines.append(b"")
+
+    async def readline(self) -> bytes:
+        return self._lines.pop(0)
+
+
 def _manager(tmp_path) -> ModelManager:
     catalog_file = tmp_path / "models.json"
     catalog_file.write_text(
@@ -34,11 +43,8 @@ def _manager(tmp_path) -> ModelManager:
     return ModelManager(settings)
 
 
-def _reader(text: str) -> asyncio.StreamReader:
-    reader = asyncio.StreamReader()
-    reader.feed_data(text.encode("utf-8"))
-    reader.feed_eof()
-    return reader
+def _reader(text: str) -> _Stream:
+    return _Stream(text)
 
 
 def test_server_operation_id_is_stable_and_revision_is_monotonic(tmp_path) -> None:
@@ -49,12 +55,15 @@ def test_server_operation_id_is_stable_and_revision_is_monotonic(tmp_path) -> No
 
     manager._set_progress("model-1", "loading", "Loading model", percent=50)
     second = dict(manager.progress["model-1"])
+    api_progress = manager.catalog_entry("model-1")["progress"]
 
     assert first["schema_version"] == 1
     assert first["operation_id"].startswith("load-")
     assert first["operation_type"] == "load"
     assert second["operation_id"] == first["operation_id"]
     assert second["revision"] > first["revision"]
+    assert api_progress["operation_id"] == second["operation_id"]
+    assert api_progress["revision"] == second["revision"]
 
 
 def test_retry_gets_new_operation_id_without_resetting_revision_counter(tmp_path) -> None:
