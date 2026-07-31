@@ -15,7 +15,6 @@ from collections.abc import Callable
 from typing import Any
 
 _INSTALL_FLAG = "_DEVICE_AUTHORITATIVE_LOAD_INSTALLED"
-_CACHE_INSTALL_FLAG = "_INFERBRIDGE_FAST_NPU_CACHE_INSTALLED"
 _TARGETS_ATTR = "_requested_load_devices"
 _LOAD_WAIT_UPDATE_SECONDS = 5.0
 _NATIVE_LOAD_HEARTBEAT_SECONDS = 15.0
@@ -76,39 +75,12 @@ async def _acquire_with_progress(
             )
 
 
-def _install_fast_npu_cache() -> None:
-    """Prefer the faster reusable NPU cache format for packaged model loads."""
-
-    from runtime import device_check, openvino_engine
-
-    if getattr(openvino_engine, _CACHE_INSTALL_FLAG, False):
-        return
-
-    original_build_plugin_config = openvino_engine.build_plugin_config
-
-    def build_plugin_config_for_fast_loads(
-        device: str,
-        max_prompt_len: int | None,
-        cache_dir=None,
-    ) -> dict:
-        config = original_build_plugin_config(device, max_prompt_len, cache_dir)
-        if device_check.normalize_device(device) == "NPU" and config.get("CACHE_DIR"):
-            config.setdefault("CACHE_MODE", "OPTIMIZE_SPEED")
-            config.setdefault("GENERATE_HINT", "FAST_COMPILE")
-        return config
-
-    openvino_engine.build_plugin_config = build_plugin_config_for_fast_loads
-    setattr(openvino_engine, _CACHE_INSTALL_FLAG, True)
-
-
 def install_model_load_target_routing() -> None:
     """Patch ``ModelManager`` so the newest explicit load target always wins."""
 
     from app import errors, model_manager as manager_module, model_registry as registry
     from app.config import BASE_DIR
     from runtime import device_check
-
-    _install_fast_npu_cache()
 
     manager_class = manager_module.ModelManager
     if getattr(manager_class, _INSTALL_FLAG, False):
