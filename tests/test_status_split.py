@@ -46,6 +46,14 @@ def test_model_status_does_not_collect_expensive_telemetry(monkeypatch, tmp_path
     monkeypatch.setattr(status_split, "_available_devices", devices)
 
     with _client(tmp_path) as client:
+        manager = client.app.state.manager
+        monkeypatch.setattr(
+            manager.advisor,
+            "hardware_snapshot",
+            lambda **_kwargs: (_ for _ in ()).throw(
+                AssertionError("advisor snapshot reached lightweight endpoint")
+            ),
+        )
         response = client.get("/v1/models/status")
 
     assert response.status_code == 200
@@ -54,6 +62,7 @@ def test_model_status_does_not_collect_expensive_telemetry(monkeypatch, tmp_path
     assert "models" in payload
     assert "memory" not in payload
     assert "disk" not in payload
+    assert all("advisor" not in entry for entry in payload["models"]["available"])
     assert calls == {"gpu": 0, "disk": 0, "devices": 0}
 
 
@@ -88,8 +97,38 @@ def test_telemetry_requests_share_five_second_cache(monkeypatch, tmp_path) -> No
     assert first.json()["cache"]["hit"] is False
     assert second.json()["cache"]["hit"] is True
     assert legacy.json()["cache"]["hit"] is True
+    assert first.json()["model_advisor"]
+    assert any("advisor" in entry for entry in legacy.json()["models"]["available"])
     assert legacy.json()["split_status"]["telemetry_ttl_seconds"] == 5.0
     assert calls == {"gpu": 1, "disk": 1, "devices": 1}
+
+
+def test_request_metrics_remain_live_during_telemetry_cache_window(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(status_split, "gpu_stats", lambda: None)
+    monkeypatch.setattr(
+        status_split,
+        "disk_stats",
+        lambda _path, *, cache_seconds: {
+            "models_gb": 0.0,
+            "total_gb": 100.0,
+            "free_gb": 90.0,
+        },
+    )
+    monkeypatch.setattr(status_split, "_available_devices", lambda: ["CPU"])
+
+    with _client(tmp_path) as client:
+        manager = client.app.state.manager
+        model_id = next(iter(manager.catalog))
+        manager.record_request(model_id, 10, 5, 0.1)
+        first = client.get("/v1/system/telemetry").json()
+        manager.record_request(model_id, 20, 7, 0.2)
+        second = client.get("/v1/system/telemetry").json()
+
+    assert first["cache"]["hit"] is False
+    assert second["cache"]["hit"] is True
+    assert first["metrics"]["per_model"][model_id]["requests"] == 1
+    assert second["metrics"]["per_model"][model_id]["requests"] == 2
+    assert second["metrics"]["per_model"][model_id]["prompt_tokens"] == 30
 
 
 def test_telemetry_refresh_serves_stale_cache_when_collector_fails(monkeypatch, tmp_path) -> None:
