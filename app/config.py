@@ -21,6 +21,7 @@ from app.model_library_routes import install_model_library_routes_extension
 from app.model_library_ui import install_model_library_ui_extension
 from app.onboarding_ui import install_onboarding_ui_extension
 from app.paths import resolve_runtime_paths
+from app.progress_operation_ui import install_progress_operation_ui_extension
 from app.progress_reliability import install_progress_ui_extension
 from app.ui_polish import install_ui_polish_extension
 from app.ui_quality import install_ui_quality_extension
@@ -42,6 +43,7 @@ install_ui_quality_extension()
 install_system_doctor_extension()
 install_header_overflow_extension()
 install_progress_ui_extension()
+install_progress_operation_ui_extension()
 install_onboarding_ui_extension()
 install_model_library_ui_extension()
 install_desktop_operations_ui_extension()
