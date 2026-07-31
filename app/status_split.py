@@ -310,8 +310,7 @@ async def _telemetry_snapshot(request: Request, *, refresh: bool = False) -> dic
                 asyncio.to_thread(_advisor_summary_snapshot, manager),
             )
             metrics = _core_manager_class().metrics_summary(manager)
-            if advisor_summary:
-                metrics["advisor"] = advisor_summary
+            metrics["advisor"] = advisor_summary
             payload = {
                 "schema_version": 1,
                 "generated_at": int(time.time()),
