@@ -257,4 +257,4 @@ jobs:
           git commit -m "[skip ci] ci: record final split status validation"
           git push origin HEAD:development
 
-# final rerun after live-metrics and lazy-import corrections
+# final rerun after independent Python 3.11 and 3.13 verification
