@@ -61,11 +61,15 @@ async def _acquire_with_progress(
 
     started = time.monotonic()
     interval = max(0.01, float(_LOAD_WAIT_UPDATE_SECONDS))
-    while True:
-        try:
-            await asyncio.wait_for(lock.acquire(), timeout=interval)
-            return
-        except TimeoutError:
+    waiter = asyncio.create_task(lock.acquire())
+    acquired = False
+    try:
+        while True:
+            done, _ = await asyncio.wait({waiter}, timeout=interval)
+            if waiter in done:
+                acquired = await waiter
+                return
+
             position, total = _queue_position(manager, model_id)
             manager._set_status(model_id, "queued")
             manager._set_progress(
@@ -73,6 +77,17 @@ async def _acquire_with_progress(
                 "queued",
                 message(time.monotonic() - started, position, total),
             )
+    except BaseException:
+        if not waiter.done():
+            waiter.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await waiter
+        elif not waiter.cancelled():
+            with contextlib.suppress(Exception):
+                acquired = bool(waiter.result())
+        if acquired and lock.locked():
+            lock.release()
+        raise
 
 
 def install_model_load_target_routing() -> None:
