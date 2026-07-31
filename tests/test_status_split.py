@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import threading
 from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
@@ -101,6 +103,60 @@ def test_telemetry_requests_share_five_second_cache(monkeypatch, tmp_path) -> No
     assert any("advisor" in entry for entry in legacy.json()["models"]["available"])
     assert legacy.json()["split_status"]["telemetry_ttl_seconds"] == 5.0
     assert calls == {"gpu": 1, "disk": 1, "devices": 1}
+
+
+def test_advisor_collectors_run_off_the_event_loop(monkeypatch, tmp_path) -> None:
+    threads: dict[str, int] = {}
+
+    def memory():
+        threads["event_loop"] = threading.get_ident()
+        return {"total_gb": 1.0, "available_gb": 1.0, "used_percent": 0.0}
+
+    def model_advisor(_manager):
+        threads["model_advisor"] = threading.get_ident()
+        return {}
+
+    def advisor_summary(_manager):
+        threads["advisor_summary"] = threading.get_ident()
+        return {}
+
+    monkeypatch.setattr(status_split, "memory_stats", memory)
+    monkeypatch.setattr(status_split, "cpu_stats", lambda: {})
+    monkeypatch.setattr(status_split, "gpu_stats", lambda: None)
+    monkeypatch.setattr(
+        status_split,
+        "disk_stats",
+        lambda _path, *, cache_seconds: {
+            "models_gb": 0.0,
+            "total_gb": 1.0,
+            "free_gb": 1.0,
+        },
+    )
+    monkeypatch.setattr(status_split, "_available_devices", lambda: ["CPU"])
+    monkeypatch.setattr(status_split, "_model_advisor_snapshot", model_advisor)
+    monkeypatch.setattr(status_split, "_advisor_summary_snapshot", advisor_summary)
+
+    with _client(tmp_path) as client:
+        response = client.get("/v1/system/telemetry")
+
+    assert response.status_code == 200
+    assert threads["model_advisor"] != threads["event_loop"]
+    assert threads["advisor_summary"] != threads["event_loop"]
+
+
+def test_model_advisor_snapshot_skips_one_broken_model() -> None:
+    manager = SimpleNamespace(catalog={"broken": object(), "healthy": object()})
+
+    def catalog_entry(model_id: str):
+        if model_id == "broken":
+            raise RuntimeError("corrupt local evidence")
+        return {"advisor": {"status": "ready"}}
+
+    manager.catalog_entry = catalog_entry
+
+    assert status_split._model_advisor_snapshot(manager) == {
+        "healthy": {"status": "ready"}
+    }
 
 
 def test_request_metrics_remain_live_during_telemetry_cache_window(monkeypatch, tmp_path) -> None:
