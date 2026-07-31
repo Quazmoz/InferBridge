@@ -1,1 +1,2 @@
 Temporary trigger for the trusted obsolete-branch cleanup workflow.
+Run after the scoped CI cleanup job was installed on main.
