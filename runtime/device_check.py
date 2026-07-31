@@ -108,6 +108,8 @@ def parse_device_expression(device: str | None, *, default: str | None = None) -
             raise DeviceValidationError(
                 f"Unsupported OpenVINO physical device '{token}' in '{raw}'."
             )
+    if len(set(devices)) != len(devices):
+        raise DeviceValidationError(f"Device '{raw}' contains duplicate priority entries.")
     return DeviceExpression(meta, devices)
 
 
@@ -175,14 +177,14 @@ def available_devices() -> list[str]:
     """List OpenVINO device names (e.g. ['CPU', 'GPU', 'NPU']); [] if unavailable."""
     global _cached_devices
     if _cached_devices is not None:
-        return _cached_devices
+        return list(_cached_devices)
 
     if importlib.util.find_spec("openvino") is None:
         return []
     try:
         core = _get_core()
         _cached_devices = list(core.available_devices)
-        return _cached_devices
+        return list(_cached_devices)
     except Exception as exc:  # pragma: no cover - depends on local OpenVINO/drivers
         logger.warning("OpenVINO device discovery failed: %s", exc)
         return []
@@ -192,7 +194,7 @@ def device_details() -> list[dict]:
     """List devices with their human-readable full names."""
     global _cached_details
     if _cached_details is not None:
-        return _cached_details
+        return [dict(item) for item in _cached_details]
 
     if importlib.util.find_spec("openvino") is None:
         return []
@@ -206,7 +208,7 @@ def device_details() -> list[dict]:
                 full = dev
             details.append({"device": dev, "full_name": str(full)})
         _cached_details = details
-        return _cached_details
+        return [dict(item) for item in _cached_details]
     except Exception as exc:  # pragma: no cover
         logger.warning("OpenVINO device discovery failed: %s", exc)
         return []
@@ -216,9 +218,10 @@ def is_device_available(device: str, available: list[str] | None = None) -> bool
     """Whether ``device`` can be targeted.
 
     Plain ``AUTO`` always passes. Otherwise matches every requested physical
-    target against discovered devices, tolerating indexed names like ``GPU.0``.
-    If discovery returned nothing (OpenVINO absent), only CPU/AUTO are considered
-    available; mock-mode server paths skip this hardware availability check.
+    target against discovered devices. Unindexed targets such as ``GPU`` match
+    indexed devices such as ``GPU.0``; explicitly indexed targets require an
+    exact match. If discovery returned nothing (OpenVINO absent), only CPU/AUTO
+    are considered available; mock-mode server paths skip this hardware check.
     """
     try:
         parsed = parse_device_expression(device)
@@ -287,9 +290,12 @@ def suggested_device_targets(available: list[str] | None = None) -> list[dict[st
 
 
 def _physical_device_available(device: str, available: list[str]) -> bool:
+    requested = str(device).strip().upper()
     normalized_available = [str(a).strip().upper() for a in available if str(a).strip()]
-    base = device.split(".")[0]
-    return any(a == device or a.split(".")[0] == base for a in normalized_available)
+    if "." in requested:
+        return requested in normalized_available
+    base = requested.split(".", 1)[0]
+    return any(a == base or a.startswith(f"{base}.") for a in normalized_available)
 
 
 def _available_bases(available: list[str]) -> set[str]:
