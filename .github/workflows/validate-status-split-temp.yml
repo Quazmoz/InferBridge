@@ -1,0 +1,87 @@
+name: Validate Status Split Temporary
+
+on:
+  push:
+    branches: ["development"]
+    paths:
+      - ".github/workflows/validate-status-split-temp.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev,browser]
+          python -m playwright install --with-deps chromium
+      - name: Run validation and record output
+        shell: bash
+        env:
+          OV_LLM_MOCK: "true"
+          INFERBRIDGE_BROWSER_ARTIFACTS: browser-artifacts
+        run: |
+          set +e
+          python - <<'PY' > /tmp/node-source.txt 2>&1
+          from pathlib import Path
+          from app.operation_queue_ui import OPERATION_QUEUE_JS
+          from app.status_split_ui import STATUS_SPLIT_JS
+          Path('/tmp/status-split.js').write_text(STATUS_SPLIT_JS, encoding='utf-8')
+          Path('/tmp/operation-queue.js').write_text(OPERATION_QUEUE_JS, encoding='utf-8')
+          PY
+          source_status=$?
+          node --check /tmp/status-split.js > /tmp/node-split.txt 2>&1
+          node_split=$?
+          node --check /tmp/operation-queue.js > /tmp/node-queue.txt 2>&1
+          node_queue=$?
+          ruff check app/status_split.py app/status_split_ui.py app/operation_queue_ui.py tests/test_status_split.py tests/test_status_split_ui.py tests/test_operation_queue_ui.py browser_tests/test_progress_browser.py > /tmp/ruff-check.txt 2>&1
+          ruff_check=$?
+          ruff format --check app/status_split.py app/status_split_ui.py app/operation_queue_ui.py tests/test_status_split.py tests/test_status_split_ui.py tests/test_operation_queue_ui.py browser_tests/test_progress_browser.py > /tmp/ruff-format.txt 2>&1
+          ruff_format=$?
+          pytest tests/test_status_split.py tests/test_status_split_ui.py tests/test_operation_queue_ui.py tests/test_progress_operation_ui.py tests/test_progress_reliability.py tests/test_cancellation_ui.py tests/test_model_cancellation.py -q > /tmp/pytest.txt 2>&1
+          pytest_status=$?
+          pytest browser_tests -q > /tmp/browser.txt 2>&1
+          browser_status=$?
+          set -e
+
+          mkdir -p .audit
+          {
+            echo "validated_sha=${GITHUB_SHA}"
+            echo "source=${source_status}"
+            echo "node_split=${node_split}"
+            echo "node_queue=${node_queue}"
+            echo "ruff_check=${ruff_check}"
+            echo "ruff_format=${ruff_format}"
+            echo "pytest=${pytest_status}"
+            echo "browser=${browser_status}"
+            echo "--- source ---"
+            tail -80 /tmp/node-source.txt
+            echo "--- node split ---"
+            tail -80 /tmp/node-split.txt
+            echo "--- node queue ---"
+            tail -80 /tmp/node-queue.txt
+            echo "--- ruff check ---"
+            tail -160 /tmp/ruff-check.txt
+            echo "--- ruff format ---"
+            tail -160 /tmp/ruff-format.txt
+            echo "--- pytest ---"
+            tail -260 /tmp/pytest.txt
+            echo "--- browser ---"
+            tail -320 /tmp/browser.txt
+          } > .audit/status-split-validation.txt
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+users.noreply.github.com
+          git add .audit/status-split-validation.txt
+          git commit -m "[skip ci] ci: record status split validation"
+          git push origin HEAD:development
