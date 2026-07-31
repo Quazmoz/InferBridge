@@ -9,7 +9,6 @@ stop the worker thread immediately and a successful-looking response would be fa
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import functools
 import logging
 import secrets
@@ -91,7 +90,11 @@ def _capability(manager: Any, model_id: str) -> dict[str, Any]:
         }
     if _active(load_task):
         if phase in _PRECOMPILE_PHASES:
-            mode = "conversion" if phase in {"downloading", "converting", "finalizing"} else "preparation"
+            mode = (
+                "conversion"
+                if phase in {"downloading", "converting", "finalizing"}
+                else "preparation"
+            )
             return {
                 "can_cancel": True,
                 "cancel_mode": mode,
@@ -199,6 +202,12 @@ def install_model_cancellation_manager_extension() -> None:
                     mapping.pop(model_id, None)
 
             latest_operation_id, latest_phase, _ = _progress_identity(self, model_id)
+            if latest_operation_id == operation_id and latest_phase in {"ready", "error"}:
+                raise CancellationConflict(
+                    "task_finished",
+                    "The model preparation task finished before cancellation completed.",
+                    current_operation_id=latest_operation_id,
+                )
             if latest_operation_id == operation_id and latest_phase != "cancelled":
                 cfg = self.catalog[model_id]
                 self._set_status(model_id, "cancelled")
