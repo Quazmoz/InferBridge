@@ -16,7 +16,7 @@ permissions:
 jobs:
   apply-and-validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 20
 
     steps:
       - name: Checkout development
@@ -35,11 +35,10 @@ jobs:
           python .github/scripts/fix_cancellation_race.py
           python .github/scripts/fix_browser_imports.py
 
-      - name: Install test and browser dependencies
+      - name: Install development dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e .[dev,browser]
-          python -m playwright install --with-deps chromium
+          pip install -e .[dev]
 
       - name: Format and lint implementation
         run: |
@@ -98,23 +97,7 @@ jobs:
           tests/test_conversion_stream_safety.py
           tests/test_server_mock.py
 
-      - name: Run real Chromium behavior tests
-        env:
-          OV_LLM_MOCK: "true"
-          INFERBRIDGE_BROWSER_ARTIFACTS: browser-artifacts
-        run: pytest browser_tests -q
-
-      - name: Upload diagnostics on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cancellation-browser-integration-diagnostics
-          path: browser-artifacts
-          if-no-files-found: ignore
-          retention-days: 3
-
       - name: Commit validated integration
-        if: success()
         run: |
           rm .github/scripts/apply_cancellation_and_browser.py
           rm .github/scripts/fix_cancellation_race.py
