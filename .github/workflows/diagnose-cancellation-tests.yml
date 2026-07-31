@@ -1,0 +1,93 @@
+name: Diagnose Cancellation Tests
+
+on:
+  push:
+    branches: ["development"]
+    paths:
+      - ".github/workflows/diagnose-cancellation-tests.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - id: apply
+        name: Apply integration
+        continue-on-error: true
+        run: |
+          python .github/scripts/apply_cancellation_and_browser.py
+          python .github/scripts/fix_cancellation_race.py
+
+      - id: install
+        name: Install dependencies
+        continue-on-error: true
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev,browser]
+
+      - id: static
+        name: Run static checks
+        continue-on-error: true
+        run: |
+          ruff format --check app browser_tests tests
+          ruff check app/model_cancellation.py app/cancellation_ui.py browser_tests tests/test_model_cancellation.py tests/test_model_cancellation_race.py tests/test_cancellation_ui.py
+
+      - id: python_tests
+        name: Run focused Python tests
+        continue-on-error: true
+        env:
+          OV_LLM_MOCK: "true"
+        run: pytest tests/test_model_cancellation.py tests/test_model_cancellation_race.py tests/test_cancellation_ui.py tests/test_structured_progress.py tests/test_progress_ui.py tests/test_server_mock.py
+
+      - id: browser_install
+        name: Install Chromium
+        continue-on-error: true
+        run: python -m playwright install --with-deps chromium
+
+      - id: browser_tests
+        name: Run browser tests
+        continue-on-error: true
+        env:
+          OV_LLM_MOCK: "true"
+        run: pytest browser_tests -q
+
+      - name: Record stage outcomes
+        if: always()
+        run: |
+          mkdir -p .audit
+          cat > .audit/cancellation-test-stages.txt <<EOF
+          validated_sha=${GITHUB_SHA}
+          apply=${{ steps.apply.outcome }}
+          install=${{ steps.install.outcome }}
+          static=${{ steps.static.outcome }}
+          python_tests=${{ steps.python_tests.outcome }}
+          browser_install=${{ steps.browser_install.outcome }}
+          browser_tests=${{ steps.browser_tests.outcome }}
+          EOF
+          git reset --hard HEAD
+          mkdir -p .audit
+          cat > .audit/cancellation-test-stages.txt <<EOF
+          validated_sha=${GITHUB_SHA}
+          apply=${{ steps.apply.outcome }}
+          install=${{ steps.install.outcome }}
+          static=${{ steps.static.outcome }}
+          python_tests=${{ steps.python_tests.outcome }}
+          browser_install=${{ steps.browser_install.outcome }}
+          browser_tests=${{ steps.browser_tests.outcome }}
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+users.noreply.github.com
+          git add .audit/cancellation-test-stages.txt
+          git commit -m "[skip ci] ci: record cancellation test stages"
+          git push origin HEAD:development
