@@ -134,6 +134,21 @@ falls back to `/v1/system/status`, allowing the existing connection and retry ha
 to surface the failure. Cached telemetry or events may still be reused when only those
 slower data sources are temporarily unavailable.
 
+### Progress percentage semantics
+
+The WebGUI does not manufacture an overall operation percentage by assigning fixed
+percentage ranges to download, conversion, finalization, or runtime loading phases.
+
+- `progress.percent` is displayed as progress for the current phase only.
+- Valid `completed` and `total` counts take precedence and drive the phase progress bar.
+- Human-readable `log_tail` text is never parsed to invent a percentage.
+- A phase without a server-provided measurement remains explicitly indeterminate.
+- A future server-provided `overall_percent` may be displayed as overall progress, but
+  the client does not derive that value itself.
+
+This prevents a conversion tool reporting `40%` from being presented as an unsupported
+whole-operation percentage such as `72%`.
+
 ## Active operation queue
 
 The primary progress dock remains focused on one stable operation. When two or more
