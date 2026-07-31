@@ -14,6 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Apply focused progress controller patch
         shell: bash
@@ -24,48 +26,111 @@ jobs:
           path = Path("app/progress_reliability.py")
           text = path.read_text(encoding="utf-8")
 
-          replacements = [
-              (
-                  """        .ovrp-live{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}\n        @media(max-width:640px){#ov-reliable-progress{margin:8px 10px 0}.ovrp-detail{padding-left:12px}.ovrp-steps{grid-template-columns:1fr}.ovrp-message{display:none}}\n""",
-                  """        .ovrp-live{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}\n        #ovrp-model-select-indicator{display:none;position:absolute;right:8px;top:50%;z-index:2;width:16px;height:16px;transform:translateY(-50%);pointer-events:none}\n        #ovrp-model-select-indicator .ovrp-spinner{width:14px;height:14px;border-width:2px;background:var(--surface-2)}\n        .model-select-wrap.ovrp-working #ovrp-model-select-indicator{display:block}.model-select-wrap.ovrp-working .model-arrow{visibility:hidden}.model-select-wrap.ovrp-working #model-select{padding-right:34px}\n        @media(max-width:640px){#ov-reliable-progress{margin:8px 10px 0}.ovrp-detail{padding-left:12px}.ovrp-steps{grid-template-columns:1fr}.ovrp-message{display:none}}\n""",
-              ),
-              (
-                  """    const main = dock.querySelector('.ovrp-main');\n    const liveRegion = dock.querySelector('.ovrp-live');\n    main?.addEventListener('click', () => {\n""",
-                  """    const main = dock.querySelector('.ovrp-main');\n    const liveRegion = dock.querySelector('.ovrp-live');\n    const modelSelect = document.getElementById('model-select');\n    const modelSelectWrap = modelSelect?.closest('.model-select-wrap');\n    const modelSelectIndicator = document.createElement('span');\n    modelSelectIndicator.id = 'ovrp-model-select-indicator';\n    modelSelectIndicator.setAttribute('aria-hidden', 'true');\n    modelSelectIndicator.innerHTML = '<span class=\"ovrp-spinner\"></span>';\n    modelSelectWrap?.appendChild(modelSelectIndicator);\n    main?.addEventListener('click', () => {\n""",
-              ),
-              (
-                  """    function setRenderTicker(enabled) {\n        if (enabled && !renderTicker) {\n""",
-                  """    function syncSelectedPreparation(models, selectedId) {\n        if (!modelSelect || !modelSelectWrap) return;\n        const selected = models.find(model => model.id === selectedId) || null;\n        const pending = selectedId ? optimistic.get(selectedId)?.model : null;\n        const current = selected?.is_loading ? selected : pending;\n        const busy = !!current?.is_loading;\n        modelSelectWrap.classList.toggle('ovrp-working', busy);\n        modelSelect.setAttribute('aria-busy', String(busy));\n        if (busy) {\n            const info = progressInfo(current);\n            modelSelectIndicator.title = `${info.meta.label} ${baseName(current)}`;\n            const loadButton = document.getElementById('load-model-btn');\n            if (loadButton) {\n                loadButton.disabled = true;\n                loadButton.setAttribute('aria-busy', 'true');\n            }\n        } else {\n            modelSelectIndicator.removeAttribute('title');\n            document.getElementById('load-model-btn')?.removeAttribute('aria-busy');\n        }\n    }\n\n    function setRenderTicker(enabled) {\n        if (enabled && !renderTicker) {\n""",
-              ),
-              (
-                  """        const selectedId = document.getElementById('model-select')?.value;\n        const active = chooseActiveModel(models, selectedId);\n        const operationCount = models.filter(model => model.is_loading).length;\n""",
-                  """        const selectedId = modelSelect?.value || '';\n        syncSelectedPreparation(models, selectedId);\n        const active = chooseActiveModel(models, selectedId);\n        const operationCount = models.filter(model => model.is_loading).length;\n""",
-              ),
-              (
-                  """    function scheduleRender(data, revision = ++nextStatusRevision) {\n        if (revision < latestStatusRevision) return;\n        latestStatus = data;\n        window.clearTimeout(renderTimer);\n""",
-                  """    function scheduleRender(data, revision = ++nextStatusRevision) {\n        if (revision < latestStatusRevision) return;\n        latestStatusRevision = revision;\n        latestStatus = data;\n        window.clearTimeout(renderTimer);\n""",
-              ),
-              (
-                  """        optimistic.set(modelId, { model, createdAt: Date.now() });\n        const info = renderDock(model, 1);\n""",
-                  """        optimistic.set(modelId, { model, createdAt: Date.now() });\n        if (modelSelect?.value === modelId) syncSelectedPreparation([model], modelId);\n        const info = renderDock(model, 1);\n""",
-              ),
-              (
-                  """        else {\n            renderDock(null);\n            renderInline(null, null);\n            setRenderTicker(false);\n        }\n""",
-                  """        else {\n            renderDock(null);\n            renderInline(null, null);\n            syncSelectedPreparation([], modelSelect?.value || '');\n            setRenderTicker(false);\n        }\n""",
-              ),
+          text = text.replace(
+              """    function scheduleRender(data, revision = ++nextStatusRevision) {
+        if (revision < latestStatusRevision) return;
+        latestStatus = data;
+""",
+              """    function scheduleRender(data, revision = ++nextStatusRevision) {
+        if (revision < latestStatusRevision) return;
+        latestStatusRevision = revision;
+        latestStatus = data;
+""",
+              1,
+          )
+
+          if "ovrp-model-select-indicator" not in text:
+              text = text.replace(
+                  """        .ovrp-live{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+""",
+                  """        .ovrp-live{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+        #ovrp-model-select-indicator{display:none;position:absolute;right:8px;top:50%;z-index:2;width:16px;height:16px;transform:translateY(-50%);pointer-events:none}
+        #ovrp-model-select-indicator .ovrp-spinner{width:14px;height:14px;border-width:2px;background:var(--surface-2)}
+        .model-select-wrap.ovrp-working #ovrp-model-select-indicator{display:block}.model-select-wrap.ovrp-working .model-arrow{visibility:hidden}.model-select-wrap.ovrp-working #model-select{padding-right:34px}
+""",
+                  1,
+              )
+              text = text.replace(
+                  """    const main = dock.querySelector('.ovrp-main');
+    const liveRegion = dock.querySelector('.ovrp-live');
+""",
+                  """    const main = dock.querySelector('.ovrp-main');
+    const liveRegion = dock.querySelector('.ovrp-live');
+    const modelSelect = document.getElementById('model-select');
+    const modelSelectWrap = modelSelect?.closest('.model-select-wrap');
+    const modelSelectIndicator = document.createElement('span');
+    modelSelectIndicator.id = 'ovrp-model-select-indicator';
+    modelSelectIndicator.setAttribute('aria-hidden', 'true');
+    modelSelectIndicator.innerHTML = '<span class="ovrp-spinner"></span>';
+    modelSelectWrap?.appendChild(modelSelectIndicator);
+""",
+                  1,
+              )
+              text = text.replace(
+                  """    function setRenderTicker(enabled) {
+""",
+                  """    function syncSelectedPreparation(models, selectedId) {
+        if (!modelSelect || !modelSelectWrap) return;
+        const selected = models.find(model => model.id === selectedId) || null;
+        const pending = selectedId ? optimistic.get(selectedId)?.model : null;
+        const current = selected?.is_loading ? selected : pending;
+        const busy = !!current?.is_loading;
+        modelSelectWrap.classList.toggle('ovrp-working', busy);
+        modelSelect.setAttribute('aria-busy', String(busy));
+        if (busy) {
+            const info = progressInfo(current);
+            modelSelectIndicator.title = `${info.meta.label} ${baseName(current)}`;
+            const loadButton = document.getElementById('load-model-btn');
+            if (loadButton) {
+                loadButton.disabled = true;
+                loadButton.setAttribute('aria-busy', 'true');
+            }
+        } else {
+            modelSelectIndicator.removeAttribute('title');
+            document.getElementById('load-model-btn')?.removeAttribute('aria-busy');
+        }
+    }
+
+    function setRenderTicker(enabled) {
+""",
+                  1,
+              )
+              text = text.replace(
+                  """        const selectedId = document.getElementById('model-select')?.value;
+        const active = chooseActiveModel(models, selectedId);
+""",
+                  """        const selectedId = modelSelect?.value || '';
+        syncSelectedPreparation(models, selectedId);
+        const active = chooseActiveModel(models, selectedId);
+""",
+                  1,
+              )
+              text = text.replace(
+                  """        optimistic.set(modelId, { model, createdAt: Date.now() });
+        const info = renderDock(model, 1);
+""",
+                  """        optimistic.set(modelId, { model, createdAt: Date.now() });
+        if (modelSelect?.value === modelId) syncSelectedPreparation([model], modelId);
+        const info = renderDock(model, 1);
+""",
+                  1,
+              )
+
+          required = [
+              "latestStatusRevision = revision;\n        latestStatus = data;",
+              "ovrp-model-select-indicator",
+              "function syncSelectedPreparation",
+              "syncSelectedPreparation(models, selectedId)",
           ]
-
-          for old, new in replacements:
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"Expected one progress patch target, found {count}")
-              text = text.replace(old, new, 1)
-
+          missing = [value for value in required if value not in text]
+          if missing:
+              raise SystemExit(f"Loading indicator patch incomplete: {missing}")
           path.write_text(text, encoding="utf-8")
 
           test_path = Path("tests/test_progress_reliability.py")
           test_text = test_path.read_text(encoding="utf-8")
-          assertion = """
+          if "test_selected_model_indicator_is_immediate_and_state_driven" not in test_text:
+              test_text += """
 
 
 def test_selected_model_indicator_is_immediate_and_state_driven() -> None:
@@ -78,8 +143,7 @@ def test_selected_model_indicator_is_immediate_and_state_driven() -> None:
     assert "modelSelectWrap.classList.toggle('ovrp-working', busy)" in script
     assert "latestStatusRevision = revision;\\n        latestStatus = data;" in script
 """
-          if "test_selected_model_indicator_is_immediate_and_state_driven" not in test_text:
-              test_path.write_text(test_text + assertion, encoding="utf-8")
+              test_path.write_text(test_text, encoding="utf-8")
           PY
 
           python -m py_compile app/progress_reliability.py tests/test_progress_reliability.py
