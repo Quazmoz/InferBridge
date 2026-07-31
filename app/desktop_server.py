@@ -42,13 +42,21 @@ def prepare_desktop_environment(
     data_dir: str | None = None,
     mock: bool = False,
 ) -> None:
+    """Apply one explicit desktop launch mode without leaking stale process state."""
+
     os.environ["OV_LLM_DESKTOP"] = "1"
     if portable:
         os.environ["OV_LLM_PORTABLE"] = "1"
+    else:
+        os.environ.pop("OV_LLM_PORTABLE", None)
     if data_dir:
         os.environ["OV_LLM_DATA_DIR"] = str(Path(data_dir).expanduser())
+    else:
+        os.environ.pop("OV_LLM_DATA_DIR", None)
     if mock:
         os.environ["OV_LLM_MOCK"] = "1"
+    else:
+        os.environ.pop("OV_LLM_MOCK", None)
 
 
 def _configure_file_logging(logs_dir: Path) -> None:
