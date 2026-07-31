@@ -90,4 +90,4 @@ jobs:
           git commit -m "[skip ci] ci: record split status diagnostic"
           git push origin HEAD:development
 
-# rerun live metrics
+# rerun after lazy core-manager import
