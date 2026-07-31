@@ -8,9 +8,19 @@ into short, actionable messages for the UI and logs.
 from __future__ import annotations
 
 import os
+import re
 import ssl
 
 from runtime import device_check
+
+_SECRET_RE = re.compile(
+    r"(hf_[A-Za-z0-9_=-]{8,}|Bearer\s+[A-Za-z0-9._~+/=-]+|token\s*[:=]\s*[A-Za-z0-9._~+/=-]+)",
+    re.IGNORECASE,
+)
+
+
+def _redact_secrets(text: str) -> str:
+    return _SECRET_RE.sub("[redacted]", str(text or ""))
 
 
 def is_tls_certificate_error(exc: BaseException) -> bool:
@@ -41,15 +51,15 @@ def format_model_load_error(exc: BaseException) -> str:
             "TLS certificate. On Windows, install python-certifi-win32, or set REQUESTS_CA_BUNDLE / "
             "SSL_CERT_FILE to your organization's CA bundle, then retry." + hint
         )
-    return str(exc)
+    return _redact_secrets(str(exc))
 
 
 def format_model_convert_error(exc: BaseException) -> str:
     """Return a concise, actionable message for a failed model conversion."""
-    text = str(exc)
+    text = _redact_secrets(str(exc))
+    lowered = text.lower()
 
-    # Check for Hugging Face gated repo / authorization error
-    if "not in the authorized list" in text.lower() or "403 client error" in text.lower():
+    if "not in the authorized list" in lowered or "403 client error" in lowered:
         model_url = None
         for word in text.split():
             clean_word = word.strip("()[].,'\"")
@@ -57,22 +67,30 @@ def format_model_convert_error(exc: BaseException) -> str:
                 model_url = clean_word
                 break
         visit_hint = (
-            f"Please visit {model_url} to accept the model agreement, then try converting again."
+            f" Open {model_url} and complete the publisher approval step."
             if model_url
-            else "Please visit the model's page on huggingface.co to accept the model agreement, then try converting again."
+            else " Open the model page on huggingface.co and complete the publisher approval step."
         )
         return (
-            f"Your Hugging Face token is authenticated, but your account is not authorized to access this model. "
-            f"{visit_hint}"
+            "Your Hugging Face token is valid, but this account is not approved for the model."
+            f"{visit_hint} Then use Settings > Hugging Face access to check access again."
         )
 
     if any(
-        kwd in text.lower() for kwd in ("gated", "restricted", "unauthorized", "401 client error")
+        keyword in lowered
+        for keyword in (
+            "gatedrepoerror",
+            "gated",
+            "restricted",
+            "unauthorized",
+            "401 client error",
+            "repositorynotfounderror",
+        )
     ):
         return (
-            "Access to this model is gated on Hugging Face. Please accept the model's license agreement "
-            "on huggingface.co, generate a token under Settings -> Tokens, add 'HF_TOKEN=your_token' to your "
-            ".env file, and restart the server."
+            "Hugging Face access is required for this model. Open Settings > Hugging Face access "
+            "to add or replace a token, complete any publisher approval on the model page, and "
+            "check access again. HF_TOKEN remains available only as an advanced environment fallback."
         )
 
     if is_tls_certificate_error(exc):
@@ -84,7 +102,7 @@ def format_model_convert_error(exc: BaseException) -> str:
             "SSL_CERT_FILE to your organization's CA bundle, then retry." + hint
         )
 
-    # Clean up long Optimum/subprocess tracebacks to focus on the root error
+    # Clean up long Optimum/subprocess tracebacks to focus on the root error.
     if "Traceback (most recent call last):" in text or "optimum-cli" in text:
         lines = [line.strip() for line in text.splitlines() if line.strip()]
         if lines:
