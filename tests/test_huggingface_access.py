@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
-import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
@@ -59,8 +59,7 @@ def test_environment_token_is_read_only_fallback(tmp_path, monkeypatch):
     assert status["removable"] is False
 
 
-@pytest.mark.asyncio
-async def test_gated_preflight_stops_before_network_without_token(tmp_path, monkeypatch):
+def test_gated_preflight_stops_before_network_without_token(tmp_path, monkeypatch):
     monkeypatch.delenv("HF_TOKEN", raising=False)
     calls = []
 
@@ -73,8 +72,8 @@ async def test_gated_preflight_stops_before_network_without_token(tmp_path, monk
         client_factory=_client_factory(handler),
     )
 
-    result = await service.preflight(
-        "meta-llama/Llama-3.2-1B-Instruct", access_type="gated"
+    result = asyncio.run(
+        service.preflight("meta-llama/Llama-3.2-1B-Instruct", access_type="gated")
     )
 
     assert result["code"] == "hf_token_missing"
@@ -82,8 +81,7 @@ async def test_gated_preflight_stops_before_network_without_token(tmp_path, monk
     assert calls == []
 
 
-@pytest.mark.asyncio
-async def test_valid_token_and_model_access_are_verified_without_exposing_token(tmp_path):
+def test_valid_token_and_model_access_are_verified_without_exposing_token(tmp_path):
     token = "hf_validtokenabcdefghijklmnopqrstuvwxyz"
 
     def handler(request: httpx.Request):
@@ -98,8 +96,8 @@ async def test_valid_token_and_model_access_are_verified_without_exposing_token(
     store.set_token(token)
     service = HuggingFaceAccessService(store, client_factory=_client_factory(handler))
 
-    result = await service.preflight(
-        "meta-llama/Llama-3.2-1B-Instruct", access_type="gated"
+    result = asyncio.run(
+        service.preflight("meta-llama/Llama-3.2-1B-Instruct", access_type="gated")
     )
 
     assert result["code"] == "hf_access_granted"
@@ -108,8 +106,7 @@ async def test_valid_token_and_model_access_are_verified_without_exposing_token(
     assert token not in json.dumps(service.status())
 
 
-@pytest.mark.asyncio
-async def test_valid_token_without_model_approval_is_actionable(tmp_path):
+def test_valid_token_without_model_approval_is_actionable(tmp_path):
     token = "hf_validtokenabcdefghijklmnopqrstuvwxyz"
 
     def handler(request: httpx.Request):
@@ -121,7 +118,7 @@ async def test_valid_token_without_model_approval_is_actionable(tmp_path):
     store.set_token(token)
     service = HuggingFaceAccessService(store, client_factory=_client_factory(handler))
 
-    result = await service.preflight("google/gemma-2-2b-it", access_type="gated")
+    result = asyncio.run(service.preflight("google/gemma-2-2b-it", access_type="gated"))
 
     assert result["code"] == "hf_approval_required"
     assert result["action"] == "open_model_agreement"
@@ -129,8 +126,7 @@ async def test_valid_token_without_model_approval_is_actionable(tmp_path):
     assert token not in json.dumps(result)
 
 
-@pytest.mark.asyncio
-async def test_invalid_token_is_not_persisted(tmp_path):
+def test_invalid_token_is_not_persisted(tmp_path):
     token = "hf_invalidtokenabcdefghijklmnop"
 
     def handler(_request: httpx.Request):
@@ -139,7 +135,7 @@ async def test_invalid_token_is_not_persisted(tmp_path):
     store = HuggingFaceCredentialStore(_settings(tmp_path))
     service = HuggingFaceAccessService(store, client_factory=_client_factory(handler))
 
-    result = await service.test_token(token, persist=True)
+    result = asyncio.run(service.test_token(token, persist=True))
 
     assert result["code"] == "hf_token_invalid"
     assert store.get_token() is None
@@ -252,7 +248,9 @@ def test_manager_entries_expose_structured_gated_metadata(tmp_path):
 
     assert entry["is_gated"] is True
     assert entry["huggingface_access"]["access_type"] == "gated"
-    assert entry["huggingface_access"]["license_url"].startswith("https://huggingface.co/")
+    assert entry["huggingface_access"]["license_url"].startswith(
+        "https://huggingface.co/"
+    )
 
 
 def test_conversion_errors_redact_tokens_and_point_to_in_app_recovery():
