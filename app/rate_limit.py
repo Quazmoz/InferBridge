@@ -70,7 +70,7 @@ class RateLimitMiddleware:
 
             window = self._hits[client_ip]
             cutoff = now - self.window
-            while window and window[0] < cutoff:
+            while window and window[0] <= cutoff:
                 window.popleft()
 
             if len(window) >= self.rpm:
@@ -83,6 +83,6 @@ class RateLimitMiddleware:
         """Remove clients with no recent activity while ``self._lock`` is held."""
 
         cutoff = now - self.window
-        stale = [ip for ip, hits in self._hits.items() if not hits or hits[-1] < cutoff]
+        stale = [ip for ip, hits in self._hits.items() if not hits or hits[-1] <= cutoff]
         for ip in stale:
             del self._hits[ip]
