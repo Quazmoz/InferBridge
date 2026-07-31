@@ -12,6 +12,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
@@ -80,10 +81,16 @@ def verify_instance(metadata: InstanceMetadata) -> bool:
 def wait_for_readiness(
     metadata: InstanceMetadata,
     timeout: float = _STARTUP_TIMEOUT_SECONDS,
+    *,
+    is_alive: Callable[[], bool] | None = None,
 ) -> bool:
+    """Wait for the matching server to become ready while its child stays alive."""
+
     deadline = time.monotonic() + timeout
     live_seen = False
     while time.monotonic() < deadline:
+        if is_alive is not None and not is_alive():
+            return False
         instance = _http_json(f"http://127.0.0.1:{metadata.port}/desktop/instance")
         if instance and instance.get("instance_nonce") == metadata.nonce:
             live = _http_json(f"http://127.0.0.1:{metadata.port}/health/live")
@@ -91,6 +98,8 @@ def wait_for_readiness(
             ready = _http_json(f"http://127.0.0.1:{metadata.port}/health/ready")
             if live_seen and ready and ready.get("status") == "ready":
                 return True
+        if is_alive is not None and not is_alive():
+            return False
         time.sleep(_POLL_INTERVAL_SECONDS)
     return False
 
