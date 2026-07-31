@@ -40,6 +40,21 @@ def test_progress_controller_exposes_stage_elapsed_and_activity_details():
     assert "3. Load" in rendered
 
 
+def test_progress_controller_uses_truthful_phase_progress():
+    rendered = inject_multimodal_ui("<html><body></body></html>")
+
+    assert "function progressCount" in rendered
+    assert "progress.completed" in rendered
+    assert "progress.total" in rendered
+    assert "progress.overall_percent" in rendered
+    assert "% of current phase" in rendered
+    assert "progress is not measurable for this phase" in rendered
+    assert "aggregateDownloadPercent" not in rendered
+    assert "meta.start" not in rendered
+    assert "meta.end" not in rendered
+    assert "· overall ${Math.round(info.overall)}%" not in rendered
+
+
 def test_progress_controller_renders_optimistically_before_first_poll():
     rendered = inject_multimodal_ui("<html><body></body></html>")
 
@@ -65,6 +80,7 @@ def test_progress_controller_resets_retry_state():
     rendered = inject_multimodal_ui("<html><body></body></html>")
 
     assert "modelState.delete(modelId)" in rendered
+    assert "operationId !== previous.operationId" in rendered
     assert "reportedStart !== previous.startedAt" in rendered
     assert "previous.terminal" in rendered
 
