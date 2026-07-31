@@ -1,3 +1,0 @@
-validated_sha=cf7d090359753a977014874498a6f4df425d267e
-apply_status=0
-race_status=0
