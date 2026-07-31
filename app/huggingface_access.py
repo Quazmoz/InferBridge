@@ -220,17 +220,24 @@ class HuggingFaceCredentialStore:
     def set_token(self, token: str) -> None:
         clean = self.validate_token(token)
         with self._lock:
-            self._memory_token = clean
             if os.name != "nt":
+                self._memory_token = clean
                 return
+
             self.token_path.parent.mkdir(parents=True, exist_ok=True)
             protected = self._protect_windows(clean.encode("utf-8"))
             encoded = base64.b64encode(protected)
             temp = self.token_path.with_suffix(".tmp")
-            temp.write_bytes(encoded)
-            with contextlib.suppress(OSError):
-                os.chmod(temp, 0o600)
-            temp.replace(self.token_path)
+            try:
+                temp.write_bytes(encoded)
+                with contextlib.suppress(OSError):
+                    os.chmod(temp, 0o600)
+                temp.replace(self.token_path)
+            except OSError:
+                with contextlib.suppress(OSError):
+                    temp.unlink()
+                raise
+            self._memory_token = clean
 
     def get_token(self) -> str | None:
         with self._lock:
