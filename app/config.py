@@ -131,11 +131,15 @@ class Settings:
         from app.engine_handoff_safety import install_engine_handoff_safety
         from app.lifecycle_safety import install_model_lifecycle_safety
         from app.model_load_target import install_model_load_target_routing
+        from app.structured_progress import install_structured_progress_protocol
 
         install_desktop_model_path_extension()
         install_model_load_target_routing()
         install_engine_handoff_safety()
         install_conversion_stream_safety()
+        # The structured reader intentionally installs after the stream-safety layer
+        # and retains its terminal-state protection while adding schema validation.
+        install_structured_progress_protocol()
         install_model_lifecycle_safety()
         install_desktop_shutdown_safety()
 
