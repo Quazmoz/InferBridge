@@ -6,6 +6,10 @@ on:
     paths:
       - ".github/workflows/apply-cancellation-and-browser.yml"
 
+concurrency:
+  group: apply-cancellation-browser-development
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
@@ -26,7 +30,9 @@ jobs:
           cache-dependency-path: pyproject.toml
 
       - name: Apply integration patches
-        run: python .github/scripts/apply_cancellation_and_browser.py
+        run: |
+          python .github/scripts/apply_cancellation_and_browser.py
+          python .github/scripts/fix_cancellation_race.py
 
       - name: Install test and browser dependencies
         run: |
@@ -43,6 +49,7 @@ jobs:
             browser_tests/conftest.py \
             browser_tests/test_progress_browser.py \
             tests/test_model_cancellation.py \
+            tests/test_model_cancellation_race.py \
             tests/test_cancellation_ui.py
           ruff check \
             app/config.py \
@@ -51,8 +58,8 @@ jobs:
             browser_tests/conftest.py \
             browser_tests/test_progress_browser.py \
             tests/test_model_cancellation.py \
+            tests/test_model_cancellation_race.py \
             tests/test_cancellation_ui.py
-          ruff format --check pyproject.toml .github/workflows/ci.yml || true
 
       - name: Validate embedded browser scripts
         run: |
@@ -80,6 +87,7 @@ jobs:
         run: >-
           pytest
           tests/test_model_cancellation.py
+          tests/test_model_cancellation_race.py
           tests/test_cancellation_ui.py
           tests/test_structured_progress.py
           tests/test_progress_operation_ui.py
@@ -108,6 +116,7 @@ jobs:
         if: success()
         run: |
           rm .github/scripts/apply_cancellation_and_browser.py
+          rm .github/scripts/fix_cancellation_race.py
           rm .github/workflows/apply-cancellation-and-browser.yml
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
