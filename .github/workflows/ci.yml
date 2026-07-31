@@ -34,19 +34,14 @@ jobs:
       contents: write
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Delete verified obsolete branches
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          remote="https://x-access-token:${GH_TOKEN}@github.com/${REPOSITORY}.git"
-          for branch in \
-            validation/inferbridge-docs-final \
-            validation/inferbridge-main-ci
-          do
-            git push "$remote" --delete "$branch" || true
-          done
+        run: >-
+          git push origin --delete
+          validation/inferbridge-docs-final
+          validation/inferbridge-main-ci
 
   lint-and-test:
     name: Lint & Test
