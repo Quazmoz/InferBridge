@@ -20,6 +20,15 @@ class ModelBusyError(ValueError):
     """Raised when an unload would close an engine with queued or active work."""
 
 
+def _retained_task_cancellation() -> asyncio.CancelledError | None:
+    """Recover a cancellation request swallowed by best-effort cleanup code."""
+
+    task = asyncio.current_task()
+    if task is None or task.cancelling() <= 0:
+        return None
+    return asyncio.CancelledError()
+
+
 @asynccontextmanager
 async def current_engine_lease(manager: Any, requested_engine: Any) -> AsyncIterator[Any]:
     """Yield a stable current engine while holding its matching model lock.
@@ -120,6 +129,15 @@ def install_engine_handoff_safety() -> None:
                             loop,
                         )
                         pending_cancellation = pending_cancellation or recovery_cancellation
+
+                    # Recovery is deliberately best-effort and may catch exceptions to
+                    # quarantine a damaged native pipeline. It must never accidentally
+                    # convert a client/task cancellation into a generation or recovery
+                    # error. Task.cancelling() retains that intent even if a nested
+                    # cleanup coroutine caught the CancelledError without returning it.
+                    pending_cancellation = (
+                        pending_cancellation or _retained_task_cancellation()
+                    )
                     if pending_cancellation is not None:
                         raise pending_cancellation
 
