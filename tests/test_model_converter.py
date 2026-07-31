@@ -78,9 +78,7 @@ def test_export_model_runs_streaming_command_and_makes_parent(monkeypatch, tmp_p
     assert "Saving OpenVINO IR" in console
 
 
-def test_export_model_stdout_is_jsonl_and_human_output_is_stderr(
-    monkeypatch, tmp_path, capsys
-):
+def test_export_model_stdout_is_jsonl_and_human_output_is_stderr(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(mc.shutil, "which", lambda name: "/usr/bin/optimum-cli")
 
     def fake_streaming_command(cmd, *, progress_emitter=None):
