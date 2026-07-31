@@ -187,10 +187,10 @@ class ProgressEventEmitter:
         completed: int | None = None,
         total: int | None = None,
     ) -> ProgressEvent:
-        self.revision += 1
+        next_revision = self.revision + 1
         event = ProgressEvent(
             operation_id=self.operation_id,
-            revision=self.revision,
+            revision=next_revision,
             phase=phase,
             message=message,
             percent=percent,
@@ -204,6 +204,7 @@ class ProgressEventEmitter:
         encoded = json.dumps(event.as_dict(), ensure_ascii=True, separators=(",", ":"))
         decode_progress_event(encoded)
         print(encoded, file=self.stream, flush=True)
+        self.revision = next_revision
         return event
 
 
