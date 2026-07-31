@@ -201,6 +201,19 @@ STATUS_SPLIT_JS = r"""
         }
     }
 
+    function mergeModelAdvisor(models, telemetry) {
+        const source = models || { loaded: [], count: 0, loading_count: 0, available: [] };
+        const advisors = telemetry?.model_advisor;
+        if (!advisors || typeof advisors !== 'object') return source;
+        const available = Array.isArray(source.available)
+            ? source.available.map(model => {
+                const advisor = advisors[model?.id];
+                return advisor && typeof advisor === 'object' ? { ...model, advisor } : model;
+            })
+            : [];
+        return { ...source, available };
+    }
+
     function composedResponse(modelResult, telemetryResult, eventsResult) {
         const modelPayload = modelResult.payload || {};
         const telemetry = telemetryResult.payload || {};
@@ -214,7 +227,7 @@ STATUS_SPLIT_JS = r"""
                 ...(telemetry.device || {}),
                 ...(modelPayload.device || {}),
             },
-            models: modelPayload.models || { loaded: [], count: 0, loading_count: 0, available: [] },
+            models: mergeModelAdvisor(modelPayload.models, telemetry),
             events: eventsResult.payload || [],
             split_status: {
                 models_endpoint: MODELS_PATH,
