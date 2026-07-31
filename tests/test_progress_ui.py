@@ -22,7 +22,7 @@ def test_progress_controller_has_persistent_and_inline_surfaces():
     assert "ov-reliable-progress" in rendered
     assert "chatColumn.insertBefore(dock, chatArea)" in rendered
     assert "ovrp-inline" in rendered
-    assert "renderDock(active)" in rendered
+    assert "renderDock(active, operationCount)" in rendered
     assert "renderInline(active, info)" in rendered
     assert "renderFooter(active, info)" in rendered
 
@@ -32,7 +32,8 @@ def test_progress_controller_exposes_stage_elapsed_and_activity_details():
 
     assert "Stage ${info.meta.stage + 1} of 3" in rendered
     assert "Elapsed ${duration(info.elapsed)}" in rendered
-    assert "No new console output for" in rendered
+    assert "No recent progress update for" in rendered
+    assert "Taking longer than usual" in rendered
     assert "Recent preparation activity" in rendered
     assert "1. Download" in rendered
     assert "2. Convert" in rendered
