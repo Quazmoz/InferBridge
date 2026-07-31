@@ -1,7 +1,0 @@
-validated_sha=ebedb01eff2c200ffc6c58eb5f669bca71079dc2
-lint_and_test=success
-external_contract=success
-windows_harness=success
-ruff_check=0
-ruff_format=0
-pytest=0
