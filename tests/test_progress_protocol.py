@@ -5,8 +5,8 @@ import pytest
 
 from runtime.progress_protocol import (
     EVENT_TYPE,
-    ProgressEventEmitter,
     SCHEMA_VERSION,
+    ProgressEventEmitter,
     decode_progress_event,
 )
 
@@ -76,3 +76,4 @@ def test_emitter_validates_before_writing() -> None:
     with pytest.raises(ValueError):
         emitter.emit("invalid", "bad phase")
     assert stream.getvalue() == ""
+    assert emitter.revision == 0
