@@ -1,3 +1,8 @@
+from __future__ import annotations
+
+import shutil
+import subprocess
+
 from app.huggingface_access_ui import HUGGINGFACE_ACCESS_JS
 
 
@@ -22,3 +27,18 @@ def test_huggingface_ui_rewrites_structured_preflight_errors_for_existing_handle
     assert "hf_access: detail" in HUGGINGFACE_ACCESS_JS
     assert "detail: detail.message" in HUGGINGFACE_ACCESS_JS
     assert "load-model-btn" in HUGGINGFACE_ACCESS_JS
+
+
+def test_huggingface_ui_javascript_parses(tmp_path):
+    node = shutil.which("node")
+    if node is None:
+        return
+    script = tmp_path / "huggingface-access.js"
+    script.write_text(HUGGINGFACE_ACCESS_JS, encoding="utf-8")
+    result = subprocess.run(
+        [node, "--check", str(script)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
