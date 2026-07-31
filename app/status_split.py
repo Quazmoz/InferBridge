@@ -21,6 +21,7 @@ from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, R
 from fastapi.responses import JSONResponse
 
 from app.brand import DISPLAY_NAME, LEGACY_DISPLAY_NAME
+from app.model_manager_core import ModelManager as CoreModelManager
 from app.telemetry import cpu_stats, disk_stats, gpu_stats, memory_stats
 from runtime import device_check
 
@@ -74,9 +75,9 @@ def install_status_manager_extension() -> None:
 
     @functools.wraps(original_init)
     def init_with_event_cursor(self, *args: Any, **kwargs: Any) -> None:
-        original_init(self, *args, **kwargs)
         self._event_sequence = 0
         self._event_cursor_lock = threading.RLock()
+        original_init(self, *args, **kwargs)
 
     def event_lock(self) -> threading.RLock:
         lock = getattr(self, "_event_cursor_lock", None)
@@ -152,10 +153,51 @@ def install_status_manager_extension() -> None:
     setattr(manager_class, _MANAGER_INSTALL_FLAG, True)
 
 
+def _lifecycle_catalog_entry(manager: Any, model_id: str) -> dict[str, Any]:
+    """Build a lifecycle row without invoking the hardware advisor snapshot."""
+
+    entry = CoreModelManager.catalog_entry(manager, model_id)
+    capability = getattr(manager, "cancellation_capability", None)
+    if callable(capability):
+        entry.update(capability(model_id))
+    return entry
+
+
+def _lifecycle_catalog_entries(manager: Any) -> list[dict[str, Any]]:
+    return [_lifecycle_catalog_entry(manager, model_id) for model_id in manager.catalog]
+
+
+def _model_advisor_snapshot(manager: Any) -> dict[str, Any]:
+    """Collect advisor metadata only as part of the expensive telemetry refresh."""
+
+    advisors: dict[str, Any] = {}
+    for model_id in manager.catalog:
+        entry = manager.catalog_entry(model_id)
+        advisor = entry.get("advisor")
+        if isinstance(advisor, dict):
+            advisors[model_id] = advisor
+    return advisors
+
+
+def _merge_model_advisor(
+    models: dict[str, Any],
+    advisors: dict[str, Any] | None,
+) -> dict[str, Any]:
+    advisor_map = advisors if isinstance(advisors, dict) else {}
+    available = []
+    for raw in models.get("available", []):
+        entry = dict(raw)
+        advisor = advisor_map.get(entry.get("id"))
+        if isinstance(advisor, dict):
+            entry["advisor"] = copy.deepcopy(advisor)
+        available.append(entry)
+    return {**models, "available": available}
+
+
 def _model_snapshot(request: Request) -> dict[str, Any]:
     manager = request.app.state.manager
     settings = request.app.state.settings
-    entries = manager.catalog_entries()
+    entries = _lifecycle_catalog_entries(manager)
     return {
         "schema_version": 1,
         "generated_at": int(time.time()),
@@ -174,8 +216,20 @@ def _model_snapshot(request: Request) -> dict[str, Any]:
     }
 
 
+def _live_metrics(manager: Any, cached_metrics: dict[str, Any] | None) -> dict[str, Any]:
+    """Keep request counters live while retaining cached advisor aggregates."""
+
+    metrics = CoreModelManager.metrics_summary(manager)
+    cached = cached_metrics if isinstance(cached_metrics, dict) else {}
+    advisor = cached.get("advisor")
+    if isinstance(advisor, dict):
+        metrics["advisor"] = copy.deepcopy(advisor)
+    return metrics
+
+
 def _cache_view(
     cache: _TelemetryCache,
+    manager: Any,
     *,
     now: float,
     hit: bool,
@@ -184,6 +238,7 @@ def _cache_view(
     if cache.payload is None:
         raise RuntimeError("Telemetry cache is empty.")
     payload = copy.deepcopy(cache.payload)
+    payload["metrics"] = _live_metrics(manager, payload.get("metrics"))
     payload["cache"] = {
         "hit": hit,
         "stale": stale,
@@ -204,7 +259,7 @@ async def _telemetry_snapshot(request: Request, *, refresh: bool = False) -> dic
         and cache.payload is not None
         and now - cache.refreshed_monotonic < _TELEMETRY_TTL_SECONDS
     ):
-        return _cache_view(cache, now=now, hit=True)
+        return _cache_view(cache, manager, now=now, hit=True)
 
     async with cache.lock:
         now = time.monotonic()
@@ -213,7 +268,7 @@ async def _telemetry_snapshot(request: Request, *, refresh: bool = False) -> dic
             and cache.payload is not None
             and now - cache.refreshed_monotonic < _TELEMETRY_TTL_SECONDS
         ):
-            return _cache_view(cache, now=now, hit=True)
+            return _cache_view(cache, manager, now=now, hit=True)
 
         try:
             gpu, disk, available = await asyncio.gather(
@@ -242,10 +297,11 @@ async def _telemetry_snapshot(request: Request, *, refresh: bool = False) -> dic
                     **disk,
                 },
                 "metrics": manager.metrics_summary(),
+                "model_advisor": _model_advisor_snapshot(manager),
             }
         except Exception as exc:
             if cache.payload is not None:
-                return _cache_view(cache, now=now, hit=True, stale=True)
+                return _cache_view(cache, manager, now=now, hit=True, stale=True)
             raise HTTPException(
                 status_code=503,
                 detail="System telemetry is temporarily unavailable.",
@@ -253,7 +309,7 @@ async def _telemetry_snapshot(request: Request, *, refresh: bool = False) -> dic
 
         cache.payload = payload
         cache.refreshed_monotonic = time.monotonic()
-        return _cache_view(cache, now=cache.refreshed_monotonic, hit=False)
+        return _cache_view(cache, manager, now=cache.refreshed_monotonic, hit=False)
 
 
 def _events_page(request: Request, cursor: int, limit: int) -> dict[str, Any]:
@@ -308,6 +364,10 @@ def register_status_split_routes(app: FastAPI) -> None:
         model_payload = _model_snapshot(request)
         telemetry_payload = await _telemetry_snapshot(request)
         manager = request.app.state.manager
+        models = _merge_model_advisor(
+            model_payload["models"],
+            telemetry_payload.get("model_advisor"),
+        )
         return JSONResponse(
             {
                 **telemetry_payload,
@@ -315,7 +375,7 @@ def register_status_split_routes(app: FastAPI) -> None:
                     **telemetry_payload.get("device", {}),
                     **model_payload.get("device", {}),
                 },
-                "models": model_payload["models"],
+                "models": models,
                 "events": manager.recent_events(),
                 "split_status": {
                     "models_endpoint": "/v1/models/status",
