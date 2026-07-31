@@ -3,6 +3,9 @@
 Conversion is a separate, heavier step than serving and requires the extra
 ``requirements-convert.txt`` dependencies. Catalog backends select the matching
 Optimum task for text generation, embeddings, or vision-language models.
+
+Stdout is a versioned JSON Lines progress channel. Human-readable Optimum output stays
+on stderr so callers can consume reliable machine state without losing diagnostics.
 """
 
 from __future__ import annotations
@@ -15,10 +18,11 @@ import re
 import shutil
 import subprocess
 import sys
-import time
 from collections.abc import Iterable, Iterator
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, TextIO
+
+from runtime.progress_protocol import ProgressEventEmitter
 
 _venv_bin = str(Path(sys.executable).parent)
 if _venv_bin not in os.environ.get("PATH", ""):
@@ -28,10 +32,16 @@ logger = logging.getLogger("ov-llm.convert")
 
 _ANSI_ESCAPE_RE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))")
 _PERCENT_RE = re.compile(r"(?<!\d)(100(?:\.0+)?|[1-9]?\d(?:\.\d+)?)\s*%")
+_COUNT_RE = re.compile(r"(?<!\d)(\d+)\s*/\s*(\d+)(?!\d)")
 _DOWNLOAD_PROGRESS_RE = re.compile(
-    r"(?:fetching\s+\d+\s+files?|download|\.safetensors\b|\.bin\b|\.model\b|\.json\b)",
+    r"(?:fetching\s+\d+\s+files?|download|snapshot|cache|\.safetensors\b|\.bin\b|\.model\b|\.json\b)",
     re.IGNORECASE,
 )
+_CONVERT_PROGRESS_RE = re.compile(
+    r"(?:quant|compress|weight|export|openvino|convert|compile|transform)", re.IGNORECASE
+)
+_FINALIZE_PROGRESS_RE = re.compile(r"(?:save|write|serializ|finaliz)", re.IGNORECASE)
+_PHASE_RANK = {"resolving": 0, "downloading": 1, "converting": 2, "finalizing": 3}
 
 
 def _ensure_utf8_stdio() -> None:
@@ -39,11 +49,8 @@ def _ensure_utf8_stdio() -> None:
 
     ``optimum-cli``/``tqdm`` and the Transformers weight loader emit block-drawing
     characters such as U+258F (``▏``). When this process's stdout falls back to a
-    legacy Windows code page (cp1252) — which it does when the server captures it
-    through a pipe without ``PYTHONIOENCODING`` set — printing those glyphs raises
-    ``UnicodeEncodeError`` and kills an otherwise-successful export. The parent
-    decodes our bytes with ``errors="replace"``, so UTF-8 output is always safe to
-    consume.
+    legacy Windows code page, printing those glyphs can raise ``UnicodeEncodeError``.
+    JSON protocol records are ASCII-escaped, while human stderr remains UTF-8.
     """
 
     for stream in (sys.stdout, sys.stderr):
@@ -100,12 +107,7 @@ def _clean_console_line(text: str) -> str:
 
 
 def _iter_console_lines(chunks: Iterable[bytes]) -> Iterator[str]:
-    """Yield terminal updates split on either newlines or carriage returns.
-
-    ``tqdm`` and Hugging Face progress bars redraw one console line with ``\r``.
-    Converting those redraws into ordinary newline-delimited records lets the
-    parent server process publish live progress instead of waiting for completion.
-    """
+    """Yield terminal updates split on either newlines or carriage returns."""
 
     decoder = codecs.getincrementaldecoder("utf-8")("replace")
     pending = ""
@@ -148,16 +150,51 @@ def _progress_key(line: str, match: re.Match[str]) -> str:
     return line[:120]
 
 
-class _ProgressLineEmitter:
-    """Throttle terminal redraw noise while retaining each meaningful percentage."""
+def _structured_progress_from_line(
+    line: str,
+) -> tuple[str, str, float | None, int | None, int | None] | None:
+    """Map unstable third-party console text into the stable converter protocol.
 
-    def __init__(self) -> None:
+    This adapter is the only place that knows about Optimum/tqdm wording. The parent
+    server never interprets those strings and only accepts validated protocol records.
+    """
+
+    percent_match = _PERCENT_RE.search(line)
+    percent = float(percent_match.group(1)) if percent_match else None
+    count_match = _COUNT_RE.search(line)
+    completed = int(count_match.group(1)) if count_match else None
+    total = int(count_match.group(2)) if count_match else None
+
+    if _FINALIZE_PROGRESS_RE.search(line):
+        return "finalizing", "Finalizing OpenVINO model files…", percent, completed, total
+    if _DOWNLOAD_PROGRESS_RE.search(line):
+        return "downloading", "Downloading model files…", percent, completed, total
+    if _CONVERT_PROGRESS_RE.search(line) or percent is not None:
+        return "converting", "Converting model to OpenVINO IR…", percent, completed, total
+    return None
+
+
+class _ProgressLineEmitter:
+    """Throttle terminal redraw noise and optionally emit structured progress."""
+
+    def __init__(
+        self,
+        protocol_emitter: ProgressEventEmitter | None = None,
+        *,
+        human_stream: TextIO | None = None,
+    ) -> None:
+        self._protocol_emitter = protocol_emitter
+        self._human_stream = human_stream or sys.stdout
         self._last_line = ""
         self._last_line_at = 0.0
         self._percent_by_key: dict[str, int] = {}
         self._percent_at: dict[str, float] = {}
+        self._phase = "resolving"
+        self._last_protocol_state: tuple[object, ...] | None = None
 
     def emit(self, raw_line: str) -> None:
+        import time
+
         line = _clean_console_line(raw_line)
         if not line:
             return
@@ -180,11 +217,42 @@ class _ProgressLineEmitter:
 
         self._last_line = line
         self._last_line_at = now
-        print(line, flush=True)
+        print(line, file=self._human_stream, flush=True)
+
+        if self._protocol_emitter is None:
+            return
+        structured = _structured_progress_from_line(line)
+        if structured is None:
+            return
+        phase, message, percent_value, completed, total = structured
+        if _PHASE_RANK[phase] < _PHASE_RANK[self._phase]:
+            phase = self._phase
+            message = (
+                "Finalizing OpenVINO model files…"
+                if phase == "finalizing"
+                else "Converting model to OpenVINO IR…"
+            )
+        else:
+            self._phase = phase
+        state = (phase, message, percent_value, completed, total)
+        if state == self._last_protocol_state:
+            return
+        self._last_protocol_state = state
+        self._protocol_emitter.emit(
+            phase,
+            message,
+            percent=percent_value,
+            completed=completed,
+            total=total,
+        )
 
 
-def _run_streaming_command(command: list[str]) -> None:
-    """Run *command* while forwarding live console redraws as ordinary lines."""
+def _run_streaming_command(
+    command: list[str],
+    *,
+    progress_emitter: ProgressEventEmitter | None = None,
+) -> None:
+    """Run *command*, forwarding human logs and emitting structured progress."""
 
     environment = os.environ.copy()
     environment.setdefault("PYTHONUNBUFFERED", "1")
@@ -203,7 +271,7 @@ def _run_streaming_command(command: list[str]) -> None:
         process.wait()
         raise RuntimeError("Could not capture optimum-cli output.")
 
-    emitter = _ProgressLineEmitter()
+    emitter = _ProgressLineEmitter(progress_emitter, human_stream=sys.stderr)
     try:
         for line in _iter_console_lines(_read_process_chunks(process.stdout)):
             emitter.emit(line)
@@ -230,15 +298,25 @@ def export_model(
     group_size: int | None = None,
     ratio: float | None = None,
     sym: bool | None = None,
+    operation_id: str | None = None,
+    model_id: str | None = None,
 ) -> Path:
     """Run an export and return its output directory."""
 
     _ensure_utf8_stdio()
+    progress = ProgressEventEmitter(
+        operation_id=operation_id,
+        model_id=model_id or source_model,
+    )
+    progress.emit("resolving", "Resolving model metadata and conversion settings…", percent=0)
+
     if shutil.which("optimum-cli") is None:
-        raise RuntimeError(
+        message = (
             "optimum-cli not found. Install conversion deps: "
             "pip install -r requirements-convert.txt"
         )
+        progress.emit("error", message)
+        raise RuntimeError(message)
 
     output_dir = Path(output_dir)
     output_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -259,9 +337,21 @@ def export_model(
         sym=sym,
     )
     logger.info("Running: %s", " ".join(command))
-    print(f"Downloading model metadata and weights for {source_model}: 0%", flush=True)
-    _run_streaming_command(command)
-    print(f"Saving OpenVINO IR for {source_model}: 100%", flush=True)
+    print(
+        f"Downloading model metadata and weights for {source_model}",
+        file=sys.stderr,
+        flush=True,
+    )
+    progress.emit("downloading", "Downloading model metadata and weights…", percent=0)
+    try:
+        _run_streaming_command(command, progress_emitter=progress)
+    except BaseException as exc:
+        progress.emit("error", f"Conversion failed: {exc}")
+        raise
+
+    print(f"Saving OpenVINO IR for {source_model}", file=sys.stderr, flush=True)
+    progress.emit("finalizing", "Saving OpenVINO IR files…", percent=100)
+    progress.emit("ready", f"Done. Model available at: {output_dir}", percent=100)
     logger.info("Exported %s -> %s", source_model, output_dir)
     return output_dir
 
@@ -308,6 +398,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--model", help="Hugging Face source model id")
     parser.add_argument("--output", help="Output directory for the OpenVINO IR model")
     parser.add_argument(
+        "--operation-id",
+        default=None,
+        help="Optional producer operation id for the JSON Lines progress stream.",
+    )
+    parser.add_argument(
         "--weight-format",
         choices=("int4", "int8", "fp16"),
         default=None,
@@ -339,6 +434,7 @@ def main(argv: list[str] | None = None) -> int:
 
     task = args.task
     catalog_trust_remote_code = False
+    resolved_model_id = args.id
     if args.id:
         source_model, output_dir, weight_format, catalog_task, catalog_trust_remote_code = (
             _resolve_from_catalog(args.id, include_task=True)
@@ -351,6 +447,7 @@ def main(argv: list[str] | None = None) -> int:
         source_model = args.model
         output_dir = Path(args.output)
         weight_format = args.weight_format or "int4"
+        resolved_model_id = args.model
 
     try:
         export_model(
@@ -366,11 +463,12 @@ def main(argv: list[str] | None = None) -> int:
             group_size=args.group_size,
             ratio=args.ratio,
             sym=args.sym,
+            operation_id=args.operation_id,
+            model_id=resolved_model_id,
         )
     except (RuntimeError, subprocess.CalledProcessError) as exc:
         print(f"Conversion failed: {exc}", file=sys.stderr)
         return 1
-    print(f"Done. Model available at: {output_dir}")
     return 0
 
 
