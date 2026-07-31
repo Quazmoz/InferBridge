@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
 from fastapi.testclient import TestClient
 
 from app import status_split
@@ -90,6 +92,36 @@ def test_telemetry_requests_share_five_second_cache(monkeypatch, tmp_path) -> No
     assert calls == {"gpu": 1, "disk": 1, "devices": 1}
 
 
+def test_telemetry_refresh_serves_stale_cache_when_collector_fails(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(status_split, "gpu_stats", lambda: {"device": "GPU.0"})
+    monkeypatch.setattr(
+        status_split,
+        "disk_stats",
+        lambda _path, *, cache_seconds: {
+            "models_gb": 2.0,
+            "total_gb": 100.0,
+            "free_gb": 70.0,
+        },
+    )
+    monkeypatch.setattr(status_split, "_available_devices", lambda: ["CPU", "GPU.0"])
+
+    with _client(tmp_path) as client:
+        initial = client.get("/v1/system/telemetry")
+        monkeypatch.setattr(
+            status_split,
+            "gpu_stats",
+            lambda: (_ for _ in ()).throw(RuntimeError("driver unavailable")),
+        )
+        stale = client.get("/v1/system/telemetry", params={"refresh": "true"})
+
+    assert initial.status_code == 200
+    assert stale.status_code == 200
+    payload = stale.json()
+    assert payload["cache"]["hit"] is True
+    assert payload["cache"]["stale"] is True
+    assert payload["disk"]["models_gb"] == 2.0
+
+
 def test_event_cursor_returns_only_new_events_and_detects_restart(tmp_path) -> None:
     with _client(tmp_path) as client:
         manager = client.app.state.manager
@@ -110,6 +142,26 @@ def test_event_cursor_returns_only_new_events_and_detects_restart(tmp_path) -> N
     assert incremental["next_cursor"] > cursor
     assert restarted["reset_required"] is True
     assert restarted["next_cursor"] == restarted["latest_cursor"]
+
+
+def test_event_ids_remain_unique_and_monotonic_under_concurrent_emission(tmp_path) -> None:
+    with _client(tmp_path) as client:
+        manager = client.app.state.manager
+        baseline = manager.recent_events_page()["latest_cursor"]
+
+        def emit(index: int) -> None:
+            manager.emit_event("info", f"Concurrent event {index}")
+
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            list(executor.map(emit, range(100)))
+
+        page = manager.recent_events_page(cursor=0, limit=100)
+
+    ids = [event["id"] for event in page["data"]]
+    assert len(ids) == 50  # bounded manager event buffer
+    assert ids == sorted(set(ids))
+    assert page["latest_cursor"] == baseline + 100
+    assert ids[-1] == page["latest_cursor"]
 
 
 def test_split_routes_use_existing_api_key_policy(tmp_path) -> None:
