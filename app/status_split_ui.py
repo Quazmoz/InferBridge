@@ -133,13 +133,8 @@ STATUS_SPLIT_JS = r"""
                 })
                 .finally(() => { state.modelsPromise = null; });
         }
-        try {
-            const result = await state.modelsPromise;
-            return { ...result, cacheHit: false };
-        } catch (error) {
-            if (state.models) return { payload: state.models, response: null, cacheHit: true };
-            throw error;
-        }
+        const result = await state.modelsPromise;
+        return { ...result, cacheHit: false };
     }
 
     async function telemetrySnapshot(state, headers, init) {
@@ -275,8 +270,9 @@ STATUS_SPLIT_JS = r"""
             ]);
             return composedResponse(modelResult, telemetryResult, eventsResult);
         } catch {
-            // The server's compatibility route is still cached and remains the safe
-            // fallback when a split endpoint is temporarily unavailable.
+            // The compatibility route remains the safe fallback when a split
+            // endpoint is unavailable. A failed lifecycle request is never hidden
+            // behind stale model state.
             return nativeFetch(input, init);
         }
     };
