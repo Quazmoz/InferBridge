@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import copy
 import json
 import re
 from typing import Any
+from urllib.request import urlopen
 
 from playwright.sync_api import Page, Route, expect
 
@@ -36,14 +38,22 @@ def _operation_snapshot(
     }
 
 
-def _install_status_controller(page: Page, state: dict[str, Any]) -> None:
+def _server_snapshot(inferbridge_url: str) -> dict[str, Any]:
+    with urlopen(f"{inferbridge_url}/v1/system/status", timeout=10) as response:
+        return json.load(response)
+
+
+def _install_status_controller(
+    page: Page,
+    state: dict[str, Any],
+    baseline: dict[str, Any],
+) -> None:
     def handle_status(route: Route) -> None:
         if state.pop("abort_once", False):
             route.abort()
             return
 
-        response = route.fetch()
-        payload = response.json()
+        payload = copy.deepcopy(baseline)
         available = list(payload["models"]["available"])
         model = dict(available[0])
         snapshot = state["snapshot"]
@@ -89,7 +99,7 @@ def _install_status_controller(page: Page, state: dict[str, Any]) -> None:
         state["model_id"] = model["id"]
         state["last_model"] = model
         route.fulfill(
-            status=response.status,
+            status=200,
             content_type="application/json",
             body=json.dumps(payload),
         )
@@ -98,7 +108,7 @@ def _install_status_controller(page: Page, state: dict[str, Any]) -> None:
 
 
 def _open_progress(page: Page, inferbridge_url: str, state: dict[str, Any]) -> None:
-    _install_status_controller(page, state)
+    _install_status_controller(page, state, _server_snapshot(inferbridge_url))
     page.goto(inferbridge_url, wait_until="domcontentloaded")
     expect(page.locator("#ov-reliable-progress")).to_have_attribute(
         "data-operation-id",
