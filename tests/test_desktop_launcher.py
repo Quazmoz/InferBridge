@@ -101,6 +101,7 @@ def test_legacy_spawn_passes_control_token_only_in_child_environment(monkeypatch
 
 
 def test_prepare_desktop_environment_clears_stale_launch_flags(monkeypatch, tmp_path):
+    monkeypatch.delenv("OV_LLM_DESKTOP", raising=False)
     monkeypatch.setenv("OV_LLM_PORTABLE", "1")
     monkeypatch.setenv("OV_LLM_DATA_DIR", "stale")
     monkeypatch.setenv("OV_LLM_MOCK", "1")
