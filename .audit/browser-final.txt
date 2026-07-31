@@ -1,4 +1,4 @@
-validated_sha=e5fda1d312c3aaede1f8227a7243d5aac5dce216
+validated_sha=8497dceae12259b56aedbcf443b41e44716cf3dd
 ruff_check=0
 ruff_format=0
 browser=1
@@ -13,12 +13,12 @@ All checks passed!
         """
         try:
 >           os.mkdir(self, mode)
-E           FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/pytest'
+E           FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/browser-1'
 
 /opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/pathlib.py:1116: FileNotFoundError
 _ ERROR at setup of test_failed_status_request_allows_lower_revision_after_server_restart _
 
-tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/pytest'), _trace=<pluggy._tracing.TagTracerSub object at 0x7f58ac045050>, _basetemp=None, _retention_count=3, _retention_policy='none')
+tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/browser-1'), _trace=<pluggy._tracing.TagTracerSub object at 0x7fa211431250>, _basetemp=None, _retention_count=3, _retention_policy='none')
 
     @pytest.fixture(scope="session")
     def inferbridge_url(tmp_path_factory) -> str:
@@ -28,7 +28,7 @@ tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/
 browser_tests/conftest.py:33: 
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
 
-self = PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/pytest')
+self = PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/browser-1')
 mode = 448, parents = False, exist_ok = False
 
     def mkdir(self, mode=0o777, parents=False, exist_ok=False):
@@ -37,12 +37,12 @@ mode = 448, parents = False, exist_ok = False
         """
         try:
 >           os.mkdir(self, mode)
-E           FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/pytest'
+E           FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/browser-1'
 
 /opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/pathlib.py:1116: FileNotFoundError
 ______ ERROR at setup of test_mobile_keyboard_and_reduced_motion_behavior ______
 
-tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/pytest'), _trace=<pluggy._tracing.TagTracerSub object at 0x7f58ac045050>, _basetemp=None, _retention_count=3, _retention_policy='none')
+tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/browser-1'), _trace=<pluggy._tracing.TagTracerSub object at 0x7fa211431250>, _basetemp=None, _retention_count=3, _retention_policy='none')
 
     @pytest.fixture(scope="session")
     def inferbridge_url(tmp_path_factory) -> str:
@@ -52,7 +52,7 @@ tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/
 browser_tests/conftest.py:33: 
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
 
-self = PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/pytest')
+self = PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/browser-1')
 mode = 448, parents = False, exist_ok = False
 
     def mkdir(self, mode=0o777, parents=False, exist_ok=False):
@@ -61,21 +61,21 @@ mode = 448, parents = False, exist_ok = False
         """
         try:
 >           os.mkdir(self, mode)
-E           FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/pytest'
+E           FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/browser-1'
 
 /opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/pathlib.py:1116: FileNotFoundError
 =========================== short test summary info ============================
-ERROR browser_tests/test_progress_browser.py::test_lower_server_revision_cannot_regress_visible_operation - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/pytest'
-ERROR browser_tests/test_progress_browser.py::test_cancel_button_posts_exact_operation_and_reconciles_terminal_state - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/pytest'
-ERROR browser_tests/test_progress_browser.py::test_stale_cancel_conflict_refreshes_to_new_operation - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/pytest'
-ERROR browser_tests/test_progress_browser.py::test_failed_status_request_allows_lower_revision_after_server_restart - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/pytest'
-ERROR browser_tests/test_progress_browser.py::test_mobile_keyboard_and_reduced_motion_behavior - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/pytest'
+ERROR browser_tests/test_progress_browser.py::test_lower_server_revision_cannot_regress_visible_operation - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/browser-1'
+ERROR browser_tests/test_progress_browser.py::test_cancel_button_posts_exact_operation_and_reconciles_terminal_state - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/browser-1'
+ERROR browser_tests/test_progress_browser.py::test_stale_cancel_conflict_refreshes_to_new_operation - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/browser-1'
+ERROR browser_tests/test_progress_browser.py::test_failed_status_request_allows_lower_revision_after_server_restart - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/browser-1'
+ERROR browser_tests/test_progress_browser.py::test_mobile_keyboard_and_reduced_motion_behavior - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/browser-1'
 --- repetition 2 ---
 EEEEE                                                                    [100%]
 ==================================== ERRORS ====================================
 _ ERROR at setup of test_lower_server_revision_cannot_regress_visible_operation _
 
-tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/pytest'), _trace=<pluggy._tracing.TagTracerSub object at 0x7ff4916e7410>, _basetemp=None, _retention_count=3, _retention_policy='none')
+tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/browser-2'), _trace=<pluggy._tracing.TagTracerSub object at 0x7ff7d87037d0>, _basetemp=None, _retention_count=3, _retention_policy='none')
 
     @pytest.fixture(scope="session")
     def inferbridge_url(tmp_path_factory) -> str:
@@ -85,7 +85,7 @@ tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/
 browser_tests/conftest.py:33: 
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
 
-self = PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/pytest')
+self = PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/browser-2')
 mode = 448, parents = False, exist_ok = False
 
     def mkdir(self, mode=0o777, parents=False, exist_ok=False):
@@ -94,12 +94,12 @@ mode = 448, parents = False, exist_ok = False
         """
         try:
 >           os.mkdir(self, mode)
-E           FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/pytest'
+E           FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/browser-2'
 
 /opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/pathlib.py:1116: FileNotFoundError
 _ ERROR at setup of test_cancel_button_posts_exact_operation_and_reconciles_terminal_state _
 
-tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/pytest'), _trace=<pluggy._tracing.TagTracerSub object at 0x7ff4916e7410>, _basetemp=None, _retention_count=3, _retention_policy='none')
+tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/browser-2'), _trace=<pluggy._tracing.TagTracerSub object at 0x7ff7d87037d0>, _basetemp=None, _retention_count=3, _retention_policy='none')
 
     @pytest.fixture(scope="session")
     def inferbridge_url(tmp_path_factory) -> str:
@@ -109,7 +109,7 @@ tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/
 browser_tests/conftest.py:33: 
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
 
-self = PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/pytest')
+self = PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/browser-2')
 mode = 448, parents = False, exist_ok = False
 
     def mkdir(self, mode=0o777, parents=False, exist_ok=False):
@@ -118,12 +118,12 @@ mode = 448, parents = False, exist_ok = False
         """
         try:
 >           os.mkdir(self, mode)
-E           FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/pytest'
+E           FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/browser-2'
 
 /opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/pathlib.py:1116: FileNotFoundError
 ___ ERROR at setup of test_stale_cancel_conflict_refreshes_to_new_operation ____
 
-tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/pytest'), _trace=<pluggy._tracing.TagTracerSub object at 0x7ff4916e7410>, _basetemp=None, _retention_count=3, _retention_policy='none')
+tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/browser-2'), _trace=<pluggy._tracing.TagTracerSub object at 0x7ff7d87037d0>, _basetemp=None, _retention_count=3, _retention_policy='none')
 
     @pytest.fixture(scope="session")
     def inferbridge_url(tmp_path_factory) -> str:
@@ -133,7 +133,7 @@ tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/
 browser_tests/conftest.py:33: 
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
 
-self = PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/pytest')
+self = PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/browser-2')
 mode = 448, parents = False, exist_ok = False
 
     def mkdir(self, mode=0o777, parents=False, exist_ok=False):
@@ -142,12 +142,12 @@ mode = 448, parents = False, exist_ok = False
         """
         try:
 >           os.mkdir(self, mode)
-E           FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/pytest'
+E           FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/browser-2'
 
 /opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/pathlib.py:1116: FileNotFoundError
 _ ERROR at setup of test_failed_status_request_allows_lower_revision_after_server_restart _
 
-tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/pytest'), _trace=<pluggy._tracing.TagTracerSub object at 0x7ff4916e7410>, _basetemp=None, _retention_count=3, _retention_policy='none')
+tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/browser-2'), _trace=<pluggy._tracing.TagTracerSub object at 0x7ff7d87037d0>, _basetemp=None, _retention_count=3, _retention_policy='none')
 
     @pytest.fixture(scope="session")
     def inferbridge_url(tmp_path_factory) -> str:
@@ -157,7 +157,7 @@ tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/
 browser_tests/conftest.py:33: 
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
 
-self = PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/pytest')
+self = PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/browser-2')
 mode = 448, parents = False, exist_ok = False
 
     def mkdir(self, mode=0o777, parents=False, exist_ok=False):
@@ -166,12 +166,12 @@ mode = 448, parents = False, exist_ok = False
         """
         try:
 >           os.mkdir(self, mode)
-E           FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/pytest'
+E           FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/browser-2'
 
 /opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/pathlib.py:1116: FileNotFoundError
 ______ ERROR at setup of test_mobile_keyboard_and_reduced_motion_behavior ______
 
-tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/pytest'), _trace=<pluggy._tracing.TagTracerSub object at 0x7ff4916e7410>, _basetemp=None, _retention_count=3, _retention_policy='none')
+tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/browser-2'), _trace=<pluggy._tracing.TagTracerSub object at 0x7ff7d87037d0>, _basetemp=None, _retention_count=3, _retention_policy='none')
 
     @pytest.fixture(scope="session")
     def inferbridge_url(tmp_path_factory) -> str:
@@ -181,7 +181,7 @@ tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/
 browser_tests/conftest.py:33: 
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
 
-self = PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/pytest')
+self = PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/browser-2')
 mode = 448, parents = False, exist_ok = False
 
     def mkdir(self, mode=0o777, parents=False, exist_ok=False):
@@ -190,21 +190,21 @@ mode = 448, parents = False, exist_ok = False
         """
         try:
 >           os.mkdir(self, mode)
-E           FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/pytest'
+E           FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/browser-2'
 
 /opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/pathlib.py:1116: FileNotFoundError
 =========================== short test summary info ============================
-ERROR browser_tests/test_progress_browser.py::test_lower_server_revision_cannot_regress_visible_operation - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/pytest'
-ERROR browser_tests/test_progress_browser.py::test_cancel_button_posts_exact_operation_and_reconciles_terminal_state - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/pytest'
-ERROR browser_tests/test_progress_browser.py::test_stale_cancel_conflict_refreshes_to_new_operation - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/pytest'
-ERROR browser_tests/test_progress_browser.py::test_failed_status_request_allows_lower_revision_after_server_restart - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/pytest'
-ERROR browser_tests/test_progress_browser.py::test_mobile_keyboard_and_reduced_motion_behavior - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/pytest'
+ERROR browser_tests/test_progress_browser.py::test_lower_server_revision_cannot_regress_visible_operation - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/browser-2'
+ERROR browser_tests/test_progress_browser.py::test_cancel_button_posts_exact_operation_and_reconciles_terminal_state - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/browser-2'
+ERROR browser_tests/test_progress_browser.py::test_stale_cancel_conflict_refreshes_to_new_operation - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/browser-2'
+ERROR browser_tests/test_progress_browser.py::test_failed_status_request_allows_lower_revision_after_server_restart - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/browser-2'
+ERROR browser_tests/test_progress_browser.py::test_mobile_keyboard_and_reduced_motion_behavior - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/browser-2'
 --- repetition 3 ---
 EEEEE                                                                    [100%]
 ==================================== ERRORS ====================================
 _ ERROR at setup of test_lower_server_revision_cannot_regress_visible_operation _
 
-tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/pytest'), _trace=<pluggy._tracing.TagTracerSub object at 0x7fec9eaeb150>, _basetemp=None, _retention_count=3, _retention_policy='none')
+tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/browser-3'), _trace=<pluggy._tracing.TagTracerSub object at 0x7f7eea7f7290>, _basetemp=None, _retention_count=3, _retention_policy='none')
 
     @pytest.fixture(scope="session")
     def inferbridge_url(tmp_path_factory) -> str:
@@ -214,7 +214,7 @@ tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/
 browser_tests/conftest.py:33: 
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
 
-self = PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/pytest')
+self = PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/browser-3')
 mode = 448, parents = False, exist_ok = False
 
     def mkdir(self, mode=0o777, parents=False, exist_ok=False):
@@ -223,12 +223,12 @@ mode = 448, parents = False, exist_ok = False
         """
         try:
 >           os.mkdir(self, mode)
-E           FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/pytest'
+E           FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/browser-3'
 
 /opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/pathlib.py:1116: FileNotFoundError
 _ ERROR at setup of test_cancel_button_posts_exact_operation_and_reconciles_terminal_state _
 
-tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/pytest'), _trace=<pluggy._tracing.TagTracerSub object at 0x7fec9eaeb150>, _basetemp=None, _retention_count=3, _retention_policy='none')
+tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/browser-3'), _trace=<pluggy._tracing.TagTracerSub object at 0x7f7eea7f7290>, _basetemp=None, _retention_count=3, _retention_policy='none')
 
     @pytest.fixture(scope="session")
     def inferbridge_url(tmp_path_factory) -> str:
@@ -238,7 +238,7 @@ tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/
 browser_tests/conftest.py:33: 
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
 
-self = PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/pytest')
+self = PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/browser-3')
 mode = 448, parents = False, exist_ok = False
 
     def mkdir(self, mode=0o777, parents=False, exist_ok=False):
@@ -247,12 +247,12 @@ mode = 448, parents = False, exist_ok = False
         """
         try:
 >           os.mkdir(self, mode)
-E           FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/pytest'
+E           FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/browser-3'
 
 /opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/pathlib.py:1116: FileNotFoundError
 ___ ERROR at setup of test_stale_cancel_conflict_refreshes_to_new_operation ____
 
-tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/pytest'), _trace=<pluggy._tracing.TagTracerSub object at 0x7fec9eaeb150>, _basetemp=None, _retention_count=3, _retention_policy='none')
+tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/browser-3'), _trace=<pluggy._tracing.TagTracerSub object at 0x7f7eea7f7290>, _basetemp=None, _retention_count=3, _retention_policy='none')
 
     @pytest.fixture(scope="session")
     def inferbridge_url(tmp_path_factory) -> str:
@@ -262,7 +262,7 @@ tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/
 browser_tests/conftest.py:33: 
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
 
-self = PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/pytest')
+self = PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/browser-3')
 mode = 448, parents = False, exist_ok = False
 
     def mkdir(self, mode=0o777, parents=False, exist_ok=False):
@@ -271,12 +271,12 @@ mode = 448, parents = False, exist_ok = False
         """
         try:
 >           os.mkdir(self, mode)
-E           FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/pytest'
+E           FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/browser-3'
 
 /opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/pathlib.py:1116: FileNotFoundError
 _ ERROR at setup of test_failed_status_request_allows_lower_revision_after_server_restart _
 
-tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/pytest'), _trace=<pluggy._tracing.TagTracerSub object at 0x7fec9eaeb150>, _basetemp=None, _retention_count=3, _retention_policy='none')
+tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/browser-3'), _trace=<pluggy._tracing.TagTracerSub object at 0x7f7eea7f7290>, _basetemp=None, _retention_count=3, _retention_policy='none')
 
     @pytest.fixture(scope="session")
     def inferbridge_url(tmp_path_factory) -> str:
@@ -286,7 +286,7 @@ tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/
 browser_tests/conftest.py:33: 
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
 
-self = PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/pytest')
+self = PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/browser-3')
 mode = 448, parents = False, exist_ok = False
 
     def mkdir(self, mode=0o777, parents=False, exist_ok=False):
@@ -295,12 +295,12 @@ mode = 448, parents = False, exist_ok = False
         """
         try:
 >           os.mkdir(self, mode)
-E           FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/pytest'
+E           FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/browser-3'
 
 /opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/pathlib.py:1116: FileNotFoundError
 ______ ERROR at setup of test_mobile_keyboard_and_reduced_motion_behavior ______
 
-tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/pytest'), _trace=<pluggy._tracing.TagTracerSub object at 0x7fec9eaeb150>, _basetemp=None, _retention_count=3, _retention_policy='none')
+tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/browser-3'), _trace=<pluggy._tracing.TagTracerSub object at 0x7f7eea7f7290>, _basetemp=None, _retention_count=3, _retention_policy='none')
 
     @pytest.fixture(scope="session")
     def inferbridge_url(tmp_path_factory) -> str:
@@ -310,7 +310,7 @@ tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/runner/work/
 browser_tests/conftest.py:33: 
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
 
-self = PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/pytest')
+self = PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/browser-3')
 mode = 448, parents = False, exist_ok = False
 
     def mkdir(self, mode=0o777, parents=False, exist_ok=False):
@@ -319,12 +319,12 @@ mode = 448, parents = False, exist_ok = False
         """
         try:
 >           os.mkdir(self, mode)
-E           FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/pytest'
+E           FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/browser-3'
 
 /opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/pathlib.py:1116: FileNotFoundError
 =========================== short test summary info ============================
-ERROR browser_tests/test_progress_browser.py::test_lower_server_revision_cannot_regress_visible_operation - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/pytest'
-ERROR browser_tests/test_progress_browser.py::test_cancel_button_posts_exact_operation_and_reconciles_terminal_state - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/pytest'
-ERROR browser_tests/test_progress_browser.py::test_stale_cancel_conflict_refreshes_to_new_operation - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/pytest'
-ERROR browser_tests/test_progress_browser.py::test_failed_status_request_allows_lower_revision_after_server_restart - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/pytest'
-ERROR browser_tests/test_progress_browser.py::test_mobile_keyboard_and_reduced_motion_behavior - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/pytest'
+ERROR browser_tests/test_progress_browser.py::test_lower_server_revision_cannot_regress_visible_operation - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/browser-3'
+ERROR browser_tests/test_progress_browser.py::test_cancel_button_posts_exact_operation_and_reconciles_terminal_state - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/browser-3'
+ERROR browser_tests/test_progress_browser.py::test_stale_cancel_conflict_refreshes_to_new_operation - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/browser-3'
+ERROR browser_tests/test_progress_browser.py::test_failed_status_request_allows_lower_revision_after_server_restart - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/browser-3'
+ERROR browser_tests/test_progress_browser.py::test_mobile_keyboard_and_reduced_motion_behavior - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/InferBridge/InferBridge/.tmp/browser-3'
