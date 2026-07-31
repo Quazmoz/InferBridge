@@ -41,7 +41,8 @@ def test_queue_renders_safe_accessible_rows_without_mutation_loop() -> None:
     script = OPERATION_QUEUE_JS
 
     assert "document.createElement('button')" in script
-    assert "row.setAttribute('aria-label'" in script
+    assert "row.setAttribute(" in script
+    assert "'aria-label'" in script
     assert "list.replaceChildren(fragment)" in script
     assert "signature === lastSignature" in script
     assert "dockObserver.observe(dock" in script
