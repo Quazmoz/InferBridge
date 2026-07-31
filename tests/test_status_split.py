@@ -41,7 +41,7 @@ def test_model_status_does_not_collect_expensive_telemetry(monkeypatch, tmp_path
 
     monkeypatch.setattr(status_split, "gpu_stats", gpu)
     monkeypatch.setattr(status_split, "disk_stats", disk)
-    monkeypatch.setattr(status_split.device_check, "available_devices", devices)
+    monkeypatch.setattr(status_split, "_available_devices", devices)
 
     with _client(tmp_path) as client:
         response = client.get("/v1/models/status")
@@ -73,7 +73,7 @@ def test_telemetry_requests_share_five_second_cache(monkeypatch, tmp_path) -> No
 
     monkeypatch.setattr(status_split, "gpu_stats", gpu)
     monkeypatch.setattr(status_split, "disk_stats", disk)
-    monkeypatch.setattr(status_split.device_check, "available_devices", devices)
+    monkeypatch.setattr(status_split, "_available_devices", devices)
 
     with _client(tmp_path) as client:
         first = client.get("/v1/system/telemetry")
