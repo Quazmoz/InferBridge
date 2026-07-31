@@ -74,6 +74,6 @@ combine-as-imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q --basetemp=.tmp/pytest"
+addopts = "-q --basetemp=.pytest-tmp"
 tmp_path_retention_policy = "none"
 filterwarnings = ["ignore::DeprecationWarning"]
