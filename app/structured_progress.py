@@ -73,15 +73,18 @@ def _install_registry_shape() -> None:
     def normalize_structured_progress(progress: dict | None, status: str, label: str) -> dict:
         payload = original_normalize(progress, status, label)
         raw = progress if isinstance(progress, dict) else {}
+        operation_id = raw.get("operation_id")
+        # Keep the original compact shape for inactive/default entries. Active and
+        # terminal operations carry the versioned extension fields.
+        if not isinstance(operation_id, str) or not operation_id:
+            return payload
+
         revision = raw.get("revision", 0)
-        if isinstance(revision, bool) or not isinstance(revision, int) or revision < 0:
-            revision = 0
+        if isinstance(revision, bool) or not isinstance(revision, int) or revision < 1:
+            revision = 1
         operation_type = raw.get("operation_type")
         if operation_type not in {"load", "convert"}:
             operation_type = None
-        operation_id = raw.get("operation_id")
-        if not isinstance(operation_id, str) or not operation_id:
-            operation_id = None
         completed = _safe_count(raw.get("completed"))
         total = _safe_count(raw.get("total"))
         if completed is not None and total is not None and completed > total:
@@ -162,9 +165,7 @@ def install_structured_progress_protocol() -> None:
         original_clear_progress(self, model_id)
         self._progress_operation_meta.pop(model_id, None)
         self._structured_progress_models.discard(model_id)
-        stale_keys = [
-            key for key in self._producer_progress_revisions if key[0] == model_id
-        ]
+        stale_keys = [key for key in self._producer_progress_revisions if key[0] == model_id]
         for key in stale_keys:
             self._producer_progress_revisions.pop(key, None)
 
