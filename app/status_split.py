@@ -12,6 +12,7 @@ import asyncio
 import copy
 import functools
 import secrets
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -59,7 +60,7 @@ async def _require_access(
 
 
 def install_status_manager_extension() -> None:
-    """Add stable event cursors without changing existing event consumers."""
+    """Add stable, thread-safe event cursors without changing existing consumers."""
 
     from app import model_manager as manager_module
 
@@ -69,24 +70,43 @@ def install_status_manager_extension() -> None:
 
     original_init = manager_class.__init__
     original_emit_event = manager_class.emit_event
+    original_recent_events = manager_class.recent_events
 
     @functools.wraps(original_init)
     def init_with_event_cursor(self, *args: Any, **kwargs: Any) -> None:
         original_init(self, *args, **kwargs)
         self._event_sequence = 0
+        self._event_cursor_lock = threading.RLock()
+
+    def event_lock(self) -> threading.RLock:
+        lock = getattr(self, "_event_cursor_lock", None)
+        if lock is None:
+            lock = threading.RLock()
+            self._event_cursor_lock = lock
+        return lock
 
     @functools.wraps(original_emit_event)
     def emit_event_with_cursor(self, level: str, message: str) -> None:
-        original_emit_event(self, level, message)
-        self._event_sequence = int(getattr(self, "_event_sequence", 0)) + 1
-        if self._events:
-            self._events[-1]["id"] = self._event_sequence
+        # Event emission can originate from request threads, worker callbacks, and
+        # asyncio tasks. Keep deque append, sequence increment, and ID assignment in
+        # one critical section so cursor order always matches event order.
+        with event_lock(self):
+            original_emit_event(self, level, message)
+            self._event_sequence = int(getattr(self, "_event_sequence", 0)) + 1
+            if self._events:
+                self._events[-1]["id"] = self._event_sequence
+
+    @functools.wraps(original_recent_events)
+    def recent_events_with_cursor(self) -> list[dict]:
+        with event_lock(self):
+            return [dict(event) for event in original_recent_events(self)]
 
     def recent_events_page(self, cursor: int = 0, limit: int = 50) -> dict[str, Any]:
         safe_cursor = max(int(cursor), 0)
         safe_limit = min(max(int(limit), 1), 100)
-        events = [dict(event) for event in self._events]
-        latest_cursor = int(getattr(self, "_event_sequence", 0))
+        with event_lock(self):
+            events = [dict(event) for event in self._events]
+            latest_cursor = int(getattr(self, "_event_sequence", 0))
 
         # Defensive normalization for managers created before this extension was
         # installed in a test process. Production managers receive IDs at emission.
@@ -127,6 +147,7 @@ def install_status_manager_extension() -> None:
 
     manager_class.__init__ = init_with_event_cursor
     manager_class.emit_event = emit_event_with_cursor
+    manager_class.recent_events = recent_events_with_cursor
     manager_class.recent_events_page = recent_events_page
     setattr(manager_class, _MANAGER_INSTALL_FLAG, True)
 
