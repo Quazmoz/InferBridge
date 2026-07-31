@@ -178,7 +178,9 @@ def install_model_cancellation_manager_extension() -> None:
 
             convert_task = self.convert_tasks.get(model_id)
             load_task = self.load_tasks.get(model_id)
-            task = convert_task if _active(convert_task) else load_task if _active(load_task) else None
+            task = (
+                convert_task if _active(convert_task) else load_task if _active(load_task) else None
+            )
             if task is None:
                 raise CancellationConflict(
                     "task_finished",
