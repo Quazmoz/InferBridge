@@ -1,0 +1,5 @@
+validated_sha=a95adcbcd5b78a93befdbc8ca9c3cf1562a80a7b
+lint_and_test=failure
+external_contract=success
+windows_harness=success
+browser_behavior=failure
