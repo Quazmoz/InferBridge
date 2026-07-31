@@ -41,6 +41,7 @@ def test_parse_device_expression_rejects_invalid_values():
         "MULTI:NPU,BOGUS",
         "HETERO:",
         "AUTO:NPU,,CPU",
+        "AUTO:GPU,GPU,CPU",
         "MULTI:",
         "HETERO:,",
         "AUTO:NPU GPU CPU",  # space-separated, not comma-separated
@@ -63,10 +64,13 @@ def test_is_device_available_matches_plain_and_indexed():
     avail = ["CPU", "GPU.0", "NPU"]
     assert device_check.is_device_available("CPU", avail)
     assert device_check.is_device_available("GPU", avail)  # GPU matches GPU.0
-    assert device_check.is_device_available("GPU.1", avail)  # base GPU matches
+    assert device_check.is_device_available("GPU.0", avail)
+    assert not device_check.is_device_available("GPU.1", avail)
+    assert device_check.is_device_available("GPU.1", ["CPU", "GPU.1"])
     assert device_check.is_device_available("NPU", avail)
     assert device_check.is_device_available("AUTO:NPU,GPU,CPU", avail)
     assert device_check.is_device_available("MULTI:GPU.0,CPU", avail)
+    assert not device_check.is_device_available("MULTI:GPU.1,CPU", avail)
 
 
 def test_is_device_available_rejects_absent_device():
@@ -102,6 +106,23 @@ def test_suggested_device_targets_from_available_devices():
     assert any(
         item["device"] == "MULTI:NPU,GPU,CPU" and item["experimental"] for item in suggestions
     )
+
+
+def test_cached_discovery_results_cannot_be_mutated_by_callers(monkeypatch):
+    monkeypatch.setattr(device_check, "_cached_devices", ["CPU", "GPU.0"])
+    monkeypatch.setattr(
+        device_check,
+        "_cached_details",
+        [{"device": "CPU", "full_name": "Test CPU"}],
+    )
+
+    devices = device_check.available_devices()
+    details = device_check.device_details()
+    devices.append("NPU")
+    details[0]["full_name"] = "mutated"
+
+    assert device_check.available_devices() == ["CPU", "GPU.0"]
+    assert device_check.device_details() == [{"device": "CPU", "full_name": "Test CPU"}]
 
 
 def test_probe_functions_return_safe_types_without_openvino():
