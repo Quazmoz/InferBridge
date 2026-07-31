@@ -43,7 +43,10 @@ def test_queue_renders_safe_accessible_rows_without_mutation_loop() -> None:
     assert "document.createElement('button')" in script
     assert "row.setAttribute(" in script
     assert "'aria-label'" in script
+    assert "list.setAttribute('role', 'group')" in script
     assert "list.replaceChildren(fragment)" in script
     assert "signature === lastSignature" in script
+    assert "panelWasMissing" in script
+    assert "signature === lastSignature && !panelWasMissing" in script
     assert "dockObserver.observe(dock" in script
     assert "innerHTML" not in script
