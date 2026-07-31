@@ -1,0 +1,167 @@
+validated_sha=91394c0c206dbc588f3c8eda08b6c93e6ee27d04
+ruff_check=0
+ruff_format=1
+pytest=0
+browser=1
+--- ruff check ---
+All checks passed!
+--- ruff format ---
+unformatted: File would be reformatted
+   --> app/model_cancellation.py:1:1
+    |
+180 |             load_task = self.load_tasks.get(model_id)
+    -             task = convert_task if _active(convert_task) else load_task if _active(load_task) else None
+181 +             task = (
+182 +                 convert_task if _active(convert_task) else load_task if _active(load_task) else None
+183 +             )
+184 |             if task is None:
+    |
+
+1 file would be reformatted, 313 files already formatted
+--- pytest ---
+........................................................................ [ 11%]
+........................................................................ [ 23%]
+........................................................................ [ 34%]
+........................................................................ [ 46%]
+...................s.................................................... [ 57%]
+........................................................................ [ 69%]
+........................................................................ [ 81%]
+........................................................................ [ 92%]
+.............................................                            [100%]
+=============================== warnings summary ===============================
+../../../../../opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/fastapi/testclient.py:1
+  /opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+620 passed, 1 skipped, 1 warning in 17.37s
+--- browser ---
+.E...                                                                    [100%]
+==================================== ERRORS ====================================
+_ ERROR at setup of test_cancel_button_posts_exact_operation_and_reconciles_terminal_state _
+
+browser = <Browser type=<BrowserType name=chromium executable_path=/home/runner/.cache/ms-playwright/chromium-1228/chrome-linux64/chrome> version=149.0.7827.55>
+
+    @pytest.fixture()
+    def page(browser: Browser) -> Page:
+        context = browser.new_context(viewport={"width": 1280, "height": 900})
+>       page = context.new_page()
+               ^^^^^^^^^^^^^^^^^^
+
+browser_tests/conftest.py:90: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/playwright/sync_api/_generated.py:14357: in new_page
+    return mapping.from_impl(self._sync(self._impl_obj.new_page()))
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/playwright/_impl/_browser_context.py:345: in new_page
+    return from_channel(await self._channel.send("newPage", None))
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/playwright/_impl/_connection.py:69: in send
+    return await self._connection.wrap_api_call(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <playwright._impl._connection.Connection object at 0x7f3bff27b550>
+cb = <function Channel.send.<locals>.<lambda> at 0x7f3bfca7c360>
+is_internal = False, title = None
+
+    async def wrap_api_call(
+        self, cb: Callable[[], Any], is_internal: bool = False, title: str = None
+    ) -> Any:
+        if self._api_zone.get():
+            return await cb()
+        task = asyncio.current_task(self._loop)
+        st: List[inspect.FrameInfo] = getattr(
+            task, "__pw_stack__", None
+        ) or inspect.stack(0)
+    
+        parsed_st = _extract_stack_trace_information_from_stack(st, is_internal, title)
+        self._api_zone.set(parsed_st)
+        try:
+            return await cb()
+        except Exception as error:
+>           raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
+E           playwright._impl._errors.TargetClosedError: BrowserContext.new_page: "Route.fetch: Request context disposed.
+E           Call log:
+E             - → GET http://127.0.0.1:46045/v1/system/status
+E               - user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/149.0.7827.55 Safari/537.36
+E               - accept: */*
+E               - accept-encoding: gzip,deflate,br
+E               - sec-ch-ua: "HeadlessChrome";v="149", "Chromium";v="149", "Not)A;Brand";v="24"
+E               - sec-ch-ua-mobile: ?0
+E               - sec-ch-ua-platform: "Linux"
+E           " while running route callback.
+E           Consider awaiting `page.unroute_all(behavior='ignoreErrors')`
+E           before the end of the test to ignore remaining routes in flight.
+
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/playwright/_impl/_connection.py:563: TargetClosedError
+---------------------------- Captured stderr setup -----------------------------
+Error occurred in event listener
+Traceback (most recent call last):
+  File "/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/playwright/_impl/_helper.py", line 430, in handle
+    return await self._handle_internal(route)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/playwright/_impl/_helper.py", line 466, in _handle_internal
+    await handler_finished_future
+  File "/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/playwright/_impl/_helper.py", line 457, in _handler
+    self.handler(route, route.request)  # type: ignore
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/playwright/_impl/_impl_to_api_mapping.py", line 139, in wrapper_func
+    return handler(
+           ^^^^^^^^
+  File "/home/runner/work/InferBridge/InferBridge/browser_tests/test_progress_browser.py", line 45, in handle_status
+    response = route.fetch()
+               ^^^^^^^^^^^^^
+  File "/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/playwright/sync_api/_generated.py", line 864, in fetch
+    self._sync(
+  File "/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/playwright/_impl/_sync_base.py", line 115, in _sync
+    return task.result()
+           ^^^^^^^^^^^^^
+  File "/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/playwright/_impl/_network.py", line 480, in fetch
+    return await self._connection.wrap_api_call(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/playwright/_impl/_connection.py", line 563, in wrap_api_call
+    raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
+playwright._impl._errors.TargetClosedError: Route.fetch: Request context disposed.
+Call log:
+  - → GET http://127.0.0.1:46045/v1/system/status
+    - user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/149.0.7827.55 Safari/537.36
+    - accept: */*
+    - accept-encoding: gzip,deflate,br
+    - sec-ch-ua: "HeadlessChrome";v="149", "Chromium";v="149", "Not)A;Brand";v="24"
+    - sec-ch-ua-mobile: ?0
+    - sec-ch-ua-platform: "Linux"
+
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/playwright/_impl/_page.py", line 308, in _on_route
+    handled = await route_handler.handle(route)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/playwright/_impl/_helper.py", line 439, in handle
+    raise rewrite_error(
+playwright._impl._errors.TargetClosedError: "Route.fetch: Request context disposed.
+Call log:
+  - → GET http://127.0.0.1:46045/v1/system/status
+    - user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/149.0.7827.55 Safari/537.36
+    - accept: */*
+    - accept-encoding: gzip,deflate,br
+    - sec-ch-ua: "HeadlessChrome";v="149", "Chromium";v="149", "Not)A;Brand";v="24"
+    - sec-ch-ua-mobile: ?0
+    - sec-ch-ua-platform: "Linux"
+" while running route callback.
+Consider awaiting `page.unroute_all(behavior='ignoreErrors')`
+before the end of the test to ignore remaining routes in flight.
+=========================== short test summary info ============================
+ERROR browser_tests/test_progress_browser.py::test_cancel_button_posts_exact_operation_and_reconciles_terminal_state - playwright._impl._errors.TargetClosedError: BrowserContext.new_page: "Route.fetch: Request context disposed.
+Call log:
+  - → GET http://127.0.0.1:46045/v1/system/status
+    - user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/149.0.7827.55 Safari/537.36
+    - accept: */*
+    - accept-encoding: gzip,deflate,br
+    - sec-ch-ua: "HeadlessChrome";v="149", "Chromium";v="149", "Not)A;Brand";v="24"
+    - sec-ch-ua-mobile: ?0
+    - sec-ch-ua-platform: "Linux"
+" while running route callback.
+Consider awaiting `page.unroute_all(behavior='ignoreErrors')`
+before the end of the test to ignore remaining routes in flight.
