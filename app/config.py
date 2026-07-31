@@ -18,6 +18,8 @@ from app.doctor_ui import install_system_doctor_extension
 from app.engine_handoff_routes import install_engine_handoff_routes_extension
 from app.gui_stability import install_gui_stability_extension
 from app.header_overflow_ui import install_header_overflow_extension
+from app.huggingface_access import install_huggingface_access_routes_extension
+from app.huggingface_access_ui import install_huggingface_access_ui_extension
 from app.model_cancellation import install_model_cancellation_routes_extension
 from app.model_library_routes import install_model_library_routes_extension
 from app.model_library_ui import install_model_library_ui_extension
@@ -41,6 +43,7 @@ install_model_library_routes_extension()
 install_model_cancellation_routes_extension()
 install_status_split_routes_extension()
 install_engine_handoff_routes_extension()
+install_huggingface_access_routes_extension()
 install_branding_extension()
 install_chat_context_extension()
 install_chat_queue_extension()
@@ -58,6 +61,7 @@ install_status_split_ui_extension()
 install_operation_queue_ui_extension()
 install_onboarding_ui_extension()
 install_model_library_ui_extension()
+install_huggingface_access_ui_extension()
 install_desktop_operations_ui_extension()
 install_gui_stability_extension()
 
@@ -143,6 +147,7 @@ class Settings:
         from app.desktop_model_paths import install_desktop_model_path_extension
         from app.desktop_shutdown_safety import install_desktop_shutdown_safety
         from app.engine_handoff_safety import install_engine_handoff_safety
+        from app.huggingface_access import install_huggingface_access_manager_extension
         from app.lifecycle_safety import install_model_lifecycle_safety
         from app.model_cancellation import install_model_cancellation_manager_extension
         from app.model_load_target import install_model_load_target_routing
@@ -159,6 +164,7 @@ class Settings:
         install_model_lifecycle_safety()
         install_model_cancellation_manager_extension()
         install_status_manager_extension()
+        install_huggingface_access_manager_extension()
         install_desktop_shutdown_safety()
 
     @classmethod
