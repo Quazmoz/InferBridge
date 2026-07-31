@@ -103,6 +103,12 @@ jobs:
           rm .github/scripts/fix_cancellation_race.py
           rm .github/scripts/fix_browser_imports.py
           rm .github/workflows/apply-cancellation-and-browser.yml
+          rm .github/workflows/diagnose-cancellation-integration.yml
+          rm .github/workflows/diagnose-cancellation-tests.yml
+          rm .github/workflows/diagnose-cancellation-python.yml
+          rm -f .audit/cancellation-integration-diagnostic.txt
+          rm -f .audit/cancellation-test-stages.txt
+          rm -f .audit/cancellation-python-diagnostic.txt
           git config user.name github-actions[bot]
           git config user.email 41898282+users.noreply.github.com
           git add -A
