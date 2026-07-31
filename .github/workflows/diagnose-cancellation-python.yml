@@ -26,6 +26,7 @@ jobs:
         run: |
           python .github/scripts/apply_cancellation_and_browser.py
           python .github/scripts/fix_cancellation_race.py
+          python .github/scripts/fix_browser_imports.py
           python -m pip install --upgrade pip
           pip install -e .[dev,browser]
           ruff format app/config.py app/model_cancellation.py app/cancellation_ui.py browser_tests/conftest.py browser_tests/test_progress_browser.py tests/test_model_cancellation.py tests/test_model_cancellation_race.py tests/test_cancellation_ui.py
