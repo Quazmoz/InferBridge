@@ -1,112 +1,15 @@
-validated_sha=b33feee74c92051c77a6700ea0ef24c0bdc3986c
-ruff=1
-pytest=1
+validated_sha=537af223b15af455e5b021f93f393650fa89f541
+ruff=0
+pytest=0
 --- ruff ---
-I001 [*] Import block is un-sorted or un-formatted
-  --> browser_tests/conftest.py:1:1
-   |
- 1 | / from __future__ import annotations
- 2 | |
- 3 | | import os
- 4 | | import socket
- 5 | | from pathlib import Path
- 6 | | import threading
- 7 | | import time
- 8 | |
- 9 | | import pytest
-10 | | import uvicorn
-11 | | from playwright.sync_api import Browser, Page, sync_playwright
-12 | |
-13 | | from app.config import BASE_DIR, Settings
-14 | | from app.server import create_app
-   | |_________________________________^
-   |
-help: Organize imports
-  |
-4 | import socket
-  - from pathlib import Path
-5 | import threading
-6 | import time
-7 + from pathlib import Path
-8 |
-  |
-
-Found 1 error.
-[*] 1 fixable with the `--fix` option.
+All checks passed!
 --- pytest ---
-........F............................................................... [ 79%]
+........................................................................ [ 79%]
 ...................                                                      [100%]
-=================================== FAILURES ===================================
-________ test_successful_completion_is_not_overwritten_by_cancellation _________
-
-tmp_path = PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/pytest/test_successful_completion_is_0')
-
-    def test_successful_completion_is_not_overwritten_by_cancellation(tmp_path) -> None:
-        async def scenario() -> None:
-            manager = _manager(tmp_path)
-            manager._set_status(MODEL_ID, "converting")
-            manager._set_progress(MODEL_ID, "converting", "Converting model")
-            operation_id = manager.progress[MODEL_ID]["operation_id"]
-    
-            async def completes_when_cancelled() -> None:
-                try:
-                    await asyncio.Event().wait()
-                except asyncio.CancelledError:
-                    manager._set_progress(MODEL_ID, "ready", "Model is ready", percent=100)
-                    manager._clear_status(MODEL_ID)
-    
-            task = asyncio.create_task(completes_when_cancelled())
-            manager.convert_tasks[MODEL_ID] = task
-    
-            with pytest.raises(CancellationConflict) as raised:
-                await manager.cancel_operation(MODEL_ID, operation_id)
-    
-            assert raised.value.code == "task_finished"
-            assert manager.progress[MODEL_ID]["phase"] == "ready"
-            assert manager.progress[MODEL_ID]["operation_id"] == operation_id
-            assert manager.status_overrides.get(MODEL_ID) is None
-    
->       asyncio.run(scenario())
-
-tests/test_model_cancellation_race.py:66: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/asyncio/runners.py:190: in run
-    return runner.run(main)
-           ^^^^^^^^^^^^^^^^
-/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/asyncio/runners.py:118: in run
-    return self._loop.run_until_complete(task)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/asyncio/base_events.py:654: in run_until_complete
-    return future.result()
-           ^^^^^^^^^^^^^^^
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-
-    async def scenario() -> None:
-        manager = _manager(tmp_path)
-        manager._set_status(MODEL_ID, "converting")
-        manager._set_progress(MODEL_ID, "converting", "Converting model")
-        operation_id = manager.progress[MODEL_ID]["operation_id"]
-    
-        async def completes_when_cancelled() -> None:
-            try:
-                await asyncio.Event().wait()
-            except asyncio.CancelledError:
-                manager._set_progress(MODEL_ID, "ready", "Model is ready", percent=100)
-                manager._clear_status(MODEL_ID)
-    
-        task = asyncio.create_task(completes_when_cancelled())
-        manager.convert_tasks[MODEL_ID] = task
-    
->       with pytest.raises(CancellationConflict) as raised:
-E       Failed: DID NOT RAISE CancellationConflict
-
-tests/test_model_cancellation_race.py:58: Failed
 =============================== warnings summary ===============================
 ../../../../../opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/fastapi/testclient.py:1
   /opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
     from starlette.testclient import TestClient as TestClient  # noqa
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-=========================== short test summary info ============================
-FAILED tests/test_model_cancellation_race.py::test_successful_completion_is_not_overwritten_by_cancellation - Failed: DID NOT RAISE CancellationConflict
-1 failed, 90 passed, 1 warning in 8.27s
+91 passed, 1 warning in 9.99s
