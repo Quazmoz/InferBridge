@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import threading
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from runtime import device_check
 from runtime.openvino_engine import MockEngine
 
 MODEL_ID = "tinyllama-1.1b-chat-fp16"
+SECOND_MODEL_ID = "tinyllama-1.1b-chat-int4"
 
 
 def _manager() -> ModelManager:
@@ -51,6 +53,63 @@ def test_queued_load_reports_position_and_elapsed_time(monkeypatch: pytest.Monke
         manager._load_lock.release()
         await asyncio.wait_for(task, timeout=2)
         assert manager.devices[MODEL_ID] == "CPU"
+        await manager.shutdown()
+
+    asyncio.run(scenario())
+
+
+def test_queued_loads_keep_fifo_order(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def scenario() -> None:
+        monkeypatch.setattr(model_load_target, "_LOAD_WAIT_UPDATE_SECONDS", 0.02)
+        manager = _manager()
+        build_order: list[str] = []
+
+        def record_build(
+            model_id: str,
+            device: str,
+            draft_model_path: str | None = None,
+        ) -> MockEngine:
+            build_order.append(model_id)
+            return MockEngine(model_id, str(Path("models") / model_id), device)
+
+        manager._build_engine = record_build
+        await manager._load_lock.acquire()
+        first = manager.schedule_load(MODEL_ID, "CPU")
+        second = manager.schedule_load(SECOND_MODEL_ID, "CPU")
+        assert first is not None
+        assert second is not None
+        await asyncio.sleep(0.07)
+
+        assert "queue 1 of 2" in manager.progress[MODEL_ID]["message"]
+        assert "queue 2 of 2" in manager.progress[SECOND_MODEL_ID]["message"]
+
+        manager._load_lock.release()
+        await asyncio.wait_for(asyncio.gather(first, second), timeout=2)
+        assert build_order == [MODEL_ID, SECOND_MODEL_ID]
+        await manager.shutdown()
+
+    asyncio.run(scenario())
+
+
+def test_cancelled_queued_load_does_not_leave_an_orphaned_waiter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        monkeypatch.setattr(model_load_target, "_LOAD_WAIT_UPDATE_SECONDS", 0.02)
+        manager = _manager()
+        await manager._load_lock.acquire()
+
+        task = manager.schedule_load(MODEL_ID, "CPU")
+        assert task is not None
+        await asyncio.sleep(0.05)
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+        assert manager._load_lock.locked()
+        manager._load_lock.release()
+        await asyncio.sleep(0.05)
+        assert not manager._load_lock.locked()
         await manager.shutdown()
 
     asyncio.run(scenario())
