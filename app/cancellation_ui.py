@@ -179,7 +179,7 @@ CANCELLATION_UI_JS = r"""
     function removeControls(dock) {
         dock.querySelector('.ovrp-cancel-control')?.remove();
         dock.querySelector('.ovrp-cancel-note')?.remove();
-        if (!feedback) dock.querySelector('.ovrp-cancel-feedback')?.remove();
+        dock.querySelector('.ovrp-cancel-feedback')?.remove();
     }
 
     function renderControls() {
@@ -193,17 +193,24 @@ CANCELLATION_UI_JS = r"""
             return;
         }
 
-        dock.querySelector('.ovrp-cancel-note')?.remove();
         let control = metadata.querySelector('.ovrp-cancel-control');
+        let note = metadata.querySelector('.ovrp-cancel-note');
         if (!operation.canCancel) {
             control?.remove();
             if (operation.cancelReason) {
-                const note = document.createElement('span');
-                note.className = 'ovrp-cancel-note';
-                note.textContent = operation.cancelReason;
-                metadata.appendChild(note);
+                if (!note) {
+                    note = document.createElement('span');
+                    note.className = 'ovrp-cancel-note';
+                    metadata.appendChild(note);
+                }
+                if (note.textContent !== operation.cancelReason) {
+                    note.textContent = operation.cancelReason;
+                }
+            } else {
+                note?.remove();
             }
         } else {
+            note?.remove();
             if (!control) {
                 control = document.createElement('span');
                 control.className = 'ovrp-cancel-control';
@@ -215,22 +222,31 @@ CANCELLATION_UI_JS = r"""
             }
             const button = control.querySelector('.ovrp-cancel-button');
             const busy = cancellationInFlight === operation.operationId;
-            button.disabled = busy;
-            button.textContent = busy
+            const label = busy
                 ? 'Cancelling…'
                 : (operation.cancelMode === 'conversion' ? 'Cancel conversion' : 'Cancel preparation');
-            button.setAttribute('aria-label', `${button.textContent} for ${operation.modelName}`);
+            if (button.disabled !== busy) button.disabled = busy;
+            if (button.textContent !== label) button.textContent = label;
+            const ariaLabel = `${label} for ${operation.modelName}`;
+            if (button.getAttribute('aria-label') !== ariaLabel) {
+                button.setAttribute('aria-label', ariaLabel);
+            }
             button.onclick = () => void cancelOperation(operation);
         }
 
-        metadata.querySelector('.ovrp-cancel-feedback')?.remove();
+        let item = metadata.querySelector('.ovrp-cancel-feedback');
         if (feedback && feedback.operationId === operation.operationId) {
-            const item = document.createElement('span');
-            item.className = `ovrp-cancel-feedback${feedback.isError ? ' error' : ''}`;
-            item.setAttribute('role', 'status');
-            item.setAttribute('aria-live', 'polite');
-            item.textContent = feedback.message;
-            metadata.appendChild(item);
+            if (!item) {
+                item = document.createElement('span');
+                item.setAttribute('role', 'status');
+                item.setAttribute('aria-live', 'polite');
+                metadata.appendChild(item);
+            }
+            const className = `ovrp-cancel-feedback${feedback.isError ? ' error' : ''}`;
+            if (item.className !== className) item.className = className;
+            if (item.textContent !== feedback.message) item.textContent = feedback.message;
+        } else {
+            item?.remove();
         }
     }
 
