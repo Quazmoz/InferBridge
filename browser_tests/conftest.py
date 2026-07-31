@@ -89,4 +89,5 @@ def page(browser: Browser) -> Page:
     context = browser.new_context(viewport={"width": 1280, "height": 900})
     page = context.new_page()
     yield page
+    page.unroute_all(behavior="ignoreErrors")
     context.close()
