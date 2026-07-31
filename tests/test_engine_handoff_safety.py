@@ -12,9 +12,9 @@ install_engine_handoff_safety()
 
 
 class FakeHandle:
-    def __init__(self, chunks):
+    def __init__(self, chunks, *, error=None):
         self._chunks = iter(chunks)
-        self.error = None
+        self.error = error
 
     def next_chunk(self):
         return next(self._chunks, None)
@@ -27,10 +27,11 @@ class FakeHandle:
 
 
 class FakeEngine:
-    def __init__(self, model_id: str, label: str):
+    def __init__(self, model_id: str, label: str, *, stream_error=None):
         self.model_id = model_id
         self.device = "CPU"
         self.label = label
+        self.stream_error = stream_error
         self.closed = False
         self.generate_calls = []
         self.stream_calls = []
@@ -41,7 +42,8 @@ class FakeEngine:
 
     def stream(self, prompt, params):
         self.stream_calls.append((prompt, params))
-        return FakeHandle([self.label])
+        chunks = [self.label] if self.stream_error is None else []
+        return FakeHandle(chunks, error=self.stream_error)
 
     def close(self):
         self.closed = True
@@ -57,6 +59,7 @@ class FakeManager:
         self.progress = {}
         self.events = []
         self.tracking_started = asyncio.Event()
+        self.recovery_started = asyncio.Event()
 
     def get_lock(self, model_id: str):
         return self.locks.setdefault(model_id, asyncio.Lock())
@@ -129,6 +132,35 @@ def test_queued_stream_rebinds_to_replacement_engine():
             await anext(stream)
         assert old_engine.stream_calls == []
         assert len(new_engine.stream_calls) == 1
+
+    asyncio.run(scenario())
+
+
+def test_stream_cancellation_wins_when_recovery_swallows_cancelled_error():
+    async def scenario():
+        engine = FakeEngine(
+            "demo",
+            "failed",
+            stream_error=RuntimeError("native generation failed"),
+        )
+        manager = FakeManager(engine)
+
+        async def recovery_that_swallows_cancellation(_engine, _loop):
+            manager.recovery_started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                return None
+
+        manager._recover_cancelled_npu_engine = recovery_that_swallows_cancellation
+        stream = ModelManager.stream(manager, engine, "hello", object())
+        task = asyncio.create_task(anext(stream))
+
+        await manager.recovery_started.wait()
+        task.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await task
 
     asyncio.run(scenario())
 
