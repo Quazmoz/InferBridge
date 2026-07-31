@@ -39,15 +39,51 @@ def _operation_snapshot(
 
 
 def _server_snapshot(inferbridge_url: str) -> dict[str, Any]:
-    with urlopen(f"{inferbridge_url}/v1/system/status", timeout=10) as response:
+    with urlopen(f"{inferbridge_url}/v1/models/status", timeout=10) as response:
         return json.load(response)
 
 
-def _install_status_controller(
-    page: Page,
-    state: dict[str, Any],
-    baseline: dict[str, Any],
-) -> None:
+def _apply_snapshot(model: dict[str, Any], snapshot: dict[str, Any]) -> dict[str, Any]:
+    updated = dict(model)
+    progress = dict(updated.get("progress") or {})
+    progress.update(
+        {
+            "schema_version": 1,
+            "operation_id": snapshot["operation_id"],
+            "operation_type": "convert",
+            "revision": snapshot["revision"],
+            "phase": snapshot["phase"],
+            "message": (
+                "Conversion cancelled."
+                if snapshot["phase"] == "cancelled"
+                else f"Converting model to OpenVINO IR at {snapshot['percent']}%."
+            ),
+            "percent": snapshot["percent"],
+            "completed": None,
+            "total": None,
+            "started_at": snapshot["started_at"],
+            "updated_at": snapshot["updated_at"],
+            "log_tail": ["Browser-controlled progress event"],
+        }
+    )
+    updated.update(
+        {
+            "status": snapshot["status"],
+            "status_label": progress["message"],
+            "is_loaded": False,
+            "is_loading": snapshot["is_loading"],
+            "can_cancel": snapshot["can_cancel"],
+            "cancel_mode": snapshot["cancel_mode"],
+            "cancel_reason": snapshot["cancel_reason"],
+            "progress": progress,
+        }
+    )
+    return updated
+
+
+def _install_status_controller(page: Page, state: dict[str, Any]) -> None:
+    baseline = _server_snapshot(state["inferbridge_url"])
+
     def handle_status(route: Route) -> None:
         if state.pop("abort_once", False):
             route.abort()
@@ -55,46 +91,12 @@ def _install_status_controller(
 
         payload = copy.deepcopy(baseline)
         available = list(payload["models"]["available"])
-        model = dict(available[0])
-        snapshot = state["snapshot"]
-        progress = dict(model.get("progress") or {})
-        progress.update(
-            {
-                "schema_version": 1,
-                "operation_id": snapshot["operation_id"],
-                "operation_type": "convert",
-                "revision": snapshot["revision"],
-                "phase": snapshot["phase"],
-                "message": (
-                    "Conversion cancelled."
-                    if snapshot["phase"] == "cancelled"
-                    else f"Converting model to OpenVINO IR at {snapshot['percent']}%."
-                ),
-                "percent": snapshot["percent"],
-                "completed": None,
-                "total": None,
-                "started_at": snapshot["started_at"],
-                "updated_at": snapshot["updated_at"],
-                "log_tail": ["Browser-controlled progress event"],
-            }
-        )
-        model.update(
-            {
-                "status": snapshot["status"],
-                "status_label": progress["message"],
-                "is_loaded": False,
-                "is_loading": snapshot["is_loading"],
-                "can_cancel": snapshot["can_cancel"],
-                "cancel_mode": snapshot["cancel_mode"],
-                "cancel_reason": snapshot["cancel_reason"],
-                "progress": progress,
-            }
-        )
+        model = _apply_snapshot(dict(available[0]), state["snapshot"])
         available[0] = model
         payload["models"] = {
             **payload["models"],
             "available": available,
-            "loading_count": 1 if snapshot["is_loading"] else 0,
+            "loading_count": 1 if state["snapshot"]["is_loading"] else 0,
         }
         state["model_id"] = model["id"]
         state["last_model"] = model
@@ -104,11 +106,12 @@ def _install_status_controller(
             body=json.dumps(payload),
         )
 
-    page.route("**/v1/system/status", handle_status)
+    page.route("**/v1/models/status", handle_status)
 
 
 def _open_progress(page: Page, inferbridge_url: str, state: dict[str, Any]) -> None:
-    _install_status_controller(page, state, _server_snapshot(inferbridge_url))
+    state["inferbridge_url"] = inferbridge_url
+    _install_status_controller(page, state)
     page.goto(inferbridge_url, wait_until="domcontentloaded")
     expect(page.locator("#ov-reliable-progress")).to_have_attribute(
         "data-operation-id",
@@ -118,6 +121,17 @@ def _open_progress(page: Page, inferbridge_url: str, state: dict[str, Any]) -> N
     model_id = state.get("model_id")
     if model_id:
         page.locator("#model-select").select_option(model_id)
+
+
+def _invalidate_and_fetch_status(page: Page) -> None:
+    page.evaluate(
+        """
+        () => {
+            window.__inferbridgeInvalidateModelStatus?.();
+            return fetch('/v1/system/status', {cache: 'no-store'}).then(response => response.json());
+        }
+        """
+    )
 
 
 def test_lower_server_revision_cannot_regress_visible_operation(
@@ -136,7 +150,7 @@ def test_lower_server_revision_cannot_regress_visible_operation(
         percent=9,
         updated_at=1_999,
     )
-    page.evaluate("fetch('/v1/system/status', {cache: 'no-store'}).then(r => r.json())")
+    _invalidate_and_fetch_status(page)
     page.wait_for_timeout(250)
 
     expect(dock).to_have_attribute("data-operation-revision", "8")
@@ -163,24 +177,7 @@ def test_cancel_button_posts_exact_operation_and_reconciles_terminal_state(
             cancel_mode=None,
             cancel_reason="The model preparation operation has already finished.",
         )
-        model = dict(state["last_model"])
-        model.update(
-            {
-                "status": "cancelled",
-                "status_label": "Conversion cancelled.",
-                "is_loading": False,
-                "can_cancel": False,
-                "cancel_mode": None,
-                "cancel_reason": "The model preparation operation has already finished.",
-                "progress": {
-                    **model["progress"],
-                    "revision": 5,
-                    "phase": "cancelled",
-                    "message": "Conversion cancelled.",
-                    "updated_at": 2_001,
-                },
-            }
-        )
+        model = _apply_snapshot(dict(state["last_model"]), state["snapshot"])
         route.fulfill(
             status=200,
             content_type="application/json",
@@ -273,8 +270,27 @@ def test_failed_status_request_allows_lower_revision_after_server_restart(
     }
     _open_progress(page, inferbridge_url, state)
 
+    # Abort both the split endpoint and its compatibility fallback so the operation
+    # reconciler observes a genuine connectivity failure and clears its watermark.
+    fallback_aborted = {"value": False}
+
+    def abort_legacy_once(route: Route) -> None:
+        if not fallback_aborted["value"]:
+            fallback_aborted["value"] = True
+            route.abort()
+        else:
+            route.continue_()
+
+    page.route("**/v1/system/status", abort_legacy_once)
     state["abort_once"] = True
-    page.evaluate("fetch('/v1/system/status', {cache: 'no-store'}).catch(() => null)")
+    page.evaluate(
+        """
+        () => {
+            window.__inferbridgeInvalidateModelStatus?.();
+            return fetch('/v1/system/status', {cache: 'no-store'}).catch(() => null);
+        }
+        """
+    )
     state["snapshot"] = _operation_snapshot(
         "convert-after-restart",
         1,
@@ -282,7 +298,7 @@ def test_failed_status_request_allows_lower_revision_after_server_restart(
         updated_at=4_000,
         started_at=3_990,
     )
-    page.evaluate("fetch('/v1/system/status', {cache: 'no-store'}).then(r => r.json())")
+    _invalidate_and_fetch_status(page)
 
     expect(page.locator("#ov-reliable-progress")).to_have_attribute(
         "data-operation-id",
@@ -326,3 +342,56 @@ def test_mobile_keyboard_and_reduced_motion_behavior(
         "element => getComputedStyle(element).animationName"
     )
     assert animation_name == "none"
+
+
+def test_expandable_queue_lists_all_active_operations_and_changes_primary(
+    page: Page,
+    inferbridge_url: str,
+) -> None:
+    baseline = _server_snapshot(inferbridge_url)
+    available = baseline["models"]["available"]
+    assert len(available) >= 3
+
+    snapshots = [
+        _operation_snapshot("convert-queue-1", 4, phase="converting", percent=72),
+        _operation_snapshot("load-queue-2", 2, phase="queued", percent=None),
+        _operation_snapshot("convert-queue-3", 7, phase="downloading", percent=41),
+    ]
+    model_ids = [available[index]["id"] for index in range(3)]
+
+    def handle_status(route: Route) -> None:
+        payload = copy.deepcopy(baseline)
+        models = list(payload["models"]["available"])
+        for index, snapshot in enumerate(snapshots):
+            models[index] = _apply_snapshot(dict(models[index]), snapshot)
+        payload["models"] = {
+            **payload["models"],
+            "available": models,
+            "loading_count": 3,
+        }
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(payload))
+
+    page.route("**/v1/models/status", handle_status)
+    page.goto(inferbridge_url, wait_until="domcontentloaded")
+
+    dock = page.locator("#ov-reliable-progress")
+    expect(dock).to_have_attribute("data-operation-id", "convert-queue-1", timeout=15_000)
+    dock.locator(".ovrp-main").click()
+
+    toggle = page.locator(".ovrp-queue-toggle")
+    expect(toggle).to_have_text("3 operations active")
+    toggle.click()
+
+    panel = page.locator("#ovrp-operation-queue")
+    expect(panel).to_be_visible()
+    rows = panel.locator(".ovrp-queue-row")
+    expect(rows).to_have_count(3)
+    expect(rows.nth(0)).to_contain_text("72%")
+    expect(rows.nth(1)).to_contain_text("Waiting to start")
+    expect(rows.nth(2)).to_contain_text("Downloading")
+    expect(rows.nth(2)).to_contain_text("41%")
+
+    rows.nth(2).click()
+    expect(page.locator("#model-select")).to_have_value(model_ids[2])
+    expect(dock).to_have_attribute("data-operation-id", "convert-queue-3", timeout=10_000)
+    expect(panel).to_be_visible()
