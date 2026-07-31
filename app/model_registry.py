@@ -9,16 +9,25 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from app import multimodal
+from runtime.device_check import DeviceValidationError, parse_device_expression
 
 logger = logging.getLogger("ov-llm.registry")
 
 # Files that indicate a directory holds a converted OpenVINO IR model. A generic
 # config.json alone is not enough because Hugging Face caches contain one too.
 _IR_MARKERS = ("openvino_model.xml", "openvino_language_model.xml")
+_MODEL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+_SUPPORTED_BACKENDS = frozenset(
+    {"openvino-genai", "openvino-embeddings", "openvino-vlm"}
+)
+_SUPPORTED_WEIGHT_FORMATS = frozenset({"int4", "int8", "fp16"})
+_MAX_CONTEXT_LEN = 262_144
+_MAX_OUTPUT_TOKENS = 65_536
 
 _STATUS_LABELS = {
     "loaded": "Loaded",
@@ -90,21 +99,97 @@ class ModelConfig:
         return path if path.is_absolute() else (base_dir / path)
 
 
+def _string_field(
+    raw: dict,
+    key: str,
+    default: str,
+    *,
+    allow_empty: bool = False,
+) -> str:
+    value = raw.get(key, default)
+    if value is None and allow_empty:
+        return ""
+    if not isinstance(value, str):
+        raise ValueError(f"{key} must be a JSON string")
+    value = value.strip()
+    if not value and not allow_empty:
+        raise ValueError(f"{key} cannot be empty")
+    return value
+
+
+def _integer_field(
+    raw: dict,
+    key: str,
+    default: int,
+    *,
+    minimum: int,
+    maximum: int,
+) -> int:
+    value = raw.get(key, default)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{key} must be a JSON integer")
+    if value < minimum or value > maximum:
+        raise ValueError(f"{key} must be between {minimum} and {maximum}")
+    return value
+
+
 def _coerce_entry(model_id: str, raw: dict) -> ModelConfig:
+    if not isinstance(model_id, str) or not _MODEL_ID_RE.fullmatch(model_id):
+        raise ValueError("model id must be filesystem-safe and at most 128 characters")
+
     trust_remote_code = raw.get("trust_remote_code", False)
     if not isinstance(trust_remote_code, bool):
         raise ValueError("trust_remote_code must be a JSON boolean")
+
+    backend = _string_field(raw, "backend", "openvino-genai").lower()
+    if backend not in _SUPPORTED_BACKENDS:
+        supported = ", ".join(sorted(_SUPPORTED_BACKENDS))
+        raise ValueError(f"backend must be one of: {supported}")
+
+    weight_format = _string_field(raw, "weight_format", "int4").lower()
+    if weight_format not in _SUPPORTED_WEIGHT_FORMATS:
+        supported = ", ".join(sorted(_SUPPORTED_WEIGHT_FORMATS))
+        raise ValueError(f"weight_format must be one of: {supported}")
+
+    recommended_device = _string_field(raw, "recommended_device", "NPU")
+    try:
+        recommended_device = parse_device_expression(recommended_device).normalized
+    except DeviceValidationError as exc:
+        raise ValueError(f"recommended_device is invalid: {exc}") from exc
+
+    max_context_len = _integer_field(
+        raw,
+        "max_context_len",
+        2048,
+        minimum=128,
+        maximum=_MAX_CONTEXT_LEN,
+    )
+    max_output_tokens = _integer_field(
+        raw,
+        "max_output_tokens",
+        512,
+        minimum=0,
+        maximum=_MAX_OUTPUT_TOKENS,
+    )
+    if backend == "openvino-embeddings":
+        if max_output_tokens != 0:
+            raise ValueError("embedding models must use max_output_tokens=0")
+    elif max_output_tokens < 1 or max_output_tokens >= max_context_len:
+        raise ValueError(
+            "generation models require max_output_tokens between 1 and max_context_len - 1"
+        )
+
     return ModelConfig(
         id=model_id,
-        name=raw.get("name", model_id),
-        description=raw.get("description", ""),
-        backend=raw.get("backend", "openvino-genai"),
-        model_path=raw.get("model_path", f"models/openvino/{model_id}"),
-        source_model=raw.get("source_model", ""),
-        weight_format=raw.get("weight_format", "int4"),
-        recommended_device=raw.get("recommended_device", "NPU"),
-        max_context_len=int(raw.get("max_context_len", 2048)),
-        max_output_tokens=int(raw.get("max_output_tokens", 512)),
+        name=_string_field(raw, "name", model_id),
+        description=_string_field(raw, "description", "", allow_empty=True),
+        backend=backend,
+        model_path=_string_field(raw, "model_path", f"models/openvino/{model_id}"),
+        source_model=_string_field(raw, "source_model", "", allow_empty=True),
+        weight_format=weight_format,
+        recommended_device=recommended_device,
+        max_context_len=max_context_len,
+        max_output_tokens=max_output_tokens,
         trust_remote_code=trust_remote_code,
     )
 
@@ -241,7 +326,10 @@ def make_catalog_entry(
         badge = _progress_badge(progress_payload)
         label = progress_payload["message"]
         if progress_payload.get("percent") is not None and is_busy_state:
-            label = f"{label} ({progress_payload['percent']:.0f}%)"
+            try:
+                label = f"{label} ({float(progress_payload['percent']):.0f}%)"
+            except (TypeError, ValueError):
+                pass
         display_name = f"{cfg.name} — {badge}"
 
     capabilities = list(cfg.capabilities)
