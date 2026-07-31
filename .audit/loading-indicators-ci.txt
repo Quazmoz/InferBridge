@@ -1,4 +1,4 @@
-validated_sha=f753ab80f3695043fcfdff9ccae135b07b1cc7ee
+validated_sha=385435d3658428918ca094183c1918391eb1af19
 lint_and_test=success
 external_contract=success
 windows_harness=success
