@@ -1,7 +1,0 @@
-validated_sha=1a8f1a0ee9d24559cdcc7a32792d9c9c1d5f0947
-apply=success
-install=success
-static=failure
-python_tests=failure
-browser_install=success
-browser_tests=success
