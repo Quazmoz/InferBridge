@@ -140,6 +140,7 @@ def test_advisor_collectors_run_off_the_event_loop(monkeypatch, tmp_path) -> Non
         response = client.get("/v1/system/telemetry")
 
     assert response.status_code == 200
+    assert response.json()["metrics"]["advisor"] == {}
     assert threads["model_advisor"] != threads["event_loop"]
     assert threads["advisor_summary"] != threads["event_loop"]
 
