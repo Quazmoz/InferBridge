@@ -85,3 +85,5 @@ jobs:
           git add .audit/status-split-validation.txt
           git commit -m "[skip ci] ci: record status split validation"
           git push origin HEAD:development
+
+# rerun 2
