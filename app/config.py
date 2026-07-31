@@ -148,6 +148,7 @@ class Settings:
         from app.desktop_shutdown_safety import install_desktop_shutdown_safety
         from app.engine_handoff_safety import install_engine_handoff_safety
         from app.huggingface_access import install_huggingface_access_manager_extension
+        from app.huggingface_manager_safety import install_huggingface_manager_safety
         from app.lifecycle_safety import install_model_lifecycle_safety
         from app.model_cancellation import install_model_cancellation_manager_extension
         from app.model_load_target import install_model_load_target_routing
@@ -165,6 +166,7 @@ class Settings:
         install_model_cancellation_manager_extension()
         install_status_manager_extension()
         install_huggingface_access_manager_extension()
+        install_huggingface_manager_safety()
         install_desktop_shutdown_safety()
 
     @classmethod
