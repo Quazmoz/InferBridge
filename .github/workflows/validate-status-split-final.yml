@@ -1,0 +1,258 @@
+name: Validate Final Split Status
+
+on:
+  push:
+    branches: ["development"]
+    paths:
+      - ".github/workflows/validate-status-split-final.yml"
+
+concurrency:
+  group: validate-final-split-status
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+      - name: Validate embedded lifecycle JavaScript
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from app.cancellation_ui import CANCELLATION_UI_JS
+          from app.operation_queue_ui import OPERATION_QUEUE_JS
+          from app.progress_operation_ui import PROGRESS_OPERATION_JS
+          from app.progress_reliability import PROGRESS_RELIABILITY_JS
+          from app.status_split_ui import STATUS_SPLIT_JS
+
+          scripts = {
+              'cancellation': CANCELLATION_UI_JS,
+              'operation-queue': OPERATION_QUEUE_JS,
+              'progress-operation': PROGRESS_OPERATION_JS,
+              'progress-reliability': PROGRESS_RELIABILITY_JS,
+              'status-split': STATUS_SPLIT_JS,
+          }
+          for name, script in scripts.items():
+              Path(f'/tmp/inferbridge-{name}.js').write_text(script, encoding='utf-8')
+          PY
+          node --check /tmp/inferbridge-cancellation.js
+          node --check /tmp/inferbridge-operation-queue.js
+          node --check /tmp/inferbridge-progress-operation.js
+          node --check /tmp/inferbridge-progress-reliability.js
+          node --check /tmp/inferbridge-status-split.js
+      - name: Run static and mock tests
+        env:
+          OV_LLM_MOCK: "true"
+        run: |
+          ruff check .
+          ruff format --check .
+          pytest
+
+  external-contract:
+    name: External API Contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+      - name: Start mock server
+        env:
+          OV_LLM_MOCK: "true"
+        run: |
+          python -m app.server \
+            --mock \
+            --host 127.0.0.1 \
+            --port 8123 \
+            --model tinyllama-1.1b-chat-fp16 \
+            > contract-server.log 2>&1 &
+          echo $! > contract-server.pid
+      - name: Validate OpenAI and lifecycle contracts
+        run: |
+          python scripts/validate_api_contract.py \
+            --base-url http://127.0.0.1:8123 \
+            --profile full \
+            --model tinyllama-1.1b-chat-fp16 \
+            --device CPU \
+            --expect-mock \
+            --include-embeddings \
+            --run-benchmark \
+            --exercise-lifecycle \
+            --load-timeout 60 \
+            --timeout 30 \
+            --output-json contract-report.json \
+            --output-markdown contract-report.md
+      - name: Show server log on failure
+        if: failure()
+        run: tail -200 contract-server.log
+      - name: Stop mock server
+        if: always()
+        run: |
+          if [ -f contract-server.pid ]; then
+            kill "$(cat contract-server.pid)" 2>/dev/null || true
+          fi
+
+  windows:
+    name: Windows Lifecycle Harness
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Parse PowerShell scripts
+        shell: pwsh
+        run: |
+          $paths = @(
+            "scripts/build_release.ps1",
+            "scripts/build_windows_distribution.ps1",
+            "scripts/publish_release.ps1",
+            "scripts/test_openwebui_compat.ps1",
+            "scripts/smoke_test_packaged.ps1",
+            "scripts/validate_mock_contract.ps1",
+            "scripts/validate_windows.ps1"
+          )
+          foreach ($path in $paths) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $path),
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error "${path}: $($_.Message)" }
+              exit 1
+            }
+          }
+      - name: Compile lifecycle and packaging modules
+        run: >-
+          python -m py_compile
+          packaging/runtime_hook.py
+          app/cancellation_ui.py
+          app/model_cancellation.py
+          app/model_lifecycle_ui.py
+          app/operation_queue_ui.py
+          app/progress_operation_ui.py
+          app/responsive_ui.py
+          app/status_split.py
+          app/status_split_ui.py
+          app/structured_progress.py
+          runtime/model_converter.py
+          runtime/progress_protocol.py
+          scripts/release_tools.py
+          scripts/release_manifest.py
+          scripts/release_scan.py
+          scripts/verify_release_signing.py
+          scripts/verify_release_provenance.py
+          scripts/certify_context_depth.py
+          scripts/certify_conversion_lifecycle.py
+          scripts/validate_api_contract.py
+          scripts/validate_model_library_manifest.py
+      - name: Install test dependencies
+        run: python -m pip install -e .[dev]
+      - name: Run Windows lifecycle and resilience tests
+        env:
+          OV_LLM_MOCK: "true"
+        run: >-
+          pytest
+          tests/test_release_pipeline.py
+          tests/test_release_signing_gate.py
+          tests/test_release_provenance.py
+          tests/test_installer_upgrade_contract.py
+          tests/test_runtime_hook_upgrade.py
+          tests/test_cancellation_ui.py
+          tests/test_model_cancellation.py
+          tests/test_model_cancellation_race.py
+          tests/test_model_lifecycle_ui.py
+          tests/test_operation_queue_ui.py
+          tests/test_progress_operation_ui.py
+          tests/test_progress_protocol.py
+          tests/test_status_split.py
+          tests/test_status_split_ui.py
+          tests/test_structured_progress.py
+          tests/test_model_converter.py
+          tests/test_progress_reliability.py
+          tests/test_progress_ui.py
+          tests/test_responsive_ui.py
+          tests/test_hardware_advisor.py
+          tests/test_model_library_evidence_identity.py
+          tests/test_model_library_integrity.py
+          tests/test_conversion_cancellation.py
+          tests/test_conversion_stream_safety.py
+          tests/test_config_resilience.py
+          tests/test_onboarding_state_resilience.py
+          tests/test_update_checker_resilience.py
+
+  browser:
+    name: Real Chromium Behavior
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install browser dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev,browser]
+          python -m playwright install --with-deps chromium
+      - name: Run Chromium behavior tests
+        env:
+          OV_LLM_MOCK: "true"
+          INFERBRIDGE_BROWSER_ARTIFACTS: browser-artifacts
+        run: pytest browser_tests -q
+
+  report:
+    name: Record Validation Result
+    if: always()
+    needs: [linux, external-contract, windows, browser]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record aggregate result
+        run: |
+          mkdir -p .audit
+          cat > .audit/status-split-final.txt <<EOF
+          validated_sha=${GITHUB_SHA}
+          linux=${{ needs.linux.result }}
+          external_contract=${{ needs.external-contract.result }}
+          windows=${{ needs.windows.result }}
+          browser=${{ needs.browser.result }}
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+users.noreply.github.com
+          git add .audit/status-split-final.txt
+          git commit -m "[skip ci] ci: record final split status validation"
+          git push origin HEAD:development
