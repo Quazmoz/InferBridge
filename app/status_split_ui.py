@@ -18,6 +18,16 @@ STATUS_SPLIT_JS = r"""
     const MODELS_PATH = '/v1/models/status';
     const TELEMETRY_PATH = '/v1/system/telemetry';
     const EVENTS_PATH = '/v1/events';
+    const MODEL_MUTATION_PATHS = new Set([
+        '/v1/models/load',
+        '/v1/models/convert',
+        '/v1/models/download-custom',
+        '/v1/models/cancel',
+        '/v1/models/unload',
+        '/v1/models/delete',
+        '/v1/model-library/import-definitions',
+        '/v1/model-library/import-converted',
+    ]);
     const ACTIVE_MODEL_TTL_MS = 800;
     const IDLE_MODEL_TTL_MS = 3000;
     const TELEMETRY_TTL_MS = 5000;
@@ -71,6 +81,17 @@ STATUS_SPLIT_JS = r"""
         }
         return state;
     }
+
+    function invalidateModels(headers = null) {
+        if (headers) {
+            stateFor(headers).modelsAt = 0;
+            return;
+        }
+        for (const state of states.values()) state.modelsAt = 0;
+    }
+
+    window.__inferbridgeInvalidateModelStatus = () => invalidateModels();
+    window.addEventListener('inferbridge:model-status-invalidated', () => invalidateModels());
 
     function hasActiveModels(payload) {
         const models = payload?.models?.available;
@@ -228,12 +249,23 @@ STATUS_SPLIT_JS = r"""
 
     window.fetch = async function splitStatusFetch(input, init = {}) {
         const target = endpoint(input);
+        const method = requestMethod(input, init);
+        const headers = mergedHeaders(input, init);
+        if (
+            target.sameOrigin
+            && MODEL_MUTATION_PATHS.has(target.path)
+            && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)
+        ) {
+            const response = await nativeFetch(input, init);
+            invalidateModels(headers);
+            return response;
+        }
+
         const isLegacyStatus = target.sameOrigin
             && target.path === LEGACY_PATH
-            && requestMethod(input, init) === 'GET';
+            && method === 'GET';
         if (!isLegacyStatus) return nativeFetch(input, init);
 
-        const headers = mergedHeaders(input, init);
         const state = stateFor(headers);
         try {
             const modelResult = await modelsSnapshot(state, headers, init);
