@@ -66,10 +66,12 @@ def test_lifecycle_mutations_invalidate_only_the_matching_auth_cache() -> None:
     assert "window.__inferbridgeInvalidateModelStatus" in script
 
 
-def test_split_status_composes_legacy_shape_without_content_length() -> None:
+def test_split_status_composes_legacy_shape_and_cached_advisor_data() -> None:
     script = STATUS_SPLIT_JS
 
-    assert "models: modelPayload.models" in script
+    assert "function mergeModelAdvisor(models, telemetry)" in script
+    assert "const advisors = telemetry?.model_advisor" in script
+    assert "models: mergeModelAdvisor(modelPayload.models, telemetry)" in script
     assert "events: eventsResult.payload" in script
     assert "headers.delete('content-length')" in script
     assert "new Response(JSON.stringify(payload)" in script
