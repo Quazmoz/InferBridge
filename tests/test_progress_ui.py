@@ -44,8 +44,8 @@ def test_progress_controller_uses_truthful_phase_progress():
     rendered = inject_multimodal_ui("<html><body></body></html>")
 
     assert "function progressCount" in rendered
-    assert "progress.completed" in rendered
-    assert "progress.total" in rendered
+    assert "progress?.completed" in rendered
+    assert "progress?.total" in rendered
     assert "progress.overall_percent" in rendered
     assert "% of current phase" in rendered
     assert "progress is not measurable for this phase" in rendered
