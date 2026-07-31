@@ -54,6 +54,7 @@ def test_successful_completion_is_not_overwritten_by_cancellation(tmp_path) -> N
 
         task = asyncio.create_task(completes_when_cancelled())
         manager.convert_tasks[MODEL_ID] = task
+        await asyncio.sleep(0)
 
         with pytest.raises(CancellationConflict) as raised:
             await manager.cancel_operation(MODEL_ID, operation_id)
