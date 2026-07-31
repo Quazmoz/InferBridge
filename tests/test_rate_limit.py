@@ -95,3 +95,12 @@ def test_stale_clients_are_cleaned_during_recording():
     assert middleware._record_request("active", 62.0) is None
     assert "stale" not in middleware._hits
     assert list(middleware._hits["active"]) == [62.0]
+
+
+def test_request_is_allowed_at_exact_window_expiry():
+    middleware = RateLimitMiddleware(lambda scope, receive, send: None, requests_per_minute=1)
+
+    assert middleware._record_request("client", 10.0) is None
+    assert middleware._record_request("client", 69.999) == 1
+    assert middleware._record_request("client", 70.0) is None
+    assert list(middleware._hits["client"]) == [70.0]
