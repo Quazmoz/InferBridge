@@ -45,6 +45,14 @@ def test_split_status_coalesces_requests_and_preserves_auth_partitioning() -> No
     assert "return nativeFetch(input, init)" in script
 
 
+def test_lifecycle_failures_use_legacy_fallback_instead_of_stale_model_state() -> None:
+    script = STATUS_SPLIT_JS
+
+    assert "const result = await state.modelsPromise" in script
+    assert "if (state.models) return { payload: state.models" not in script
+    assert "A failed lifecycle request is never hidden" in script
+
+
 def test_lifecycle_mutations_invalidate_only_the_matching_auth_cache() -> None:
     script = STATUS_SPLIT_JS
 
