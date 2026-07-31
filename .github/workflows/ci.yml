@@ -52,6 +52,7 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           from app.cancellation_ui import CANCELLATION_UI_JS
+          from app.huggingface_access_ui import HUGGINGFACE_ACCESS_JS
           from app.operation_queue_ui import OPERATION_QUEUE_JS
           from app.progress_operation_ui import PROGRESS_OPERATION_JS
           from app.progress_reliability import PROGRESS_RELIABILITY_JS
@@ -59,6 +60,7 @@ jobs:
 
           scripts = {
               'cancellation': CANCELLATION_UI_JS,
+              'huggingface-access': HUGGINGFACE_ACCESS_JS,
               'operation-queue': OPERATION_QUEUE_JS,
               'progress-operation': PROGRESS_OPERATION_JS,
               'progress-reliability': PROGRESS_RELIABILITY_JS,
@@ -68,6 +70,7 @@ jobs:
               Path(f'/tmp/inferbridge-{name}.js').write_text(script, encoding='utf-8')
           PY
           node --check /tmp/inferbridge-cancellation.js
+          node --check /tmp/inferbridge-huggingface-access.js
           node --check /tmp/inferbridge-operation-queue.js
           node --check /tmp/inferbridge-progress-operation.js
           node --check /tmp/inferbridge-progress-reliability.js
@@ -199,6 +202,8 @@ jobs:
           python -m py_compile
           packaging/runtime_hook.py
           app/cancellation_ui.py
+          app/huggingface_access.py
+          app/huggingface_access_ui.py
           app/model_cancellation.py
           app/model_lifecycle_ui.py
           app/operation_queue_ui.py
@@ -233,6 +238,8 @@ jobs:
           tests/test_installer_upgrade_contract.py
           tests/test_runtime_hook_upgrade.py
           tests/test_cancellation_ui.py
+          tests/test_huggingface_access.py
+          tests/test_huggingface_access_ui.py
           tests/test_model_cancellation.py
           tests/test_model_cancellation_race.py
           tests/test_model_lifecycle_ui.py
