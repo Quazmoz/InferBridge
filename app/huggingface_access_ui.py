@@ -50,10 +50,13 @@ const formatChecked = value => {
 const showToast = message => {
   if (typeof window.showToast === 'function') window.showToast(message);
 };
+const readJson = async response => {
+  try { return await response.json(); } catch { return {}; }
+};
 
 let latestStatus = null;
 let pendingAccess = null;
-let retryModelId = '';
+let pendingRetry = null;
 let busy = false;
 
 function openSettings() {
@@ -90,7 +93,7 @@ function createSettingsCard() {
         <button type="button" class="hf-access-btn primary" id="hf-access-replace">Add token</button>
         <button type="button" class="hf-access-btn" id="hf-access-remove">Remove</button>
       </div>
-      <p class="hf-access-note">Tokens stay on this local server. Windows stores them with DPAPI. The browser never stores or receives the token.</p>
+      <p class="hf-access-note" id="hf-access-note">Tokens are sent only to this local InferBridge server and are never stored in the browser.</p>
     </div>`;
   const systemInfo = [...sidebar.querySelectorAll('.setting-group')]
     .find(item => item.querySelector('h4')?.textContent?.trim() === 'System Info');
@@ -115,7 +118,7 @@ function createDialogs() {
     <div class="modal-header"><h3 id="hf-token-title">Hugging Face token</h3><button type="button" class="close-btn" data-hf-close="token" aria-label="Close">&times;</button></div>
     <form class="hf-dialog-body" id="hf-token-form">
       <p class="hf-dialog-copy">Use a Hugging Face user access token with read permission. It is sent only to this local InferBridge server and is never stored in the browser.</p>
-      <input class="hf-token-field" id="hf-token-input" type="password" autocomplete="off" spellcheck="false" placeholder="hf_…" required minlength="11" maxlength="503">
+      <input class="hf-token-field" id="hf-token-input" type="password" autocomplete="off" spellcheck="false" data-1p-ignore data-lpignore="true" placeholder="hf_…" required minlength="11" maxlength="503">
       <div class="hf-dialog-error" id="hf-token-error" role="alert"></div>
       <div class="hf-dialog-actions"><button type="button" class="hf-access-btn" data-hf-close="token">Cancel</button><button type="submit" class="hf-access-btn primary" id="hf-token-save">Verify and save</button></div>
     </form></div>`;
@@ -124,15 +127,15 @@ function createDialogs() {
   accessModal.className = 'modal-overlay hidden';
   accessModal.setAttribute('aria-hidden', 'true');
   accessModal.innerHTML = `<div class="modal-card hf-dialog-card" role="dialog" aria-modal="true" aria-labelledby="hf-required-title">
-    <div class="modal-header"><h3 id="hf-required-title">Hugging Face access required</h3><button type="button" class="close-btn" data-hf-close="access" aria-label="Close">&times;</button></div>
+    <div class="modal-header"><h3 id="hf-required-title">Hugging Face access check</h3><button type="button" class="close-btn" data-hf-close="access" aria-label="Close">&times;</button></div>
     <div class="hf-dialog-body">
       <p class="hf-dialog-copy" id="hf-required-message"></p>
       <div class="hf-dialog-model" id="hf-required-model"></div>
-      <p class="hf-dialog-copy">InferBridge cannot accept a publisher agreement for you. Open the model page, complete the approval step, then check access again.</p>
+      <p class="hf-dialog-copy" id="hf-required-guidance"></p>
       <div class="hf-dialog-error" id="hf-required-error" role="alert"></div>
       <div class="hf-dialog-actions">
         <button type="button" class="hf-access-btn" id="hf-required-settings">Configure token</button>
-        <button type="button" class="hf-access-btn" id="hf-required-open">Open model agreement</button>
+        <button type="button" class="hf-access-btn" id="hf-required-open">Open model page</button>
         <button type="button" class="hf-access-btn primary" id="hf-required-check">Check access again</button>
       </div>
     </div></div>`;
@@ -141,13 +144,13 @@ function createDialogs() {
     button.addEventListener('click', closeTokenDialog);
   });
   document.querySelectorAll('[data-hf-close="access"]').forEach(button => {
-    button.addEventListener('click', closeAccessDialog);
+    button.addEventListener('click', cancelAccessDialog);
   });
   tokenModal.addEventListener('click', event => {
     if (event.target === tokenModal) closeTokenDialog();
   });
   accessModal.addEventListener('click', event => {
-    if (event.target === accessModal) closeAccessDialog();
+    if (event.target === accessModal) cancelAccessDialog();
   });
   document.getElementById('hf-token-form')?.addEventListener('submit', saveToken);
   document.getElementById('hf-required-settings')?.addEventListener('click', () => {
@@ -186,6 +189,11 @@ function closeTokenDialog() {
 function closeAccessDialog() {
   setModal(document.getElementById('hf-access-modal'), false);
 }
+function cancelAccessDialog() {
+  closeAccessDialog();
+  pendingAccess = null;
+  pendingRetry = null;
+}
 
 function renderStatus(status) {
   latestStatus = status || {};
@@ -196,8 +204,9 @@ function renderStatus(status) {
   const checked = document.getElementById('hf-access-checked');
   const replace = document.getElementById('hf-access-replace');
   const remove = document.getElementById('hf-access-remove');
-  if (!state || !account || !token || !checked || !replace || !remove) return;
-  const connected = status?.status === 'connected';
+  const note = document.getElementById('hf-access-note');
+  if (!state || !account || !token || !checked || !replace || !remove || !note) return;
+  const connected = status?.configured && status?.status === 'connected';
   state.textContent = connected
     ? 'Connected'
     : status?.configured
@@ -215,12 +224,14 @@ function renderStatus(status) {
   remove.disabled = !status?.removable;
   remove.title = status?.source === 'environment'
     ? 'HF_TOKEN is managed through the environment'
-    : 'Remove the securely stored token';
+    : 'Remove the locally stored token';
+  note.textContent = status?.persistence === 'windows_dpapi'
+    ? 'The token is encrypted for this Windows user with DPAPI. The browser never stores or receives it.'
+    : status?.source === 'environment'
+      ? 'HF_TOKEN is active as an advanced environment fallback. The browser never receives it.'
+      : 'Tokens are sent only to this local InferBridge server and are never stored in the browser.';
 }
 
-async function readJson(response) {
-  try { return await response.json(); } catch { return {}; }
-}
 async function loadStatus() {
   try {
     const response = await fetch('/v1/huggingface/status', {headers: headers()});
@@ -232,9 +243,8 @@ function setBusy(value) {
   ['hf-access-test', 'hf-access-replace', 'hf-access-remove', 'hf-token-save', 'hf-required-check']
     .forEach(id => {
       const button = document.getElementById(id);
-      if (button) {
-        button.disabled = value || (id === 'hf-access-remove' && !latestStatus?.removable);
-      }
+      if (!button) return;
+      button.disabled = value || (id === 'hf-access-remove' && !latestStatus?.removable);
     });
 }
 async function testAccess() {
@@ -264,6 +274,8 @@ async function saveToken(event) {
   const input = document.getElementById('hf-token-input');
   const error = document.getElementById('hf-token-error');
   const token = input?.value?.trim() || '';
+  const shouldRecheck = !!pendingAccess;
+  let saved = false;
   error.textContent = '';
   setBusy(true);
   try {
@@ -279,13 +291,14 @@ async function saveToken(event) {
     if (input) input.value = '';
     renderStatus(payload.status);
     closeTokenDialog();
-    showToast('Hugging Face token saved securely');
-    if (pendingAccess) await checkRequiredAccess();
+    showToast(payload.message || 'Hugging Face token saved');
+    saved = true;
   } catch (problem) {
     error.textContent = problem instanceof Error ? problem.message : 'Token validation failed.';
   } finally {
     setBusy(false);
   }
+  if (saved && shouldRecheck) await checkRequiredAccess();
 }
 async function removeToken() {
   if (busy || !latestStatus?.removable) return;
@@ -306,21 +319,88 @@ async function removeToken() {
   }
 }
 
-function showAccessRequired(detail, modelId = '') {
+function issuePresentation(detail = {}) {
+  const code = String(detail.code || '');
+  if (code === 'hf_approval_required') {
+    return {
+      title: 'Publisher approval required',
+      guidance: 'InferBridge cannot accept the publisher agreement for you. Open the model page, complete approval, then check access again.',
+      configure: true,
+      open: true,
+    };
+  }
+  if (code === 'hf_token_missing' || code === 'hf_token_invalid') {
+    return {
+      title: 'Hugging Face access required',
+      guidance: 'Configure a valid read token. For gated models, also complete the publisher approval on the model page.',
+      configure: true,
+      open: !!(detail.license_url || detail.model_url),
+    };
+  }
+  if (code === 'hf_model_not_found') {
+    return {
+      title: 'Model could not be found',
+      guidance: 'Review the repository ID and confirm the model contains a config.json file that Optimum can convert.',
+      configure: false,
+      open: !!detail.model_url,
+    };
+  }
+  if (code === 'hf_rate_limited' || code === 'hf_network_error') {
+    return {
+      title: 'Hugging Face check unavailable',
+      guidance: 'The conversion was not queued. Check the connection and try the access check again.',
+      configure: false,
+      open: false,
+    };
+  }
+  return {
+    title: 'Hugging Face access check failed',
+    guidance: 'Review the model page or token, then check access again.',
+    configure: true,
+    open: !!(detail.license_url || detail.model_url),
+  };
+}
+function showAccessIssue(detail, retry = {}) {
   createDialogs();
   pendingAccess = detail || {};
-  retryModelId = modelId || retryModelId;
-  document.getElementById('hf-required-message').textContent = detail?.message
-    || 'Hugging Face access is required before this model can be downloaded.';
-  document.getElementById('hf-required-model').textContent = detail?.source_model
-    || modelId
-    || 'Gated model';
+  pendingRetry = retry;
+  const presentation = issuePresentation(pendingAccess);
+  document.getElementById('hf-required-title').textContent = presentation.title;
+  document.getElementById('hf-required-message').textContent = pendingAccess.message
+    || 'Hugging Face access must be checked before this model can be downloaded.';
+  document.getElementById('hf-required-model').textContent = pendingAccess.source_model
+    || retry.modelId
+    || 'Hugging Face model';
+  document.getElementById('hf-required-guidance').textContent = presentation.guidance;
   document.getElementById('hf-required-error').textContent = '';
+  const configure = document.getElementById('hf-required-settings');
   const open = document.getElementById('hf-required-open');
-  if (open) open.disabled = !(detail?.license_url || detail?.model_url);
+  configure.hidden = !presentation.configure;
+  open.hidden = !presentation.open;
+  open.disabled = !presentation.open;
   setModal(document.getElementById('hf-access-modal'), true);
   document.getElementById('hf-required-check')?.focus();
   void loadStatus();
+}
+async function replayPreparation() {
+  const retry = pendingRetry;
+  if (!retry?.path) return;
+  if (retry.path === '/v1/models/download-custom') {
+    document.getElementById('custom-model-form')?.requestSubmit();
+    return;
+  }
+  const response = await fetch(retry.path, {
+    method: 'POST',
+    headers: headers({'Content-Type': 'application/json'}),
+    body: JSON.stringify(retry.body || {}),
+  });
+  const payload = await readJson(response);
+  if (!response.ok) {
+    throw new Error(payload.detail?.message || payload.detail || 'Model preparation failed.');
+  }
+  showToast(payload.message || 'Model preparation started');
+  if (typeof window.setStatusPolling === 'function') window.setStatusPolling(1000);
+  if (typeof window.updateStatus === 'function') await window.updateStatus();
 }
 async function checkRequiredAccess() {
   if (busy || !pendingAccess) return;
@@ -328,9 +408,17 @@ async function checkRequiredAccess() {
   const error = document.getElementById('hf-required-error');
   error.textContent = '';
   try {
-    const body = retryModelId
-      ? {model_id: retryModelId}
-      : {source_model: pendingAccess.source_model, access_type: 'gated'};
+    const body = pendingRetry?.path === '/v1/models/download-custom'
+      ? {
+          source_model: pendingAccess.source_model,
+          access_type: pendingAccess.access_type || 'unknown',
+        }
+      : pendingRetry?.modelId
+        ? {model_id: pendingRetry.modelId}
+        : {
+            source_model: pendingAccess.source_model,
+            access_type: pendingAccess.access_type || 'unknown',
+          };
     const response = await fetch('/v1/huggingface/preflight', {
       method: 'POST',
       headers: headers({'Content-Type': 'application/json'}),
@@ -339,16 +427,17 @@ async function checkRequiredAccess() {
     const payload = await readJson(response);
     if (!response.ok) {
       const detail = payload.detail || {};
-      pendingAccess = typeof detail === 'object' ? detail : pendingAccess;
+      if (typeof detail === 'object') {
+        pendingAccess = detail;
+        showAccessIssue(detail, pendingRetry || {});
+      }
       throw new Error(detail.message || detail || 'Access is not ready yet.');
     }
     closeAccessDialog();
     showToast('Access granted. Starting model preparation…');
+    await replayPreparation();
     pendingAccess = null;
-    const modelSelect = document.getElementById('model-select');
-    if (retryModelId && modelSelect) modelSelect.value = retryModelId;
-    retryModelId = '';
-    document.getElementById('load-model-btn')?.click();
+    pendingRetry = null;
   } catch (problem) {
     error.textContent = problem instanceof Error ? problem.message : 'Access is not ready yet.';
   } finally {
@@ -359,7 +448,7 @@ async function checkRequiredAccess() {
 function decorateGatedModels(payload) {
   const models = payload?.models?.available;
   if (!Array.isArray(models)) return;
-  queueMicrotask(() => {
+  window.setTimeout(() => {
     const select = document.getElementById('model-select');
     if (!select) return;
     for (const model of models) {
@@ -382,7 +471,7 @@ function decorateGatedModels(payload) {
       badge.title = 'Requires Hugging Face publisher approval and an authorized token';
       status.appendChild(badge);
     }
-  });
+  }, 0);
 }
 
 const upstreamFetch = window.fetch.bind(window);
@@ -390,10 +479,12 @@ window.fetch = async function huggingFaceAwareFetch(input, init = {}) {
   const target = endpoint(input);
   const method = String(init?.method || input?.method || 'GET').toUpperCase();
   const response = await upstreamFetch(input, init);
-  if (target.sameOrigin && target.path === '/v1/models/status' && method === 'GET' && response.ok) {
-    response.clone().json().then(decorateGatedModels).catch(() => {});
-  }
-  if (target.sameOrigin && target.path === '/v1/system/status' && method === 'GET' && response.ok) {
+  if (
+    target.sameOrigin
+    && ['/v1/models/status', '/v1/system/status'].includes(target.path)
+    && method === 'GET'
+    && response.ok
+  ) {
     response.clone().json().then(decorateGatedModels).catch(() => {});
   }
   if (
@@ -405,24 +496,22 @@ window.fetch = async function huggingFaceAwareFetch(input, init = {}) {
     try {
       const payload = await response.clone().json();
       const detail = payload?.detail;
-      if (
-        detail
-        && typeof detail === 'object'
-        && String(detail.code || '').startsWith('hf_')
-      ) {
-        let modelId = '';
-        try {
-          const requestBody = JSON.parse(String(init.body || '{}'));
-          modelId = requestBody.model || requestBody.model_id || '';
-        } catch {}
-        showAccessRequired(detail, modelId);
+      if (detail && typeof detail === 'object' && String(detail.code || '').startsWith('hf_')) {
+        let requestBody = {};
+        try { requestBody = JSON.parse(String(init.body || '{}')); } catch {}
+        showAccessIssue(detail, {
+          path: target.path,
+          modelId: requestBody.model || requestBody.model_id || '',
+          body: requestBody,
+        });
         const safePayload = {
           ...payload,
-          detail: detail.message || 'Hugging Face access is required.',
+          detail: detail.message || 'Hugging Face access must be checked.',
           hf_access: detail,
         };
         const responseHeaders = new Headers(response.headers);
         responseHeaders.delete('content-length');
+        responseHeaders.set('cache-control', 'no-store');
         return new Response(JSON.stringify(safePayload), {
           status: response.status,
           statusText: response.statusText,
@@ -439,7 +528,7 @@ document.addEventListener('keydown', event => {
   if (!document.getElementById('hf-token-modal')?.classList.contains('hidden')) {
     closeTokenDialog();
   } else if (!document.getElementById('hf-access-modal')?.classList.contains('hidden')) {
-    closeAccessDialog();
+    cancelAccessDialog();
   }
 });
 
