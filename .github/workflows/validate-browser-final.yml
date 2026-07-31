@@ -40,7 +40,7 @@ jobs:
           browser_status=0
           for run in 1 2 3; do
             echo "--- repetition ${run} ---" >> /tmp/browser.txt
-            pytest browser_tests -q --basetemp=".tmp/browser-${run}" >> /tmp/browser.txt 2>&1
+            pytest browser_tests -q --basetemp=".browser-tmp-${run}" >> /tmp/browser.txt 2>&1
             status=$?
             if [ "${status}" -ne 0 ]; then
               browser_status=${status}
