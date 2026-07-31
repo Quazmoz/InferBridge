@@ -591,9 +591,10 @@ def _metadata_from_catalog(
             metadata["access_type"] = explicit
             break
     if metadata["access_type"] == "unknown":
-        metadata["access_type"] = (
-            "gated" if source_model in _KNOWN_GATED_REPOS else "public"
-        )
+        if source_model in _KNOWN_GATED_REPOS:
+            metadata["access_type"] = "gated"
+        elif entries:
+            metadata["access_type"] = "public"
 
     for entry in entries:
         if entry.get("model_url"):
@@ -765,10 +766,13 @@ def register_huggingface_access_routes(app: FastAPI) -> None:
         if result["code"] != "hf_access_granted":
             raise HTTPException(status_code=400, detail=result)
         await service.clear_cache()
-        return {
-            "status": service.status(),
-            "message": "Hugging Face token saved securely.",
-        }
+        status_payload = service.status()
+        message = (
+            "Hugging Face token saved with Windows DPAPI."
+            if status_payload.get("persistence") == "windows_dpapi"
+            else "Hugging Face token stored for this server session."
+        )
+        return {"status": status_payload, "message": message}
 
     @router.delete("/token")
     async def remove_token(request: Request):
@@ -866,7 +870,10 @@ def install_huggingface_access_manager_extension() -> None:
     def entry_with_access(self: Any, model_id: str) -> dict[str, Any]:
         entry = original_entry(self, model_id)
         cfg = self.catalog[model_id]
-        metadata = _metadata_from_catalog(self.settings, model_id, cfg.source_model)
+        if cfg.source_model:
+            metadata = _metadata_from_catalog(self.settings, model_id, cfg.source_model)
+        else:
+            metadata = {"access_type": "local", "model_url": None, "license_url": None}
         entry["huggingface_access"] = metadata
         entry["is_gated"] = metadata["access_type"] == "gated"
         return entry
