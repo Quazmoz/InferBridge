@@ -3,19 +3,20 @@
 from __future__ import annotations
 
 from base64 import b64encode
+from pathlib import Path
 
 from app import ui_extension
 from app.brand import APPLICATION_DESCRIPTION, APPLICATION_TAGLINE, DISPLAY_NAME
-from app.config import BASE_DIR
 
 _EXTENSION_ID = "ovllm-branding-extension"
 _FAVICON_ID = "ovllm-brand-favicon"
+_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _load_brand_icon_data_uri() -> str:
     """Return the bundled SVG as a self-contained browser-safe data URI."""
 
-    icon_bytes = (BASE_DIR / "web" / "app-icon.svg").read_bytes()
+    icon_bytes = (_ROOT / "web" / "app-icon.svg").read_bytes()
     encoded = b64encode(icon_bytes).decode("ascii")
     return f"data:image/svg+xml;base64,{encoded}"
 
