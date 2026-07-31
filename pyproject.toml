@@ -36,6 +36,9 @@ dev = [
     "httpx>=0.27.0",
     "ruff==0.16.0",
 ]
+browser = [
+    "playwright>=1.49,<2",
+]
 distribution = [
     "pyinstaller>=6.10.0",
     "pip-licenses>=5.0.0",
