@@ -193,7 +193,8 @@ class DesktopServerController:
                 time.sleep(0.25)
             if verify_instance(stale):
                 raise RuntimeError(
-                    "A healthy server instance is already running and is not owned by this tray process."
+                    "A healthy server instance is already running and is not owned by "
+                    "this tray process."
                 )
         with contextlib.suppress(OSError):
             self.paths.launcher_metadata_file.unlink()
@@ -236,12 +237,22 @@ class DesktopServerController:
             self.metadata = metadata
             self.control_token = control_token
             _write_metadata(self.paths.launcher_metadata_file, metadata)
-            if not wait_for_readiness(metadata, timeout=self.options.startup_timeout_seconds):
+            if not wait_for_readiness(
+                metadata,
+                timeout=self.options.startup_timeout_seconds,
+                is_alive=lambda: child.poll() is None,
+            ):
                 exit_code = child.poll()
                 self.last_exit_code = exit_code
                 self._force_stop_child()
+                if exit_code is not None:
+                    raise RuntimeError(
+                        f"The local server exited during startup with code {exit_code}. "
+                        "Review the sanitized tray and desktop logs."
+                    )
                 raise RuntimeError(
-                    "The local server did not become ready. Review the sanitized tray and desktop logs."
+                    "The local server did not become ready. Review the sanitized tray "
+                    "and desktop logs."
                 )
             if open_chat and not self.open_chat():
                 logger.warning(
