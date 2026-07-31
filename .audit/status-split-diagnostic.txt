@@ -1,0 +1,223 @@
+validated_sha=e7f761c474dcc241e27b296f7376a3499e558d0b
+ruff_check=0
+ruff_format=0
+pytest=1
+external_contract=1
+--- ruff check ---
+All checks passed!
+--- ruff format ---
+321 files already formatted
+--- pytest ---
+........................................................................ [ 11%]
+........................................................................ [ 22%]
+........................................................................ [ 33%]
+........................................................................ [ 45%]
+...................s.................................................... [ 56%]
+........................................................................ [ 67%]
+........................................................................ [ 79%]
+...........F............................................................ [ 90%]
+.............................................................            [100%]
+=================================== FAILURES ===================================
+____________________ test_metrics_accumulate_after_requests ____________________
+
+client = <starlette.testclient.TestClient object at 0x7fabd05c9dd0>
+
+    def test_metrics_accumulate_after_requests(client):
+        _load_and_wait(client)
+        # No requests served yet for this model.
+        before = client.get("/v1/system/status").json()["metrics"]
+        assert before["per_model"].get(MODEL_ID, {}).get("requests", 0) == 0
+    
+        for _ in range(2):
+            client.post(
+                "/v1/chat/completions",
+                json={"model": MODEL_ID, "messages": [{"role": "user", "content": "hi"}]},
+            )
+    
+        metrics = client.get("/v1/system/status").json()["metrics"]
+>       per_model = metrics["per_model"][MODEL_ID]
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'tinyllama-1.1b-chat-fp16'
+
+tests/test_server_mock.py:460: KeyError
+---------------------------- Captured stdout setup -----------------------------
+2026-07-31 15:50:12 [INFO] [-] Starting InferBridge server — MOCK (no OpenVINO)
+------------------------------ Captured log setup ------------------------------
+INFO     ov-llm.server:server.py:264 Starting InferBridge server — MOCK (no OpenVINO)
+----------------------------- Captured stdout call -----------------------------
+2026-07-31 15:50:12 [INFO] [-] Using MOCK engine for 'tinyllama-1.1b-chat-fp16' (forced)
+2026-07-31 15:50:12 [INFO] [req-12a73bd6c356] HTTP POST /v1/models/load - Status: 200 - Latency: 16.42ms
+2026-07-31 15:50:12 [INFO] [req-12a73bd6c356] Loaded 'tinyllama-1.1b-chat-fp16' on NPU
+2026-07-31 15:50:12 [INFO] [-] HTTP Request: POST http://testserver/v1/models/load "HTTP/1.1 200 OK"
+2026-07-31 15:50:12 [INFO] [req-21cb3bb19af1] HTTP GET /v1/system/status - Status: 200 - Latency: 39.49ms
+2026-07-31 15:50:12 [INFO] [-] HTTP Request: GET http://testserver/v1/system/status "HTTP/1.1 200 OK"
+2026-07-31 15:50:12 [INFO] [req-7cf1382908e1] HTTP GET /v1/system/status - Status: 200 - Latency: 6.60ms
+2026-07-31 15:50:12 [INFO] [-] HTTP Request: GET http://testserver/v1/system/status "HTTP/1.1 200 OK"
+2026-07-31 15:50:12 [INFO] [req-93ffbdbb6017] HTTP POST /v1/chat/completions - Status: 200 - Latency: 2.56ms
+2026-07-31 15:50:12 [INFO] [-] HTTP Request: POST http://testserver/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-31 15:50:12 [INFO] [req-145ddd3c4a6f] HTTP POST /v1/chat/completions - Status: 200 - Latency: 1.23ms
+2026-07-31 15:50:12 [INFO] [-] HTTP Request: POST http://testserver/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-31 15:50:12 [INFO] [req-31d7ea8aa908] HTTP GET /v1/system/status - Status: 200 - Latency: 6.72ms
+2026-07-31 15:50:12 [INFO] [-] HTTP Request: GET http://testserver/v1/system/status "HTTP/1.1 200 OK"
+------------------------------ Captured log call -------------------------------
+INFO     ov-llm.engine:openvino_engine.py:693 Using MOCK engine for 'tinyllama-1.1b-chat-fp16' (forced)
+INFO     ov-llm.server:server.py:325 HTTP POST /v1/models/load - Status: 200 - Latency: 16.42ms
+INFO     ov-llm.manager:model_load_target.py:266 Loaded 'tinyllama-1.1b-chat-fp16' on NPU
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/v1/models/load "HTTP/1.1 200 OK"
+INFO     ov-llm.server:server.py:325 HTTP GET /v1/system/status - Status: 200 - Latency: 39.49ms
+INFO     httpx:_client.py:1025 HTTP Request: GET http://testserver/v1/system/status "HTTP/1.1 200 OK"
+INFO     ov-llm.server:server.py:325 HTTP GET /v1/system/status - Status: 200 - Latency: 6.60ms
+INFO     httpx:_client.py:1025 HTTP Request: GET http://testserver/v1/system/status "HTTP/1.1 200 OK"
+INFO     ov-llm.server:server.py:325 HTTP POST /v1/chat/completions - Status: 200 - Latency: 2.56ms
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/v1/chat/completions "HTTP/1.1 200 OK"
+INFO     ov-llm.server:server.py:325 HTTP POST /v1/chat/completions - Status: 200 - Latency: 1.23ms
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/v1/chat/completions "HTTP/1.1 200 OK"
+INFO     ov-llm.server:server.py:325 HTTP GET /v1/system/status - Status: 200 - Latency: 6.72ms
+INFO     httpx:_client.py:1025 HTTP Request: GET http://testserver/v1/system/status "HTTP/1.1 200 OK"
+--------------------------- Captured stdout teardown ---------------------------
+2026-07-31 15:50:12 [INFO] [-] Server stopped; models unloaded.
+---------------------------- Captured log teardown -----------------------------
+INFO     ov-llm.server:server.py:270 Server stopped; models unloaded.
+=============================== warnings summary ===============================
+../../../../../opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/fastapi/testclient.py:1
+  /opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_server_mock.py::test_metrics_accumulate_after_requests - KeyError: 'tinyllama-1.1b-chat-fp16'
+1 failed, 635 passed, 1 skipped, 1 warning in 19.42s
+--- external contract ---
+# OpenVINO Windows LLM API Validation
+
+- Generated: `2026-07-31T15:50:24.849506+00:00`
+- Profile: `full`
+- Model: `tinyllama-1.1b-chat-fp16`
+- Device: `CPU`
+
+**Result:** 11 passed, 1 warnings, 1 skipped, 1 failed.
+
+| Check | Status | Duration | Detail |
+|---|---:|---:|---|
+| Health and probes | **PASS** | 2.7 ms | version=0.7.0 mock=True |
+| API-key enforcement | **SKIP** | 0.0 ms | No API key supplied |
+| Device discovery | **PASS** | 150.7 ms | available=CPU |
+| Model catalog | **PASS** | 12.9 ms | catalog=21 |
+| Model load | **PASS** | 45.7 ms | loaded on CPU |
+| Open WebUI chat | **PASS** | 3.5 ms | finish_reason=stop |
+| Open WebUI streaming | **PASS** | 837.8 ms | events=57 |
+| Stream cancellation recovery | **PASS** | 270.7 ms | follow-up request succeeded |
+| Tool and structured-output requests | **WARN** | 3.9 ms | Requests were accepted; model/runtime did not demonstrate both optional outputs |
+| Request metrics | **FAIL** | 9.3 ms | Request metrics did not record generation |
+| n8n Responses API | **PASS** | 839.4 ms | streaming and non-streaming passed |
+| Embeddings | **PASS** | 14.1 ms | dimensions=384 |
+| Benchmark | **PASS** | 1122.7 ms | benchmark succeeded |
+| Model lifecycle | **PASS** | 40.9 ms | loaded on CPU |
+
+> Reports exclude API keys, prompts, generated text, hostnames, usernames, and full local paths.
+
+--- server ---
+2026-07-31 15:50:20 [INFO] [-] Visit http://localhost:8123
+INFO:     Started server process [2777]
+INFO:     Waiting for application startup.
+2026-07-31 15:50:20 [INFO] [-] Starting InferBridge server — MOCK (no OpenVINO)
+2026-07-31 15:50:21 [INFO] [-] Using MOCK engine for 'tinyllama-1.1b-chat-fp16' (forced)
+INFO:     Application startup complete.
+2026-07-31 15:50:21 [INFO] [-] Loaded 'tinyllama-1.1b-chat-fp16' on NPU
+INFO:     Uvicorn running on http://127.0.0.1:8123 (Press CTRL+C to quit)
+2026-07-31 15:50:21 [INFO] [req-3d3561f6c4ac] HTTP GET /health - Status: 200 - Latency: 11.43ms
+INFO:     127.0.0.1:49860 - "GET /health HTTP/1.1" 200 OK
+2026-07-31 15:50:21 [INFO] [req-c44f9bef25ea] HTTP GET /health - Status: 200 - Latency: 0.48ms
+INFO:     127.0.0.1:49876 - "GET /health HTTP/1.1" 200 OK
+2026-07-31 15:50:21 [INFO] [req-7157126bce8f] HTTP GET /health/live - Status: 200 - Latency: 0.43ms
+INFO:     127.0.0.1:49888 - "GET /health/live HTTP/1.1" 200 OK
+2026-07-31 15:50:21 [INFO] [req-8b66acc8b787] HTTP GET /v1/devices - Status: 200 - Latency: 149.61ms
+INFO:     127.0.0.1:49894 - "GET /v1/devices HTTP/1.1" 200 OK
+2026-07-31 15:50:21 [INFO] [req-c1bea4fa0f0b] HTTP GET /v1/models - Status: 200 - Latency: 11.61ms
+INFO:     127.0.0.1:49896 - "GET /v1/models HTTP/1.1" 200 OK
+2026-07-31 15:50:21 [INFO] [req-7b1941c7cf80] HTTP POST /v1/models/load - Status: 200 - Latency: 2.01ms
+INFO:     127.0.0.1:49902 - "POST /v1/models/load HTTP/1.1" 200 OK
+2026-07-31 15:50:21 [INFO] [-] Using MOCK engine for 'tinyllama-1.1b-chat-fp16' (forced)
+2026-07-31 15:50:21 [INFO] [req-7b1941c7cf80] Switched 'tinyllama-1.1b-chat-fp16' from NPU to CPU
+2026-07-31 15:50:21 [INFO] [req-0be4a237ef06] HTTP GET /v1/system/status - Status: 200 - Latency: 40.68ms
+INFO:     127.0.0.1:49914 - "GET /v1/system/status HTTP/1.1" 200 OK
+2026-07-31 15:50:21 [INFO] [req-3381308bb6e0] HTTP POST /v1/chat/completions - Status: 200 - Latency: 2.51ms
+INFO:     127.0.0.1:49920 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-07-31 15:50:21 [INFO] [req-cd101904b92d] HTTP POST /v1/chat/completions - Status: 200 - Latency: 0.94ms
+INFO:     127.0.0.1:49932 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-07-31 15:50:22 [INFO] [req-719bbcd018a4] HTTP POST /v1/chat/completions - Status: 200 - Latency: 1.02ms
+INFO:     127.0.0.1:49942 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-07-31 15:50:22 [INFO] [req-30bb3b88addd] HTTP POST /v1/chat/completions - Status: 200 - Latency: 1.40ms
+INFO:     127.0.0.1:49956 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-07-31 15:50:22 [INFO] [req-aed60012f103] HTTP POST /v1/chat/completions - Status: 200 - Latency: 1.36ms
+INFO:     127.0.0.1:49960 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-07-31 15:50:22 [INFO] [req-9259ed170b76] HTTP POST /v1/chat/completions - Status: 200 - Latency: 0.97ms
+INFO:     127.0.0.1:49964 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-07-31 15:50:22 [INFO] [req-1c8fff0890ef] HTTP GET /v1/system/status - Status: 200 - Latency: 8.10ms
+INFO:     127.0.0.1:49978 - "GET /v1/system/status HTTP/1.1" 200 OK
+2026-07-31 15:50:22 [INFO] [req-adefdcf10f31] HTTP POST /v1/responses - Status: 200 - Latency: 2.26ms
+INFO:     127.0.0.1:49986 - "POST /v1/responses HTTP/1.1" 200 OK
+2026-07-31 15:50:22 [INFO] [req-8468bf37c8b5] HTTP POST /v1/responses - Status: 200 - Latency: 0.79ms
+INFO:     127.0.0.1:49992 - "POST /v1/responses HTTP/1.1" 200 OK
+2026-07-31 15:50:23 [INFO] [req-3bae6187f1b3] HTTP POST /v1/models/load - Status: 200 - Latency: 1.40ms
+INFO:     127.0.0.1:49996 - "POST /v1/models/load HTTP/1.1" 200 OK
+2026-07-31 15:50:23 [INFO] [-] Using MOCK embedding engine for 'bge-small-en-v1.5' (forced)
+2026-07-31 15:50:23 [INFO] [req-3bae6187f1b3] Loaded 'bge-small-en-v1.5' on CPU
+2026-07-31 15:50:23 [INFO] [req-702794e12ed5] HTTP GET /v1/system/status - Status: 200 - Latency: 6.74ms
+INFO:     127.0.0.1:50008 - "GET /v1/system/status HTTP/1.1" 200 OK
+2026-07-31 15:50:23 [INFO] [req-9941a99117d6] HTTP POST /v1/embeddings - Status: 200 - Latency: 2.13ms
+INFO:     127.0.0.1:50012 - "POST /v1/embeddings HTTP/1.1" 200 OK
+2026-07-31 15:50:23 [INFO] [req-f851a2daf1e3] HTTP POST /v1/models/unload - Status: 200 - Latency: 30.49ms
+INFO:     127.0.0.1:50026 - "POST /v1/models/unload HTTP/1.1" 200 OK
+2026-07-31 15:50:23 [INFO] [-] Using MOCK engine for 'tinyllama-1.1b-chat-fp16' (forced)
+2026-07-31 15:50:24 [INFO] [req-1108e76870d4] HTTP POST /v1/benchmarks/run - Status: 200 - Latency: 1079.07ms
+INFO:     127.0.0.1:50038 - "POST /v1/benchmarks/run HTTP/1.1" 200 OK
+2026-07-31 15:50:24 [INFO] [req-badb22b42c4f] HTTP POST /v1/models/load - Status: 200 - Latency: 1.50ms
+INFO:     127.0.0.1:50046 - "POST /v1/models/load HTTP/1.1" 200 OK
+2026-07-31 15:50:24 [INFO] [-] Using MOCK engine for 'tinyllama-1.1b-chat-fp16' (forced)
+2026-07-31 15:50:24 [INFO] [req-badb22b42c4f] Loaded 'tinyllama-1.1b-chat-fp16' on CPU
+2026-07-31 15:50:24 [INFO] [req-6c024a209f46] HTTP GET /v1/system/status - Status: 200 - Latency: 7.07ms
+INFO:     127.0.0.1:50056 - "GET /v1/system/status HTTP/1.1" 200 OK
+2026-07-31 15:50:24 [INFO] [req-f4946559b64b] HTTP POST /v1/models/unload - Status: 200 - Latency: 27.11ms
+INFO:     127.0.0.1:50072 - "POST /v1/models/unload HTTP/1.1" 200 OK
+2026-07-31 15:50:24 [INFO] [req-109ce1c228b5] HTTP POST /v1/chat/completions - Status: 409 - Latency: 0.72ms
+INFO:     127.0.0.1:50080 - "POST /v1/chat/completions HTTP/1.1" 409 Conflict
+2026-07-31 15:50:24 [INFO] [req-dc9bcd5fcbfc] HTTP POST /v1/models/load - Status: 200 - Latency: 1.31ms
+INFO:     127.0.0.1:50094 - "POST /v1/models/load HTTP/1.1" 200 OK
+2026-07-31 15:50:24 [INFO] [-] Using MOCK engine for 'tinyllama-1.1b-chat-fp16' (forced)
+2026-07-31 15:50:24 [INFO] [req-dc9bcd5fcbfc] Loaded 'tinyllama-1.1b-chat-fp16' on CPU
+2026-07-31 15:50:24 [INFO] [req-f31fadef8de1] HTTP GET /v1/system/status - Status: 200 - Latency: 7.26ms
+INFO:     127.0.0.1:50096 - "GET /v1/system/status HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+2026-07-31 15:50:25 [INFO] [-] Server stopped; models unloaded.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [2777]
+--- contract report ---
+# OpenVINO Windows LLM API Validation
+
+- Generated: `2026-07-31T15:50:24.849506+00:00`
+- Profile: `full`
+- Model: `tinyllama-1.1b-chat-fp16`
+- Device: `CPU`
+
+**Result:** 11 passed, 1 warnings, 1 skipped, 1 failed.
+
+| Check | Status | Duration | Detail |
+|---|---:|---:|---|
+| Health and probes | **PASS** | 2.7 ms | version=0.7.0 mock=True |
+| API-key enforcement | **SKIP** | 0.0 ms | No API key supplied |
+| Device discovery | **PASS** | 150.7 ms | available=CPU |
+| Model catalog | **PASS** | 12.9 ms | catalog=21 |
+| Model load | **PASS** | 45.7 ms | loaded on CPU |
+| Open WebUI chat | **PASS** | 3.5 ms | finish_reason=stop |
+| Open WebUI streaming | **PASS** | 837.8 ms | events=57 |
+| Stream cancellation recovery | **PASS** | 270.7 ms | follow-up request succeeded |
+| Tool and structured-output requests | **WARN** | 3.9 ms | Requests were accepted; model/runtime did not demonstrate both optional outputs |
+| Request metrics | **FAIL** | 9.3 ms | Request metrics did not record generation |
+| n8n Responses API | **PASS** | 839.4 ms | streaming and non-streaming passed |
+| Embeddings | **PASS** | 14.1 ms | dimensions=384 |
+| Benchmark | **PASS** | 1122.7 ms | benchmark succeeded |
+| Model lifecycle | **PASS** | 40.9 ms | loaded on CPU |
+
+> Reports exclude API keys, prompts, generated text, hostnames, usernames, and full local paths.
