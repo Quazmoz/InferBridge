@@ -1,8 +1,9 @@
 """Reliable, persistent model-preparation progress for the browser client.
 
 One controller owns optimistic request feedback and server reconciliation for model
-loads, conversions, and custom-model downloads. It intentionally avoids additional
-fetch wrappers competing for the same DOM surfaces.
+loads, conversions, and custom-model downloads. It coalesces overlapping status polls,
+keeps operation selection stable, and updates progress surfaces without resetting user
+interaction state.
 """
 
 from __future__ import annotations
@@ -17,11 +18,13 @@ PROGRESS_RELIABILITY_JS = r"""
     if (window.__ovllmReliableProgressInstalled) return;
     window.__ovllmReliableProgressInstalled = true;
 
+    const STATUS_PATH = '/v1/system/status';
     const PREPARATION_PATHS = new Set([
         '/v1/models/load',
         '/v1/models/convert',
         '/v1/models/download-custom',
     ]);
+    const OPTIMISTIC_TTL_MS = 30000;
     const PHASES = {
         idle: ['Waiting', -1, 0, 0],
         queued: ['Queued', 0, 0, 3],
@@ -31,36 +34,44 @@ PROGRESS_RELIABILITY_JS = r"""
         finalizing: ['Finalizing', 1, 90, 94],
         loading: ['Loading runtime', 2, 94, 99],
         ready: ['Ready', 3, 100, 100],
+        cancelled: ['Cancelled', -1, 0, 100],
         error: ['Failed', -1, 0, 100],
     };
 
     const modelState = new Map();
     const optimistic = new Map();
     let latestStatus = null;
+    let latestStatusRevision = 0;
+    let nextStatusRevision = 0;
     let expanded = false;
     let renderTimer = null;
+    let renderTicker = null;
+    let activeModelId = '';
+    let lastAnnouncement = '';
+    let sharedStatusRequest = null;
 
     const style = document.createElement('style');
     style.textContent = `
         #ov-reliable-progress{display:none;flex:0 0 auto;margin:10px 14px 0;border:1px solid color-mix(in srgb,var(--primary) 36%,var(--border));border-radius:12px;background:color-mix(in srgb,var(--surface-1) 92%,transparent);box-shadow:var(--shadow-md);backdrop-filter:blur(14px);overflow:hidden}
-        #ov-reliable-progress.visible{display:block}#ov-reliable-progress.error{border-color:color-mix(in srgb,var(--red) 48%,var(--border))}
+        #ov-reliable-progress.visible{display:block}#ov-reliable-progress.error{border-color:color-mix(in srgb,var(--red) 48%,var(--border))}#ov-reliable-progress.cancelled{border-color:color-mix(in srgb,var(--amber) 48%,var(--border))}
         .ovrp-main{width:100%;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:7px 10px;align-items:center;padding:11px 12px;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;font:inherit}
         .ovrp-main:focus-visible{outline:2px solid var(--primary);outline-offset:-2px}.ovrp-spinner{width:16px;height:16px;border:2px solid var(--surface-3);border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite}
-        .error .ovrp-spinner{border-color:color-mix(in srgb,var(--red) 28%,var(--surface-3));border-top-color:var(--red);animation:none}.ovrp-copy{min-width:0}
-        .ovrp-title{display:block;font-size:11.5px;font-weight:750;color:var(--text-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ovrp-message{display:block;margin-top:2px;font-size:10.5px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-        .ovrp-value{font-size:11.5px;font-weight:750;color:var(--primary);font-variant-numeric:tabular-nums;white-space:nowrap}.error .ovrp-value{color:var(--red)}
+        .terminal .ovrp-spinner{display:grid;place-items:center;border:0;animation:none;font-size:13px;font-weight:800}.error .ovrp-spinner:before{content:'!'}.cancelled .ovrp-spinner:before{content:'■';font-size:10px}.error .ovrp-spinner{color:var(--red)}.cancelled .ovrp-spinner{color:var(--amber)}
+        .ovrp-copy{min-width:0}.ovrp-title{display:block;font-size:11.5px;font-weight:750;color:var(--text-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ovrp-message{display:block;margin-top:2px;font-size:10.5px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .ovrp-value{font-size:11.5px;font-weight:750;color:var(--primary);font-variant-numeric:tabular-nums;white-space:nowrap}.error .ovrp-value{color:var(--red)}.cancelled .ovrp-value{color:var(--amber)}
         .ovrp-track{grid-column:2/4;position:relative;height:7px;overflow:hidden;border-radius:999px;background:var(--surface-3);box-shadow:inset 0 0 0 1px var(--border)}
-        .ovrp-fill{position:absolute;inset:0 auto 0 0;width:0;border-radius:inherit;background:var(--accent-grad);transition:width .35s ease}.error .ovrp-fill{background:var(--red)}
+        .ovrp-fill{position:absolute;inset:0 auto 0 0;width:0;border-radius:inherit;background:var(--accent-grad);transition:width .35s ease}.error .ovrp-fill{background:var(--red)}.cancelled .ovrp-fill{background:var(--amber)}
         .ovrp-scan{display:none;position:absolute;top:0;bottom:0;width:18%;border-radius:inherit;background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--primary) 75%,white),transparent);opacity:.72;animation:ovrp-scan 1.35s ease-in-out infinite}
         .ovrp-track.indeterminate .ovrp-scan{display:block}@keyframes ovrp-scan{from{transform:translateX(-120%)}to{transform:translateX(650%)}}
         .ovrp-detail{display:none;padding:0 12px 12px 38px;border-top:1px solid color-mix(in srgb,var(--border) 75%,transparent)}.expanded .ovrp-detail{display:block}
         .ovrp-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:10px}.ovrp-step{display:flex;align-items:center;gap:6px;min-width:0;padding:6px 8px;border:1px solid var(--border);border-radius:8px;color:var(--text-3);font-size:10.5px}
         .ovrp-step:before{content:'';width:7px;height:7px;flex:0 0 7px;border-radius:50%;background:var(--text-3)}.ovrp-step.active{color:var(--text-1);border-color:color-mix(in srgb,var(--primary) 40%,var(--border))}
         .ovrp-step.active:before{background:var(--primary);box-shadow:0 0 8px var(--primary-glow);animation:dot-pulse 1.3s ease infinite}.ovrp-step.done{color:var(--green)}.ovrp-step.done:before{background:var(--green);box-shadow:0 0 6px var(--green-glow)}
-        .ovrp-meta{display:flex;flex-wrap:wrap;gap:5px 12px;margin-top:9px;color:var(--text-3);font-size:10.5px;font-variant-numeric:tabular-nums}.ovrp-meta .warning{color:var(--amber)}
+        .ovrp-meta{display:flex;flex-wrap:wrap;gap:5px 12px;margin-top:9px;color:var(--text-3);font-size:10.5px;font-variant-numeric:tabular-nums}.ovrp-meta .warning{color:var(--amber)}.ovrp-meta .danger{color:var(--red)}
         .ovrp-log{margin-top:9px}.ovrp-log summary{cursor:pointer;color:var(--text-3);font-size:10.5px;user-select:none}.ovrp-log pre{max-height:130px;overflow:auto;margin:7px 0 0;padding:8px;border-radius:8px;background:var(--code-bg);color:var(--code-text);font:10px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
         .ovrp-inline{flex:1 0 100%;width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px 10px;align-items:center;margin-top:7px}.ovrp-inline .ovrp-track{grid-column:1/-1;height:7px}
         .ovrp-inline-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--text-2)}.ovrp-inline-value{font-size:11px;font-weight:750;color:var(--primary);font-variant-numeric:tabular-nums;white-space:nowrap}
+        .ovrp-live{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
         @media(max-width:640px){#ov-reliable-progress{margin:8px 10px 0}.ovrp-detail{padding-left:12px}.ovrp-steps{grid-template-columns:1fr}.ovrp-message{display:none}}
         @media(prefers-reduced-motion:reduce){.ovrp-spinner,.ovrp-step.active:before,.ovrp-scan{animation:none}.ovrp-track.indeterminate .ovrp-scan{left:72%;display:block}}
     `;
@@ -70,8 +81,8 @@ PROGRESS_RELIABILITY_JS = r"""
     const chatArea = document.getElementById('chat-area');
     const dock = document.createElement('section');
     dock.id = 'ov-reliable-progress';
-    dock.setAttribute('role', 'status');
-    dock.setAttribute('aria-live', 'polite');
+    dock.setAttribute('role', 'region');
+    dock.setAttribute('aria-label', 'Model preparation status');
     dock.innerHTML = `
         <button type="button" class="ovrp-main" aria-expanded="false" aria-label="Show model preparation details">
             <span class="ovrp-spinner" aria-hidden="true"></span>
@@ -81,10 +92,12 @@ PROGRESS_RELIABILITY_JS = r"""
                 <span class="ovrp-fill"></span><span class="ovrp-scan"></span>
             </span>
         </button>
-        <div class="ovrp-detail"></div>`;
+        <div class="ovrp-detail"></div>
+        <span class="ovrp-live" role="status" aria-live="polite" aria-atomic="true"></span>`;
     if (chatColumn && chatArea) chatColumn.insertBefore(dock, chatArea);
 
     const main = dock.querySelector('.ovrp-main');
+    const liveRegion = dock.querySelector('.ovrp-live');
     main?.addEventListener('click', () => {
         expanded = !expanded;
         dock.classList.toggle('expanded', expanded);
@@ -105,6 +118,12 @@ PROGRESS_RELIABILITY_JS = r"""
         return String(model?.name || model?.id || 'Model').split(' — ')[0];
     }
 
+    function normalizedPhase(model, progress) {
+        const value = String(progress?.phase || model?.status || 'idle').toLowerCase();
+        if (value === 'queued_convert') return 'queued';
+        return value;
+    }
+
     function phaseInfo(phase) {
         const [label, stage, start, end] = PHASES[phase] || ['Preparing', 0, 0, 99];
         return { label, stage, start, end };
@@ -113,17 +132,20 @@ PROGRESS_RELIABILITY_JS = r"""
     function aggregateDownloadPercent(progress) {
         const lines = Array.isArray(progress?.log_tail) ? progress.log_tail : [];
         for (let index = lines.length - 1; index >= 0; index -= 1) {
-            const match = String(lines[index] || '').match(
+            const line = String(lines[index] || '');
+            const aggregate = line.match(
                 /(?:fetching|downloading)\s+\d+\s+files?.*?(100(?:\.0+)?|[1-9]?\d(?:\.\d+)?)\s*%/i
             );
-            if (match) return strictPercent(match[1]);
+            if (aggregate) return strictPercent(aggregate[1]);
+            const simple = line.match(/(100(?:\.0+)?|[1-9]?\d(?:\.\d+)?)\s*%/);
+            if (simple && /download|fetch|snapshot|file/i.test(line)) return strictPercent(simple[1]);
         }
         return null;
     }
 
     function progressInfo(model) {
         const progress = model?.progress || {};
-        const phase = String(progress.phase || model?.status || 'idle').toLowerCase();
+        const phase = normalizedPhase(model, progress);
         const meta = phaseInfo(phase);
         const raw = phase === 'downloading'
             ? aggregateDownloadPercent(progress) ?? strictPercent(progress.percent)
@@ -132,7 +154,7 @@ PROGRESS_RELIABILITY_JS = r"""
         const previous = modelState.get(model.id);
         const newOperation = !previous
             || (reportedStart > 0 && previous.startedAt > 0 && reportedStart !== previous.startedAt)
-            || (previous.terminal && !['ready', 'error'].includes(phase));
+            || (previous.terminal && !['ready', 'error', 'cancelled'].includes(phase));
         const prior = newOperation ? {
             overall: 0,
             rank: -1,
@@ -146,7 +168,7 @@ PROGRESS_RELIABILITY_JS = r"""
         if (phase === 'ready') {
             overall = 100;
             determinate = true;
-        } else if (phase === 'error') {
+        } else if (phase === 'error' || phase === 'cancelled') {
             determinate = prior.overall > 0;
         } else if (raw !== null) {
             const candidate = meta.start + ((meta.end - meta.start) * raw / 100);
@@ -168,7 +190,7 @@ PROGRESS_RELIABILITY_JS = r"""
             rank: Math.max(prior.rank, meta.stage),
             startedAt,
             targetDevice,
-            terminal: ['ready', 'error'].includes(phase),
+            terminal: ['ready', 'error', 'cancelled'].includes(phase),
         });
 
         return {
@@ -195,6 +217,7 @@ PROGRESS_RELIABILITY_JS = r"""
 
     function valueLabel(info) {
         if (info.phase === 'error') return 'Failed';
+        if (info.phase === 'cancelled') return 'Cancelled';
         if (info.phase === 'ready') return '100%';
         if (info.raw !== null) return `${Math.round(info.overall)}%`;
         return info.meta.stage >= 0 && info.meta.stage < 3
@@ -212,13 +235,25 @@ PROGRESS_RELIABILITY_JS = r"""
         if (!track) return;
         const fill = track.querySelector('.ovrp-fill');
         if (fill) fill.style.width = `${info.overall}%`;
-        track.classList.toggle('indeterminate', !info.determinate && info.phase !== 'error');
+        const terminal = ['error', 'cancelled'].includes(info.phase);
+        track.classList.toggle('indeterminate', !info.determinate && !terminal);
         if (info.determinate) track.setAttribute('aria-valuenow', String(Math.round(info.overall)));
         else track.removeAttribute('aria-valuenow');
+        track.setAttribute('aria-valuetext', valueLabel(info));
         track.setAttribute('aria-label', `${info.meta.label} model preparation progress`);
     }
 
-    function buildDetail(info) {
+    function detailInteractionState() {
+        const disclosure = dock.querySelector('.ovrp-log');
+        const output = disclosure?.querySelector('pre');
+        return {
+            logOpen: !!disclosure?.open,
+            logScrollTop: output?.scrollTop || 0,
+            logFocused: !!disclosure?.contains(document.activeElement),
+        };
+    }
+
+    function buildDetail(info, operationCount) {
         const detail = document.createDocumentFragment();
         const steps = document.createElement('div');
         steps.className = 'ovrp-steps';
@@ -226,7 +261,9 @@ PROGRESS_RELIABILITY_JS = r"""
             const step = document.createElement('div');
             step.className = 'ovrp-step';
             if (info.phase === 'ready' || index < info.meta.stage) step.classList.add('done');
-            if (info.phase !== 'error' && index === info.meta.stage) step.classList.add('active');
+            if (!['error', 'cancelled'].includes(info.phase) && index === info.meta.stage) {
+                step.classList.add('active');
+            }
             step.textContent = label;
             steps.appendChild(step);
         });
@@ -240,16 +277,22 @@ PROGRESS_RELIABILITY_JS = r"""
                 ? stageLabel(info)
                 : `${stageLabel(info)} · overall ${Math.round(info.overall)}%`,
             info.targetDevice ? `Device ${info.targetDevice}` : null,
+            operationCount > 1 ? `${operationCount} model operations active` : null,
         ].filter(Boolean);
         values.forEach(text => {
             const span = document.createElement('span');
             span.textContent = text;
             status.appendChild(span);
         });
-        if (info.staleFor >= 15 && !['error', 'ready'].includes(info.phase)) {
+        if (info.staleFor >= 120 && !['error', 'ready', 'cancelled'].includes(info.phase)) {
+            const stale = document.createElement('span');
+            stale.className = 'danger';
+            stale.textContent = `Taking longer than usual · last update ${duration(info.staleFor)} ago`;
+            status.appendChild(stale);
+        } else if (info.staleFor >= 30 && !['error', 'ready', 'cancelled'].includes(info.phase)) {
             const stale = document.createElement('span');
             stale.className = 'warning';
-            stale.textContent = `No new console output for ${duration(info.staleFor)} · still working`;
+            stale.textContent = `No recent progress update for ${duration(info.staleFor)} · still running`;
             status.appendChild(stale);
         } else if (info.progress.updated_at) {
             const updated = document.createElement('span');
@@ -274,46 +317,91 @@ PROGRESS_RELIABILITY_JS = r"""
         return detail;
     }
 
-    function renderDock(model) {
-        if (!model || (!model.is_loading && model.status !== 'error')) {
-            dock.classList.remove('visible', 'error');
+    function restoreDetailInteraction(state) {
+        const disclosure = dock.querySelector('.ovrp-log');
+        const output = disclosure?.querySelector('pre');
+        if (disclosure) disclosure.open = state.logOpen;
+        if (output) output.scrollTop = state.logScrollTop;
+        if (state.logFocused) disclosure?.querySelector('summary')?.focus({ preventScroll: true });
+    }
+
+    function announce(info) {
+        const text = `${baseName(info.model)}: ${info.meta.label}`;
+        if (text === lastAnnouncement || !liveRegion) return;
+        lastAnnouncement = text;
+        liveRegion.textContent = text;
+    }
+
+    function renderDock(model, operationCount = 0) {
+        const displayable = model && (model.is_loading || ['error', 'cancelled'].includes(model.status));
+        if (!displayable) {
+            dock.classList.remove('visible', 'error', 'cancelled', 'terminal');
+            lastAnnouncement = '';
             return null;
         }
         const info = progressInfo(model);
+        const interaction = detailInteractionState();
         dock.classList.add('visible');
         dock.classList.toggle('error', info.phase === 'error');
-        dock.querySelector('.ovrp-title').textContent = `${info.meta.label} ${baseName(model)}`;
+        dock.classList.toggle('cancelled', info.phase === 'cancelled');
+        dock.classList.toggle('terminal', ['error', 'cancelled'].includes(info.phase));
+        const operationSuffix = operationCount > 1 ? ` · ${operationCount} active` : '';
+        dock.querySelector('.ovrp-title').textContent = `${info.meta.label} ${baseName(model)}${operationSuffix}`;
         dock.querySelector('.ovrp-message').textContent = String(
             info.progress.message || model.status_label || `${info.meta.label} model…`
         );
         dock.querySelector('.ovrp-value').textContent = valueLabel(info);
         updateTrack(dock.querySelector('.ovrp-track'), info);
-        dock.querySelector('.ovrp-detail').replaceChildren(buildDetail(info));
+        dock.querySelector('.ovrp-detail').replaceChildren(buildDetail(info, operationCount));
+        restoreDetailInteraction(interaction);
+        announce(info);
         return info;
     }
 
+    function currentWaitingModelId() {
+        return typeof waitingForModelId === 'undefined' ? null : waitingForModelId;
+    }
+
+    function loaderHostFor(modelId) {
+        const waitingId = currentWaitingModelId();
+        if (waitingId && waitingId !== modelId) return null;
+        const hosts = Array.from(document.querySelectorAll('.model-loader-status'))
+            .filter(element => element.isConnected);
+        const visible = hosts.filter(element => element.getClientRects().length > 0);
+        return visible[visible.length - 1] || hosts[hosts.length - 1] || null;
+    }
+
     function renderInline(model, info) {
-        document.querySelectorAll('.ovrp-inline').forEach(element => element.remove());
-        if (!model?.is_loading || !info) return;
-        const host = document.querySelector('.model-loader-status');
-        if (!host) return;
+        if (!model?.is_loading || !info) {
+            document.querySelectorAll('.ovrp-inline').forEach(element => element.remove());
+            return;
+        }
+        const host = loaderHostFor(model.id);
+        if (!host) {
+            document.querySelectorAll('.ovrp-inline').forEach(element => element.remove());
+            return;
+        }
         host.style.flexWrap = 'wrap';
-        const inline = document.createElement('div');
-        inline.className = 'ovrp-inline';
-        const label = document.createElement('div');
-        label.className = 'ovrp-inline-label';
-        label.textContent = String(
+        let inline = Array.from(host.querySelectorAll('.ovrp-inline'))
+            .find(element => element.dataset.modelId === model.id) || null;
+        document.querySelectorAll('.ovrp-inline').forEach(element => {
+            if (element !== inline) element.remove();
+        });
+        if (!inline) {
+            inline = document.createElement('div');
+            inline.className = 'ovrp-inline';
+            inline.dataset.modelId = model.id;
+            inline.innerHTML = `
+                <div class="ovrp-inline-label"></div>
+                <div class="ovrp-inline-value"></div>
+                <div class="ovrp-track"><span class="ovrp-fill"></span><span class="ovrp-scan"></span></div>`;
+            host.appendChild(inline);
+        }
+        inline.querySelector('.ovrp-inline-label').textContent = String(
             info.progress.message || model.status_label || `${info.meta.label} model…`
         );
-        const value = document.createElement('div');
-        value.className = 'ovrp-inline-value';
-        value.textContent = valueLabel(info);
-        const track = document.createElement('div');
-        track.className = 'ovrp-track';
-        track.innerHTML = '<span class="ovrp-fill"></span><span class="ovrp-scan"></span>';
-        updateTrack(track, info);
-        inline.append(label, value, track);
-        host.appendChild(inline);
+        inline.querySelector('.ovrp-inline-value').textContent = valueLabel(info);
+        updateTrack(inline.querySelector('.ovrp-track'), info);
     }
 
     function renderFooter(model, info) {
@@ -324,7 +412,9 @@ PROGRESS_RELIABILITY_JS = r"""
             ? `${stageLabel(info)} · elapsed ${duration(info.elapsed)}`
             : `${stageLabel(info)} · overall ${Math.round(info.overall)}%`;
         footer.textContent = `${baseName(model)}: ${detail}`;
-        footer.className = info.phase === 'error' ? 'error' : 'loading';
+        footer.className = info.phase === 'error'
+            ? 'error'
+            : (info.phase === 'cancelled' ? 'cancelled' : 'loading');
         footer.title = String(info.progress.message || model.status_label || footer.textContent);
     }
 
@@ -333,11 +423,11 @@ PROGRESS_RELIABILITY_JS = r"""
         const models = source.map(model => {
             const pending = optimistic.get(model.id);
             if (!pending) return model;
-            if (model.is_loading || model.is_loaded || model.status === 'error') {
+            if (model.is_loading || model.is_loaded || ['error', 'cancelled'].includes(model.status)) {
                 optimistic.delete(model.id);
                 return model;
             }
-            if (now - pending.createdAt > 15000) {
+            if (now - pending.createdAt > OPTIMISTIC_TTL_MS) {
                 optimistic.delete(model.id);
                 return model;
             }
@@ -347,7 +437,7 @@ PROGRESS_RELIABILITY_JS = r"""
         const known = new Set(models.map(model => model.id));
         for (const [modelId, pending] of optimistic.entries()) {
             if (known.has(modelId)) continue;
-            if (now - pending.createdAt > 15000) {
+            if (now - pending.createdAt > OPTIMISTIC_TTL_MS) {
                 optimistic.delete(modelId);
                 continue;
             }
@@ -356,33 +446,66 @@ PROGRESS_RELIABILITY_JS = r"""
         return models;
     }
 
-    function renderStatus(data) {
+    function chooseActiveModel(models, selectedId) {
+        const loading = models.filter(model => model.is_loading);
+        const waitingId = currentWaitingModelId();
+        const selected = models.find(model => model.id === selectedId) || null;
+        if (selected?.is_loading) activeModelId = selected.id;
+
+        const waiting = waitingId ? loading.find(model => model.id === waitingId) : null;
+        if (waiting) activeModelId = waiting.id;
+
+        const retained = loading.find(model => model.id === activeModelId);
+        if (retained) return retained;
+        if (loading.length) {
+            activeModelId = loading[0].id;
+            return loading[0];
+        }
+        activeModelId = '';
+        return selected && ['error', 'cancelled'].includes(selected.status) ? selected : null;
+    }
+
+    function setRenderTicker(enabled) {
+        if (enabled && !renderTicker) {
+            renderTicker = window.setInterval(() => {
+                if (latestStatus) renderStatus(latestStatus, latestStatusRevision);
+            }, 1000);
+        } else if (!enabled && renderTicker) {
+            window.clearInterval(renderTicker);
+            renderTicker = null;
+        }
+    }
+
+    function renderStatus(data, revision = latestStatusRevision) {
+        if (revision < latestStatusRevision) return;
         const source = data?.models?.available;
         if (!Array.isArray(source)) return;
+        latestStatusRevision = revision;
         latestStatus = data;
         const models = mergeOptimistic(source);
         const selectedId = document.getElementById('model-select')?.value;
-        const selected = models.find(model => model.id === selectedId) || null;
-        const active = selected?.is_loading
-            ? selected
-            : models.find(model => model.is_loading)
-                || (selected?.status === 'error' ? selected : null);
-        const info = renderDock(active);
+        const active = chooseActiveModel(models, selectedId);
+        const operationCount = models.filter(model => model.is_loading).length;
+        const info = renderDock(active, operationCount);
         renderInline(active, info);
         renderFooter(active, info);
+        setRenderTicker(!!active?.is_loading);
 
         const retained = new Set(
-            models.filter(model => model.is_loading || model.status === 'error').map(model => model.id)
+            models
+                .filter(model => model.is_loading || ['error', 'cancelled'].includes(model.status))
+                .map(model => model.id)
         );
         for (const modelId of modelState.keys()) {
             if (!retained.has(modelId)) modelState.delete(modelId);
         }
     }
 
-    function scheduleRender(data) {
+    function scheduleRender(data, revision = ++nextStatusRevision) {
+        if (revision < latestStatusRevision) return;
         latestStatus = data;
-        clearTimeout(renderTimer);
-        renderTimer = window.setTimeout(() => renderStatus(data), 0);
+        window.clearTimeout(renderTimer);
+        renderTimer = window.setTimeout(() => renderStatus(data, revision), 0);
     }
 
     function endpoint(input) {
@@ -401,6 +524,14 @@ PROGRESS_RELIABILITY_JS = r"""
 
     function requestMethod(input, init) {
         return String(init?.method || input?.method || 'GET').toUpperCase();
+    }
+
+    function statusRequestKey(input, init) {
+        const headers = new Headers(input instanceof Request ? input.headers : undefined);
+        if (init?.headers) {
+            new Headers(init.headers).forEach((value, key) => headers.set(key, value));
+        }
+        return headers.get('authorization') || '';
     }
 
     async function requestBody(input, init) {
@@ -436,6 +567,7 @@ PROGRESS_RELIABILITY_JS = r"""
         if (!identity) return null;
         const { modelId, device, converting } = identity;
         modelState.delete(modelId);
+        activeModelId = modelId;
 
         const catalog = latestStatus?.models?.available || [];
         const base = catalog.find(model => model.id === modelId) || {
@@ -464,9 +596,10 @@ PROGRESS_RELIABILITY_JS = r"""
             },
         };
         optimistic.set(modelId, { model, createdAt: Date.now() });
-        const info = renderDock(model);
+        const info = renderDock(model, 1);
         renderInline(model, info);
         renderFooter(model, info);
+        setRenderTicker(true);
         return modelId;
     }
 
@@ -474,10 +607,12 @@ PROGRESS_RELIABILITY_JS = r"""
         if (!modelId) return;
         optimistic.delete(modelId);
         modelState.delete(modelId);
+        if (activeModelId === modelId) activeModelId = '';
         if (latestStatus) scheduleRender(latestStatus);
         else {
             renderDock(null);
             renderInline(null, null);
+            setRenderTicker(false);
         }
     }
 
@@ -497,9 +632,30 @@ PROGRESS_RELIABILITY_JS = r"""
     }
 
     const previousFetch = window.fetch.bind(window);
+
+    async function sharedStatusFetch(input, init) {
+        const key = statusRequestKey(input, init);
+        if (!sharedStatusRequest || sharedStatusRequest.key !== key) {
+            const holder = {
+                key,
+                revision: ++nextStatusRevision,
+                promise: previousFetch(input, init),
+            };
+            sharedStatusRequest = holder;
+            void holder.promise.then(
+                () => { if (sharedStatusRequest === holder) sharedStatusRequest = null; },
+                () => { if (sharedStatusRequest === holder) sharedStatusRequest = null; },
+            );
+        }
+        const holder = sharedStatusRequest;
+        const response = await holder.promise;
+        return { response: response.clone(), revision: holder.revision };
+    }
+
     window.fetch = async function reliableProgressFetch(input, init = {}) {
         const target = endpoint(input);
         const method = requestMethod(input, init);
+        const isStatus = target.sameOrigin && target.path === STATUS_PATH && method === 'GET';
         const isPreparation = target.sameOrigin
             && method === 'POST'
             && PREPARATION_PATHS.has(target.path);
@@ -511,15 +667,22 @@ PROGRESS_RELIABILITY_JS = r"""
         }
 
         let response;
+        let revision = null;
         try {
-            response = await previousFetch(input, init);
+            if (isStatus) {
+                const shared = await sharedStatusFetch(input, init);
+                response = shared.response;
+                revision = shared.revision;
+            } else {
+                response = await previousFetch(input, init);
+            }
         } catch (error) {
             clearOptimistic(optimisticModelId);
             throw error;
         }
 
-        if (target.sameOrigin && target.path === '/v1/system/status' && response.ok) {
-            response.clone().json().then(scheduleRender).catch(() => {});
+        if (isStatus && response.ok) {
+            response.clone().json().then(data => scheduleRender(data, revision)).catch(() => {});
         } else if (isPreparation) {
             if (!response.ok) {
                 clearOptimistic(optimisticModelId);
@@ -535,19 +698,17 @@ PROGRESS_RELIABILITY_JS = r"""
         return response;
     };
 
-    document.getElementById('model-select')?.addEventListener('change', () => {
+    document.getElementById('model-select')?.addEventListener('change', event => {
+        const selected = latestStatus?.models?.available?.find(model => model.id === event.target.value);
+        if (selected?.is_loading) activeModelId = selected.id;
         if (latestStatus) scheduleRender(latestStatus);
     });
-    window.setInterval(() => {
-        if (latestStatus) renderStatus(latestStatus);
-    }, 1000);
 
     async function initialStatus() {
         const key = localStorage.getItem('ovllm.apikey.v1') || '';
         const headers = key ? { Authorization: `Bearer ${key}` } : {};
         try {
-            const response = await previousFetch('/v1/system/status', { headers });
-            if (response.ok) scheduleRender(await response.json());
+            await window.fetch(STATUS_PATH, { headers });
         } catch {
             // The base UI owns connectivity errors.
         }
