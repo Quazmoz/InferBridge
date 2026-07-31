@@ -17,6 +17,8 @@ PROGRESS_OPERATION_JS = r"""
     const acceptedModels = new Map();
     let latestPayload = null;
     let metadataScheduled = false;
+    let dockObserver = null;
+    let rootObserver = null;
 
     function endpoint(input) {
         const value = typeof input === 'string'
@@ -174,6 +176,17 @@ PROGRESS_OPERATION_JS = r"""
         queueMicrotask(renderMetadata);
     }
 
+    function attachDockObserver() {
+        const dock = document.getElementById('ov-reliable-progress');
+        if (!dock || dockObserver) return !!dock;
+        rootObserver?.disconnect();
+        rootObserver = null;
+        dockObserver = new MutationObserver(() => scheduleMetadata());
+        dockObserver.observe(dock, { childList: true, subtree: true });
+        scheduleMetadata();
+        return true;
+    }
+
     const previousFetch = window.fetch.bind(window);
     window.fetch = async function operationAwareFetch(input, init = {}) {
         const target = endpoint(input);
@@ -195,8 +208,10 @@ PROGRESS_OPERATION_JS = r"""
         }
     };
 
-    const observer = new MutationObserver(() => scheduleMetadata());
-    observer.observe(document.documentElement, { childList: true, subtree: true });
+    if (!attachDockObserver()) {
+        rootObserver = new MutationObserver(() => attachDockObserver());
+        rootObserver.observe(document.documentElement, { childList: true, subtree: true });
+    }
 })();
 """
 
