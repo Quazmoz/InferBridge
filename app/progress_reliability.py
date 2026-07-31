@@ -26,16 +26,16 @@ PROGRESS_RELIABILITY_JS = r"""
     ]);
     const OPTIMISTIC_TTL_MS = 30000;
     const PHASES = {
-        idle: ['Waiting', -1, 0, 0],
-        queued: ['Queued', 0, 0, 3],
-        resolving: ['Resolving files', 0, 1, 5],
-        downloading: ['Downloading', 0, 5, 60],
-        converting: ['Converting', 1, 60, 90],
-        finalizing: ['Finalizing', 1, 90, 94],
-        loading: ['Loading runtime', 2, 94, 99],
-        ready: ['Ready', 3, 100, 100],
-        cancelled: ['Cancelled', -1, 0, 100],
-        error: ['Failed', -1, 0, 100],
+        idle: ['Waiting', -1],
+        queued: ['Queued', 0],
+        resolving: ['Resolving files', 0],
+        downloading: ['Downloading', 0],
+        converting: ['Converting', 1],
+        finalizing: ['Finalizing', 1],
+        loading: ['Loading runtime', 2],
+        ready: ['Ready', 3],
+        cancelled: ['Cancelled', -1],
+        error: ['Failed', -1],
     };
 
     const modelState = new Map();
@@ -114,6 +114,14 @@ PROGRESS_RELIABILITY_JS = r"""
         return Number.isFinite(parsed) ? Math.max(0, Math.min(100, parsed)) : null;
     }
 
+    function progressCount(progress) {
+        const completed = Number(progress?.completed);
+        const total = Number(progress?.total);
+        if (!Number.isInteger(completed) || !Number.isInteger(total)) return null;
+        if (completed < 0 || total <= 0 || completed > total) return null;
+        return { completed, total };
+    }
+
     function baseName(model) {
         return String(model?.name || model?.id || 'Model').split(' — ')[0];
     }
@@ -125,59 +133,47 @@ PROGRESS_RELIABILITY_JS = r"""
     }
 
     function phaseInfo(phase) {
-        const [label, stage, start, end] = PHASES[phase] || ['Preparing', 0, 0, 99];
-        return { label, stage, start, end };
-    }
-
-    function aggregateDownloadPercent(progress) {
-        const lines = Array.isArray(progress?.log_tail) ? progress.log_tail : [];
-        for (let index = lines.length - 1; index >= 0; index -= 1) {
-            const line = String(lines[index] || '');
-            const aggregate = line.match(
-                /(?:fetching|downloading)\s+\d+\s+files?.*?(100(?:\.0+)?|[1-9]?\d(?:\.\d+)?)\s*%/i
-            );
-            if (aggregate) return strictPercent(aggregate[1]);
-            const simple = line.match(/(100(?:\.0+)?|[1-9]?\d(?:\.\d+)?)\s*%/);
-            if (simple && /download|fetch|snapshot|file/i.test(line)) return strictPercent(simple[1]);
-        }
-        return null;
+        const [label, stage] = PHASES[phase] || ['Preparing', 0];
+        return { label, stage };
     }
 
     function progressInfo(model) {
         const progress = model?.progress || {};
         const phase = normalizedPhase(model, progress);
         const meta = phaseInfo(phase);
-        const raw = phase === 'downloading'
-            ? aggregateDownloadPercent(progress) ?? strictPercent(progress.percent)
+        const count = progressCount(progress);
+        const phasePercent = count
+            ? strictPercent((count.completed / count.total) * 100)
             : strictPercent(progress.percent);
+        const overallPercent = strictPercent(progress.overall_percent);
         const reportedStart = Number(progress.started_at) || 0;
+        const operationId = typeof progress.operation_id === 'string'
+            ? progress.operation_id
+            : '';
         const previous = modelState.get(model.id);
         const newOperation = !previous
+            || (operationId && previous.operationId && operationId !== previous.operationId)
             || (reportedStart > 0 && previous.startedAt > 0 && reportedStart !== previous.startedAt)
             || (previous.terminal && !['ready', 'error', 'cancelled'].includes(phase));
         const prior = newOperation ? {
-            overall: 0,
-            rank: -1,
+            operationId,
             startedAt: reportedStart || Math.floor(Date.now() / 1000),
             targetDevice: null,
             terminal: false,
         } : previous;
 
-        let overall = prior.overall;
-        let determinate = raw !== null;
+        let trackPercent = overallPercent ?? phasePercent;
+        let progressScope = overallPercent !== null ? 'overall' : 'phase';
+        let determinate = trackPercent !== null;
         if (phase === 'ready') {
-            overall = 100;
+            trackPercent = 100;
+            progressScope = 'overall';
             determinate = true;
         } else if (phase === 'error' || phase === 'cancelled') {
-            determinate = prior.overall > 0;
-        } else if (raw !== null) {
-            const candidate = meta.start + ((meta.end - meta.start) * raw / 100);
-            overall = meta.stage >= prior.rank ? Math.max(prior.overall, candidate) : candidate;
-        } else {
-            overall = Math.max(prior.overall, meta.start);
+            trackPercent = null;
+            determinate = false;
         }
 
-        overall = Math.max(0, Math.min(100, overall));
         const now = Math.floor(Date.now() / 1000);
         const startedAt = reportedStart || prior.startedAt || now;
         const updatedAt = Number(progress.updated_at) || now;
@@ -186,8 +182,7 @@ PROGRESS_RELIABILITY_JS = r"""
             || document.getElementById('device-select')?.value
             || null;
         modelState.set(model.id, {
-            overall,
-            rank: Math.max(prior.rank, meta.stage),
+            operationId: operationId || prior.operationId || '',
             startedAt,
             targetDevice,
             terminal: ['ready', 'error', 'cancelled'].includes(phase),
@@ -198,8 +193,11 @@ PROGRESS_RELIABILITY_JS = r"""
             progress,
             phase,
             meta,
-            raw,
-            overall,
+            count,
+            phasePercent,
+            overallPercent,
+            trackPercent,
+            progressScope,
             determinate,
             targetDevice,
             elapsed: Math.max(0, now - startedAt),
@@ -219,28 +217,48 @@ PROGRESS_RELIABILITY_JS = r"""
         if (info.phase === 'error') return 'Failed';
         if (info.phase === 'cancelled') return 'Cancelled';
         if (info.phase === 'ready') return '100%';
-        if (info.raw !== null) return `${Math.round(info.overall)}%`;
+        if (info.overallPercent !== null) return `${Math.round(info.overallPercent)}%`;
+        if (info.count) return `${info.count.completed} of ${info.count.total}`;
+        if (info.phasePercent !== null) return `${Math.round(info.phasePercent)}%`;
         return info.meta.stage >= 0 && info.meta.stage < 3
             ? `Stage ${info.meta.stage + 1} of 3`
             : 'Working…';
     }
 
-    function stageLabel(info) {
-        return info.raw === null
-            ? info.meta.label
-            : `${info.meta.label} ${Math.round(info.raw)}%`;
+    function progressSummary(info) {
+        if (info.phase === 'error' || info.phase === 'cancelled') return info.meta.label;
+        if (info.phase === 'ready') return 'Ready · 100% complete';
+        if (info.overallPercent !== null) {
+            return `${info.meta.label} · ${Math.round(info.overallPercent)}% overall`;
+        }
+        if (info.count) {
+            return `${info.meta.label} · ${info.count.completed} of ${info.count.total}`
+                + ` (${Math.round(info.phasePercent)}% of current phase)`;
+        }
+        if (info.phasePercent !== null) {
+            return `${info.meta.label} · ${Math.round(info.phasePercent)}% of current phase`;
+        }
+        return `${info.meta.label} · progress is not measurable for this phase`;
     }
 
     function updateTrack(track, info) {
         if (!track) return;
         const fill = track.querySelector('.ovrp-fill');
-        if (fill) fill.style.width = `${info.overall}%`;
+        if (fill) fill.style.width = `${info.trackPercent ?? 0}%`;
         const terminal = ['error', 'cancelled'].includes(info.phase);
         track.classList.toggle('indeterminate', !info.determinate && !terminal);
-        if (info.determinate) track.setAttribute('aria-valuenow', String(Math.round(info.overall)));
-        else track.removeAttribute('aria-valuenow');
-        track.setAttribute('aria-valuetext', valueLabel(info));
-        track.setAttribute('aria-label', `${info.meta.label} model preparation progress`);
+        if (info.determinate) {
+            track.setAttribute('aria-valuenow', String(Math.round(info.trackPercent)));
+        } else {
+            track.removeAttribute('aria-valuenow');
+        }
+        track.setAttribute('aria-valuetext', progressSummary(info));
+        track.setAttribute(
+            'aria-label',
+            info.progressScope === 'overall'
+                ? 'Overall model preparation progress'
+                : `${info.meta.label} phase progress`,
+        );
     }
 
     function detailInteractionState() {
@@ -273,9 +291,7 @@ PROGRESS_RELIABILITY_JS = r"""
         status.className = 'ovrp-meta';
         const values = [
             `Elapsed ${duration(info.elapsed)}`,
-            info.raw === null
-                ? stageLabel(info)
-                : `${stageLabel(info)} · overall ${Math.round(info.overall)}%`,
+            progressSummary(info),
             info.targetDevice ? `Device ${info.targetDevice}` : null,
             operationCount > 1 ? `${operationCount} model operations active` : null,
         ].filter(Boolean);
@@ -408,10 +424,7 @@ PROGRESS_RELIABILITY_JS = r"""
         if (!model || !info) return;
         const footer = document.getElementById('model-status');
         if (!footer) return;
-        const detail = info.raw === null
-            ? `${stageLabel(info)} · elapsed ${duration(info.elapsed)}`
-            : `${stageLabel(info)} · overall ${Math.round(info.overall)}%`;
-        footer.textContent = `${baseName(model)}: ${detail}`;
+        footer.textContent = `${baseName(model)}: ${progressSummary(info)} · elapsed ${duration(info.elapsed)}`;
         footer.className = info.phase === 'error'
             ? 'error'
             : (info.phase === 'cancelled' ? 'cancelled' : 'loading');
