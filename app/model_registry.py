@@ -22,9 +22,7 @@ logger = logging.getLogger("ov-llm.registry")
 # config.json alone is not enough because Hugging Face caches contain one too.
 _IR_MARKERS = ("openvino_model.xml", "openvino_language_model.xml")
 _MODEL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
-_SUPPORTED_BACKENDS = frozenset(
-    {"openvino-genai", "openvino-embeddings", "openvino-vlm"}
-)
+_SUPPORTED_BACKENDS = frozenset({"openvino-genai", "openvino-embeddings", "openvino-vlm"})
 _SUPPORTED_WEIGHT_FORMATS = frozenset({"int4", "int8", "fp16"})
 _MAX_CONTEXT_LEN = 262_144
 _MAX_OUTPUT_TOKENS = 65_536
