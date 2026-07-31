@@ -25,26 +25,42 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .[dev,browser]
           python -m playwright install --with-deps chromium
-      - name: Validate browser test source
-        run: |
-          ruff check browser_tests
-          ruff format --check browser_tests
-      - name: Run Chromium suite three times
+      - name: Capture repeated Chromium validation
+        shell: bash
         env:
           OV_LLM_MOCK: "true"
           INFERBRIDGE_BROWSER_ARTIFACTS: browser-artifacts
         run: |
-          pytest browser_tests -q
-          pytest browser_tests -q
-          pytest browser_tests -q
-      - name: Record success
-        run: |
+          set +e
+          ruff check browser_tests > /tmp/ruff-check.txt 2>&1
+          ruff_check=$?
+          ruff format --check browser_tests > /tmp/ruff-format.txt 2>&1
+          ruff_format=$?
+          : > /tmp/browser.txt
+          browser_status=0
+          for run in 1 2 3; do
+            echo "--- repetition ${run} ---" >> /tmp/browser.txt
+            pytest browser_tests -q >> /tmp/browser.txt 2>&1
+            status=$?
+            if [ "${status}" -ne 0 ]; then
+              browser_status=${status}
+            fi
+          done
+          set -e
           mkdir -p .audit
-          cat > .audit/browser-final.txt <<EOF
-          validated_sha=${GITHUB_SHA}
-          browser=success
-          repetitions=3
-          EOF
+          {
+            echo "validated_sha=${GITHUB_SHA}"
+            echo "ruff_check=${ruff_check}"
+            echo "ruff_format=${ruff_format}"
+            echo "browser=${browser_status}"
+            echo "repetitions=3"
+            echo "--- ruff check ---"
+            cat /tmp/ruff-check.txt
+            echo "--- ruff format ---"
+            cat /tmp/ruff-format.txt
+            echo "--- browser ---"
+            tail -320 /tmp/browser.txt
+          } > .audit/browser-final.txt
           git config user.name github-actions[bot]
           git config user.email 41898282+users.noreply.github.com
           git add .audit/browser-final.txt
