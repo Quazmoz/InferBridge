@@ -19,7 +19,8 @@ It returns:
 - Loaded device assignments
 
 It does not query GPU driver properties, scan the model directory, collect CPU or memory
-telemetry, or return the activity log.
+telemetry, build hardware-advisor snapshots, or return the activity log. Advisor
+recommendations are intentionally omitted from this high-frequency endpoint.
 
 Suggested cadence:
 
@@ -38,11 +39,16 @@ It returns:
 - GPU identity and memory information when available
 - Available OpenVINO devices and suggestions
 - Model directory and volume disk usage
+- Hardware-advisor model evaluations
 - Aggregate request metrics
 - Cache metadata
 
-Telemetry is coalesced and cached for 5 seconds per server process. Concurrent requests
-share the same refresh. A successful response includes:
+Hardware telemetry and advisor evaluations are coalesced and cached for 5 seconds per
+server process. Concurrent requests share the same refresh. Request counters and token
+metrics are rebuilt from live in-memory state for every response, so the hardware cache
+does not delay usage updates.
+
+A successful response includes:
 
 ```json
 {
@@ -55,9 +61,10 @@ share the same refresh. A successful response includes:
 }
 ```
 
-Set `refresh=true` to request a refresh. If a refresh fails after a previous successful
-sample, InferBridge returns the prior sample with `stale: true` instead of failing the
-entire status surface. If no prior sample exists, the endpoint returns HTTP 503.
+Set `refresh=true` to request a hardware refresh. If a refresh fails after a previous
+successful sample, InferBridge returns the prior hardware sample with `stale: true`
+instead of failing the entire status surface. Live request metrics are still refreshed.
+If no prior sample exists, the endpoint returns HTTP 503.
 
 ### `GET /v1/events`
 
@@ -99,11 +106,13 @@ Suggested cadence is every 10 seconds, or after an operation-changing action.
 ## Compatibility endpoint
 
 `GET /v1/system/status` remains supported. It composes the lightweight model snapshot,
-the cached telemetry sample, and the current event list into the historical response
-shape.
+the cached hardware and advisor telemetry, live request metrics, and the current event
+list into the historical response shape. Cached advisor evaluations are merged back
+into the corresponding model rows.
 
 Existing API clients therefore continue to work, but new clients should use the split
-endpoints to avoid unnecessary GPU property queries and directory scans.
+endpoints to avoid unnecessary GPU property queries, advisor collection, and directory
+scans.
 
 ## WebGUI polling behavior
 
@@ -112,7 +121,7 @@ composition layer:
 
 - Active model lifecycle cache: 800 milliseconds
 - Idle model lifecycle cache: 3 seconds
-- Telemetry cache: 5 seconds
+- Telemetry and advisor cache: 5 seconds
 - Event polling cache: 10 seconds
 
 Overlapping requests are coalesced. Caches are partitioned by Authorization header so
@@ -120,7 +129,10 @@ one API-key context cannot reuse another context's response. Model lifecycle cac
 invalidated immediately after load, conversion, download, cancellation, unload, delete,
 or model-library mutations.
 
-If a split endpoint is unavailable, the WebGUI falls back to `/v1/system/status`.
+A failed lifecycle poll is never hidden behind stale model state. The WebGUI instead
+falls back to `/v1/system/status`, allowing the existing connection and retry handling
+to surface the failure. Cached telemetry or events may still be reused when only those
+slower data sources are temporarily unavailable.
 
 ## Active operation queue
 
@@ -133,7 +145,8 @@ operations are active, the expanded dock shows a button such as:
 
 Opening it lists every queued, downloading, converting, finalizing, or loading model.
 Selecting a row changes the primary operation deliberately. Background updates do not
-steal focus, and the queue preserves its expanded state during progress refreshes.
+steal focus, and the queue preserves its expanded state and contents when the progress
+detail area is rebuilt.
 
 The queue is keyboard accessible, responsive on narrow browser windows, and renders all
 server-provided labels through text nodes.
