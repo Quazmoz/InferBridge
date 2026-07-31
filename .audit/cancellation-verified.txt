@@ -1,0 +1,5 @@
+validated_sha=af76461a4eb8e1cc94d840853df89cd2ba07ca6f
+linux=success
+external_contract=success
+windows=success
+browser=failure
