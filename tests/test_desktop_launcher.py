@@ -57,6 +57,49 @@ def test_second_lock_acquire_returns_false_without_raising(tmp_path):
     third.release()
 
 
+def _launcher_args(**overrides):
+    values = {
+        "portable": False,
+        "data_dir": None,
+        "mock": False,
+        "control_token": "desktop-secret",
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+def test_legacy_child_command_excludes_control_token():
+    metadata = desktop_launcher.InstanceMetadata(1, 8123, "nonce", "app.exe", "now")
+    command = desktop_launcher._child_command(_launcher_args(), metadata)
+
+    assert "--control-token" not in command
+    assert "desktop-secret" not in command
+    assert command[-4:] == ["--port", "8123", "--instance-nonce", "nonce"]
+
+
+def test_legacy_spawn_passes_control_token_only_in_child_environment(monkeypatch, tmp_path):
+    captured = {}
+    sentinel = object()
+
+    def fake_popen(command, **kwargs):
+        captured["command"] = command
+        captured.update(kwargs)
+        return sentinel
+
+    monkeypatch.setattr(desktop_launcher.subprocess, "Popen", fake_popen)
+    metadata = desktop_launcher.InstanceMetadata(1, 8123, "nonce", "app.exe", "now")
+
+    result = desktop_launcher._spawn_server(
+        _launcher_args(),
+        metadata,
+        tmp_path / "desktop.log",
+    )
+
+    assert result is sentinel
+    assert "desktop-secret" not in captured["command"]
+    assert captured["env"]["OV_LLM_DESKTOP_CONTROL_TOKEN"] == "desktop-secret"
+
+
 def test_prepare_desktop_environment_clears_stale_launch_flags(monkeypatch, tmp_path):
     monkeypatch.setenv("OV_LLM_PORTABLE", "1")
     monkeypatch.setenv("OV_LLM_DATA_DIR", "stale")
