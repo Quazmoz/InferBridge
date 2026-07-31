@@ -23,26 +23,6 @@ permissions:
   contents: read
 
 jobs:
-  cleanup-obsolete-branches:
-    name: Cleanup obsolete validation branches
-    if: >-
-      github.event_name == 'pull_request' &&
-      github.actor == 'Quazmoz' &&
-      github.head_ref == 'beta' &&
-      github.event.pull_request.head.repo.full_name == github.repository
-    permissions:
-      contents: write
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Delete verified obsolete branches
-        run: >-
-          git push origin --delete
-          validation/inferbridge-docs-final
-          validation/inferbridge-main-ci
-
   lint-and-test:
     name: Lint & Test
     runs-on: ubuntu-latest
