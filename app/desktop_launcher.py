@@ -232,10 +232,8 @@ def _spawn_server(
 def _server_child(args: argparse.Namespace) -> int:
     from app.desktop_server import run_server
 
-    control_token = args.control_token or os.environ.pop(
-        "OV_LLM_DESKTOP_CONTROL_TOKEN",
-        "",
-    )
+    environment_token = os.environ.pop("OV_LLM_DESKTOP_CONTROL_TOKEN", "")
+    control_token = args.control_token or environment_token
     if not control_token:
         raise RuntimeError("The packaged server control token is unavailable.")
     return run_server(
@@ -325,11 +323,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--convert-model", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--instance-nonce", default="")
-    parser.add_argument(
-        "--control-token",
-        default=os.environ.get("OV_LLM_DESKTOP_CONTROL_TOKEN", ""),
-        help=argparse.SUPPRESS,
-    )
+    parser.add_argument("--control-token", default="", help=argparse.SUPPRESS)
     parser.add_argument("--owner-pid", type=int, default=0, help=argparse.SUPPRESS)
     parser.add_argument("--owner-created-at", type=float, default=0.0, help=argparse.SUPPRESS)
     parser.add_argument("--portable", action="store_true", default=_portable_default())
@@ -349,7 +343,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.port < 1 or args.port > 65535:
         parser.error("--port must be between 1 and 65535")
     if args.server_child:
-        if not args.instance_nonce or not args.control_token:
+        if not args.instance_nonce or not (args.control_token or os.environ.get("OV_LLM_DESKTOP_CONTROL_TOKEN")):
             parser.error("--server-child requires instance and control tokens")
         return _server_child(args)
     if args.diagnostic:
