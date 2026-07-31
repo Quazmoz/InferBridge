@@ -20,8 +20,9 @@ import re
 import secrets
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 from urllib.parse import quote
 
 import httpx
@@ -32,7 +33,9 @@ from pydantic import BaseModel, Field
 from app.brand import DISPLAY_NAME, LEGACY_DISPLAY_NAME
 from app.local_request_security import require_safe_browser_origin
 
-_HF_REPO_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}/[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$")
+_HF_REPO_RE = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}/[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$"
+)
 _HF_TOKEN_RE = re.compile(r"^hf_[A-Za-z0-9]{8,500}$")
 _DPAPI_ENTROPY = b"InferBridge/HuggingFace/v1"
 _TOKEN_CONTEXT: contextvars.ContextVar[str | None] = contextvars.ContextVar(
@@ -47,10 +50,14 @@ _KNOWN_GATED_REPOS = frozenset(
         "google/gemma-2-2b-it",
     }
 )
+_NO_STORE_HEADERS = {"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"}
 
 
 class _DataBlob(ctypes.Structure):
-    _fields_ = [("cbData", ctypes.c_uint32), ("pbData", ctypes.POINTER(ctypes.c_ubyte))]
+    _fields_ = [
+        ("cbData", ctypes.c_uint32),
+        ("pbData", ctypes.POINTER(ctypes.c_ubyte)),
+    ]
 
 
 def _safe_repo_id(value: str) -> str:
@@ -74,11 +81,16 @@ def _utc_timestamp() -> int:
     return int(time.time())
 
 
+def _json_response(payload: Any, *, status_code: int = 200) -> JSONResponse:
+    return JSONResponse(payload, status_code=status_code, headers=_NO_STORE_HEADERS)
+
+
 def _access_payload(
     code: str,
     message: str,
     *,
     source_model: str | None = None,
+    access_type: str | None = None,
     token_configured: bool = False,
     username: str | None = None,
     recoverable: bool = True,
@@ -98,11 +110,41 @@ def _access_payload(
                 "license_url": _model_url(source_model),
             }
         )
+    if access_type:
+        payload["access_type"] = access_type
     if username:
         payload["username"] = username
     if action:
         payload["action"] = action
     return payload
+
+
+def _dpapi_libraries() -> tuple[Any, Any]:
+    crypt32 = ctypes.WinDLL("crypt32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    crypt32.CryptProtectData.argtypes = [
+        ctypes.POINTER(_DataBlob),
+        ctypes.c_wchar_p,
+        ctypes.POINTER(_DataBlob),
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_uint32,
+        ctypes.POINTER(_DataBlob),
+    ]
+    crypt32.CryptProtectData.restype = ctypes.c_int
+    crypt32.CryptUnprotectData.argtypes = [
+        ctypes.POINTER(_DataBlob),
+        ctypes.POINTER(ctypes.c_wchar_p),
+        ctypes.POINTER(_DataBlob),
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_uint32,
+        ctypes.POINTER(_DataBlob),
+    ]
+    crypt32.CryptUnprotectData.restype = ctypes.c_int
+    kernel32.LocalFree.argtypes = [ctypes.c_void_p]
+    kernel32.LocalFree.restype = ctypes.c_void_p
+    return crypt32, kernel32
 
 
 class HuggingFaceCredentialStore:
@@ -139,28 +181,20 @@ class HuggingFaceCredentialStore:
     @staticmethod
     def _blob(data: bytes) -> tuple[_DataBlob, Any]:
         buffer = ctypes.create_string_buffer(data)
-        blob = _DataBlob(len(data), ctypes.cast(buffer, ctypes.POINTER(ctypes.c_ubyte)))
+        blob = _DataBlob(
+            len(data),
+            ctypes.cast(buffer, ctypes.POINTER(ctypes.c_ubyte)),
+        )
         return blob, buffer
 
     @classmethod
     def _protect_windows(cls, data: bytes) -> bytes:
         if os.name != "nt":
             raise OSError("DPAPI is available only on Windows.")
-        crypt32 = ctypes.windll.crypt32
-        kernel32 = ctypes.windll.kernel32
+        crypt32, kernel32 = _dpapi_libraries()
         in_blob, in_buffer = cls._blob(data)
         entropy_blob, entropy_buffer = cls._blob(_DPAPI_ENTROPY)
         out_blob = _DataBlob()
-        crypt32.CryptProtectData.argtypes = [
-            ctypes.POINTER(_DataBlob),
-            ctypes.c_wchar_p,
-            ctypes.POINTER(_DataBlob),
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-            ctypes.c_uint32,
-            ctypes.POINTER(_DataBlob),
-        ]
-        crypt32.CryptProtectData.restype = ctypes.c_int
         ok = crypt32.CryptProtectData(
             ctypes.byref(in_blob),
             "InferBridge Hugging Face token",
@@ -176,28 +210,17 @@ class HuggingFaceCredentialStore:
         try:
             return ctypes.string_at(out_blob.pbData, out_blob.cbData)
         finally:
-            kernel32.LocalFree(out_blob.pbData)
+            kernel32.LocalFree(ctypes.cast(out_blob.pbData, ctypes.c_void_p))
 
     @classmethod
     def _unprotect_windows(cls, data: bytes) -> bytes:
         if os.name != "nt":
             raise OSError("DPAPI is available only on Windows.")
-        crypt32 = ctypes.windll.crypt32
-        kernel32 = ctypes.windll.kernel32
+        crypt32, kernel32 = _dpapi_libraries()
         in_blob, in_buffer = cls._blob(data)
         entropy_blob, entropy_buffer = cls._blob(_DPAPI_ENTROPY)
         out_blob = _DataBlob()
         description = ctypes.c_wchar_p()
-        crypt32.CryptUnprotectData.argtypes = [
-            ctypes.POINTER(_DataBlob),
-            ctypes.POINTER(ctypes.c_wchar_p),
-            ctypes.POINTER(_DataBlob),
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-            ctypes.c_uint32,
-            ctypes.POINTER(_DataBlob),
-        ]
-        crypt32.CryptUnprotectData.restype = ctypes.c_int
         ok = crypt32.CryptUnprotectData(
             ctypes.byref(in_blob),
             ctypes.byref(description),
@@ -213,9 +236,9 @@ class HuggingFaceCredentialStore:
         try:
             return ctypes.string_at(out_blob.pbData, out_blob.cbData)
         finally:
-            kernel32.LocalFree(out_blob.pbData)
+            kernel32.LocalFree(ctypes.cast(out_blob.pbData, ctypes.c_void_p))
             if description:
-                kernel32.LocalFree(description)
+                kernel32.LocalFree(ctypes.cast(description, ctypes.c_void_p))
 
     def set_token(self, token: str) -> None:
         clean = self.validate_token(token)
@@ -225,8 +248,7 @@ class HuggingFaceCredentialStore:
                 return
 
             self.token_path.parent.mkdir(parents=True, exist_ok=True)
-            protected = self._protect_windows(clean.encode("utf-8"))
-            encoded = base64.b64encode(protected)
+            encoded = base64.b64encode(self._protect_windows(clean.encode("utf-8")))
             temp = self.token_path.with_suffix(".tmp")
             try:
                 temp.write_bytes(encoded)
@@ -239,32 +261,34 @@ class HuggingFaceCredentialStore:
                 raise
             self._memory_token = clean
 
+    def _stored_token(self) -> str | None:
+        if os.name != "nt" or not self.token_path.is_file():
+            return None
+        try:
+            encrypted = base64.b64decode(self.token_path.read_bytes(), validate=True)
+            token = self._unprotect_windows(encrypted).decode("utf-8")
+            return self.validate_token(token)
+        except (OSError, ValueError, UnicodeError):
+            return None
+
     def get_token(self) -> str | None:
         with self._lock:
             if self._memory_token:
                 return self._memory_token
-            if os.name == "nt" and self.token_path.is_file():
-                try:
-                    encrypted = base64.b64decode(self.token_path.read_bytes(), validate=True)
-                    token = self._unprotect_windows(encrypted).decode("utf-8")
-                    self._memory_token = self.validate_token(token)
-                    return self._memory_token
-                except (OSError, ValueError, UnicodeError):
-                    pass
+            token = self._stored_token()
+            if token:
+                self._memory_token = token
+                return token
             return self._environment_token()
 
     def source(self) -> str | None:
         with self._lock:
             if self._memory_token:
                 return "secure_store"
-            if os.name == "nt" and self.token_path.is_file():
-                try:
-                    encrypted = base64.b64decode(self.token_path.read_bytes(), validate=True)
-                    token = self._unprotect_windows(encrypted).decode("utf-8")
-                    self._memory_token = self.validate_token(token)
-                    return "secure_store"
-                except (OSError, ValueError, UnicodeError):
-                    pass
+            token = self._stored_token()
+            if token:
+                self._memory_token = token
+                return "secure_store"
             if self._environment_token():
                 return "environment"
             return None
@@ -275,13 +299,14 @@ class HuggingFaceCredentialStore:
             self._memory_token = None
             with contextlib.suppress(OSError):
                 self.token_path.unlink()
-            self.write_metadata({})
+            with contextlib.suppress(OSError):
+                self.metadata_path.unlink()
             return existed
 
     def read_metadata(self) -> dict[str, Any]:
         try:
             payload = json.loads(self.metadata_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError, json.JSONDecodeError):
+        except (OSError, ValueError):
             return {}
         return payload if isinstance(payload, dict) else {}
 
@@ -304,13 +329,12 @@ class HuggingFaceCredentialStore:
     def status(self) -> dict[str, Any]:
         token = self.get_token()
         source = self.source()
-        metadata = self.read_metadata()
+        metadata = self.read_metadata() if token else {}
         return {
             "configured": bool(token),
-            "status": metadata.get("state")
-            or ("unverified" if token else "not_configured"),
-            "username": metadata.get("username"),
-            "last_checked": metadata.get("last_checked"),
+            "status": metadata.get("state") or ("unverified" if token else "not_configured"),
+            "username": metadata.get("username") if token else None,
+            "last_checked": metadata.get("last_checked") if token else None,
             "token_masked": "••••••••" if token else None,
             "source": source,
             "persistence": self.persistence if source == "secure_store" else source,
@@ -350,9 +374,11 @@ class HuggingFaceAccessService:
     async def test_token(
         self, token: str | None = None, *, persist: bool = False
     ) -> dict[str, Any]:
-        candidate = token.strip() if isinstance(token, str) else self.store.get_token()
+        supplied_candidate = isinstance(token, str)
+        candidate = token.strip() if supplied_candidate else self.store.get_token()
         if not candidate:
-            self._record("not_configured")
+            if not supplied_candidate:
+                self._record("not_configured")
             return _access_payload(
                 "hf_token_missing",
                 "Add a Hugging Face token to access gated models.",
@@ -374,19 +400,12 @@ class HuggingFaceAccessService:
                     "https://huggingface.co/api/whoami-v2",
                     headers={"Authorization": f"Bearer {candidate}"},
                 )
-        except (httpx.TimeoutException, httpx.NetworkError):
-            self._record("network_error")
+        except httpx.HTTPError:
+            if not supplied_candidate:
+                self._record("network_error")
             return _access_payload(
                 "hf_network_error",
                 "Hugging Face could not be reached. Check the connection and try again.",
-                token_configured=True,
-                action="test_again",
-            )
-        except httpx.HTTPError:
-            self._record("network_error")
-            return _access_payload(
-                "hf_network_error",
-                "Hugging Face access could not be verified.",
                 token_configured=True,
                 action="test_again",
             )
@@ -394,7 +413,7 @@ class HuggingFaceAccessService:
         if response.status_code == 200:
             try:
                 data = response.json() if response.content else {}
-            except (ValueError, json.JSONDecodeError):
+            except ValueError:
                 data = {}
             username = str(data.get("name") or data.get("fullname") or "").strip() or None
             if persist:
@@ -408,7 +427,8 @@ class HuggingFaceAccessService:
                         username=username,
                         action="replace_token",
                     )
-            self._record("connected", username)
+            if persist or not supplied_candidate:
+                self._record("connected", username)
             return _access_payload(
                 "hf_access_granted",
                 "Hugging Face access is connected.",
@@ -417,14 +437,16 @@ class HuggingFaceAccessService:
                 action="none",
             )
         if response.status_code == 429:
-            self._record("rate_limited")
+            if not supplied_candidate:
+                self._record("rate_limited")
             return _access_payload(
                 "hf_rate_limited",
                 "Hugging Face is rate limiting access checks. Try again shortly.",
                 token_configured=True,
                 action="test_again",
             )
-        self._record("invalid_token")
+        if not supplied_candidate:
+            self._record("invalid_token")
         return _access_payload(
             "hf_token_invalid",
             "The Hugging Face token is invalid, expired, or lacks read access.",
@@ -440,20 +462,12 @@ class HuggingFaceAccessService:
         if normalized_type not in {"public", "gated", "unknown"}:
             normalized_type = "unknown"
         token = self.store.get_token()
-        if normalized_type == "public":
-            return _access_payload(
-                "hf_access_granted",
-                "This model is public on Hugging Face.",
-                source_model=repo_id,
-                token_configured=bool(token),
-                action="none",
-            )
         if normalized_type == "gated" and not token:
-            self._record("token_required")
             return _access_payload(
                 "hf_token_missing",
                 "This model requires publisher approval and a Hugging Face token.",
                 source_model=repo_id,
+                access_type="gated",
                 action="configure_token",
             )
 
@@ -470,6 +484,7 @@ class HuggingFaceAccessService:
             if token_result["code"] != "hf_access_granted":
                 return token_result | {
                     "source_model": repo_id,
+                    "access_type": normalized_type,
                     "model_url": _model_url(repo_id),
                     "license_url": _model_url(repo_id),
                 }
@@ -482,61 +497,85 @@ class HuggingFaceAccessService:
         try:
             async with self._client() as client:
                 response = await client.get(probe_url, headers=headers)
-        except (httpx.TimeoutException, httpx.NetworkError):
+        except httpx.HTTPError:
             result = _access_payload(
                 "hf_network_error",
                 "Hugging Face could not be reached. The conversion was not queued.",
                 source_model=repo_id,
-                token_configured=bool(token),
-                username=username,
-                action="check_again",
-            )
-        except httpx.HTTPError:
-            result = _access_payload(
-                "hf_network_error",
-                "Hugging Face model access could not be verified.",
-                source_model=repo_id,
+                access_type=normalized_type,
                 token_configured=bool(token),
                 username=username,
                 action="check_again",
             )
         else:
-            if response.status_code in {200, 206}:
-                self._record("connected", username)
+            status = response.status_code
+            if status in {200, 206}:
                 result = _access_payload(
                     "hf_access_granted",
                     "Hugging Face model access is ready.",
                     source_model=repo_id,
+                    access_type=normalized_type,
                     token_configured=bool(token),
                     username=username,
                     action="none",
                 )
-            elif response.status_code == 429:
+            elif status == 429:
                 result = _access_payload(
                     "hf_rate_limited",
                     "Hugging Face is rate limiting access checks. Try again shortly.",
                     source_model=repo_id,
+                    access_type=normalized_type,
                     token_configured=bool(token),
                     username=username,
                     action="check_again",
                 )
-            elif token:
-                self._record("approval_required", username)
+            elif status in {401, 403} and token:
                 result = _access_payload(
                     "hf_approval_required",
-                    "Your token is valid, but this account has not been approved for the model.",
+                    "Your token is valid, but this account is not approved for the model.",
                     source_model=repo_id,
+                    access_type="gated",
                     token_configured=True,
                     username=username,
                     action="open_model_agreement",
                 )
-            else:
-                self._record("token_required")
+            elif status in {401, 403}:
                 result = _access_payload(
                     "hf_token_missing",
                     "This model is gated or private. Configure a Hugging Face token to continue.",
                     source_model=repo_id,
+                    access_type="gated",
                     action="configure_token",
+                )
+            elif status == 404:
+                result = _access_payload(
+                    "hf_model_not_found",
+                    "The Hugging Face model or its config.json file could not be found.",
+                    source_model=repo_id,
+                    access_type=normalized_type,
+                    token_configured=bool(token),
+                    username=username,
+                    action="review_model_id",
+                )
+            elif status >= 500:
+                result = _access_payload(
+                    "hf_network_error",
+                    "Hugging Face is temporarily unavailable. The conversion was not queued.",
+                    source_model=repo_id,
+                    access_type=normalized_type,
+                    token_configured=bool(token),
+                    username=username,
+                    action="check_again",
+                )
+            else:
+                result = _access_payload(
+                    "hf_access_denied",
+                    f"Hugging Face denied the model access check with status {status}.",
+                    source_model=repo_id,
+                    access_type=normalized_type,
+                    token_configured=bool(token),
+                    username=username,
+                    action="check_again",
                 )
 
         async with self._cache_lock:
@@ -558,55 +597,72 @@ class PreflightRequest(BaseModel):
     access_type: str | None = Field(default=None, max_length=20)
 
 
-def _metadata_from_catalog(
-    settings: Any, model_id: str | None, source_model: str
+def _converter_environment(environment: dict[str, str] | None) -> dict[str, str] | None:
+    token = _TOKEN_CONTEXT.get()
+    if not token:
+        return environment
+    resolved = dict(environment or os.environ)
+    resolved["HF_TOKEN"] = token
+    resolved["HUGGING_FACE_HUB_TOKEN"] = token
+    return resolved
+
+
+def _catalog_access_metadata(settings: Any) -> dict[str, dict[str, Any]]:
+    bundled = Path(__file__).resolve().parent.parent / "models.json"
+    configured = Path(settings.models_file).expanduser().resolve()
+    paths = [bundled]
+    if configured != bundled.resolve():
+        paths.append(configured)
+
+    metadata: dict[str, dict[str, Any]] = {}
+    for index, path in enumerate(paths):
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(raw, dict):
+            continue
+        bundled_catalog = index == 0
+        for model_id, entry in raw.items():
+            if not isinstance(model_id, str) or not isinstance(entry, dict):
+                continue
+            source_model = str(entry.get("source_model") or "").strip()
+            if not source_model:
+                continue
+            current = metadata.setdefault(
+                model_id,
+                {
+                    "access_type": "public" if bundled_catalog else "unknown",
+                    "model_url": _model_url(source_model),
+                    "license_url": _model_url(source_model),
+                },
+            )
+            explicit = str(entry.get("access_type") or "").strip().lower()
+            if explicit in {"public", "gated"}:
+                current["access_type"] = explicit
+            if source_model in _KNOWN_GATED_REPOS:
+                current["access_type"] = "gated"
+            current["model_url"] = _model_url(source_model)
+            current["license_url"] = _model_url(source_model)
+    return metadata
+
+
+def _metadata_for_model(
+    manager: Any,
+    model_id: str | None,
+    source_model: str,
 ) -> dict[str, Any]:
-    metadata: dict[str, Any] = {
-        "access_type": "unknown",
+    if not source_model:
+        return {"access_type": "local", "model_url": None, "license_url": None}
+    stored = getattr(manager, "_hf_access_metadata", {}).get(model_id or "")
+    if isinstance(stored, dict):
+        return dict(stored)
+    access_type = "gated" if source_model in _KNOWN_GATED_REPOS else "unknown"
+    return {
+        "access_type": access_type,
         "model_url": _model_url(source_model),
         "license_url": _model_url(source_model),
     }
-    if not model_id:
-        if source_model in _KNOWN_GATED_REPOS:
-            metadata["access_type"] = "gated"
-        return metadata
-
-    entries: list[dict[str, Any]] = []
-    catalog_paths = [
-        Path(settings.models_file),
-        Path(__file__).resolve().parent.parent / "models.json",
-    ]
-    for path in dict.fromkeys(catalog_paths):
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8-sig"))
-            entry = raw.get(model_id) if isinstance(raw, dict) else None
-        except (OSError, ValueError, json.JSONDecodeError):
-            entry = None
-        if isinstance(entry, dict):
-            entries.append(entry)
-
-    for entry in entries:
-        explicit = str(entry.get("access_type") or "").strip().lower()
-        if explicit in {"public", "gated"}:
-            metadata["access_type"] = explicit
-            break
-    if metadata["access_type"] == "unknown":
-        if source_model in _KNOWN_GATED_REPOS:
-            metadata["access_type"] = "gated"
-        elif entries:
-            metadata["access_type"] = "public"
-
-    for entry in entries:
-        if entry.get("model_url"):
-            metadata["model_url"] = str(entry["model_url"])
-            break
-    for entry in entries:
-        if entry.get("license_url"):
-            metadata["license_url"] = str(entry["license_url"])
-            break
-    if not metadata["license_url"]:
-        metadata["license_url"] = metadata["model_url"]
-    return metadata
 
 
 def _store_for_state(state: Any) -> HuggingFaceCredentialStore:
@@ -663,7 +719,7 @@ def _authorized_for_preflight(scope: dict[str, Any], settings: Any) -> bool:
 
 
 class HuggingFacePreflightMiddleware:
-    """Reject gated conversions before a background operation is queued."""
+    """Reject inaccessible Hugging Face models before conversion is queued."""
 
     def __init__(self, app: Any) -> None:
         self.app = app
@@ -687,7 +743,7 @@ class HuggingFacePreflightMiddleware:
         try:
             require_safe_browser_origin(Request(scope))
         except HTTPException as exc:
-            response = JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+            response = _json_response({"detail": exc.detail}, status_code=exc.status_code)
             await response(scope, receive, send)
             return
 
@@ -695,7 +751,10 @@ class HuggingFacePreflightMiddleware:
         more_body = True
         while more_body:
             message = await receive()
-            if message.get("type") != "http.request":
+            message_type = message.get("type")
+            if message_type == "http.disconnect":
+                return
+            if message_type != "http.request":
                 continue
             chunks.append(message.get("body", b""))
             more_body = bool(message.get("more_body"))
@@ -711,7 +770,7 @@ class HuggingFacePreflightMiddleware:
 
         try:
             payload = json.loads(body.decode("utf-8"))
-        except (UnicodeError, ValueError, json.JSONDecodeError):
+        except (UnicodeError, ValueError):
             await self.app(scope, replay_receive, send)
             return
         if not isinstance(payload, dict):
@@ -728,19 +787,18 @@ class HuggingFacePreflightMiddleware:
             await self.app(scope, replay_receive, send)
             return
 
-        metadata = _metadata_from_catalog(settings, model_id, source_model)
-        requested_type = str(payload.get("access_type") or metadata["access_type"])
+        metadata = _metadata_for_model(manager, model_id, source_model)
         try:
             result = await _service_for_state(state).preflight(
                 source_model,
-                access_type=requested_type,
+                access_type=str(metadata.get("access_type") or "unknown"),
             )
         except ValueError as exc:
-            response = JSONResponse(status_code=400, content={"detail": str(exc)})
+            response = _json_response({"detail": str(exc)}, status_code=400)
             await response(scope, replay_receive, send)
             return
         if result["code"] != "hf_access_granted":
-            response = JSONResponse(status_code=409, content={"detail": result})
+            response = _json_response({"detail": result}, status_code=409)
             await response(scope, replay_receive, send)
             return
         await self.app(scope, replay_receive, send)
@@ -757,14 +815,14 @@ def register_huggingface_access_routes(app: FastAPI) -> None:
 
     @router.get("/status")
     async def status(request: Request):
-        return _service_for_state(request.app.state).status()
+        return _json_response(_service_for_state(request.app.state).status())
 
     @router.post("/token")
     async def save_token(request: Request, body: TokenRequest):
         service = _service_for_state(request.app.state)
         result = await service.test_token(body.token, persist=True)
         if result["code"] != "hf_access_granted":
-            raise HTTPException(status_code=400, detail=result)
+            return _json_response({"detail": result}, status_code=400)
         await service.clear_cache()
         status_payload = service.status()
         message = (
@@ -772,7 +830,7 @@ def register_huggingface_access_routes(app: FastAPI) -> None:
             if status_payload.get("persistence") == "windows_dpapi"
             else "Hugging Face token stored for this server session."
         )
-        return {"status": status_payload, "message": message}
+        return _json_response({"status": status_payload, "message": message})
 
     @router.delete("/token")
     async def remove_token(request: Request):
@@ -783,15 +841,17 @@ def register_huggingface_access_routes(app: FastAPI) -> None:
         message = "Stored Hugging Face token removed."
         if status_payload.get("source") == "environment":
             message += " HF_TOKEN is still configured as an environment fallback."
-        return {"removed": removed, "status": status_payload, "message": message}
+        return _json_response(
+            {"removed": removed, "status": status_payload, "message": message}
+        )
 
     @router.post("/test")
     async def test_access(request: Request):
         service = _service_for_state(request.app.state)
         result = await service.test_token()
         if result["code"] != "hf_access_granted":
-            raise HTTPException(status_code=409, detail=result)
-        return {"status": service.status(), "result": result}
+            return _json_response({"detail": result}, status_code=409)
+        return _json_response({"status": service.status(), "result": result})
 
     @router.post("/preflight")
     async def preflight(request: Request, body: PreflightRequest):
@@ -803,20 +863,20 @@ def register_huggingface_access_routes(app: FastAPI) -> None:
             if cfg is None:
                 raise HTTPException(status_code=404, detail="Unknown model.")
             source_model = cfg.source_model
-            metadata = _metadata_from_catalog(
-                request.app.state.settings, body.model_id, source_model
-            )
-            access_type = metadata["access_type"]
+            metadata = _metadata_for_model(manager, body.model_id, source_model)
+            access_type = str(metadata.get("access_type") or "unknown")
         if not source_model:
             raise HTTPException(
-                status_code=400, detail="A Hugging Face source model is required."
+                status_code=400,
+                detail="A Hugging Face source model is required.",
             )
         result = await _service_for_state(request.app.state).preflight(
-            source_model, access_type=access_type
+            source_model,
+            access_type=access_type,
         )
         if result["code"] != "hf_access_granted":
-            raise HTTPException(status_code=409, detail=result)
-        return result
+            return _json_response({"detail": result}, status_code=409)
+        return _json_response(result)
 
     app.include_router(router)
     app.add_middleware(HuggingFacePreflightMiddleware)
@@ -839,7 +899,7 @@ def install_huggingface_access_routes_extension() -> None:
 
 
 def install_huggingface_access_manager_extension() -> None:
-    """Attach secure token injection and structured access metadata to managers."""
+    """Attach secure token injection and access metadata to model managers."""
 
     from app import model_manager
 
@@ -850,12 +910,14 @@ def install_huggingface_access_manager_extension() -> None:
     original_init = cls.__init__
     original_convert = cls._convert_task
     original_entry = cls.catalog_entry
+    original_reload = cls.reload_catalog
     original_create_subprocess_exec = asyncio.create_subprocess_exec
 
     @functools.wraps(original_init)
     def init_with_store(self: Any, settings: Any) -> None:
         original_init(self, settings)
         self._hf_credential_store = HuggingFaceCredentialStore(settings)
+        self._hf_access_metadata = _catalog_access_metadata(settings)
 
     @functools.wraps(original_convert)
     async def convert_with_token(self: Any, *args: Any, **kwargs: Any) -> Any:
@@ -870,27 +932,28 @@ def install_huggingface_access_manager_extension() -> None:
     def entry_with_access(self: Any, model_id: str) -> dict[str, Any]:
         entry = original_entry(self, model_id)
         cfg = self.catalog[model_id]
-        if cfg.source_model:
-            metadata = _metadata_from_catalog(self.settings, model_id, cfg.source_model)
-        else:
-            metadata = {"access_type": "local", "model_url": None, "license_url": None}
+        metadata = _metadata_for_model(self, model_id, cfg.source_model)
         entry["huggingface_access"] = metadata
         entry["is_gated"] = metadata["access_type"] == "gated"
         return entry
 
+    @functools.wraps(original_reload)
+    def reload_with_access_metadata(self: Any) -> None:
+        original_reload(self)
+        self._hf_access_metadata = _catalog_access_metadata(self.settings)
+
     async def create_subprocess_with_hf_token(*args: Any, **kwargs: Any) -> Any:
         is_converter = any(str(arg) == "runtime.model_converter" for arg in args)
-        token = _TOKEN_CONTEXT.get() if is_converter else None
-        if token:
-            environment = dict(kwargs.get("env") or os.environ)
-            environment["HF_TOKEN"] = token
-            environment["HUGGING_FACE_HUB_TOKEN"] = token
-            kwargs["env"] = environment
+        if is_converter:
+            environment = _converter_environment(kwargs.get("env"))
+            if environment is not None:
+                kwargs["env"] = environment
         return await original_create_subprocess_exec(*args, **kwargs)
 
     cls.__init__ = init_with_store
     cls._convert_task = convert_with_token
     cls.catalog_entry = entry_with_access
+    cls.reload_catalog = reload_with_access_metadata
     asyncio.create_subprocess_exec = create_subprocess_with_hf_token
     cls._inferbridge_hf_access_installed = True
 
@@ -900,4 +963,5 @@ __all__ = [
     "HuggingFaceCredentialStore",
     "install_huggingface_access_manager_extension",
     "install_huggingface_access_routes_extension",
+    "register_huggingface_access_routes",
 ]
