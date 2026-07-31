@@ -45,6 +45,19 @@ def test_split_status_coalesces_requests_and_preserves_auth_partitioning() -> No
     assert "return nativeFetch(input, init)" in script
 
 
+def test_lifecycle_mutations_invalidate_only_the_matching_auth_cache() -> None:
+    script = STATUS_SPLIT_JS
+
+    assert "const MODEL_MUTATION_PATHS = new Set" in script
+    assert "'/v1/models/cancel'" in script
+    assert "'/v1/models/delete'" in script
+    assert "'/v1/model-library/import-converted'" in script
+    assert "function invalidateModels(headers = null)" in script
+    assert "stateFor(headers).modelsAt = 0" in script
+    assert "MODEL_MUTATION_PATHS.has(target.path)" in script
+    assert "window.__inferbridgeInvalidateModelStatus" in script
+
+
 def test_split_status_composes_legacy_shape_without_content_length() -> None:
     script = STATUS_SPLIT_JS
 
