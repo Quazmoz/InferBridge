@@ -1,0 +1,4 @@
+validated_sha=f5990f22176f09f696ab03f02d2413f53e10e765
+lint_and_test=failure
+external_contract=success
+windows_harness=success
