@@ -207,3 +207,35 @@ jobs:
           tests/test_config_resilience.py
           tests/test_onboarding_state_resilience.py
           tests/test_update_checker_resilience.py
+
+  development-audit-report:
+    name: Development Audit Report
+    if: always() && github.ref == 'refs/heads/development'
+    needs: [lint-and-test, external-contract-smoke, windows-harness-syntax]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Record validation results
+        env:
+          LINT_AND_TEST: ${{ needs.lint-and-test.result }}
+          EXTERNAL_CONTRACT: ${{ needs.external-contract-smoke.result }}
+          WINDOWS_HARNESS: ${{ needs.windows-harness-syntax.result }}
+        run: |
+          mkdir -p .audit
+          cat > .audit/loading-indicators-ci.txt <<EOF
+          validated_sha=${GITHUB_SHA}
+          lint_and_test=${LINT_AND_TEST}
+          external_contract=${EXTERNAL_CONTRACT}
+          windows_harness=${WINDOWS_HARNESS}
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .audit/loading-indicators-ci.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "[skip ci] ci: record loading indicator validation"
+            git push origin HEAD:development
+          fi
