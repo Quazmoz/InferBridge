@@ -207,3 +207,42 @@ jobs:
           tests/test_config_resilience.py
           tests/test_onboarding_state_resilience.py
           tests/test_update_checker_resilience.py
+
+  development-audit-report:
+    name: Development Audit Report
+    if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/development' }}
+    needs:
+      - lint-and-test
+      - external-contract-smoke
+      - windows-harness-syntax
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout development branch
+        uses: actions/checkout@v4
+        with:
+          ref: development
+
+      - name: Record validation results
+        env:
+          TEST_RESULT: ${{ needs['lint-and-test'].result }}
+          CONTRACT_RESULT: ${{ needs['external-contract-smoke'].result }}
+          WINDOWS_RESULT: ${{ needs['windows-harness-syntax'].result }}
+          VALIDATED_SHA: ${{ github.sha }}
+        run: |
+          mkdir -p .audit
+          cat > .audit/development-ci.txt <<EOF
+          validated_sha=${VALIDATED_SHA}
+          lint_and_test=${TEST_RESULT}
+          external_contract=${CONTRACT_RESULT}
+          windows_harness=${WINDOWS_RESULT}
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .audit/development-ci.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "ci: record development audit validation"
+            git push origin HEAD:development
+          fi
