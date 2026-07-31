@@ -46,11 +46,30 @@ PROGRESS_OPERATION_JS = r"""
         const revision = Number.isInteger(progress.revision) && progress.revision >= 0
             ? progress.revision
             : 0;
-        return { operationId, revision };
+        const updatedAt = Number.isFinite(Number(progress.updated_at))
+            ? Number(progress.updated_at)
+            : 0;
+        return { operationId, revision, updatedAt };
     }
 
     function isTerminal(model) {
         return ['error', 'cancelled'].includes(String(model?.status || ''));
+    }
+
+    function shouldKeepPrevious(previous, identity, model) {
+        if (!previous) return false;
+        if (identity.operationId === previous.operationId) {
+            return identity.revision < previous.revision;
+        }
+        if (!identity.operationId || !previous.operationId) return false;
+
+        // Across a normal retry, the server's per-model revision keeps increasing.
+        // Across a process restart, revisions reset but the new operation timestamp is
+        // later. Reject only a genuinely older operation snapshot.
+        if (identity.updatedAt < previous.updatedAt) return true;
+        if (identity.updatedAt > previous.updatedAt) return false;
+        if (identity.revision > previous.revision) return false;
+        return !!(previous.model?.is_loading && model?.is_loading);
     }
 
     function reconcilePayload(payload) {
@@ -76,16 +95,7 @@ PROGRESS_OPERATION_JS = r"""
                 return model;
             }
 
-            if (previous && identity.revision < previous.revision) {
-                return previous.model;
-            }
-            if (
-                previous
-                && identity.revision === previous.revision
-                && identity.operationId
-                && previous.operationId
-                && identity.operationId !== previous.operationId
-            ) {
+            if (shouldKeepPrevious(previous, identity, model)) {
                 return previous.model;
             }
 
@@ -191,13 +201,18 @@ PROGRESS_OPERATION_JS = r"""
     window.fetch = async function operationAwareFetch(input, init = {}) {
         const target = endpoint(input);
         const method = requestMethod(input, init);
-        const response = await previousFetch(input, init);
-        if (
-            !target.sameOrigin
-            || target.path !== STATUS_PATH
-            || method !== 'GET'
-            || !response.ok
-        ) return response;
+        const isStatus = target.sameOrigin && target.path === STATUS_PATH && method === 'GET';
+        let response;
+        try {
+            response = await previousFetch(input, init);
+        } catch (error) {
+            if (isStatus) {
+                acceptedModels.clear();
+                latestPayload = null;
+            }
+            throw error;
+        }
+        if (!isStatus || !response.ok) return response;
 
         try {
             const payload = reconcilePayload(await response.clone().json());
