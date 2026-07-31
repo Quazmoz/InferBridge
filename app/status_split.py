@@ -35,6 +35,12 @@ class _TelemetryCache:
     refreshed_monotonic: float = 0.0
 
 
+def _available_devices() -> list[str]:
+    """Isolate driver discovery so the lightweight endpoint never invokes it."""
+
+    return device_check.available_devices()
+
+
 async def _require_access(
     request: Request,
     authorization: str | None = Header(default=None),
@@ -97,9 +103,11 @@ def install_status_manager_extension() -> None:
         reset_required = safe_cursor > latest_cursor or (
             bool(events) and safe_cursor > 0 and safe_cursor < first_cursor - 1
         )
-        candidates = events if reset_required else [
-            event for event in events if int(event["id"]) > safe_cursor
-        ]
+        candidates = (
+            events
+            if reset_required
+            else [event for event in events if int(event["id"]) > safe_cursor]
+        )
         page = candidates[:safe_limit]
         if page:
             next_cursor = int(page[-1]["id"])
@@ -194,7 +202,7 @@ async def _telemetry_snapshot(request: Request, *, refresh: bool = False) -> dic
                     settings.models_dir,
                     cache_seconds=_TELEMETRY_TTL_SECONDS,
                 ),
-                asyncio.to_thread(device_check.available_devices),
+                asyncio.to_thread(_available_devices),
             )
             payload = {
                 "schema_version": 1,
