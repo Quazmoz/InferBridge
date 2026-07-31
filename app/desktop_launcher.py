@@ -185,8 +185,6 @@ def _child_command(args: argparse.Namespace, metadata: InstanceMetadata) -> list
             str(metadata.port),
             "--instance-nonce",
             metadata.nonce,
-            "--control-token",
-            str(getattr(args, "control_token", "") or "test-control-token"),
         ]
     )
     if args.portable:
@@ -203,6 +201,10 @@ def _spawn_server(
     metadata: InstanceMetadata,
     log_path: Path,
 ) -> subprocess.Popen:
+    control_token = str(getattr(args, "control_token", "") or "")
+    if not control_token:
+        raise RuntimeError("The packaged server control token is unavailable.")
+
     creationflags = 0
     startupinfo = None
     if os.name == "nt":
@@ -211,6 +213,8 @@ def _spawn_server(
         startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
     stream = open(log_path, "a", encoding="utf-8")  # noqa: SIM115
     try:
+        environment = os.environ.copy()
+        environment["OV_LLM_DESKTOP_CONTROL_TOKEN"] = control_token
         return subprocess.Popen(
             _child_command(args, metadata),
             stdin=subprocess.DEVNULL,
@@ -224,6 +228,7 @@ def _spawn_server(
             creationflags=creationflags,
             startupinfo=startupinfo,
             close_fds=os.name != "nt",
+            env=environment,
         )
     finally:
         stream.close()
@@ -343,7 +348,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.port < 1 or args.port > 65535:
         parser.error("--port must be between 1 and 65535")
     if args.server_child:
-        if not args.instance_nonce or not (args.control_token or os.environ.get("OV_LLM_DESKTOP_CONTROL_TOKEN")):
+        if not args.instance_nonce or not (
+            args.control_token or os.environ.get("OV_LLM_DESKTOP_CONTROL_TOKEN")
+        ):
             parser.error("--server-child requires instance and control tokens")
         return _server_child(args)
     if args.diagnostic:
