@@ -1,83 +1,373 @@
-validated_sha=e7f761c474dcc241e27b296f7376a3499e558d0b
+validated_sha=44c5561c13097d82fc2e3dea7d403bfd33b2cd81
 ruff_check=0
 ruff_format=0
-pytest=1
+pytest=2
 external_contract=1
 --- ruff check ---
 All checks passed!
 --- ruff format ---
 321 files already formatted
 --- pytest ---
-........................................................................ [ 11%]
-........................................................................ [ 22%]
-........................................................................ [ 33%]
-........................................................................ [ 45%]
-...................s.................................................... [ 56%]
-........................................................................ [ 67%]
-........................................................................ [ 79%]
-...........F............................................................ [ 90%]
-.............................................................            [100%]
-=================================== FAILURES ===================================
-____________________ test_metrics_accumulate_after_requests ____________________
-
-client = <starlette.testclient.TestClient object at 0x7fabd05c9dd0>
-
-    def test_metrics_accumulate_after_requests(client):
-        _load_and_wait(client)
-        # No requests served yet for this model.
-        before = client.get("/v1/system/status").json()["metrics"]
-        assert before["per_model"].get(MODEL_ID, {}).get("requests", 0) == 0
-    
-        for _ in range(2):
-            client.post(
-                "/v1/chat/completions",
-                json={"model": MODEL_ID, "messages": [{"role": "user", "content": "hi"}]},
-            )
-    
-        metrics = client.get("/v1/system/status").json()["metrics"]
->       per_model = metrics["per_model"][MODEL_ID]
-                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-E       KeyError: 'tinyllama-1.1b-chat-fp16'
-
-tests/test_server_mock.py:460: KeyError
----------------------------- Captured stdout setup -----------------------------
-2026-07-31 15:50:12 [INFO] [-] Starting InferBridge server — MOCK (no OpenVINO)
------------------------------- Captured log setup ------------------------------
-INFO     ov-llm.server:server.py:264 Starting InferBridge server — MOCK (no OpenVINO)
------------------------------ Captured stdout call -----------------------------
-2026-07-31 15:50:12 [INFO] [-] Using MOCK engine for 'tinyllama-1.1b-chat-fp16' (forced)
-2026-07-31 15:50:12 [INFO] [req-12a73bd6c356] HTTP POST /v1/models/load - Status: 200 - Latency: 16.42ms
-2026-07-31 15:50:12 [INFO] [req-12a73bd6c356] Loaded 'tinyllama-1.1b-chat-fp16' on NPU
-2026-07-31 15:50:12 [INFO] [-] HTTP Request: POST http://testserver/v1/models/load "HTTP/1.1 200 OK"
-2026-07-31 15:50:12 [INFO] [req-21cb3bb19af1] HTTP GET /v1/system/status - Status: 200 - Latency: 39.49ms
-2026-07-31 15:50:12 [INFO] [-] HTTP Request: GET http://testserver/v1/system/status "HTTP/1.1 200 OK"
-2026-07-31 15:50:12 [INFO] [req-7cf1382908e1] HTTP GET /v1/system/status - Status: 200 - Latency: 6.60ms
-2026-07-31 15:50:12 [INFO] [-] HTTP Request: GET http://testserver/v1/system/status "HTTP/1.1 200 OK"
-2026-07-31 15:50:12 [INFO] [req-93ffbdbb6017] HTTP POST /v1/chat/completions - Status: 200 - Latency: 2.56ms
-2026-07-31 15:50:12 [INFO] [-] HTTP Request: POST http://testserver/v1/chat/completions "HTTP/1.1 200 OK"
-2026-07-31 15:50:12 [INFO] [req-145ddd3c4a6f] HTTP POST /v1/chat/completions - Status: 200 - Latency: 1.23ms
-2026-07-31 15:50:12 [INFO] [-] HTTP Request: POST http://testserver/v1/chat/completions "HTTP/1.1 200 OK"
-2026-07-31 15:50:12 [INFO] [req-31d7ea8aa908] HTTP GET /v1/system/status - Status: 200 - Latency: 6.72ms
-2026-07-31 15:50:12 [INFO] [-] HTTP Request: GET http://testserver/v1/system/status "HTTP/1.1 200 OK"
------------------------------- Captured log call -------------------------------
-INFO     ov-llm.engine:openvino_engine.py:693 Using MOCK engine for 'tinyllama-1.1b-chat-fp16' (forced)
-INFO     ov-llm.server:server.py:325 HTTP POST /v1/models/load - Status: 200 - Latency: 16.42ms
-INFO     ov-llm.manager:model_load_target.py:266 Loaded 'tinyllama-1.1b-chat-fp16' on NPU
-INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/v1/models/load "HTTP/1.1 200 OK"
-INFO     ov-llm.server:server.py:325 HTTP GET /v1/system/status - Status: 200 - Latency: 39.49ms
-INFO     httpx:_client.py:1025 HTTP Request: GET http://testserver/v1/system/status "HTTP/1.1 200 OK"
-INFO     ov-llm.server:server.py:325 HTTP GET /v1/system/status - Status: 200 - Latency: 6.60ms
-INFO     httpx:_client.py:1025 HTTP Request: GET http://testserver/v1/system/status "HTTP/1.1 200 OK"
-INFO     ov-llm.server:server.py:325 HTTP POST /v1/chat/completions - Status: 200 - Latency: 2.56ms
-INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/v1/chat/completions "HTTP/1.1 200 OK"
-INFO     ov-llm.server:server.py:325 HTTP POST /v1/chat/completions - Status: 200 - Latency: 1.23ms
-INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/v1/chat/completions "HTTP/1.1 200 OK"
-INFO     ov-llm.server:server.py:325 HTTP GET /v1/system/status - Status: 200 - Latency: 6.72ms
-INFO     httpx:_client.py:1025 HTTP Request: GET http://testserver/v1/system/status "HTTP/1.1 200 OK"
---------------------------- Captured stdout teardown ---------------------------
-2026-07-31 15:50:12 [INFO] [-] Server stopped; models unloaded.
----------------------------- Captured log teardown -----------------------------
-INFO     ov-llm.server:server.py:270 Server stopped; models unloaded.
+Traceback:
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_model_library_paths_ui.py:3: in <module>
+    from app.config import Settings
+app/config.py:29: in <module>
+    from app.status_split import install_status_split_routes_extension
+app/status_split.py:24: in <module>
+    from app.model_manager_core import ModelManager as CoreModelManager
+app/model_manager_core.py:26: in <module>
+    from app.config import BASE_DIR, Settings
+E   ImportError: cannot import name 'BASE_DIR' from partially initialized module 'app.config' (most likely due to a circular import) (/home/runner/work/InferBridge/InferBridge/app/config.py)
+___________ ERROR collecting tests/test_model_library_regressions.py ___________
+ImportError while importing test module '/home/runner/work/InferBridge/InferBridge/tests/test_model_library_regressions.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_model_library_regressions.py:10: in <module>
+    from app.config import Settings
+app/config.py:29: in <module>
+    from app.status_split import install_status_split_routes_extension
+app/status_split.py:24: in <module>
+    from app.model_manager_core import ModelManager as CoreModelManager
+app/model_manager_core.py:26: in <module>
+    from app.config import BASE_DIR, Settings
+E   ImportError: cannot import name 'BASE_DIR' from partially initialized module 'app.config' (most likely due to a circular import) (/home/runner/work/InferBridge/InferBridge/app/config.py)
+____________ ERROR collecting tests/test_model_library_security.py _____________
+ImportError while importing test module '/home/runner/work/InferBridge/InferBridge/tests/test_model_library_security.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_model_library_security.py:3: in <module>
+    from app.config import Settings
+app/config.py:29: in <module>
+    from app.status_split import install_status_split_routes_extension
+app/status_split.py:24: in <module>
+    from app.model_manager_core import ModelManager as CoreModelManager
+app/model_manager_core.py:26: in <module>
+    from app.config import BASE_DIR, Settings
+E   ImportError: cannot import name 'BASE_DIR' from partially initialized module 'app.config' (most likely due to a circular import) (/home/runner/work/InferBridge/InferBridge/app/config.py)
+_______________ ERROR collecting tests/test_model_load_safety.py _______________
+ImportError while importing test module '/home/runner/work/InferBridge/InferBridge/tests/test_model_load_safety.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_model_load_safety.py:12: in <module>
+    from app import model_load_safety, model_manager_core
+app/model_manager_core.py:26: in <module>
+    from app.config import BASE_DIR, Settings
+app/config.py:29: in <module>
+    from app.status_split import install_status_split_routes_extension
+app/status_split.py:24: in <module>
+    from app.model_manager_core import ModelManager as CoreModelManager
+E   ImportError: cannot import name 'ModelManager' from partially initialized module 'app.model_manager_core' (most likely due to a circular import) (/home/runner/work/InferBridge/InferBridge/app/model_manager_core.py)
+_______________ ERROR collecting tests/test_model_load_target.py _______________
+ImportError while importing test module '/home/runner/work/InferBridge/InferBridge/tests/test_model_load_target.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_model_load_target.py:11: in <module>
+    from app.config import BASE_DIR, Settings
+app/config.py:29: in <module>
+    from app.status_split import install_status_split_routes_extension
+app/status_split.py:24: in <module>
+    from app.model_manager_core import ModelManager as CoreModelManager
+app/model_manager_core.py:26: in <module>
+    from app.config import BASE_DIR, Settings
+E   ImportError: cannot import name 'BASE_DIR' from partially initialized module 'app.config' (most likely due to a circular import) (/home/runner/work/InferBridge/InferBridge/app/config.py)
+______________ ERROR collecting tests/test_model_registration.py _______________
+ImportError while importing test module '/home/runner/work/InferBridge/InferBridge/tests/test_model_registration.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_model_registration.py:6: in <module>
+    from app.config import Settings
+app/config.py:29: in <module>
+    from app.status_split import install_status_split_routes_extension
+app/status_split.py:24: in <module>
+    from app.model_manager_core import ModelManager as CoreModelManager
+app/model_manager_core.py:26: in <module>
+    from app.config import BASE_DIR, Settings
+E   ImportError: cannot import name 'BASE_DIR' from partially initialized module 'app.config' (most likely due to a circular import) (/home/runner/work/InferBridge/InferBridge/app/config.py)
+__________ ERROR collecting tests/test_model_registration_rollback.py __________
+ImportError while importing test module '/home/runner/work/InferBridge/InferBridge/tests/test_model_registration_rollback.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_model_registration_rollback.py:5: in <module>
+    from app import model_manager as manager_module
+app/model_manager.py:18: in <module>
+    from app import model_load_safety, model_manager_core as _core, model_registry as registry
+app/model_manager_core.py:26: in <module>
+    from app.config import BASE_DIR, Settings
+app/config.py:29: in <module>
+    from app.status_split import install_status_split_routes_extension
+app/status_split.py:24: in <module>
+    from app.model_manager_core import ModelManager as CoreModelManager
+E   ImportError: cannot import name 'ModelManager' from partially initialized module 'app.model_manager_core' (most likely due to a circular import) (/home/runner/work/InferBridge/InferBridge/app/model_manager_core.py)
+________________ ERROR collecting tests/test_model_registry.py _________________
+ImportError while importing test module '/home/runner/work/InferBridge/InferBridge/tests/test_model_registry.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_model_registry.py:3: in <module>
+    from app.config import BASE_DIR
+app/config.py:29: in <module>
+    from app.status_split import install_status_split_routes_extension
+app/status_split.py:24: in <module>
+    from app.model_manager_core import ModelManager as CoreModelManager
+app/model_manager_core.py:26: in <module>
+    from app.config import BASE_DIR, Settings
+E   ImportError: cannot import name 'BASE_DIR' from partially initialized module 'app.config' (most likely due to a circular import) (/home/runner/work/InferBridge/InferBridge/app/config.py)
+_________________ ERROR collecting tests/test_onboarding_ui.py _________________
+ImportError while importing test module '/home/runner/work/InferBridge/InferBridge/tests/test_onboarding_ui.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_onboarding_ui.py:1: in <module>
+    from app.config import Settings  # noqa: F401 - installs composed UI extensions
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/config.py:29: in <module>
+    from app.status_split import install_status_split_routes_extension
+app/status_split.py:24: in <module>
+    from app.model_manager_core import ModelManager as CoreModelManager
+app/model_manager_core.py:26: in <module>
+    from app.config import BASE_DIR, Settings
+E   ImportError: cannot import name 'BASE_DIR' from partially initialized module 'app.config' (most likely due to a circular import) (/home/runner/work/InferBridge/InferBridge/app/config.py)
+______________ ERROR collecting tests/test_operation_queue_ui.py _______________
+ImportError while importing test module '/home/runner/work/InferBridge/InferBridge/tests/test_operation_queue_ui.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_operation_queue_ui.py:1: in <module>
+    from app.config import Settings  # noqa: F401 - installs composed UI extensions
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/config.py:29: in <module>
+    from app.status_split import install_status_split_routes_extension
+app/status_split.py:24: in <module>
+    from app.model_manager_core import ModelManager as CoreModelManager
+app/model_manager_core.py:26: in <module>
+    from app.config import BASE_DIR, Settings
+E   ImportError: cannot import name 'BASE_DIR' from partially initialized module 'app.config' (most likely due to a circular import) (/home/runner/work/InferBridge/InferBridge/app/config.py)
+_____________ ERROR collecting tests/test_progress_operation_ui.py _____________
+ImportError while importing test module '/home/runner/work/InferBridge/InferBridge/tests/test_progress_operation_ui.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_progress_operation_ui.py:1: in <module>
+    from app.config import Settings  # noqa: F401 - installs composed UI extensions
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/config.py:29: in <module>
+    from app.status_split import install_status_split_routes_extension
+app/status_split.py:24: in <module>
+    from app.model_manager_core import ModelManager as CoreModelManager
+app/model_manager_core.py:26: in <module>
+    from app.config import BASE_DIR, Settings
+E   ImportError: cannot import name 'BASE_DIR' from partially initialized module 'app.config' (most likely due to a circular import) (/home/runner/work/InferBridge/InferBridge/app/config.py)
+_____________ ERROR collecting tests/test_progress_reliability.py ______________
+ImportError while importing test module '/home/runner/work/InferBridge/InferBridge/tests/test_progress_reliability.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_progress_reliability.py:1: in <module>
+    from app.config import Settings  # noqa: F401 - installs composed UI extensions
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/config.py:29: in <module>
+    from app.status_split import install_status_split_routes_extension
+app/status_split.py:24: in <module>
+    from app.model_manager_core import ModelManager as CoreModelManager
+app/model_manager_core.py:26: in <module>
+    from app.config import BASE_DIR, Settings
+E   ImportError: cannot import name 'BASE_DIR' from partially initialized module 'app.config' (most likely due to a circular import) (/home/runner/work/InferBridge/InferBridge/app/config.py)
+______________ ERROR collecting tests/test_progress_semantics.py _______________
+ImportError while importing test module '/home/runner/work/InferBridge/InferBridge/tests/test_progress_semantics.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_progress_semantics.py:1: in <module>
+    from app.config import Settings  # noqa: F401 - installs composed browser extensions
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/config.py:29: in <module>
+    from app.status_split import install_status_split_routes_extension
+app/status_split.py:24: in <module>
+    from app.model_manager_core import ModelManager as CoreModelManager
+app/model_manager_core.py:26: in <module>
+    from app.config import BASE_DIR, Settings
+E   ImportError: cannot import name 'BASE_DIR' from partially initialized module 'app.config' (most likely due to a circular import) (/home/runner/work/InferBridge/InferBridge/app/config.py)
+__________________ ERROR collecting tests/test_progress_ui.py __________________
+ImportError while importing test module '/home/runner/work/InferBridge/InferBridge/tests/test_progress_ui.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_progress_ui.py:1: in <module>
+    from app.config import Settings  # noqa: F401 - installs composed UI extensions
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/config.py:29: in <module>
+    from app.status_split import install_status_split_routes_extension
+app/status_split.py:24: in <module>
+    from app.model_manager_core import ModelManager as CoreModelManager
+app/model_manager_core.py:26: in <module>
+    from app.config import BASE_DIR, Settings
+E   ImportError: cannot import name 'BASE_DIR' from partially initialized module 'app.config' (most likely due to a circular import) (/home/runner/work/InferBridge/InferBridge/app/config.py)
+__________ ERROR collecting tests/test_recent_feature_regressions.py ___________
+ImportError while importing test module '/home/runner/work/InferBridge/InferBridge/tests/test_recent_feature_regressions.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_recent_feature_regressions.py:9: in <module>
+    from app.config import BASE_DIR, Settings
+app/config.py:29: in <module>
+    from app.status_split import install_status_split_routes_extension
+app/status_split.py:24: in <module>
+    from app.model_manager_core import ModelManager as CoreModelManager
+app/model_manager_core.py:26: in <module>
+    from app.config import BASE_DIR, Settings
+E   ImportError: cannot import name 'BASE_DIR' from partially initialized module 'app.config' (most likely due to a circular import) (/home/runner/work/InferBridge/InferBridge/app/config.py)
+__________________ ERROR collecting tests/test_server_mock.py __________________
+ImportError while importing test module '/home/runner/work/InferBridge/InferBridge/tests/test_server_mock.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_server_mock.py:14: in <module>
+    from app.config import BASE_DIR, Settings
+app/config.py:29: in <module>
+    from app.status_split import install_status_split_routes_extension
+app/status_split.py:24: in <module>
+    from app.model_manager_core import ModelManager as CoreModelManager
+app/model_manager_core.py:26: in <module>
+    from app.config import BASE_DIR, Settings
+E   ImportError: cannot import name 'BASE_DIR' from partially initialized module 'app.config' (most likely due to a circular import) (/home/runner/work/InferBridge/InferBridge/app/config.py)
+_____________ ERROR collecting tests/test_stability_regressions.py _____________
+ImportError while importing test module '/home/runner/work/InferBridge/InferBridge/tests/test_stability_regressions.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_stability_regressions.py:9: in <module>
+    from app.config import BASE_DIR, Settings
+app/config.py:29: in <module>
+    from app.status_split import install_status_split_routes_extension
+app/status_split.py:24: in <module>
+    from app.model_manager_core import ModelManager as CoreModelManager
+app/model_manager_core.py:26: in <module>
+    from app.config import BASE_DIR, Settings
+E   ImportError: cannot import name 'BASE_DIR' from partially initialized module 'app.config' (most likely due to a circular import) (/home/runner/work/InferBridge/InferBridge/app/config.py)
+_________________ ERROR collecting tests/test_status_split.py __________________
+ImportError while importing test module '/home/runner/work/InferBridge/InferBridge/tests/test_status_split.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_status_split.py:7: in <module>
+    from app import status_split
+app/status_split.py:24: in <module>
+    from app.model_manager_core import ModelManager as CoreModelManager
+app/model_manager_core.py:26: in <module>
+    from app.config import BASE_DIR, Settings
+app/config.py:29: in <module>
+    from app.status_split import install_status_split_routes_extension
+E   ImportError: cannot import name 'install_status_split_routes_extension' from partially initialized module 'app.status_split' (most likely due to a circular import) (/home/runner/work/InferBridge/InferBridge/app/status_split.py)
+________________ ERROR collecting tests/test_status_split_ui.py ________________
+ImportError while importing test module '/home/runner/work/InferBridge/InferBridge/tests/test_status_split_ui.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_status_split_ui.py:1: in <module>
+    from app.config import Settings  # noqa: F401 - installs composed UI extensions
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/config.py:29: in <module>
+    from app.status_split import install_status_split_routes_extension
+app/status_split.py:24: in <module>
+    from app.model_manager_core import ModelManager as CoreModelManager
+app/model_manager_core.py:26: in <module>
+    from app.config import BASE_DIR, Settings
+E   ImportError: cannot import name 'BASE_DIR' from partially initialized module 'app.config' (most likely due to a circular import) (/home/runner/work/InferBridge/InferBridge/app/config.py)
+______________ ERROR collecting tests/test_structured_progress.py ______________
+ImportError while importing test module '/home/runner/work/InferBridge/InferBridge/tests/test_structured_progress.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_structured_progress.py:5: in <module>
+    from app.config import Settings
+app/config.py:29: in <module>
+    from app.status_split import install_status_split_routes_extension
+app/status_split.py:24: in <module>
+    from app.model_manager_core import ModelManager as CoreModelManager
+app/model_manager_core.py:26: in <module>
+    from app.config import BASE_DIR, Settings
+E   ImportError: cannot import name 'BASE_DIR' from partially initialized module 'app.config' (most likely due to a circular import) (/home/runner/work/InferBridge/InferBridge/app/config.py)
+___________________ ERROR collecting tests/test_ui_polish.py ___________________
+ImportError while importing test module '/home/runner/work/InferBridge/InferBridge/tests/test_ui_polish.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_ui_polish.py:1: in <module>
+    from app.config import Settings  # noqa: F401 - installs composed UI extensions
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/config.py:29: in <module>
+    from app.status_split import install_status_split_routes_extension
+app/status_split.py:24: in <module>
+    from app.model_manager_core import ModelManager as CoreModelManager
+app/model_manager_core.py:26: in <module>
+    from app.config import BASE_DIR, Settings
+E   ImportError: cannot import name 'BASE_DIR' from partially initialized module 'app.config' (most likely due to a circular import) (/home/runner/work/InferBridge/InferBridge/app/config.py)
+__________________ ERROR collecting tests/test_ui_quality.py ___________________
+ImportError while importing test module '/home/runner/work/InferBridge/InferBridge/tests/test_ui_quality.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_ui_quality.py:1: in <module>
+    from app.config import Settings  # noqa: F401 - installs composed UI extensions
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/config.py:29: in <module>
+    from app.status_split import install_status_split_routes_extension
+app/status_split.py:24: in <module>
+    from app.model_manager_core import ModelManager as CoreModelManager
+app/model_manager_core.py:26: in <module>
+    from app.config import BASE_DIR, Settings
+E   ImportError: cannot import name 'BASE_DIR' from partially initialized module 'app.config' (most likely due to a circular import) (/home/runner/work/InferBridge/InferBridge/app/config.py)
 =============================== warnings summary ===============================
 ../../../../../opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/fastapi/testclient.py:1
   /opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
@@ -85,139 +375,74 @@ INFO     ov-llm.server:server.py:270 Server stopped; models unloaded.
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
 =========================== short test summary info ============================
-FAILED tests/test_server_mock.py::test_metrics_accumulate_after_requests - KeyError: 'tinyllama-1.1b-chat-fp16'
-1 failed, 635 passed, 1 skipped, 1 warning in 19.42s
+ERROR tests/test_benchmark_api.py
+ERROR tests/test_benchmark_devices.py
+ERROR tests/test_body_limit.py
+ERROR tests/test_cancellation_ui.py
+ERROR tests/test_chat_context_ui.py
+ERROR tests/test_chat_guard_ui.py
+ERROR tests/test_chat_queue_ui.py
+ERROR tests/test_config.py
+ERROR tests/test_config_resilience.py
+ERROR tests/test_conversion_cancellation.py
+ERROR tests/test_desktop_onboarding_hardening.py
+ERROR tests/test_desktop_onboarding_mock.py
+ERROR tests/test_doctor_ui.py
+ERROR tests/test_engine_handoff_safety.py
+ERROR tests/test_first_run_npu_ui.py
+ERROR tests/test_gui_stability.py
+ERROR tests/test_hardware_advisor.py
+ERROR tests/test_hardware_advisor_integration.py
+ERROR tests/test_header_overflow_ui.py
+ERROR tests/test_inferbridge_public_branding.py
+ERROR tests/test_lifecycle_safety.py
+ERROR tests/test_local_request_security.py
+ERROR tests/test_model_cancellation.py
+ERROR tests/test_model_cancellation_race.py
+ERROR tests/test_model_delete_guard.py
+ERROR tests/test_model_library.py
+ERROR tests/test_model_library_concurrency.py
+ERROR tests/test_model_library_evidence_identity.py
+ERROR tests/test_model_library_integrity.py
+ERROR tests/test_model_library_paths_ui.py
+ERROR tests/test_model_library_regressions.py
+ERROR tests/test_model_library_security.py
+ERROR tests/test_model_load_safety.py
+ERROR tests/test_model_load_target.py
+ERROR tests/test_model_registration.py
+ERROR tests/test_model_registration_rollback.py
+ERROR tests/test_model_registry.py
+ERROR tests/test_onboarding_ui.py
+ERROR tests/test_operation_queue_ui.py
+ERROR tests/test_progress_operation_ui.py
+ERROR tests/test_progress_reliability.py
+ERROR tests/test_progress_semantics.py
+ERROR tests/test_progress_ui.py
+ERROR tests/test_recent_feature_regressions.py
+ERROR tests/test_server_mock.py
+ERROR tests/test_stability_regressions.py
+ERROR tests/test_status_split.py
+ERROR tests/test_status_split_ui.py
+ERROR tests/test_structured_progress.py
+ERROR tests/test_ui_polish.py
+ERROR tests/test_ui_quality.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 51 errors during collection !!!!!!!!!!!!!!!!!!!
+1 warning, 51 errors in 3.49s
 --- external contract ---
-# OpenVINO Windows LLM API Validation
-
-- Generated: `2026-07-31T15:50:24.849506+00:00`
-- Profile: `full`
-- Model: `tinyllama-1.1b-chat-fp16`
-- Device: `CPU`
-
-**Result:** 11 passed, 1 warnings, 1 skipped, 1 failed.
-
-| Check | Status | Duration | Detail |
-|---|---:|---:|---|
-| Health and probes | **PASS** | 2.7 ms | version=0.7.0 mock=True |
-| API-key enforcement | **SKIP** | 0.0 ms | No API key supplied |
-| Device discovery | **PASS** | 150.7 ms | available=CPU |
-| Model catalog | **PASS** | 12.9 ms | catalog=21 |
-| Model load | **PASS** | 45.7 ms | loaded on CPU |
-| Open WebUI chat | **PASS** | 3.5 ms | finish_reason=stop |
-| Open WebUI streaming | **PASS** | 837.8 ms | events=57 |
-| Stream cancellation recovery | **PASS** | 270.7 ms | follow-up request succeeded |
-| Tool and structured-output requests | **WARN** | 3.9 ms | Requests were accepted; model/runtime did not demonstrate both optional outputs |
-| Request metrics | **FAIL** | 9.3 ms | Request metrics did not record generation |
-| n8n Responses API | **PASS** | 839.4 ms | streaming and non-streaming passed |
-| Embeddings | **PASS** | 14.1 ms | dimensions=384 |
-| Benchmark | **PASS** | 1122.7 ms | benchmark succeeded |
-| Model lifecycle | **PASS** | 40.9 ms | loaded on CPU |
-
-> Reports exclude API keys, prompts, generated text, hostnames, usernames, and full local paths.
-
+Validation could not start: Server did not become healthy before startup timeout
 --- server ---
-2026-07-31 15:50:20 [INFO] [-] Visit http://localhost:8123
-INFO:     Started server process [2777]
-INFO:     Waiting for application startup.
-2026-07-31 15:50:20 [INFO] [-] Starting InferBridge server — MOCK (no OpenVINO)
-2026-07-31 15:50:21 [INFO] [-] Using MOCK engine for 'tinyllama-1.1b-chat-fp16' (forced)
-INFO:     Application startup complete.
-2026-07-31 15:50:21 [INFO] [-] Loaded 'tinyllama-1.1b-chat-fp16' on NPU
-INFO:     Uvicorn running on http://127.0.0.1:8123 (Press CTRL+C to quit)
-2026-07-31 15:50:21 [INFO] [req-3d3561f6c4ac] HTTP GET /health - Status: 200 - Latency: 11.43ms
-INFO:     127.0.0.1:49860 - "GET /health HTTP/1.1" 200 OK
-2026-07-31 15:50:21 [INFO] [req-c44f9bef25ea] HTTP GET /health - Status: 200 - Latency: 0.48ms
-INFO:     127.0.0.1:49876 - "GET /health HTTP/1.1" 200 OK
-2026-07-31 15:50:21 [INFO] [req-7157126bce8f] HTTP GET /health/live - Status: 200 - Latency: 0.43ms
-INFO:     127.0.0.1:49888 - "GET /health/live HTTP/1.1" 200 OK
-2026-07-31 15:50:21 [INFO] [req-8b66acc8b787] HTTP GET /v1/devices - Status: 200 - Latency: 149.61ms
-INFO:     127.0.0.1:49894 - "GET /v1/devices HTTP/1.1" 200 OK
-2026-07-31 15:50:21 [INFO] [req-c1bea4fa0f0b] HTTP GET /v1/models - Status: 200 - Latency: 11.61ms
-INFO:     127.0.0.1:49896 - "GET /v1/models HTTP/1.1" 200 OK
-2026-07-31 15:50:21 [INFO] [req-7b1941c7cf80] HTTP POST /v1/models/load - Status: 200 - Latency: 2.01ms
-INFO:     127.0.0.1:49902 - "POST /v1/models/load HTTP/1.1" 200 OK
-2026-07-31 15:50:21 [INFO] [-] Using MOCK engine for 'tinyllama-1.1b-chat-fp16' (forced)
-2026-07-31 15:50:21 [INFO] [req-7b1941c7cf80] Switched 'tinyllama-1.1b-chat-fp16' from NPU to CPU
-2026-07-31 15:50:21 [INFO] [req-0be4a237ef06] HTTP GET /v1/system/status - Status: 200 - Latency: 40.68ms
-INFO:     127.0.0.1:49914 - "GET /v1/system/status HTTP/1.1" 200 OK
-2026-07-31 15:50:21 [INFO] [req-3381308bb6e0] HTTP POST /v1/chat/completions - Status: 200 - Latency: 2.51ms
-INFO:     127.0.0.1:49920 - "POST /v1/chat/completions HTTP/1.1" 200 OK
-2026-07-31 15:50:21 [INFO] [req-cd101904b92d] HTTP POST /v1/chat/completions - Status: 200 - Latency: 0.94ms
-INFO:     127.0.0.1:49932 - "POST /v1/chat/completions HTTP/1.1" 200 OK
-2026-07-31 15:50:22 [INFO] [req-719bbcd018a4] HTTP POST /v1/chat/completions - Status: 200 - Latency: 1.02ms
-INFO:     127.0.0.1:49942 - "POST /v1/chat/completions HTTP/1.1" 200 OK
-2026-07-31 15:50:22 [INFO] [req-30bb3b88addd] HTTP POST /v1/chat/completions - Status: 200 - Latency: 1.40ms
-INFO:     127.0.0.1:49956 - "POST /v1/chat/completions HTTP/1.1" 200 OK
-2026-07-31 15:50:22 [INFO] [req-aed60012f103] HTTP POST /v1/chat/completions - Status: 200 - Latency: 1.36ms
-INFO:     127.0.0.1:49960 - "POST /v1/chat/completions HTTP/1.1" 200 OK
-2026-07-31 15:50:22 [INFO] [req-9259ed170b76] HTTP POST /v1/chat/completions - Status: 200 - Latency: 0.97ms
-INFO:     127.0.0.1:49964 - "POST /v1/chat/completions HTTP/1.1" 200 OK
-2026-07-31 15:50:22 [INFO] [req-1c8fff0890ef] HTTP GET /v1/system/status - Status: 200 - Latency: 8.10ms
-INFO:     127.0.0.1:49978 - "GET /v1/system/status HTTP/1.1" 200 OK
-2026-07-31 15:50:22 [INFO] [req-adefdcf10f31] HTTP POST /v1/responses - Status: 200 - Latency: 2.26ms
-INFO:     127.0.0.1:49986 - "POST /v1/responses HTTP/1.1" 200 OK
-2026-07-31 15:50:22 [INFO] [req-8468bf37c8b5] HTTP POST /v1/responses - Status: 200 - Latency: 0.79ms
-INFO:     127.0.0.1:49992 - "POST /v1/responses HTTP/1.1" 200 OK
-2026-07-31 15:50:23 [INFO] [req-3bae6187f1b3] HTTP POST /v1/models/load - Status: 200 - Latency: 1.40ms
-INFO:     127.0.0.1:49996 - "POST /v1/models/load HTTP/1.1" 200 OK
-2026-07-31 15:50:23 [INFO] [-] Using MOCK embedding engine for 'bge-small-en-v1.5' (forced)
-2026-07-31 15:50:23 [INFO] [req-3bae6187f1b3] Loaded 'bge-small-en-v1.5' on CPU
-2026-07-31 15:50:23 [INFO] [req-702794e12ed5] HTTP GET /v1/system/status - Status: 200 - Latency: 6.74ms
-INFO:     127.0.0.1:50008 - "GET /v1/system/status HTTP/1.1" 200 OK
-2026-07-31 15:50:23 [INFO] [req-9941a99117d6] HTTP POST /v1/embeddings - Status: 200 - Latency: 2.13ms
-INFO:     127.0.0.1:50012 - "POST /v1/embeddings HTTP/1.1" 200 OK
-2026-07-31 15:50:23 [INFO] [req-f851a2daf1e3] HTTP POST /v1/models/unload - Status: 200 - Latency: 30.49ms
-INFO:     127.0.0.1:50026 - "POST /v1/models/unload HTTP/1.1" 200 OK
-2026-07-31 15:50:23 [INFO] [-] Using MOCK engine for 'tinyllama-1.1b-chat-fp16' (forced)
-2026-07-31 15:50:24 [INFO] [req-1108e76870d4] HTTP POST /v1/benchmarks/run - Status: 200 - Latency: 1079.07ms
-INFO:     127.0.0.1:50038 - "POST /v1/benchmarks/run HTTP/1.1" 200 OK
-2026-07-31 15:50:24 [INFO] [req-badb22b42c4f] HTTP POST /v1/models/load - Status: 200 - Latency: 1.50ms
-INFO:     127.0.0.1:50046 - "POST /v1/models/load HTTP/1.1" 200 OK
-2026-07-31 15:50:24 [INFO] [-] Using MOCK engine for 'tinyllama-1.1b-chat-fp16' (forced)
-2026-07-31 15:50:24 [INFO] [req-badb22b42c4f] Loaded 'tinyllama-1.1b-chat-fp16' on CPU
-2026-07-31 15:50:24 [INFO] [req-6c024a209f46] HTTP GET /v1/system/status - Status: 200 - Latency: 7.07ms
-INFO:     127.0.0.1:50056 - "GET /v1/system/status HTTP/1.1" 200 OK
-2026-07-31 15:50:24 [INFO] [req-f4946559b64b] HTTP POST /v1/models/unload - Status: 200 - Latency: 27.11ms
-INFO:     127.0.0.1:50072 - "POST /v1/models/unload HTTP/1.1" 200 OK
-2026-07-31 15:50:24 [INFO] [req-109ce1c228b5] HTTP POST /v1/chat/completions - Status: 409 - Latency: 0.72ms
-INFO:     127.0.0.1:50080 - "POST /v1/chat/completions HTTP/1.1" 409 Conflict
-2026-07-31 15:50:24 [INFO] [req-dc9bcd5fcbfc] HTTP POST /v1/models/load - Status: 200 - Latency: 1.31ms
-INFO:     127.0.0.1:50094 - "POST /v1/models/load HTTP/1.1" 200 OK
-2026-07-31 15:50:24 [INFO] [-] Using MOCK engine for 'tinyllama-1.1b-chat-fp16' (forced)
-2026-07-31 15:50:24 [INFO] [req-dc9bcd5fcbfc] Loaded 'tinyllama-1.1b-chat-fp16' on CPU
-2026-07-31 15:50:24 [INFO] [req-f31fadef8de1] HTTP GET /v1/system/status - Status: 200 - Latency: 7.26ms
-INFO:     127.0.0.1:50096 - "GET /v1/system/status HTTP/1.1" 200 OK
-INFO:     Shutting down
-INFO:     Waiting for application shutdown.
-2026-07-31 15:50:25 [INFO] [-] Server stopped; models unloaded.
-INFO:     Application shutdown complete.
-INFO:     Finished server process [2777]
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/runner/work/InferBridge/InferBridge/app/server.py", line 36, in <module>
+    from app import __version__, chat_format, model_manager, multimodal, tools
+  File "/home/runner/work/InferBridge/InferBridge/app/model_manager.py", line 18, in <module>
+    from app import model_load_safety, model_manager_core as _core, model_registry as registry
+  File "/home/runner/work/InferBridge/InferBridge/app/model_manager_core.py", line 26, in <module>
+    from app.config import BASE_DIR, Settings
+  File "/home/runner/work/InferBridge/InferBridge/app/config.py", line 29, in <module>
+    from app.status_split import install_status_split_routes_extension
+  File "/home/runner/work/InferBridge/InferBridge/app/status_split.py", line 24, in <module>
+    from app.model_manager_core import ModelManager as CoreModelManager
+ImportError: cannot import name 'ModelManager' from partially initialized module 'app.model_manager_core' (most likely due to a circular import) (/home/runner/work/InferBridge/InferBridge/app/model_manager_core.py)
 --- contract report ---
-# OpenVINO Windows LLM API Validation
-
-- Generated: `2026-07-31T15:50:24.849506+00:00`
-- Profile: `full`
-- Model: `tinyllama-1.1b-chat-fp16`
-- Device: `CPU`
-
-**Result:** 11 passed, 1 warnings, 1 skipped, 1 failed.
-
-| Check | Status | Duration | Detail |
-|---|---:|---:|---|
-| Health and probes | **PASS** | 2.7 ms | version=0.7.0 mock=True |
-| API-key enforcement | **SKIP** | 0.0 ms | No API key supplied |
-| Device discovery | **PASS** | 150.7 ms | available=CPU |
-| Model catalog | **PASS** | 12.9 ms | catalog=21 |
-| Model load | **PASS** | 45.7 ms | loaded on CPU |
-| Open WebUI chat | **PASS** | 3.5 ms | finish_reason=stop |
-| Open WebUI streaming | **PASS** | 837.8 ms | events=57 |
-| Stream cancellation recovery | **PASS** | 270.7 ms | follow-up request succeeded |
-| Tool and structured-output requests | **WARN** | 3.9 ms | Requests were accepted; model/runtime did not demonstrate both optional outputs |
-| Request metrics | **FAIL** | 9.3 ms | Request metrics did not record generation |
-| n8n Responses API | **PASS** | 839.4 ms | streaming and non-streaming passed |
-| Embeddings | **PASS** | 14.1 ms | dimensions=384 |
-| Benchmark | **PASS** | 1122.7 ms | benchmark succeeded |
-| Model lifecycle | **PASS** | 40.9 ms | loaded on CPU |
-
-> Reports exclude API keys, prompts, generated text, hostnames, usernames, and full local paths.
