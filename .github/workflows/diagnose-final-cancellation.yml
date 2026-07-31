@@ -1,4 +1,4 @@
-name: Diagnose Final Cancellation
+name: Diagnose Final Cancellation Retry
 
 on:
   push:
