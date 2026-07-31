@@ -21,7 +21,6 @@ from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, R
 from fastapi.responses import JSONResponse
 
 from app.brand import DISPLAY_NAME, LEGACY_DISPLAY_NAME
-from app.model_manager_core import ModelManager as CoreModelManager
 from app.telemetry import cpu_stats, disk_stats, gpu_stats, memory_stats
 from runtime import device_check
 
@@ -41,6 +40,14 @@ def _available_devices() -> list[str]:
     """Isolate driver discovery so the lightweight endpoint never invokes it."""
 
     return device_check.available_devices()
+
+
+def _core_manager_class():
+    """Resolve the core manager lazily to avoid the app.config import cycle."""
+
+    from app.model_manager_core import ModelManager as CoreModelManager
+
+    return CoreModelManager
 
 
 async def _require_access(
@@ -156,7 +163,7 @@ def install_status_manager_extension() -> None:
 def _lifecycle_catalog_entry(manager: Any, model_id: str) -> dict[str, Any]:
     """Build a lifecycle row without invoking the hardware advisor snapshot."""
 
-    entry = CoreModelManager.catalog_entry(manager, model_id)
+    entry = _core_manager_class().catalog_entry(manager, model_id)
     capability = getattr(manager, "cancellation_capability", None)
     if callable(capability):
         entry.update(capability(model_id))
@@ -219,7 +226,7 @@ def _model_snapshot(request: Request) -> dict[str, Any]:
 def _live_metrics(manager: Any, cached_metrics: dict[str, Any] | None) -> dict[str, Any]:
     """Keep request counters live while retaining cached advisor aggregates."""
 
-    metrics = CoreModelManager.metrics_summary(manager)
+    metrics = _core_manager_class().metrics_summary(manager)
     cached = cached_metrics if isinstance(cached_metrics, dict) else {}
     advisor = cached.get("advisor")
     if isinstance(advisor, dict):
