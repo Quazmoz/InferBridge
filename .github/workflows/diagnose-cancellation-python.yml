@@ -1,0 +1,57 @@
+name: Diagnose Cancellation Python
+
+on:
+  push:
+    branches: ["development"]
+    paths:
+      - ".github/workflows/diagnose-cancellation-python.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Apply and install
+        run: |
+          python .github/scripts/apply_cancellation_and_browser.py
+          python .github/scripts/fix_cancellation_race.py
+          python -m pip install --upgrade pip
+          pip install -e .[dev,browser]
+          ruff format app/config.py app/model_cancellation.py app/cancellation_ui.py browser_tests/conftest.py browser_tests/test_progress_browser.py tests/test_model_cancellation.py tests/test_model_cancellation_race.py tests/test_cancellation_ui.py
+
+      - name: Capture Python checks
+        shell: bash
+        run: |
+          set +e
+          ruff check app/model_cancellation.py app/cancellation_ui.py browser_tests tests/test_model_cancellation.py tests/test_model_cancellation_race.py tests/test_cancellation_ui.py > /tmp/ruff.txt 2>&1
+          ruff_status=$?
+          OV_LLM_MOCK=true pytest tests/test_model_cancellation.py tests/test_model_cancellation_race.py tests/test_cancellation_ui.py tests/test_structured_progress.py tests/test_progress_ui.py tests/test_server_mock.py > /tmp/pytest.txt 2>&1
+          pytest_status=$?
+          set -e
+          git reset --hard HEAD
+          mkdir -p .audit
+          {
+            echo "validated_sha=${GITHUB_SHA}"
+            echo "ruff=${ruff_status}"
+            echo "pytest=${pytest_status}"
+            echo "--- ruff ---"
+            cat /tmp/ruff.txt
+            echo "--- pytest ---"
+            tail -240 /tmp/pytest.txt
+          } > .audit/cancellation-python-diagnostic.txt
+          git config user.name github-actions[bot]
+          git config user.email 41898282+users.noreply.github.com
+          git add .audit/cancellation-python-diagnostic.txt
+          git commit -m "[skip ci] ci: record cancellation Python diagnostic"
+          git push origin HEAD:development
