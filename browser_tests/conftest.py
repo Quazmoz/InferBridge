@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import os
 import socket
 import threading
 import time
+from pathlib import Path
 
 import pytest
 import uvicorn
@@ -10,6 +12,20 @@ from playwright.sync_api import Browser, Page, sync_playwright
 
 from app.config import BASE_DIR, Settings
 from app.server import create_app
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    report = outcome.get_result()
+    if report.when != "call" or not report.failed or "page" not in item.funcargs:
+        return
+    page = item.funcargs["page"]
+    root = Path(os.environ.get("INFERBRIDGE_BROWSER_ARTIFACTS", "browser-artifacts"))
+    root.mkdir(parents=True, exist_ok=True)
+    safe_name = item.nodeid.replace("/", "_").replace("::", "__")
+    page.screenshot(path=str(root / f"{safe_name}.png"), full_page=True)
+    (root / f"{safe_name}.html").write_text(page.content(), encoding="utf-8")
 
 
 @pytest.fixture(scope="session")
