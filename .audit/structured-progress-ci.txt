@@ -1,4 +1,7 @@
-validated_sha=f5990f22176f09f696ab03f02d2413f53e10e765
+validated_sha=22aa7fdd1278555dadc7289ef3f4200110bd873b
 lint_and_test=failure
 external_contract=success
 windows_harness=success
+ruff_check=1
+ruff_format=1
+pytest=1

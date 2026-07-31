@@ -1,0 +1,286 @@
+validated_sha=22aa7fdd1278555dadc7289ef3f4200110bd873b
+ruff_check=1
+ruff_format=1
+pytest=1
+--- ruff check ---
+I001 [*] Import block is un-sorted or un-formatted
+  --> tests/test_progress_protocol.py:1:1
+   |
+ 1 | / import io
+ 2 | | import json
+ 3 | |
+ 4 | | import pytest
+ 5 | |
+ 6 | | from runtime.progress_protocol import (
+ 7 | |     EVENT_TYPE,
+ 8 | |     ProgressEventEmitter,
+ 9 | |     SCHEMA_VERSION,
+10 | |     decode_progress_event,
+11 | | )
+   | |_^
+   |
+help: Organize imports
+   |
+7  |     EVENT_TYPE,
+8  +     SCHEMA_VERSION,
+9  |     ProgressEventEmitter,
+   -     SCHEMA_VERSION,
+10 |     decode_progress_event,
+   |
+
+Found 1 error.
+[*] 1 fixable with the `--fix` option.
+--- ruff format ---
+unformatted: File would be reformatted
+  --> tests/test_model_converter.py:1:1
+   |
+80 |
+   - def test_export_model_stdout_is_jsonl_and_human_output_is_stderr(
+   -     monkeypatch, tmp_path, capsys
+   - ):
+81 + def test_export_model_stdout_is_jsonl_and_human_output_is_stderr(monkeypatch, tmp_path, capsys):
+82 |     monkeypatch.setattr(mc.shutil, "which", lambda name: "/usr/bin/optimum-cli")
+   |
+
+1 file would be reformatted, 305 files already formatted
+--- pytest ---
+tmp_path = PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/pytest/test_structured_stream_is_vali0')
+
+    def test_structured_stream_is_validated_and_mapped_to_server_operation(tmp_path) -> None:
+        manager = _manager(tmp_path)
+        manager._set_status("model-1", "converting")
+    
+        stream = io.StringIO()
+        producer = ProgressEventEmitter(
+            operation_id="producer-1",
+            model_id="model-1",
+            stream=stream,
+        )
+        producer.emit("downloading", "Downloading model files…", percent=40, completed=2, total=5)
+        producer.emit("converting", "Converting model to OpenVINO IR…", percent=10)
+    
+        lines = asyncio.run(
+            manager._read_conversion_stream(
+                "model-1",
+                manager.catalog["model-1"],
+>               _reader(stream.getvalue()),
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^
+            )
+        )
+
+tests/test_structured_progress.py:94: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_structured_progress.py:38: in _reader
+    reader = asyncio.StreamReader()
+             ^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/asyncio/streams.py:429: in __init__
+    self._loop = events._get_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <asyncio.unix_events._UnixDefaultEventLoopPolicy object at 0x7ff9c0206510>
+
+    def get_event_loop(self):
+        """Get the event loop for the current context.
+    
+        Returns an instance of EventLoop or raises an exception.
+        """
+        if (self._local._loop is None and
+                not self._local._set_called and
+                threading.current_thread() is threading.main_thread()):
+            self.set_event_loop(self.new_event_loop())
+    
+        if self._local._loop is None:
+>           raise RuntimeError('There is no current event loop in thread %r.'
+                               % threading.current_thread().name)
+E           RuntimeError: There is no current event loop in thread 'MainThread'.
+
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/asyncio/events.py:681: RuntimeError
+________ test_duplicate_or_out_of_order_producer_revisions_are_ignored _________
+
+tmp_path = PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/pytest/test_duplicate_or_out_of_order0')
+
+    def test_duplicate_or_out_of_order_producer_revisions_are_ignored(tmp_path) -> None:
+        manager = _manager(tmp_path)
+        manager._set_status("model-1", "converting")
+    
+        stream = io.StringIO()
+        producer = ProgressEventEmitter(
+            operation_id="producer-1",
+            model_id="model-1",
+            stream=stream,
+        )
+        producer.emit("downloading", "Downloading model files…", percent=25)
+        first_line = stream.getvalue().splitlines()[0]
+        duplicate_stream = f"{first_line}\n{first_line}\n"
+    
+        asyncio.run(
+            manager._read_conversion_stream(
+                "model-1",
+                manager.catalog["model-1"],
+>               _reader(duplicate_stream),
+                ^^^^^^^^^^^^^^^^^^^^^^^^^
+            )
+        )
+
+tests/test_structured_progress.py:126: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_structured_progress.py:38: in _reader
+    reader = asyncio.StreamReader()
+             ^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/asyncio/streams.py:429: in __init__
+    self._loop = events._get_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <asyncio.unix_events._UnixDefaultEventLoopPolicy object at 0x7ff9c0206510>
+
+    def get_event_loop(self):
+        """Get the event loop for the current context.
+    
+        Returns an instance of EventLoop or raises an exception.
+        """
+        if (self._local._loop is None and
+                not self._local._set_called and
+                threading.current_thread() is threading.main_thread()):
+            self.set_event_loop(self.new_event_loop())
+    
+        if self._local._loop is None:
+>           raise RuntimeError('There is no current event loop in thread %r.'
+                               % threading.current_thread().name)
+E           RuntimeError: There is no current event loop in thread 'MainThread'.
+
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/asyncio/events.py:681: RuntimeError
+__________ test_malformed_claimed_event_and_wrong_model_are_rejected ___________
+
+tmp_path = PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/pytest/test_malformed_claimed_event_a0')
+
+    def test_malformed_claimed_event_and_wrong_model_are_rejected(tmp_path) -> None:
+        manager = _manager(tmp_path)
+        manager._set_status("model-1", "converting")
+    
+        malformed = {
+            "schema_version": 1,
+            "type": "inferbridge.progress",
+            "operation_id": "bad operation id",
+            "revision": 1,
+            "phase": "downloading",
+            "message": "bad",
+            "percent": 10,
+            "model_id": "model-1",
+            "completed": None,
+            "total": None,
+            "timestamp": 1.0,
+        }
+        wrong_model_stream = io.StringIO()
+        producer = ProgressEventEmitter(
+            operation_id="producer-2",
+            model_id="different-model",
+            stream=wrong_model_stream,
+        )
+        producer.emit("downloading", "Wrong model", percent=10)
+        text = json.dumps(malformed) + "\n" + wrong_model_stream.getvalue()
+    
+        lines = asyncio.run(
+            manager._read_conversion_stream(
+                "model-1",
+                manager.catalog["model-1"],
+>               _reader(text),
+                ^^^^^^^^^^^^^
+            )
+        )
+
+tests/test_structured_progress.py:165: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_structured_progress.py:38: in _reader
+    reader = asyncio.StreamReader()
+             ^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/asyncio/streams.py:429: in __init__
+    self._loop = events._get_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <asyncio.unix_events._UnixDefaultEventLoopPolicy object at 0x7ff9c0206510>
+
+    def get_event_loop(self):
+        """Get the event loop for the current context.
+    
+        Returns an instance of EventLoop or raises an exception.
+        """
+        if (self._local._loop is None and
+                not self._local._set_called and
+                threading.current_thread() is threading.main_thread()):
+            self.set_event_loop(self.new_event_loop())
+    
+        if self._local._loop is None:
+>           raise RuntimeError('There is no current event loop in thread %r.'
+                               % threading.current_thread().name)
+E           RuntimeError: There is no current event loop in thread 'MainThread'.
+
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/asyncio/events.py:681: RuntimeError
+_______________ test_late_output_cannot_overwrite_terminal_state _______________
+
+tmp_path = PosixPath('/home/runner/work/InferBridge/InferBridge/.tmp/pytest/test_late_output_cannot_overwr0')
+
+    def test_late_output_cannot_overwrite_terminal_state(tmp_path) -> None:
+        manager = _manager(tmp_path)
+        manager._set_status("model-1", "cancelled")
+        manager._set_progress("model-1", "cancelled", "Conversion cancelled")
+        terminal = dict(manager.progress["model-1"])
+    
+        stream = io.StringIO()
+        producer = ProgressEventEmitter(
+            operation_id="producer-3",
+            model_id="model-1",
+            stream=stream,
+        )
+        producer.emit("converting", "Late buffered output", percent=90)
+        asyncio.run(
+            manager._read_conversion_stream(
+                "model-1",
+                manager.catalog["model-1"],
+>               _reader(stream.getvalue()),
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^
+            )
+        )
+
+tests/test_structured_progress.py:190: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_structured_progress.py:38: in _reader
+    reader = asyncio.StreamReader()
+             ^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/asyncio/streams.py:429: in __init__
+    self._loop = events._get_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <asyncio.unix_events._UnixDefaultEventLoopPolicy object at 0x7ff9c0206510>
+
+    def get_event_loop(self):
+        """Get the event loop for the current context.
+    
+        Returns an instance of EventLoop or raises an exception.
+        """
+        if (self._local._loop is None and
+                not self._local._set_called and
+                threading.current_thread() is threading.main_thread()):
+            self.set_event_loop(self.new_event_loop())
+    
+        if self._local._loop is None:
+>           raise RuntimeError('There is no current event loop in thread %r.'
+                               % threading.current_thread().name)
+E           RuntimeError: There is no current event loop in thread 'MainThread'.
+
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/asyncio/events.py:681: RuntimeError
+=============================== warnings summary ===============================
+../../../../../opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/fastapi/testclient.py:1
+  /opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_structured_progress.py::test_structured_stream_is_validated_and_mapped_to_server_operation - RuntimeError: There is no current event loop in thread 'MainThread'.
+FAILED tests/test_structured_progress.py::test_duplicate_or_out_of_order_producer_revisions_are_ignored - RuntimeError: There is no current event loop in thread 'MainThread'.
+FAILED tests/test_structured_progress.py::test_malformed_claimed_event_and_wrong_model_are_rejected - RuntimeError: There is no current event loop in thread 'MainThread'.
+FAILED tests/test_structured_progress.py::test_late_output_cannot_overwrite_terminal_state - RuntimeError: There is no current event loop in thread 'MainThread'.
+4 failed, 600 passed, 1 skipped, 1 warning in 15.66s
