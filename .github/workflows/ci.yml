@@ -284,30 +284,3 @@ jobs:
           path: browser-artifacts
           if-no-files-found: ignore
           retention-days: 3
-
-  report-development-results:
-    name: Report Development Results
-    if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/development' }}
-    needs: [lint-and-test, external-contract-smoke, windows-harness-syntax, browser-behavior]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Record aggregate outcomes
-        run: |
-          mkdir -p .audit
-          cat > .audit/cancellation-final-ci.txt <<EOF
-          validated_sha=${GITHUB_SHA}
-          lint_and_test=${{ needs.lint-and-test.result }}
-          external_contract=${{ needs.external-contract-smoke.result }}
-          windows_harness=${{ needs.windows-harness-syntax.result }}
-          browser_behavior=${{ needs.browser-behavior.result }}
-          EOF
-          git config user.name github-actions[bot]
-          git config user.email 41898282+users.noreply.github.com
-          git add .audit/cancellation-final-ci.txt
-          git commit -m "[skip ci] ci: record cancellation validation"
-          git push origin HEAD:development
