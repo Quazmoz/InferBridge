@@ -22,9 +22,12 @@ from app.model_cancellation import install_model_cancellation_routes_extension
 from app.model_library_routes import install_model_library_routes_extension
 from app.model_library_ui import install_model_library_ui_extension
 from app.onboarding_ui import install_onboarding_ui_extension
+from app.operation_queue_ui import install_operation_queue_ui_extension
 from app.paths import resolve_runtime_paths
 from app.progress_operation_ui import install_progress_operation_ui_extension
 from app.progress_reliability import install_progress_ui_extension
+from app.status_split import install_status_split_routes_extension
+from app.status_split_ui import install_status_split_ui_extension
 from app.ui_polish import install_ui_polish_extension
 from app.ui_quality import install_ui_quality_extension
 from runtime.device_check import normalize_device
@@ -36,6 +39,7 @@ from runtime.npu_compat import install_openvino_genai_compat
 install_openvino_genai_compat()
 install_model_library_routes_extension()
 install_model_cancellation_routes_extension()
+install_status_split_routes_extension()
 install_engine_handoff_routes_extension()
 install_branding_extension()
 install_chat_context_extension()
@@ -48,6 +52,10 @@ install_header_overflow_extension()
 install_progress_ui_extension()
 install_progress_operation_ui_extension()
 install_cancellation_ui_extension()
+# The split-status script must execute before operation/cancellation wrappers, while
+# the queue executes after them and before the primary progress controller.
+install_status_split_ui_extension()
+install_operation_queue_ui_extension()
 install_onboarding_ui_extension()
 install_model_library_ui_extension()
 install_desktop_operations_ui_extension()
@@ -138,6 +146,7 @@ class Settings:
         from app.lifecycle_safety import install_model_lifecycle_safety
         from app.model_cancellation import install_model_cancellation_manager_extension
         from app.model_load_target import install_model_load_target_routing
+        from app.status_split import install_status_manager_extension
         from app.structured_progress import install_structured_progress_protocol
 
         install_desktop_model_path_extension()
@@ -149,6 +158,7 @@ class Settings:
         install_structured_progress_protocol()
         install_model_lifecycle_safety()
         install_model_cancellation_manager_extension()
+        install_status_manager_extension()
         install_desktop_shutdown_safety()
 
     @classmethod
