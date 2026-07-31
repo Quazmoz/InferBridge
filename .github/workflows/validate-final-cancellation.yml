@@ -1,4 +1,4 @@
-name: Validate Final Cancellation
+name: Validate Final Cancellation Retry
 
 on:
   push:
