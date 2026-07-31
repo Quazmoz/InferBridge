@@ -70,6 +70,43 @@ def test_load_catalog_skips_malformed_entries(tmp_path):
     assert "bad" not in catalog
 
 
+def test_load_catalog_rejects_invalid_runtime_contracts(tmp_path):
+    path = _write_catalog(
+        tmp_path,
+        {
+            "valid-embedding": {
+                "name": "Embedding",
+                "backend": "openvino-embeddings",
+                "weight_format": "fp16",
+                "recommended_device": "CPU",
+                "max_context_len": 512,
+                "max_output_tokens": 0,
+            },
+            "bad_backend": {"name": "Bad", "backend": None},
+            "bad-format": {"name": "Bad", "weight_format": "gguf"},
+            "bad-device": {"name": "Bad", "recommended_device": "CUDA"},
+            "bad-context": {"name": "Bad", "max_context_len": -1},
+            "bad-output": {
+                "name": "Bad",
+                "max_context_len": 512,
+                "max_output_tokens": 512,
+            },
+            "bad-embedding-output": {
+                "name": "Bad",
+                "backend": "openvino-embeddings",
+                "max_output_tokens": 1,
+            },
+            "bad-name": {"name": ["not", "text"]},
+            "bad/id": {"name": "Unsafe ID"},
+        },
+    )
+
+    catalog = load_catalog(path)
+
+    assert set(catalog) == {"valid-embedding"}
+    assert catalog["valid-embedding"].max_prompt_len == 512
+
+
 def test_is_downloaded_detects_ir_markers(tmp_path):
     path = _write_catalog(tmp_path, {"m1": {"name": "M1", "model_path": "ir/m1"}})
     cfg = load_catalog(path)["m1"]
@@ -121,6 +158,18 @@ def test_make_catalog_entry_status_precedence(tmp_path):
     assert converting["status"] == "converting"
     assert converting["can_load"] is False
     assert converting["can_convert"] is False
+
+    malformed_progress = make_catalog_entry(
+        cfg,
+        loaded=False,
+        queued=False,
+        loading=False,
+        converting=True,
+        downloaded=False,
+        progress={"phase": "converting", "message": "Working", "percent": "unknown"},
+    )
+    assert malformed_progress["status"] == "converting"
+    assert malformed_progress["status_label"] == "Working"
 
     no_source_path = _write_catalog(tmp_path, {"m2": {"name": "M2"}})
     no_source_cfg = load_catalog(no_source_path)["m2"]
