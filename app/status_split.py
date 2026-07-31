@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import functools
+import logging
 import secrets
 import threading
 import time
@@ -23,6 +24,8 @@ from fastapi.responses import JSONResponse
 from app.brand import DISPLAY_NAME, LEGACY_DISPLAY_NAME
 from app.telemetry import cpu_stats, disk_stats, gpu_stats, memory_stats
 from runtime import device_check
+
+logger = logging.getLogger("ov-llm.status")
 
 _TELEMETRY_TTL_SECONDS = 5.0
 _MANAGER_INSTALL_FLAG = "_STATUS_SPLIT_MANAGER_INSTALLED"
@@ -175,15 +178,32 @@ def _lifecycle_catalog_entries(manager: Any) -> list[dict[str, Any]]:
 
 
 def _model_advisor_snapshot(manager: Any) -> dict[str, Any]:
-    """Collect advisor metadata only as part of the expensive telemetry refresh."""
+    """Collect advisor metadata without allowing one model to fail the refresh."""
 
     advisors: dict[str, Any] = {}
-    for model_id in manager.catalog:
-        entry = manager.catalog_entry(model_id)
+    for model_id in list(manager.catalog):
+        try:
+            entry = manager.catalog_entry(model_id)
+        except Exception:  # noqa: BLE001 - telemetry should degrade per model
+            logger.exception("Could not collect advisor telemetry for '%s'", model_id)
+            continue
         advisor = entry.get("advisor")
         if isinstance(advisor, dict):
             advisors[model_id] = advisor
     return advisors
+
+
+def _advisor_summary_snapshot(manager: Any) -> dict[str, Any]:
+    """Collect the aggregate advisor summary from stable runtime snapshots."""
+
+    advisor = getattr(manager, "advisor", None)
+    if advisor is None:
+        return {}
+    try:
+        return advisor.summary(dict(manager.engines), dict(manager.devices))
+    except Exception:  # noqa: BLE001 - request metrics remain useful without advisor data
+        logger.exception("Could not collect aggregate advisor telemetry")
+        return {}
 
 
 def _merge_model_advisor(
@@ -278,7 +298,7 @@ async def _telemetry_snapshot(request: Request, *, refresh: bool = False) -> dic
             return _cache_view(cache, manager, now=now, hit=True)
 
         try:
-            gpu, disk, available = await asyncio.gather(
+            gpu, disk, available, model_advisor, advisor_summary = await asyncio.gather(
                 asyncio.to_thread(gpu_stats),
                 asyncio.to_thread(
                     disk_stats,
@@ -286,7 +306,12 @@ async def _telemetry_snapshot(request: Request, *, refresh: bool = False) -> dic
                     cache_seconds=_TELEMETRY_TTL_SECONDS,
                 ),
                 asyncio.to_thread(_available_devices),
+                asyncio.to_thread(_model_advisor_snapshot, manager),
+                asyncio.to_thread(_advisor_summary_snapshot, manager),
             )
+            metrics = _core_manager_class().metrics_summary(manager)
+            if advisor_summary:
+                metrics["advisor"] = advisor_summary
             payload = {
                 "schema_version": 1,
                 "generated_at": int(time.time()),
@@ -303,8 +328,8 @@ async def _telemetry_snapshot(request: Request, *, refresh: bool = False) -> dic
                     "models_dir": str(settings.models_dir.resolve()),
                     **disk,
                 },
-                "metrics": manager.metrics_summary(),
-                "model_advisor": _model_advisor_snapshot(manager),
+                "metrics": metrics,
+                "model_advisor": model_advisor,
             }
         except Exception as exc:
             if cache.payload is not None:
