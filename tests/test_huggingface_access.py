@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from app import errors
 from app.config import Settings
+from app.diagnostics_privacy import sanitize_text
 from app.huggingface_access import (
     HuggingFaceAccessService,
     HuggingFaceCredentialStore,
@@ -79,6 +80,25 @@ def test_gated_preflight_stops_before_network_without_token(tmp_path, monkeypatc
     assert result["code"] == "hf_token_missing"
     assert result["recoverable"] is True
     assert calls == []
+
+
+def test_unknown_custom_gated_model_is_probed_before_conversion(tmp_path, monkeypatch):
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    calls = []
+
+    def handler(request: httpx.Request):
+        calls.append(request.url.path)
+        return httpx.Response(403)
+
+    service = HuggingFaceAccessService(
+        HuggingFaceCredentialStore(_settings(tmp_path)),
+        client_factory=_client_factory(handler),
+    )
+
+    result = asyncio.run(service.preflight("publisher/custom-gated-model", access_type="unknown"))
+
+    assert result["code"] == "hf_token_missing"
+    assert calls == ["/publisher/custom-gated-model/resolve/main/config.json"]
 
 
 def test_valid_token_and_model_access_are_verified_without_exposing_token(tmp_path):
@@ -186,6 +206,45 @@ def test_preflight_middleware_blocks_before_conversion_is_scheduled(tmp_path):
     assert scheduled == []
 
 
+def test_custom_model_middleware_uses_unknown_access_preflight(tmp_path):
+    app = FastAPI()
+    app.state.settings = _settings(tmp_path)
+    app.state.manager = SimpleNamespace(catalog={})
+    observed = []
+
+    class BlockedService:
+        async def preflight(self, source_model, *, access_type):
+            observed.append((source_model, access_type))
+            return {
+                "code": "hf_token_missing",
+                "message": "Configure a token.",
+                "recoverable": True,
+                "token_configured": False,
+                "source_model": source_model,
+            }
+
+    app.state.huggingface_access_service = BlockedService()
+    scheduled = []
+
+    @app.post("/v1/models/download-custom")
+    async def download_custom(_request: Request):
+        scheduled.append(True)
+        return {"scheduled": True}
+
+    register_huggingface_access_routes(app)
+    response = TestClient(app).post(
+        "/v1/models/download-custom",
+        json={
+            "model_id": "custom-model",
+            "source_model": "publisher/custom-model",
+        },
+    )
+
+    assert response.status_code == 409
+    assert observed == [("publisher/custom-model", "unknown")]
+    assert scheduled == []
+
+
 def test_preflight_middleware_replays_approved_request_body(tmp_path):
     app = FastAPI()
     app.state.settings = _settings(tmp_path)
@@ -253,11 +312,24 @@ def test_manager_entries_expose_structured_gated_metadata(tmp_path):
     )
 
 
-def test_conversion_errors_redact_tokens_and_point_to_in_app_recovery():
+def test_huggingface_tokens_are_removed_from_errors_progress_and_diagnostics(tmp_path):
     secret = "hf_abcdefghijklmnopqrstuvwxyz"
     message = errors.format_model_convert_error(
         RuntimeError(f"GatedRepoError: token={secret} unauthorized")
     )
-
     assert secret not in message
     assert "Settings > Hugging Face access" in message
+
+    models_file = tmp_path / "models.json"
+    models_file.write_text("{}", encoding="utf-8")
+    manager = ModelManager(
+        Settings(
+            models_file=models_file,
+            models_dir=tmp_path,
+            cache_dir=tmp_path / "cache",
+            benchmark_results_file=tmp_path / "benchmarks.json",
+            force_mock=True,
+        )
+    )
+    assert secret not in manager._sanitize_progress_line(f"token={secret}")
+    assert secret not in sanitize_text(f"HF_TOKEN={secret}")
