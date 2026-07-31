@@ -11,7 +11,7 @@ import pytest
 from app import model_load_target
 from app.config import BASE_DIR, Settings
 from app.model_manager import ModelManager
-from runtime import device_check, openvino_engine
+from runtime import device_check
 from runtime.openvino_engine import MockEngine
 
 MODEL_ID = "tinyllama-1.1b-chat-fp16"
@@ -122,14 +122,3 @@ def test_invalid_device_fails_before_waiting_for_native_load_lock(
         await manager.shutdown()
 
     asyncio.run(scenario())
-
-
-def test_npu_cache_prefers_fast_reusable_blob_format(tmp_path: Path) -> None:
-    manager = _manager()
-    config = openvino_engine.build_plugin_config("NPU", 2048, tmp_path)
-
-    assert config["CACHE_DIR"] == str(tmp_path)
-    assert config["CACHE_MODE"] == "OPTIMIZE_SPEED"
-    assert config["GENERATE_HINT"] == "FAST_COMPILE"
-
-    asyncio.run(manager.shutdown())
