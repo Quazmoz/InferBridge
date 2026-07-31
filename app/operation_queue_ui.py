@@ -134,7 +134,8 @@ OPERATION_QUEUE_JS = r"""
         heading.className = 'ovrp-queue-heading';
         const list = document.createElement('div');
         list.className = 'ovrp-queue-list';
-        list.setAttribute('role', 'list');
+        list.setAttribute('role', 'group');
+        list.setAttribute('aria-label', 'Choose the primary model operation');
         panel.append(heading, list);
         detail.appendChild(panel);
         return panel;
@@ -190,14 +191,16 @@ OPERATION_QUEUE_JS = r"""
             `${queueExpanded ? 'Hide' : 'Show'} ${operations.length} active model operations`,
         );
 
-        const panel = ensurePanel(detail);
+        const existingPanel = detail.querySelector(`#${PANEL_ID}`);
+        const panelWasMissing = !existingPanel;
+        const panel = existingPanel || ensurePanel(detail);
         panel.classList.toggle('expanded', queueExpanded);
         panel.hidden = !queueExpanded;
         const heading = panel.querySelector('.ovrp-queue-heading');
         if (heading.textContent !== toggleText) heading.textContent = toggleText;
 
         const signature = operationSignature(ordered, primary);
-        if (signature === lastSignature) return;
+        if (signature === lastSignature && !panelWasMissing) return;
         lastSignature = signature;
         const list = panel.querySelector('.ovrp-queue-list');
         const fragment = document.createDocumentFragment();
@@ -205,7 +208,6 @@ OPERATION_QUEUE_JS = r"""
             const row = document.createElement('button');
             row.type = 'button';
             row.className = `ovrp-queue-row${model.id === primary?.id ? ' current' : ''}`;
-            row.setAttribute('role', 'listitem');
             row.setAttribute('data-model-id', model.id);
             row.setAttribute(
                 'aria-label',
