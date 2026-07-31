@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.branding_ui import install_branding_extension
+from app.cancellation_ui import install_cancellation_ui_extension
 from app.chat_context_ui import install_chat_context_extension
 from app.chat_guard_ui import install_chat_guard_extension
 from app.chat_queue_ui import install_chat_queue_extension
@@ -17,6 +18,7 @@ from app.doctor_ui import install_system_doctor_extension
 from app.engine_handoff_routes import install_engine_handoff_routes_extension
 from app.gui_stability import install_gui_stability_extension
 from app.header_overflow_ui import install_header_overflow_extension
+from app.model_cancellation import install_model_cancellation_routes_extension
 from app.model_library_routes import install_model_library_routes_extension
 from app.model_library_ui import install_model_library_ui_extension
 from app.onboarding_ui import install_onboarding_ui_extension
@@ -33,6 +35,7 @@ from runtime.npu_compat import install_openvino_genai_compat
 # for their APIs and remain dormant in ordinary development-server mode.
 install_openvino_genai_compat()
 install_model_library_routes_extension()
+install_model_cancellation_routes_extension()
 install_engine_handoff_routes_extension()
 install_branding_extension()
 install_chat_context_extension()
@@ -44,6 +47,7 @@ install_system_doctor_extension()
 install_header_overflow_extension()
 install_progress_ui_extension()
 install_progress_operation_ui_extension()
+install_cancellation_ui_extension()
 install_onboarding_ui_extension()
 install_model_library_ui_extension()
 install_desktop_operations_ui_extension()
@@ -132,6 +136,7 @@ class Settings:
         from app.desktop_shutdown_safety import install_desktop_shutdown_safety
         from app.engine_handoff_safety import install_engine_handoff_safety
         from app.lifecycle_safety import install_model_lifecycle_safety
+        from app.model_cancellation import install_model_cancellation_manager_extension
         from app.model_load_target import install_model_load_target_routing
         from app.structured_progress import install_structured_progress_protocol
 
@@ -143,6 +148,7 @@ class Settings:
         # and retains its terminal-state protection while adding schema validation.
         install_structured_progress_protocol()
         install_model_lifecycle_safety()
+        install_model_cancellation_manager_extension()
         install_desktop_shutdown_safety()
 
     @classmethod
