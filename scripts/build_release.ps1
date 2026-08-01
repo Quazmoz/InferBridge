@@ -27,6 +27,7 @@ $script:ReleaseTimings = [Collections.Generic.List[object]]::new()
 $script:TimingSnapshotPath = $null
 $script:ReleaseEnvironmentKey = $null
 $script:ReleaseEnvironmentReused = $false
+$script:ScannedArtifacts = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 
 function Write-ReleaseTimingSnapshot([string]$Path, [bool]$Finalized = $false) {
     if ([string]::IsNullOrWhiteSpace($Path)) { return }
@@ -74,6 +75,30 @@ function Invoke-Checked([string]$Label, [scriptblock]$Command) {
     finally {
         Add-ReleaseTiming -Label $Label -Stopwatch $Stopwatch -Succeeded $Succeeded
     }
+}
+
+function Get-ArtifactScanKey([string]$Path) {
+    $Item = Get-Item -LiteralPath $Path
+    if ($Item.PSIsContainer) {
+        throw "Artifact scan tracking requires a file path: $Path"
+    }
+    return "$($Item.FullName)|$($Item.Length)|$($Item.LastWriteTimeUtc.Ticks)"
+}
+
+function Invoke-ArtifactScan([string]$Path, [string]$Label = "") {
+    $Item = Get-Item -LiteralPath $Path
+    $ScanKey = Get-ArtifactScanKey -Path $Item.FullName
+    if ($script:ScannedArtifacts.Contains($ScanKey)) {
+        Write-Host "==> Skip unchanged artifact scan: $($Item.Name)"
+        return
+    }
+    if ([string]::IsNullOrWhiteSpace($Label)) {
+        $Label = "Scan $($Item.Name)"
+    }
+    Invoke-Checked $Label {
+        & $ReleasePython scripts/release_tools.py scan --path $Item.FullName
+    }
+    [void]$script:ScannedArtifacts.Add($ScanKey)
 }
 
 function Resolve-Iscc([string]$Requested) {
@@ -341,7 +366,7 @@ InferBridge $Version portable release
         Invoke-Checked "Create portable ZIP without staging copy" {
             & $ReleasePython scripts/create_portable_archive.py create --source-root $BuiltRoot --output $PortableZip --archive-root $PortableName
         }
-        Invoke-Checked "Validate portable ZIP paths" { & $ReleasePython scripts/release_tools.py scan --path $PortableZip }
+        Invoke-ArtifactScan -Path $PortableZip -Label "Validate portable ZIP paths"
         Invoke-Checked "Verify portable ZIP layout" {
             & $ReleasePython scripts/create_portable_archive.py verify --path $PortableZip --archive-root $PortableName
         }
@@ -418,14 +443,14 @@ $Summary | ConvertTo-Json -Depth 8 | Set-Content -Path $SummaryPath -Encoding ut
 $Produced += $SummaryPath
 
 # Checksums are mandatory for every release. -GenerateChecksums remains accepted for explicit scripts.
-Invoke-Checked "Generate and verify SHA-256 checksums" { & $ReleasePython scripts/release_tools.py checksums --output-dir $Artifacts --version $Version }
+Invoke-Checked "Generate SHA-256 checksums" { & $ReleasePython scripts/release_tools.py checksums --output-dir $Artifacts --version $Version }
 $Checksums = Join-Path $Artifacts "InferBridge-$Version-checksums.txt"
 $Produced += $Checksums
 
 foreach ($Artifact in $Produced) {
-    Invoke-Checked "Scan $([IO.Path]::GetFileName($Artifact))" { & $ReleasePython scripts/release_tools.py scan --path $Artifact }
+    Invoke-ArtifactScan -Path $Artifact
 }
-Invoke-Checked "Re-verify final checksum file" { & $ReleasePython scripts/release_tools.py verify-checksums --path $Checksums }
+Invoke-Checked "Verify final SHA-256 checksums" { & $ReleasePython scripts/release_tools.py verify-checksums --path $Checksums }
 Write-ReleaseTimingSnapshot -Path $script:TimingSnapshotPath -Finalized $true
 
 Write-Host "Release build completed:"
