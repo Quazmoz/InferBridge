@@ -60,7 +60,7 @@ def register_onboarding_routes(
     @router.get("/documentation", include_in_schema=False)
     async def onboarding_documentation():
         return RedirectResponse(
-            "https://github.com/Quazmoz/openvino-windows-llm/blob/main/docs/FIRST_RUN.md",
+            "https://github.com/Quazmoz/InferBridge/blob/main/docs/FIRST_RUN.md",
             status_code=307,
         )
 
