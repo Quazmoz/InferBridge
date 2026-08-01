@@ -87,17 +87,13 @@ def test_internal_conversion_is_blocked_before_converter_start(tmp_path):
         _hf_internal_access_service=BlockedService(),
         _hf_credential_store=object(),
         convert_tasks={"gated": object()},
-        catalog_entry=lambda _model_id: {
-            "huggingface_access": {"access_type": "gated"}
-        },
+        catalog_entry=lambda _model_id: {"huggingface_access": {"access_type": "gated"}},
         _set_status=lambda *args, **kwargs: statuses.append((args, kwargs)),
         _set_progress=lambda *args, **kwargs: progress.append((args, kwargs)),
         emit_event=lambda *args, **kwargs: events.append((args, kwargs)),
     )
 
-    result = asyncio.run(
-        ModelManager._convert_task(fake_manager, "gated", "CPU", False)
-    )
+    result = asyncio.run(ModelManager._convert_task(fake_manager, "gated", "CPU", False))
 
     assert result is None
     assert calls == [("publisher/gated-model", "gated")]
