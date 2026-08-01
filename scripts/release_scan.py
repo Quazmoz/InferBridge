@@ -183,6 +183,7 @@ def scan_release_path(path: Path) -> None:
 
 
 def write_checksums(output_dir: Path, version: str, filename_factory) -> Path:
+    """Write artifact checksums without immediately rereading every artifact."""
     checksum_path = output_dir / filename_factory(version, "checksums")
     files = sorted(
         path for path in output_dir.iterdir() if path.is_file() and path != checksum_path
@@ -192,7 +193,6 @@ def write_checksums(output_dir: Path, version: str, filename_factory) -> Path:
     checksum_path.write_text(
         "\n".join(f"{sha256_file(path)}  {path.name}" for path in files) + "\n", encoding="ascii"
     )
-    verify_checksums(checksum_path)
     return checksum_path
 
 
