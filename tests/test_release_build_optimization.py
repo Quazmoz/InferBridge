@@ -34,7 +34,7 @@ def test_release_environment_validation_checks_metadata_and_exact_pins(tmp_path:
     requirements = tmp_path / "release.txt"
     requirements.write_text(
         f"pip=={importlib.metadata.version('pip')}\n"
-        'python-certifi-win32==1.6.1; platform_system == "Windows"\n',
+        'unused-package==1.6.1; platform_system == "DefinitelyNotARealOS"\n',
         encoding="utf-8",
     )
     metadata = tmp_path / "environment.json"
@@ -60,7 +60,7 @@ def test_portable_archive_preserves_versioned_root_without_staging_copy(tmp_path
     archive = tmp_path / "InferBridge-1.2.3-windows-x64-portable.zip"
 
     create_archive(source, archive, "InferBridge-1.2.3")
-    verify_archive(archive, "InferBridge-1.2.3")
+    verify_archive(archive, "InferBridge-1.2.3", source)
 
     with zipfile.ZipFile(archive) as handle:
         names = set(handle.namelist())
