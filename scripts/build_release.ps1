@@ -21,10 +21,59 @@ $ProgressPreference = "SilentlyContinue"
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Set-Location $Root
 
+$script:ReleaseStartedAt = [DateTime]::UtcNow
+$script:ReleaseStopwatch = [Diagnostics.Stopwatch]::StartNew()
+$script:ReleaseTimings = [Collections.Generic.List[object]]::new()
+$script:TimingSnapshotPath = $null
+$script:ReleaseEnvironmentKey = $null
+$script:ReleaseEnvironmentReused = $false
+
+function Write-ReleaseTimingSnapshot([string]$Path, [bool]$Finalized = $false) {
+    if ([string]::IsNullOrWhiteSpace($Path)) { return }
+    $Directory = Split-Path -Parent $Path
+    if ($Directory) { New-Item $Directory -ItemType Directory -Force | Out-Null }
+    $Payload = [ordered]@{
+        schema_version = 1
+        started_at = $script:ReleaseStartedAt.ToString("yyyy-MM-ddTHH:mm:ssZ")
+        generated_at = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
+        elapsed_ms = [Math]::Round($script:ReleaseStopwatch.Elapsed.TotalMilliseconds, 3)
+        finalized = $Finalized
+        environment = [ordered]@{
+            key = $script:ReleaseEnvironmentKey
+            reused = [bool]$script:ReleaseEnvironmentReused
+        }
+        steps = @($script:ReleaseTimings)
+    }
+    $Temporary = "$Path.tmp"
+    $Payload | ConvertTo-Json -Depth 8 | Set-Content -Path $Temporary -Encoding utf8
+    Move-Item $Temporary $Path -Force
+}
+
+function Add-ReleaseTiming([string]$Label, [Diagnostics.Stopwatch]$Stopwatch, [bool]$Succeeded) {
+    $Stopwatch.Stop()
+    $script:ReleaseTimings.Add([ordered]@{
+        label = $Label
+        duration_ms = [Math]::Round($Stopwatch.Elapsed.TotalMilliseconds, 3)
+        succeeded = $Succeeded
+    })
+    if ($script:TimingSnapshotPath) {
+        Write-ReleaseTimingSnapshot -Path $script:TimingSnapshotPath
+    }
+}
+
 function Invoke-Checked([string]$Label, [scriptblock]$Command) {
     Write-Host "==> $Label"
-    & $Command
-    if ($LASTEXITCODE -ne 0) { throw "$Label failed with exit code $LASTEXITCODE." }
+    $Stopwatch = [Diagnostics.Stopwatch]::StartNew()
+    $Succeeded = $false
+    try {
+        $global:LASTEXITCODE = 0
+        & $Command
+        if ($LASTEXITCODE -ne 0) { throw "$Label failed with exit code $LASTEXITCODE." }
+        $Succeeded = $true
+    }
+    finally {
+        Add-ReleaseTiming -Label $Label -Stopwatch $Stopwatch -Succeeded $Succeeded
+    }
 }
 
 function Resolve-Iscc([string]$Requested) {
@@ -101,12 +150,13 @@ if (-not $TreeClean -and -not $AllowDirty) {
 if (-not $TreeClean) { Write-Warning "Building from an uncommitted working tree. The manifest will record source_tree_clean=false." }
 
 $BuildRoot = Join-Path $Root "build\release"
+$ReleaseEnvironmentRoot = Join-Path $Root "build\release-environments"
+$ReleaseRequirements = Join-Path $Root "requirements\release.txt"
 $DistRoot = Join-Path $Root "dist"
 $Artifacts = if ($OutputDirectory) {
     if ([IO.Path]::IsPathRooted($OutputDirectory)) { [IO.Path]::GetFullPath($OutputDirectory) }
     else { [IO.Path]::GetFullPath((Join-Path $Root $OutputDirectory)) }
 } else { Join-Path $Root "artifacts\release-$Version" }
-$Venv = Join-Path $BuildRoot "venv"
 if ($Clean) {
     Remove-Item $BuildRoot, $DistRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
@@ -117,21 +167,60 @@ if (-not $OutputDirectory) {
 elseif (Test-Path $Artifacts) {
     Get-ChildItem $Artifacts -File -Filter "InferBridge-$Version-*" | Remove-Item -Force
 }
-New-Item $BuildRoot, $Artifacts -ItemType Directory -Force | Out-Null
+New-Item $BuildRoot, $ReleaseEnvironmentRoot, $Artifacts -ItemType Directory -Force | Out-Null
+$script:TimingSnapshotPath = Join-Path $BuildRoot "release-timings.json"
+Write-ReleaseTimingSnapshot -Path $script:TimingSnapshotPath
 
-if (-not (Test-Path (Join-Path $Venv "Scripts\python.exe"))) {
-    Invoke-Checked "Create isolated release environment" { & $Python -m venv $Venv }
+$EnvironmentKey = (& $Python scripts/release_environment.py fingerprint --requirements $ReleaseRequirements).Trim()
+if ($LASTEXITCODE -ne 0 -or $EnvironmentKey -notmatch '^[a-zA-Z0-9_.-]+$') {
+    throw "Could not fingerprint the pinned release environment."
 }
+$script:ReleaseEnvironmentKey = $EnvironmentKey
+$Venv = Join-Path $ReleaseEnvironmentRoot $EnvironmentKey
 $ReleasePython = Join-Path $Venv "Scripts\python.exe"
-Invoke-Checked "Install pinned release dependencies" { & $ReleasePython -m pip install --disable-pip-version-check -r requirements/release.txt }
+$EnvironmentMetadata = Join-Path $Venv ".inferbridge-release-environment.json"
+$EnvironmentValid = $false
+if (Test-Path $ReleasePython) {
+    Write-Host "==> Validate reusable release environment"
+    $ProbeStopwatch = [Diagnostics.Stopwatch]::StartNew()
+    try {
+        & $ReleasePython scripts/release_environment.py validate --requirements $ReleaseRequirements --metadata $EnvironmentMetadata
+        if ($LASTEXITCODE -eq 0) {
+            & $ReleasePython -m pip check
+            $EnvironmentValid = $LASTEXITCODE -eq 0
+        }
+    }
+    finally {
+        Add-ReleaseTiming -Label "Validate reusable release environment" -Stopwatch $ProbeStopwatch -Succeeded $EnvironmentValid
+    }
+    if (-not $EnvironmentValid) {
+        Write-Warning "The cached release environment failed validation and will be rebuilt."
+        Remove-Item $Venv -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+if (-not $EnvironmentValid) {
+    Invoke-Checked "Create fingerprinted release environment" { & $Python -m venv $Venv }
+    Invoke-Checked "Install pinned release dependencies" { & $ReleasePython -m pip install --disable-pip-version-check -r $ReleaseRequirements }
+    Invoke-Checked "Validate installed release dependencies" { & $ReleasePython -m pip check }
+    Invoke-Checked "Record release environment fingerprint" {
+        & $ReleasePython scripts/release_environment.py write-metadata --requirements $ReleaseRequirements --metadata $EnvironmentMetadata
+    }
+}
+else {
+    $script:ReleaseEnvironmentReused = $true
+    Write-Host "Reusing validated release environment: $EnvironmentKey"
+}
 Invoke-Checked "Install project without dependency re-resolution" { & $ReleasePython -m pip install --disable-pip-version-check --no-deps --no-build-isolation . }
 
 $InventoryJson = Join-Path $Artifacts "InferBridge-$Version-dependency-inventory.json"
 $InventoryText = Join-Path $Artifacts "InferBridge-$Version-dependency-freeze.txt"
-& $ReleasePython -m pip list --format=json | Set-Content -Path $InventoryJson -Encoding utf8
-if ($LASTEXITCODE -ne 0) { throw "Dependency inventory generation failed." }
-& $ReleasePython -m pip freeze --all --exclude openvino-windows-llm | Set-Content -Path $InventoryText -Encoding utf8
-if ($LASTEXITCODE -ne 0) { throw "Dependency freeze generation failed." }
+Invoke-Checked "Generate dependency inventory" {
+    & $ReleasePython -m pip list --format=json | Set-Content -Path $InventoryJson -Encoding utf8
+}
+Invoke-Checked "Generate dependency freeze" {
+    & $ReleasePython -m pip freeze --all --exclude openvino-windows-llm | Set-Content -Path $InventoryText -Encoding utf8
+}
 
 if (-not $SkipTests) {
     Invoke-Checked "Ruff lint" { & $ReleasePython -m ruff check . }
@@ -185,7 +274,7 @@ if ($RunMockSmoke -and -not $SkipInstaller) {
 
 $LauncherSigned = $false
 if ($Sign) {
-    Sign-AndVerify $Launcher
+    Invoke-Checked "Sign and verify packaged launcher" { Sign-AndVerify $Launcher }
     $LauncherSigned = $true
 }
 else {
@@ -194,46 +283,8 @@ else {
 
 $Produced = @($InventoryJson, $InventoryText)
 $SignedTypes = @()
-if (-not $SkipPortable) {
-    $PortableContainer = Join-Path $BuildRoot "portable"
-    $PortableName = "InferBridge-$Version"
-    $PortableStage = Join-Path $PortableContainer $PortableName
-    Remove-Item $PortableContainer -Recurse -Force -ErrorAction SilentlyContinue
-    New-Item $PortableStage -ItemType Directory -Force | Out-Null
-    Copy-Item (Join-Path $BuiltRoot "*") $PortableStage -Recurse -Force
-    Set-Content -Path (Join-Path $PortableStage "portable.flag") -Value "portable" -Encoding ascii
-    @"
-InferBridge $Version portable release
 
-1. Extract the complete directory to a writable non-administrator location.
-2. Run InferBridge.exe.
-3. Mutable configuration, models, caches, logs, onboarding state, and benchmarks remain under .\data.
-4. This package does not change the registry or Start Menu and does not enable Start with Windows.
-5. See UPGRADE_ROLLBACK.md before replacing an existing portable directory.
-"@ | Set-Content -Path (Join-Path $PortableStage "PORTABLE-README.txt") -Encoding utf8
-    Copy-Item docs/UPGRADE_ROLLBACK.md, docs/KNOWN_ISSUES.md, docs/COMPATIBILITY_MATRIX.md -Destination $PortableStage
-    $PortableZip = Join-Path $Artifacts "InferBridge-$Version-windows-x64-portable.zip"
-    Remove-Item $PortableZip -Force -ErrorAction SilentlyContinue
-    Compress-Archive -Path $PortableStage -DestinationPath $PortableZip -CompressionLevel Optimal
-    Invoke-Checked "Validate portable ZIP paths" { & $ReleasePython scripts/release_tools.py scan --path $PortableZip }
-    $ExtractRoot = Join-Path ([IO.Path]::GetTempPath()) ("OV LLM Portable Smoke " + [guid]::NewGuid().ToString("N"))
-    try {
-        Expand-Archive -Path $PortableZip -DestinationPath $ExtractRoot
-        $ExtractedDistribution = Join-Path $ExtractRoot $PortableName
-        if (-not (Test-Path (Join-Path $ExtractedDistribution "portable.flag"))) { throw "Portable marker missing after extraction." }
-        if ($RunMockSmoke) {
-            Invoke-Checked "Run portable packaged mock smoke test" {
-                & (Join-Path $Root "scripts\smoke_test_packaged.ps1") -DistributionPath $ExtractedDistribution -Python $ReleasePython -ExpectedMode portable
-            }
-        }
-    }
-    finally {
-        Remove-Item $ExtractRoot -Recurse -Force -ErrorAction SilentlyContinue
-    }
-    $Produced += $PortableZip
-    if ($LauncherSigned) { $SignedTypes += "portable" }
-}
-
+# Build the installed-mode installer before temporarily adding portable-only files.
 if (-not $SkipInstaller) {
     $Compiler = Resolve-Iscc $IsccPath
     if (-not $Compiler) { throw "Inno Setup 6 compiler was not found. Set ISCC_PATH or use -SkipInstaller." }
@@ -245,10 +296,61 @@ if (-not $SkipInstaller) {
     $Installer = Join-Path $Artifacts "InferBridge-$Version-windows-x64-installer.exe"
     if (-not (Test-Path $Installer)) { throw "Installer was not produced: $Installer" }
     if ($Sign) {
-        Sign-AndVerify $Installer
+        Invoke-Checked "Sign and verify installer" { Sign-AndVerify $Installer }
         $SignedTypes += "installer"
     }
     $Produced += $Installer
+}
+
+if (-not $SkipPortable) {
+    $PortableName = "InferBridge-$Version"
+    $PortableMarker = Join-Path $BuiltRoot "portable.flag"
+    $PortableReadme = Join-Path $BuiltRoot "PORTABLE-README.txt"
+    $PortableDocuments = @(
+        @{ Source = "docs/UPGRADE_ROLLBACK.md"; Target = (Join-Path $BuiltRoot "UPGRADE_ROLLBACK.md") },
+        @{ Source = "docs/KNOWN_ISSUES.md"; Target = (Join-Path $BuiltRoot "KNOWN_ISSUES.md") },
+        @{ Source = "docs/COMPATIBILITY_MATRIX.md"; Target = (Join-Path $BuiltRoot "COMPATIBILITY_MATRIX.md") }
+    )
+    $PortableOnlyPaths = @($PortableMarker, $PortableReadme) + @($PortableDocuments | ForEach-Object { $_.Target })
+    foreach ($Path in $PortableOnlyPaths) {
+        if (Test-Path $Path) { throw "Portable staging would overwrite an existing packaged file: $Path" }
+    }
+
+    try {
+        Set-Content -Path $PortableMarker -Value "portable" -Encoding ascii
+        @"
+InferBridge $Version portable release
+
+1. Extract the complete directory to a writable non-administrator location.
+2. Run InferBridge.exe.
+3. Mutable configuration, models, caches, logs, onboarding state, and benchmarks remain under .\data.
+4. This package does not change the registry or Start Menu and does not enable Start with Windows.
+5. See UPGRADE_ROLLBACK.md before replacing an existing portable directory.
+"@ | Set-Content -Path $PortableReadme -Encoding utf8
+        foreach ($Document in $PortableDocuments) {
+            Copy-Item $Document.Source $Document.Target -Force
+        }
+
+        if ($RunMockSmoke) {
+            Invoke-Checked "Run portable packaged mock smoke test" {
+                & (Join-Path $Root "scripts\smoke_test_packaged.ps1") -DistributionPath $BuiltRoot -Python $ReleasePython -ExpectedMode portable
+            }
+        }
+
+        $PortableZip = Join-Path $Artifacts "InferBridge-$Version-windows-x64-portable.zip"
+        Invoke-Checked "Create portable ZIP without staging copy" {
+            & $ReleasePython scripts/create_portable_archive.py create --source-root $BuiltRoot --output $PortableZip --archive-root $PortableName
+        }
+        Invoke-Checked "Validate portable ZIP paths" { & $ReleasePython scripts/release_tools.py scan --path $PortableZip }
+        Invoke-Checked "Verify portable ZIP layout" {
+            & $ReleasePython scripts/create_portable_archive.py verify --path $PortableZip --archive-root $PortableName
+        }
+    }
+    finally {
+        Remove-Item $PortableOnlyPaths -Force -ErrorAction SilentlyContinue
+    }
+    $Produced += $PortableZip
+    if ($LauncherSigned) { $SignedTypes += "portable" }
 }
 
 $LicenseStage = Join-Path $BuildRoot "third-party-licenses"
@@ -256,7 +358,9 @@ Remove-Item $LicenseStage -Recurse -Force -ErrorAction SilentlyContinue
 New-Item $LicenseStage -ItemType Directory -Force | Out-Null
 Copy-Item LICENSE, $Notices, $InventoryJson, $InventoryText, docs/THIRD_PARTY_LICENSES.md -Destination $LicenseStage
 $LicenseZip = Join-Path $Artifacts "InferBridge-$Version-third-party-licenses.zip"
-Compress-Archive -Path (Join-Path $LicenseStage "*") -DestinationPath $LicenseZip -CompressionLevel Optimal -Force
+Invoke-Checked "Create third-party license archive" {
+    Compress-Archive -Path (Join-Path $LicenseStage "*") -DestinationPath $LicenseZip -CompressionLevel Optimal -Force
+}
 $Produced += $LicenseZip
 
 $ReleaseNotesSource = Join-Path $Root "docs\releases\$Version.md"
@@ -271,6 +375,10 @@ Invoke-Checked "Validate model library manifest" { & $ReleasePython scripts/vali
 $ModelLibraryAsset = Join-Path $Artifacts "model-library-manifest.json"
 Copy-Item $ModelLibrarySource $ModelLibraryAsset -Force
 $Produced += $ModelLibraryAsset
+
+$TimingArtifact = Join-Path $Artifacts "InferBridge-$Version-release-timings.json"
+Write-ReleaseTimingSnapshot -Path $TimingArtifact -Finalized $true
+$Produced += $TimingArtifact
 
 $PublishedAt = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
 Invoke-Checked "Generate and validate release manifest" {
@@ -293,6 +401,9 @@ $Summary = [ordered]@{
     packaged_portable_mode_smoke_test = $RunMockSmoke -and -not [bool]$SkipPortable
     launcher_signature_verified = $LauncherSigned
     installer_signature_verified = ($SignedTypes -contains "installer")
+    release_environment_key = $EnvironmentKey
+    release_environment_reused = [bool]$script:ReleaseEnvironmentReused
+    timing_telemetry = [IO.Path]::GetFileName($TimingArtifact)
     artifact_directory = "."
     artifacts = @($Produced | ForEach-Object { [IO.Path]::GetFileName($_) })
     unverified = @(
@@ -315,6 +426,8 @@ foreach ($Artifact in $Produced) {
     Invoke-Checked "Scan $([IO.Path]::GetFileName($Artifact))" { & $ReleasePython scripts/release_tools.py scan --path $Artifact }
 }
 Invoke-Checked "Re-verify final checksum file" { & $ReleasePython scripts/release_tools.py verify-checksums --path $Checksums }
+Write-ReleaseTimingSnapshot -Path $script:TimingSnapshotPath -Finalized $true
 
 Write-Host "Release build completed:"
 Get-ChildItem $Artifacts -File | Sort-Object Name | ForEach-Object { Write-Host "  $($_.FullName)" }
+Write-Host "Detailed final timing log: $script:TimingSnapshotPath"
