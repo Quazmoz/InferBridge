@@ -56,7 +56,7 @@ def create_archive(source_root: Path, output: Path, archive_root: str) -> None:
 
 
 def verify_archive(path: Path, archive_root: str, source_root: Path | None = None) -> None:
-    """Verify root layout and source-file parity without extracting the archive."""
+    """Verify root layout and optional source-file parity without extracting the archive."""
 
     archive_root = _validate_archive_root(archive_root)
     prefix = f"{archive_root}/"
@@ -106,7 +106,7 @@ def _parser() -> argparse.ArgumentParser:
     verify = subparsers.add_parser("verify")
     verify.add_argument("--path", type=Path, required=True)
     verify.add_argument("--archive-root", required=True)
-    verify.add_argument("--source-root", type=Path, required=True)
+    verify.add_argument("--source-root", type=Path)
     return parser
 
 
