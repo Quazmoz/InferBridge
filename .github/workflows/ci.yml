@@ -177,7 +177,7 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Parse PowerShell release and certification scripts
+      - name: Parse PowerShell release, certification, and setup scripts
         shell: pwsh
         run: |
           $paths = @(
@@ -187,7 +187,10 @@ jobs:
             "scripts/test_openwebui_compat.ps1",
             "scripts/smoke_test_packaged.ps1",
             "scripts/validate_mock_contract.ps1",
-            "scripts/validate_windows.ps1"
+            "scripts/validate_windows.ps1",
+            "setup/windows/check_hardware.ps1",
+            "setup/windows/install_deps.ps1",
+            "setup/windows/setup_all.ps1"
           )
           foreach ($path in $paths) {
             $tokens = $null
