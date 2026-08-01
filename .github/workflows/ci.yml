@@ -181,6 +181,7 @@ jobs:
         shell: pwsh
         run: |
           $paths = @(
+            "scripts/build_dev_package.ps1",
             "scripts/build_release.ps1",
             "scripts/build_windows_distribution.ps1",
             "scripts/publish_release.ps1",
@@ -219,6 +220,7 @@ jobs:
           app/model_lifecycle_ui.py
           app/operation_queue_ui.py
           app/progress_operation_ui.py
+          app/request_logging.py
           app/responsive_ui.py
           app/status_split.py
           app/status_split_ui.py
@@ -243,6 +245,7 @@ jobs:
           OV_LLM_MOCK: "true"
         run: >-
           pytest
+          tests/test_dev_package_script.py
           tests/test_release_pipeline.py
           tests/test_release_signing_gate.py
           tests/test_release_provenance.py
@@ -259,6 +262,7 @@ jobs:
           tests/test_operation_queue_ui.py
           tests/test_progress_operation_ui.py
           tests/test_progress_protocol.py
+          tests/test_request_logging.py
           tests/test_status_split.py
           tests/test_status_split_ui.py
           tests/test_structured_progress.py
