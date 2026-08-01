@@ -59,6 +59,10 @@ def test_queue_rows_show_truthful_progress_without_clipping_current_badge() -> N
     assert "function progressPercent(model)" in script
     assert "progress.overall_percent" in script
     assert "progress.completed" in script
+    assert "progress.overall_percent !== ''" in script
+    assert "const row = document.createElement('div')" in script
+    assert "const selectButton = document.createElement('button')" in script
+    assert "row.append(selectButton, track)" in script
     assert "track.setAttribute('role', 'progressbar')" in script
     assert "track.setAttribute('aria-valuenow'" in script
     assert "track.setAttribute('aria-valuetext'" in script
