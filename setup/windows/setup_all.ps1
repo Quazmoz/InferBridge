@@ -41,7 +41,7 @@ $hfOk = $false
 
 try {
     Write-Host "Checking connection to PyPI (pypi.org)... " -NoNewline
-    $resPyPI = Invoke-RestMethod -Uri "https://pypi.org/pypi/fastapi/json" -TimeoutSec 5 -ErrorAction Stop
+    $null = Invoke-RestMethod -Uri "https://pypi.org/pypi/fastapi/json" -TimeoutSec 5 -ErrorAction Stop
     Write-Host "SUCCESS" -ForegroundColor Green
     $pypiOk = $true
 } catch {
@@ -51,7 +51,7 @@ try {
 
 try {
     Write-Host "Checking connection to Hugging Face (huggingface.co)... " -NoNewline
-    $resHF = Invoke-RestMethod -Uri "https://huggingface.co/api/models/TinyLlama/TinyLlama-1.1B-Chat-v1.0" -TimeoutSec 5 -ErrorAction Stop
+    $null = Invoke-RestMethod -Uri "https://huggingface.co/api/models/TinyLlama/TinyLlama-1.1B-Chat-v1.0" -TimeoutSec 5 -ErrorAction Stop
     Write-Host "SUCCESS" -ForegroundColor Green
     $hfOk = $true
 } catch {
@@ -78,87 +78,19 @@ $installArgs = @{ Python = $Python }
 if (-not $Minimal) { $installArgs["WithConvert"] = $true }
 & "$PSScriptRoot\install_deps.ps1" @installArgs
 
-# --- Configure .env if not exists ---
+# --- Configure non-secret environment defaults if needed ---
 $envFile = Join-Path $RepoRoot ".env"
 $envExampleFile = Join-Path $RepoRoot ".env.example"
-if (-not (Test-Path $envFile)) {
-    if (Test-Path $envExampleFile) {
-        Copy-Item -Path $envExampleFile -Destination $envFile
-        Write-Host "Created .env from .env.example" -ForegroundColor Green
-    }
+if (-not (Test-Path $envFile) -and (Test-Path $envExampleFile)) {
+    Copy-Item -Path $envExampleFile -Destination $envFile
+    Write-Host "Created .env from .env.example" -ForegroundColor Green
 }
 
-# --- Hugging Face Token Configuration ---
-if (Test-Path $envFile) {
-    $envLines = Get-Content $envFile
-    $hasToken = $false
-    foreach ($line in $envLines) {
-        if ($line -match "^HF_TOKEN=\s*(hf_[^\s#]+)") {
-            $hasToken = $true
-            break
-        }
-    }
-
-    if (-not $hasToken) {
-        # Try to locate a cached token first
-        $cachedTokenFile = Join-Path $HOME ".cache\huggingface\token"
-        $tokenToSet = ""
-        
-        if (Test-Path $cachedTokenFile) {
-            $cachedToken = (Get-Content $cachedTokenFile -Raw).Trim()
-            if ($cachedToken -match "^hf_") {
-                $tokenToSet = $cachedToken
-                Write-Host ""
-                Write-Host "Detected existing Hugging Face token in cache. Automatically configuring it..." -ForegroundColor Green
-            }
-        }
-
-        # If no cached token, prompt the user if interactive
-        if (-not $tokenToSet -and [Environment]::UserInteractive) {
-            Write-Host ""
-            Write-Host "--------------------------------------------------------" -ForegroundColor Cyan
-            Write-Host "Hugging Face Authentication (Optional)" -ForegroundColor Cyan
-            Write-Host "--------------------------------------------------------" -ForegroundColor Cyan
-            Write-Host "Gated models like Llama and Gemma require a Hugging Face token."
-            Write-Host "To download these models, accept their terms on huggingface.co"
-            Write-Host "and generate a token at https://huggingface.co/settings/tokens"
-            Write-Host ""
-            
-            try {
-                $ans = Read-Host "Would you like to configure your Hugging Face token now? (y/N)"
-                if ($ans -eq "y" -or $ans -eq "yes") {
-                    $inputToken = (Read-Host "Paste your Hugging Face token (starts with hf_)").Trim()
-                    if ($inputToken) {
-                        $tokenToSet = $inputToken
-                    }
-                }
-            } catch {
-                # Read-Host failed or was cancelled (e.g. non-interactive environment)
-            }
-        }
-
-        if ($tokenToSet) {
-            $newLines = @()
-            $replaced = $false
-            foreach ($line in $envLines) {
-                if ($line -match "^HF_TOKEN=") {
-                    $newLines += "HF_TOKEN=$tokenToSet"
-                    $replaced = $true
-                } else {
-                    $newLines += $line
-                }
-            }
-            if (-not $replaced) {
-                $newLines += "HF_TOKEN=$tokenToSet"
-            }
-            $newLines | Out-File -FilePath $envFile -Encoding utf8
-            Write-Host "HF_TOKEN successfully configured in .env!" -ForegroundColor Green
-        } else {
-            Write-Host ""
-            Write-Host "Tip: You can manually configure HF_TOKEN in your .env file at any time." -ForegroundColor Yellow
-        }
-    }
-}
+Write-Host ""
+Write-Host "Hugging Face access:" -ForegroundColor Cyan
+Write-Host "  Configure gated-model access from Settings after starting InferBridge." -ForegroundColor White
+Write-Host "  Windows stores the token with DPAPI; setup never copies tokens into .env." -ForegroundColor White
+Write-Host "  HF_TOKEN remains available only as an advanced environment fallback." -ForegroundColor DarkGray
 
 Write-Host ""
 Write-Host "==========================================" -ForegroundColor Green
