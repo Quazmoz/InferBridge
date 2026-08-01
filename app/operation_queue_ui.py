@@ -31,15 +31,17 @@ OPERATION_QUEUE_JS = r"""
         .ovrp-operation-queue.expanded{display:block}
         .ovrp-queue-heading{margin:0 0 7px;color:var(--text-2);font-size:10.5px;font-weight:750}
         .ovrp-queue-list{display:grid;gap:7px}
-        .ovrp-queue-row{--ovrp-queue-progress:0%;width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:'copy value' 'track track';gap:7px 10px;align-items:center;min-height:48px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);color:inherit;text-align:left;font:inherit;cursor:pointer;transition:border-color .16s ease,background .16s ease,transform .16s ease}
+        .ovrp-queue-row{--ovrp-queue-progress:0%;width:100%;display:grid;grid-template-areas:'select' 'track';gap:7px;min-height:48px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);color:inherit;transition:border-color .16s ease,background .16s ease,transform .16s ease}
         .ovrp-queue-row:hover{border-color:color-mix(in srgb,var(--primary) 35%,var(--border));background:color-mix(in srgb,var(--primary) 5%,var(--surface-2));transform:translateY(-1px)}
-        .ovrp-queue-row:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+        .ovrp-queue-row:focus-within{outline:2px solid var(--primary);outline-offset:2px}
         .ovrp-queue-row.current{border-color:color-mix(in srgb,var(--primary) 45%,var(--border));background:color-mix(in srgb,var(--primary) 8%,var(--surface-2))}
-        .ovrp-queue-copy{grid-area:copy;min-width:0;display:grid;gap:3px}
+        .ovrp-queue-select{grid-area:select;width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:start;padding:0;border:0;background:transparent;color:inherit;text-align:left;font:inherit;cursor:pointer}
+        .ovrp-queue-select:focus-visible{outline:none}
+        .ovrp-queue-copy{min-width:0;display:grid;gap:3px}
         .ovrp-queue-title{display:flex;align-items:center;gap:6px;min-width:0}
         .ovrp-queue-model{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-1);font-size:10.5px;font-weight:750}
         .ovrp-queue-phase{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-3);font-size:10.5px}
-        .ovrp-queue-value{grid-area:value;align-self:start;color:var(--primary);font-size:10.5px;font-weight:750;font-variant-numeric:tabular-nums;white-space:nowrap}
+        .ovrp-queue-value{align-self:start;color:var(--primary);font-size:10.5px;font-weight:750;font-variant-numeric:tabular-nums;white-space:nowrap}
         .ovrp-queue-current{flex:0 0 auto;display:inline-flex;align-items:center;padding:1px 5px;border-radius:999px;background:color-mix(in srgb,var(--primary) 14%,transparent);color:var(--primary);font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
         .ovrp-queue-track{grid-area:track;position:relative;height:5px;overflow:hidden;border-radius:999px;background:var(--surface-3);box-shadow:inset 0 0 0 1px var(--border)}
         .ovrp-queue-fill{position:absolute;inset:0 auto 0 0;width:var(--ovrp-queue-progress);border-radius:inherit;background:var(--accent-grad);transition:width .3s ease}
@@ -104,11 +106,21 @@ OPERATION_QUEUE_JS = r"""
     function progressPercent(model) {
         const progress = model?.progress || {};
         const overall = Number(progress.overall_percent);
-        if (progress.overall_percent !== null && progress.overall_percent !== undefined && Number.isFinite(overall)) {
+        if (
+            progress.overall_percent !== null
+            && progress.overall_percent !== undefined
+            && progress.overall_percent !== ''
+            && Number.isFinite(overall)
+        ) {
             return Math.max(0, Math.min(100, overall));
         }
         const percent = Number(progress.percent);
-        if (progress.percent !== null && progress.percent !== undefined && Number.isFinite(percent)) {
+        if (
+            progress.percent !== null
+            && progress.percent !== undefined
+            && progress.percent !== ''
+            && Number.isFinite(percent)
+        ) {
             return Math.max(0, Math.min(100, percent));
         }
         const completed = Number(progress.completed);
@@ -237,16 +249,19 @@ OPERATION_QUEUE_JS = r"""
             const percent = progressPercent(model);
             const phase = String(model?.progress?.phase || model?.status || '').toLowerCase();
             const queued = phase === 'queued' || phase === 'queued_convert';
-            const row = document.createElement('button');
-            row.type = 'button';
+            const row = document.createElement('div');
             row.className = `ovrp-queue-row${model.id === primary?.id ? ' current' : ''}${percent === null && !queued ? ' indeterminate' : ''}${queued ? ' queued' : ''}`;
             row.setAttribute('data-model-id', model.id);
-            row.setAttribute('aria-current', model.id === primary?.id ? 'true' : 'false');
-            row.setAttribute(
+
+            const selectButton = document.createElement('button');
+            selectButton.type = 'button';
+            selectButton.className = 'ovrp-queue-select';
+            selectButton.setAttribute('aria-current', model.id === primary?.id ? 'true' : 'false');
+            selectButton.setAttribute(
                 'aria-label',
                 `${operationName(model)}, ${phaseLabel(model)}, ${valueLabel(model)}`,
             );
-            row.onclick = event => {
+            selectButton.onclick = event => {
                 event.stopPropagation();
                 selectOperation(model.id);
             };
@@ -273,6 +288,7 @@ OPERATION_QUEUE_JS = r"""
             const value = document.createElement('span');
             value.className = 'ovrp-queue-value';
             value.textContent = valueLabel(model);
+            selectButton.append(copy, value);
 
             const track = document.createElement('span');
             track.className = 'ovrp-queue-track';
@@ -292,7 +308,7 @@ OPERATION_QUEUE_JS = r"""
             fill.setAttribute('aria-hidden', 'true');
             track.appendChild(fill);
 
-            row.append(copy, value, track);
+            row.append(selectButton, track);
             fragment.appendChild(row);
         }
         list.replaceChildren(fragment);
