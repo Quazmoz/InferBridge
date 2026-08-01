@@ -153,8 +153,12 @@ HF_SEARCH_EXTENSION_JS = r"""
                     signal: controller.signal,
                 },
             );
-            if (response.status === 401 && typeof handleAuthRequired === 'function') {
-                handleAuthRequired();
+            if (response.status === 401) {
+                if (typeof setCustomModelModalOpen === 'function') {
+                    setCustomModelModalOpen(false);
+                }
+                if (typeof handleAuthRequired === 'function') handleAuthRequired();
+                return;
             }
             const payload = await response.json().catch(() => null);
             if (!response.ok || !Array.isArray(payload)) {
