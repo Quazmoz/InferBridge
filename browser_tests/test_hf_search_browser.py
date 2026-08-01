@@ -77,3 +77,26 @@ def test_hf_search_does_not_echo_server_error_details(
     assert page.locator("#hf-search-results img").count() == 0
     assert page.evaluate("window.__hfErrorInjected") is None
     expect(page.locator("#hf-search-btn")).to_be_enabled()
+
+
+def test_hf_search_auth_recovery_closes_modal_before_opening_settings(
+    page: Page,
+    inferbridge_url: str,
+) -> None:
+    def require_auth(route: Route) -> None:
+        route.fulfill(
+            status=401,
+            content_type="application/json",
+            body=json.dumps({"detail": "API key required"}),
+        )
+
+    page.route("**/v1/models/search-hf*", require_auth)
+    page.goto(inferbridge_url, wait_until="networkidle")
+    page.locator("#add-model-btn").click()
+    page.locator("#hf-search-input").fill("gated-model")
+    page.locator("#hf-search-btn").click()
+
+    expect(page.locator("#custom-model-modal")).to_be_hidden()
+    expect(page.locator("#settings-sidebar")).to_be_visible()
+    expect(page.locator("#device-label")).to_have_text("Auth required")
+    assert page.evaluate("document.activeElement?.id") == "settings-api-key"
