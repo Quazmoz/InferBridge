@@ -30,16 +30,24 @@ OPERATION_QUEUE_JS = r"""
         .ovrp-operation-queue{display:none;margin-top:10px;padding-top:10px;border-top:1px solid color-mix(in srgb,var(--border) 78%,transparent)}
         .ovrp-operation-queue.expanded{display:block}
         .ovrp-queue-heading{margin:0 0 7px;color:var(--text-2);font-size:10.5px;font-weight:750}
-        .ovrp-queue-list{display:grid;gap:6px}
-        .ovrp-queue-row{width:100%;display:grid;grid-template-columns:minmax(0,1.5fr) minmax(90px,.8fr) auto;gap:8px;align-items:center;min-height:36px;padding:7px 9px;border:1px solid var(--border);border-radius:9px;background:var(--surface-2);color:inherit;text-align:left;font:inherit;cursor:pointer}
-        .ovrp-queue-row:hover{border-color:color-mix(in srgb,var(--primary) 35%,var(--border));background:color-mix(in srgb,var(--primary) 5%,var(--surface-2))}
+        .ovrp-queue-list{display:grid;gap:7px}
+        .ovrp-queue-row{--ovrp-queue-progress:0%;width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:'copy value' 'track track';gap:7px 10px;align-items:center;min-height:48px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);color:inherit;text-align:left;font:inherit;cursor:pointer;transition:border-color .16s ease,background .16s ease,transform .16s ease}
+        .ovrp-queue-row:hover{border-color:color-mix(in srgb,var(--primary) 35%,var(--border));background:color-mix(in srgb,var(--primary) 5%,var(--surface-2));transform:translateY(-1px)}
         .ovrp-queue-row:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
         .ovrp-queue-row.current{border-color:color-mix(in srgb,var(--primary) 45%,var(--border));background:color-mix(in srgb,var(--primary) 8%,var(--surface-2))}
-        .ovrp-queue-model{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-1);font-size:10.5px;font-weight:750}
+        .ovrp-queue-copy{grid-area:copy;min-width:0;display:grid;gap:3px}
+        .ovrp-queue-title{display:flex;align-items:center;gap:6px;min-width:0}
+        .ovrp-queue-model{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-1);font-size:10.5px;font-weight:750}
         .ovrp-queue-phase{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-3);font-size:10.5px}
-        .ovrp-queue-value{color:var(--primary);font-size:10.5px;font-weight:750;font-variant-numeric:tabular-nums;white-space:nowrap}
-        .ovrp-queue-current{display:inline-block;margin-left:6px;padding:1px 5px;border-radius:999px;background:color-mix(in srgb,var(--primary) 14%,transparent);color:var(--primary);font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
-        @media(max-width:640px){.ovrp-queue-toggle{min-height:34px}.ovrp-queue-row{grid-template-columns:minmax(0,1fr) auto}.ovrp-queue-phase{grid-column:1/-1;grid-row:2}}
+        .ovrp-queue-value{grid-area:value;align-self:start;color:var(--primary);font-size:10.5px;font-weight:750;font-variant-numeric:tabular-nums;white-space:nowrap}
+        .ovrp-queue-current{flex:0 0 auto;display:inline-flex;align-items:center;padding:1px 5px;border-radius:999px;background:color-mix(in srgb,var(--primary) 14%,transparent);color:var(--primary);font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+        .ovrp-queue-track{grid-area:track;position:relative;height:5px;overflow:hidden;border-radius:999px;background:var(--surface-3);box-shadow:inset 0 0 0 1px var(--border)}
+        .ovrp-queue-fill{position:absolute;inset:0 auto 0 0;width:var(--ovrp-queue-progress);border-radius:inherit;background:var(--accent-grad);transition:width .3s ease}
+        .ovrp-queue-row.indeterminate .ovrp-queue-fill{width:34%;animation:ovrp-queue-scan 1.35s ease-in-out infinite}
+        .ovrp-queue-row.queued .ovrp-queue-fill{width:0;animation:none}
+        @keyframes ovrp-queue-scan{from{transform:translateX(-120%)}to{transform:translateX(395%)}}
+        @media(max-width:640px){.ovrp-queue-toggle{min-height:34px}.ovrp-queue-row{min-height:52px;padding:9px 10px}.ovrp-queue-phase{white-space:normal;line-height:1.35}}
+        @media(prefers-reduced-motion:reduce){.ovrp-queue-row{transition:none}.ovrp-queue-row:hover{transform:none}.ovrp-queue-fill{transition:none}.ovrp-queue-row.indeterminate .ovrp-queue-fill{left:62%;width:28%;animation:none}}
     `;
     document.head.appendChild(style);
 
@@ -93,9 +101,27 @@ OPERATION_QUEUE_JS = r"""
         return labels[phase] || String(model?.status_label || 'Preparing');
     }
 
+    function progressPercent(model) {
+        const progress = model?.progress || {};
+        const overall = Number(progress.overall_percent);
+        if (progress.overall_percent !== null && progress.overall_percent !== undefined && Number.isFinite(overall)) {
+            return Math.max(0, Math.min(100, overall));
+        }
+        const percent = Number(progress.percent);
+        if (progress.percent !== null && progress.percent !== undefined && Number.isFinite(percent)) {
+            return Math.max(0, Math.min(100, percent));
+        }
+        const completed = Number(progress.completed);
+        const total = Number(progress.total);
+        if (Number.isInteger(completed) && Number.isInteger(total) && total > 0 && completed >= 0 && completed <= total) {
+            return Math.max(0, Math.min(100, (completed / total) * 100));
+        }
+        return null;
+    }
+
     function valueLabel(model) {
-        const percent = Number(model?.progress?.percent);
-        if (Number.isFinite(percent)) return `${Math.round(Math.max(0, Math.min(100, percent)))}%`;
+        const percent = progressPercent(model);
+        if (percent !== null) return `${Math.round(percent)}%`;
         const phase = String(model?.progress?.phase || model?.status || '').toLowerCase();
         if (phase === 'queued' || phase === 'queued_convert') return 'Queued';
         return 'Working…';
@@ -111,7 +137,10 @@ OPERATION_QUEUE_JS = r"""
             model.progress?.operation_id || '',
             model.progress?.revision || 0,
             model.progress?.phase || model.status || '',
+            model.progress?.overall_percent ?? '',
             model.progress?.percent ?? '',
+            model.progress?.completed ?? '',
+            model.progress?.total ?? '',
             model.id === primary?.id ? 'primary' : '',
         ].join(':')).join('|');
     }
@@ -205,10 +234,14 @@ OPERATION_QUEUE_JS = r"""
         const list = panel.querySelector('.ovrp-queue-list');
         const fragment = document.createDocumentFragment();
         for (const model of ordered) {
+            const percent = progressPercent(model);
+            const phase = String(model?.progress?.phase || model?.status || '').toLowerCase();
+            const queued = phase === 'queued' || phase === 'queued_convert';
             const row = document.createElement('button');
             row.type = 'button';
-            row.className = `ovrp-queue-row${model.id === primary?.id ? ' current' : ''}`;
+            row.className = `ovrp-queue-row${model.id === primary?.id ? ' current' : ''}${percent === null && !queued ? ' indeterminate' : ''}${queued ? ' queued' : ''}`;
             row.setAttribute('data-model-id', model.id);
+            row.setAttribute('aria-current', model.id === primary?.id ? 'true' : 'false');
             row.setAttribute(
                 'aria-label',
                 `${operationName(model)}, ${phaseLabel(model)}, ${valueLabel(model)}`,
@@ -218,22 +251,48 @@ OPERATION_QUEUE_JS = r"""
                 selectOperation(model.id);
             };
 
+            const copy = document.createElement('span');
+            copy.className = 'ovrp-queue-copy';
+            const title = document.createElement('span');
+            title.className = 'ovrp-queue-title';
             const name = document.createElement('span');
             name.className = 'ovrp-queue-model';
             name.textContent = operationName(model);
+            title.appendChild(name);
             if (model.id === primary?.id) {
                 const badge = document.createElement('span');
                 badge.className = 'ovrp-queue-current';
                 badge.textContent = 'Current';
-                name.appendChild(badge);
+                title.appendChild(badge);
             }
-            const phase = document.createElement('span');
-            phase.className = 'ovrp-queue-phase';
-            phase.textContent = phaseLabel(model);
+            const phaseText = document.createElement('span');
+            phaseText.className = 'ovrp-queue-phase';
+            phaseText.textContent = phaseLabel(model);
+            copy.append(title, phaseText);
+
             const value = document.createElement('span');
             value.className = 'ovrp-queue-value';
             value.textContent = valueLabel(model);
-            row.append(name, phase, value);
+
+            const track = document.createElement('span');
+            track.className = 'ovrp-queue-track';
+            track.setAttribute('role', 'progressbar');
+            track.setAttribute('aria-label', `${operationName(model)} progress`);
+            track.setAttribute('aria-valuemin', '0');
+            track.setAttribute('aria-valuemax', '100');
+            if (percent !== null) {
+                track.setAttribute('aria-valuenow', String(Math.round(percent)));
+                track.setAttribute('aria-valuetext', `${Math.round(percent)} percent`);
+                row.style.setProperty('--ovrp-queue-progress', `${percent}%`);
+            } else {
+                track.setAttribute('aria-valuetext', valueLabel(model));
+            }
+            const fill = document.createElement('span');
+            fill.className = 'ovrp-queue-fill';
+            fill.setAttribute('aria-hidden', 'true');
+            track.appendChild(fill);
+
+            row.append(copy, value, track);
             fragment.appendChild(row);
         }
         list.replaceChildren(fragment);
