@@ -33,6 +33,7 @@ $Expected = @(
     "InferBridge-$Version-dependency-inventory.json",
     "InferBridge-$Version-dependency-freeze.txt",
     "InferBridge-$Version-release-summary.json",
+    "InferBridge-$Version-release-timings.json",
     "model-library-manifest.json"
 )
 $LibraryManifestSource = Join-Path $Root "model_library_manifest.json"
