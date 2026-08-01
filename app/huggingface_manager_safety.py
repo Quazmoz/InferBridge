@@ -126,15 +126,29 @@ def _install_internal_conversion_preflight() -> None:
         trust_remote_code: bool | None = None,
     ) -> Any:
         cfg = self.catalog[model_id]
+        force_mock = bool(getattr(self, "force_mock", False))
         should_check = (
-            not self.force_mock
+            not force_mock
             and bool(cfg.source_model)
             and not (registry.is_downloaded(cfg, BASE_DIR) and weight_format is None)
         )
         if should_check:
+            store = getattr(self, "_hf_credential_store", None)
+            if store is None:
+                return await original_convert(
+                    self,
+                    model_id,
+                    device,
+                    load_after,
+                    weight_format=weight_format,
+                    group_size=group_size,
+                    ratio=ratio,
+                    sym=sym,
+                    trust_remote_code=trust_remote_code,
+                )
             service = getattr(self, "_hf_internal_access_service", None)
             if service is None:
-                service = HuggingFaceAccessService(self._hf_credential_store)
+                service = HuggingFaceAccessService(store)
                 self._hf_internal_access_service = service
             access = self.catalog_entry(model_id).get("huggingface_access") or {}
             try:

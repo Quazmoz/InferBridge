@@ -911,7 +911,8 @@ def install_huggingface_access_manager_extension() -> None:
 
     @functools.wraps(original_convert)
     async def convert_with_token(self: Any, *args: Any, **kwargs: Any) -> Any:
-        token = self._hf_credential_store.get_token()
+        store = getattr(self, "_hf_credential_store", None)
+        token = store.get_token() if store is not None else None
         context_token = _TOKEN_CONTEXT.set(token)
         try:
             return await original_convert(self, *args, **kwargs)

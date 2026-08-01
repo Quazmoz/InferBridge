@@ -110,9 +110,25 @@ PROGRESS_RELIABILITY_JS = r"""
 
     function strictPercent(value) {
         if (value === null || value === undefined || value === '') return null;
-        const parsed = Number(value);
-        return Number.isFinite(parsed) ? Math.max(0, Math.min(100, parsed)) : null;
+        const raw = value;
+        if (raw !== null) {
+            const parsed = Number(raw);
+            return Number.isFinite(parsed) ? Math.max(0, Math.min(100, parsed)) : null;
+        }
+        return null;
     }
+
+    function aggregateDownloadPercent(progress) {
+        const files = Array.isArray(progress?.files) ? progress.files : [];
+        const values = files
+            .map(file => Number(file?.percent))
+            .filter(value => Number.isFinite(value));
+        if (!values.length) return null;
+        const average = values.reduce((sum, value) => sum + Math.max(0, Math.min(100, value)), 0) / values.length;
+        return Math.round(average);
+    }
+
+    const phaseStageExpression = /fetching|downloading/;
 
     function progressCount(progress) {
         const completed = Number(progress?.completed);
@@ -146,6 +162,7 @@ PROGRESS_RELIABILITY_JS = r"""
             ? strictPercent((count.completed / count.total) * 100)
             : strictPercent(progress.percent);
         const overallPercent = strictPercent(progress.overall_percent);
+        const aggregatePercent = aggregateDownloadPercent(progress) ?? strictPercent(progress.percent);
         const reportedStart = Number(progress.started_at) || 0;
         const operationId = typeof progress.operation_id === 'string'
             ? progress.operation_id
@@ -160,11 +177,18 @@ PROGRESS_RELIABILITY_JS = r"""
             startedAt: reportedStart || Math.floor(Date.now() / 1000),
             targetDevice: null,
             terminal: false,
+            overall: 0,
         } : previous;
 
-        let trackPercent = overallPercent ?? phasePercent;
+        const raw = overallPercent ?? phasePercent ?? aggregatePercent ?? null;
+        let overall = prior?.overall ?? 0;
+        let trackPercent = raw ?? 0;
         let progressScope = overallPercent !== null ? 'overall' : 'phase';
         let determinate = trackPercent !== null;
+        const candidate = overallPercent ?? phasePercent ?? aggregatePercent ?? 0;
+        overall = Math.max(prior.overall, candidate);
+        const metaStart = meta.stage >= 0 ? meta.stage * 33 : 0;
+        overall = Math.max(prior.overall, meta.start);
         if (phase === 'ready') {
             trackPercent = 100;
             progressScope = 'overall';
@@ -196,12 +220,14 @@ PROGRESS_RELIABILITY_JS = r"""
             count,
             phasePercent,
             overallPercent,
+            raw,
             trackPercent,
             progressScope,
             determinate,
             targetDevice,
             elapsed: Math.max(0, now - startedAt),
             staleFor: Math.max(0, now - updatedAt),
+            overall,
         };
     }
 
@@ -217,6 +243,7 @@ PROGRESS_RELIABILITY_JS = r"""
         if (info.phase === 'error') return 'Failed';
         if (info.phase === 'cancelled') return 'Cancelled';
         if (info.phase === 'ready') return '100%';
+        if (info.raw === null) return info.meta.stage >= 0 && info.meta.stage < 3 ? `Stage ${info.meta.stage + 1} of 3` : 'Working…';
         if (info.overallPercent !== null) return `${Math.round(info.overallPercent)}%`;
         if (info.count) return `${info.count.completed} of ${info.count.total}`;
         if (info.phasePercent !== null) return `${Math.round(info.phasePercent)}%`;
