@@ -21,8 +21,33 @@ __all__ = [
 _ADVISOR_EXTENSION_ID = "ovllm-hardware-advisor-extension"
 _HF_SEARCH_EXTENSION_ID = "ovllm-hf-search-extension"
 _MODEL_LIFECYCLE_EXTENSION_ID = "ovllm-model-lifecycle-extension"
+_ONBOARDING_EXIT_GUARD_ID = "inferbridge-onboarding-exit-guard"
 _RELEASE_EXTENSION_ID = "ovllm-release-extension"
 _RESPONSIVE_EXTENSION_ID = "ovllm-responsive-extension"
+
+_ONBOARDING_EXIT_GUARD_JS = r"""
+(() => {
+'use strict';
+if (window.__inferbridgeOnboardingExitGuardInstalled) return;
+window.__inferbridgeOnboardingExitGuardInstalled = true;
+const selector = '#ovw-shell [data-action="exit"]';
+const removeExitButtons = root => {
+  const buttons = [];
+  if (root instanceof Element && root.matches(selector)) buttons.push(root);
+  if (root.querySelectorAll) buttons.push(...root.querySelectorAll(selector));
+  buttons.forEach(button => button.remove());
+};
+removeExitButtons(document);
+const observer = new MutationObserver(records => {
+  for (const record of records) {
+    for (const node of record.addedNodes) {
+      if (node.nodeType === Node.ELEMENT_NODE) removeExitButtons(node);
+    }
+  }
+});
+if (document.body) observer.observe(document.body, { childList: true, subtree: true });
+})();
+"""
 
 
 def _inject_script(html: str, extension_id: str, javascript: str) -> str:
@@ -46,10 +71,15 @@ def inject_multimodal_ui(html: str) -> str:
     )
     html = _inject_script(html, _RELEASE_EXTENSION_ID, RELEASE_EXTENSION_JS)
     html = _inject_script(html, _HF_SEARCH_EXTENSION_ID, HF_SEARCH_EXTENSION_JS)
-    return _inject_script(
+    html = _inject_script(
         html,
         _RESPONSIVE_EXTENSION_ID,
         RESPONSIVE_EXTENSION_JS,
+    )
+    return _inject_script(
+        html,
+        _ONBOARDING_EXIT_GUARD_ID,
+        _ONBOARDING_EXIT_GUARD_JS,
     )
 
 
