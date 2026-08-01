@@ -151,7 +151,6 @@ const items = actions.map(({ button, label }) => {
     item.addEventListener('click', event => {
         if (button.disabled || event.target === button || button.contains(event.target)) return;
         button.click();
-        closeAfterAction();
     });
     menu.appendChild(item);
     return { button, marker, item };
@@ -228,7 +227,9 @@ menu.addEventListener('keydown', event => {
     }
 });
 document.addEventListener('pointerdown', event => {
-    if (!menu.hidden && !wrap.contains(event.target)) closeMenu();
+    if (!menu.hidden && !wrap.contains(event.target)) {
+        closeMenu({ restoreFocus: menu.contains(document.activeElement) });
+    }
 });
 document.addEventListener('keydown', event => {
     if (event.key === 'Escape' && !menu.hidden) {
