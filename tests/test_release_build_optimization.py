@@ -5,6 +5,8 @@ import json
 import zipfile
 from pathlib import Path
 
+from app.release_models import artifact_filename
+from scripts import release_scan
 from scripts.create_portable_archive import create_archive, verify_archive
 from scripts.release_environment import (
     environment_key,
@@ -71,6 +73,34 @@ def test_portable_archive_preserves_versioned_root_without_staging_copy(tmp_path
     assert not (tmp_path / "portable-stage").exists()
 
 
+def test_checksum_generation_defers_independent_verification(
+    tmp_path: Path, monkeypatch
+) -> None:
+    version = "1.2.3"
+    artifact_names = [
+        artifact_filename(version, "portable"),
+        artifact_filename(version, "release_notes"),
+    ]
+    for name in artifact_names:
+        (tmp_path / name).write_bytes(name.encode("utf-8"))
+
+    reads: list[str] = []
+    original_sha256_file = release_scan.sha256_file
+
+    def counted_sha256_file(path: Path) -> str:
+        reads.append(path.name)
+        return original_sha256_file(path)
+
+    monkeypatch.setattr(release_scan, "sha256_file", counted_sha256_file)
+    checksum_path = release_scan.write_checksums(tmp_path, version, artifact_filename)
+
+    assert sorted(reads) == sorted(artifact_names)
+
+    release_scan.verify_checksums(checksum_path)
+
+    assert all(reads.count(name) == 2 for name in artifact_names)
+
+
 def test_release_build_uses_fingerprinted_environment_and_direct_portable_archive() -> None:
     script = (ROOT / "scripts" / "build_release.ps1").read_text(encoding="utf-8")
 
@@ -90,6 +120,22 @@ def test_release_build_uses_fingerprinted_environment_and_direct_portable_archiv
     assert script.index("Compile Inno Setup installer") < script.index(
         "Create portable ZIP without staging copy"
     )
+
+
+def test_release_build_deduplicates_unchanged_artifact_scans() -> None:
+    script = (ROOT / "scripts" / "build_release.ps1").read_text(encoding="utf-8")
+
+    assert "$script:ScannedArtifacts" in script
+    assert "Collections.Generic.HashSet[string]" in script
+    assert "Get-ArtifactScanKey" in script
+    assert "$Item.Length" in script
+    assert "$Item.LastWriteTimeUtc.Ticks" in script
+    assert 'Invoke-ArtifactScan -Path $PortableZip -Label "Validate portable ZIP paths"' in script
+    assert "Invoke-ArtifactScan -Path $Artifact" in script
+    assert 'Invoke-Checked "Generate SHA-256 checksums"' in script
+    assert 'Invoke-Checked "Verify final SHA-256 checksums"' in script
+    assert "Generate and verify SHA-256 checksums" not in script
+    assert "Re-verify final checksum file" not in script
 
 
 def test_release_build_emits_non_secret_timing_telemetry() -> None:
