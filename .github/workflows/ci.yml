@@ -53,6 +53,7 @@ jobs:
           from pathlib import Path
           from app.cancellation_ui import CANCELLATION_UI_JS
           from app.header_overflow_ui import HEADER_OVERFLOW_JS
+          from app.hf_search_ui import HF_SEARCH_EXTENSION_JS
           from app.huggingface_access_ui import HUGGINGFACE_ACCESS_JS
           from app.operation_queue_ui import OPERATION_QUEUE_JS
           from app.progress_operation_ui import PROGRESS_OPERATION_JS
@@ -62,6 +63,7 @@ jobs:
           scripts = {
               'cancellation': CANCELLATION_UI_JS,
               'header-overflow': HEADER_OVERFLOW_JS,
+              'hf-search': HF_SEARCH_EXTENSION_JS,
               'huggingface-access': HUGGINGFACE_ACCESS_JS,
               'operation-queue': OPERATION_QUEUE_JS,
               'progress-operation': PROGRESS_OPERATION_JS,
@@ -73,6 +75,7 @@ jobs:
           PY
           node --check /tmp/inferbridge-cancellation.js
           node --check /tmp/inferbridge-header-overflow.js
+          node --check /tmp/inferbridge-hf-search.js
           node --check /tmp/inferbridge-huggingface-access.js
           node --check /tmp/inferbridge-operation-queue.js
           node --check /tmp/inferbridge-progress-operation.js
@@ -206,6 +209,7 @@ jobs:
           packaging/runtime_hook.py
           app/cancellation_ui.py
           app/header_overflow_ui.py
+          app/hf_search_ui.py
           app/huggingface_access.py
           app/huggingface_access_ui.py
           app/model_cancellation.py
@@ -243,6 +247,7 @@ jobs:
           tests/test_runtime_hook_upgrade.py
           tests/test_cancellation_ui.py
           tests/test_header_overflow_ui.py
+          tests/test_hf_search_ui.py
           tests/test_huggingface_access.py
           tests/test_huggingface_access_ui.py
           tests/test_model_cancellation.py
