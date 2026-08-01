@@ -21,6 +21,7 @@ $RepoRoot = Split-Path -Parent $SetupRoot
 $VenvDir = Join-Path $RepoRoot ".venv"
 $RequirementsPath = Join-Path $RepoRoot "requirements.txt"
 $DependencyMarker = Join-Path $RepoRoot ".deps_installed"
+$SupportedPythonVersions = @("3.11", "3.12", "3.13")
 
 function Invoke-Checked {
     param(
@@ -33,6 +34,22 @@ function Invoke-Checked {
     if ($LASTEXITCODE -ne 0) {
         $cmd = @($FilePath) + $Arguments
         throw "Command failed with exit code $LASTEXITCODE`: $($cmd -join ' ')"
+    }
+}
+
+function Get-PythonVersion {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath,
+        [string[]]$Arguments = @()
+    )
+
+    try {
+        $output = & $FilePath @Arguments -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>$null
+        if ($LASTEXITCODE -ne 0) { return $null }
+        return (($output | Select-Object -Last 1).ToString().Trim())
+    } catch {
+        return $null
     }
 }
 
@@ -70,10 +87,10 @@ function Resolve-Python {
             $exe = $parts[0]
             $rest = if ($parts.Length -gt 1) { $parts[1..($parts.Length - 1)] } else { @() }
         }
-        try {
-            & $exe @rest --version *> $null
-            if ($LASTEXITCODE -eq 0) { return ,@($exe, $rest) }
-        } catch { }
+        $version = Get-PythonVersion -FilePath $exe -Arguments $rest
+        if ($version -in $SupportedPythonVersions) {
+            return ,@($exe, $rest)
+        }
     }
     throw "No suitable Python found. Install Python 3.11, 3.12, or 3.13 from python.org, or pass -Python with the full python.exe path."
 }
@@ -97,6 +114,13 @@ if (-not (Test-Path $VenvDir)) {
 }
 
 $venvPython = Join-Path $VenvDir "Scripts\python.exe"
+if (-not (Test-Path $venvPython)) {
+    throw "The existing .venv is incomplete. Remove $VenvDir and run setup again."
+}
+$venvVersion = Get-PythonVersion -FilePath $venvPython
+if ($venvVersion -notin $SupportedPythonVersions) {
+    throw "The existing .venv uses unsupported Python $venvVersion. Remove $VenvDir and rerun setup with Python 3.11, 3.12, or 3.13."
+}
 
 try {
     Write-Host "Upgrading pip ..." -ForegroundColor Cyan
