@@ -47,8 +47,12 @@ def environment_key(requirements: Path) -> str:
     machine = re.sub(r"[^a-z0-9_.-]+", "-", str(identity["machine"]))
     system = re.sub(r"[^a-z0-9_.-]+", "-", str(identity["platform_system"]))
     cache_tag = re.sub(r"[^a-z0-9_.-]+", "-", str(identity["cache_tag"]).lower())
+    python_version = re.sub(r"[^a-z0-9_.-]+", "-", str(identity["python_version"]).lower())
     digest = requirements_sha256(requirements)[:20]
-    return f"v{_SCHEMA_VERSION}-{cache_tag}-{system}-{machine}-{identity['pointer_bits']}-{digest}"
+    return (
+        f"v{_SCHEMA_VERSION}-{cache_tag}-py{python_version}-{system}-{machine}-"
+        f"{identity['pointer_bits']}-{digest}"
+    )
 
 
 def _marker_applies(marker: str | None) -> bool:
@@ -65,6 +69,17 @@ def _marker_applies(marker: str | None) -> bool:
             raise RuntimeError(f"Unsupported requirement marker without packaging: {marker}")
         return platform.system() == match.group("value")
     return bool(Marker(marker).evaluate())
+
+
+def _versions_match(installed: str, expected: str) -> bool:
+    try:
+        from packaging.version import InvalidVersion, Version
+    except ImportError:
+        return installed == expected
+    try:
+        return Version(installed) == Version(expected)
+    except InvalidVersion:
+        return installed == expected
 
 
 def exact_requirements(path: Path) -> dict[str, str]:
@@ -137,7 +152,7 @@ def validation_errors(metadata_path: Path, requirements: Path) -> list[str]:
         except importlib.metadata.PackageNotFoundError:
             errors.append(f"missing pinned distribution: {distribution}=={expected_version}")
             continue
-        if installed != expected_version:
+        if not _versions_match(installed, expected_version):
             errors.append(
                 f"pinned distribution mismatch: {distribution}=={installed} "
                 f"(expected {expected_version})"
