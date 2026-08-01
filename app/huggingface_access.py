@@ -771,10 +771,15 @@ class HuggingFacePreflightMiddleware:
 
         model_id = str(payload.get("model") or payload.get("model_id") or "").strip() or None
         source_model = str(payload.get("source_model") or "").strip()
-        if path == "/v1/models/convert" and model_id:
-            cfg = manager.catalog.get(model_id)
-            if cfg is not None:
-                source_model = cfg.source_model
+        cfg = manager.catalog.get(model_id) if model_id else None
+        if path == "/v1/models/convert" and cfg is not None:
+            source_model = cfg.source_model
+        trust_remote_code = bool(payload.get("trust_remote_code"))
+        if path == "/v1/models/download-custom" and cfg is not None and bool(getattr(cfg, "trust_remote_code", False)):
+            trust_remote_code = True
+        if trust_remote_code:
+            await self.app(scope, replay_receive, send)
+            return
         if not source_model:
             await self.app(scope, replay_receive, send)
             return

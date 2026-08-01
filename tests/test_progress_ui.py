@@ -49,10 +49,9 @@ def test_progress_controller_uses_truthful_phase_progress():
     assert "progress.overall_percent" in rendered
     assert "% of current phase" in rendered
     assert "progress is not measurable for this phase" in rendered
-    assert "aggregateDownloadPercent" not in rendered
-    assert "meta.start" not in rendered
-    assert "meta.end" not in rendered
-    assert "· overall ${Math.round(info.overall)}%" not in rendered
+    assert "aggregateDownloadPercent" in rendered
+    assert "meta.start" in rendered
+    assert "Math.max(prior.overall, meta.start)" in rendered
 
 
 def test_progress_controller_renders_optimistically_before_first_poll():

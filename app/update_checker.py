@@ -313,7 +313,20 @@ class UpdateChecker:
             return UpdateCheckResult(status=fallback_status, checked_at=checked_at)
         latest = SemanticVersion.parse(manifest.version)
         current = SemanticVersion.parse(__version__)
-        if latest <= current or manifest.version in preferences.skipped_versions:
+        same_base_version = (
+            latest.major == current.major
+            and latest.minor == current.minor
+            and latest.patch == current.patch
+        )
+        same_channel_stream = (
+            preferences.channel in {"beta", "nightly"}
+            and manifest.channel == preferences.channel
+        )
+        if (
+            latest < current
+            and not (same_channel_stream and same_base_version)
+            or manifest.version in preferences.skipped_versions
+        ):
             return UpdateCheckResult(
                 status=fallback_status,
                 latest_version=manifest.version,
