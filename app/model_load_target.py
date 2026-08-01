@@ -248,9 +248,9 @@ def install_model_load_target_routing() -> None:
                         self,
                         model_lock,
                         model_id,
-                        lambda elapsed, _position, _total: (
+                        lambda elapsed, _position, _total, ld=loaded_device, cd=current_device: (
                             f"Waiting for the active request before switching {cfg.name} "
-                            f"from {loaded_device} to {current_device} "
+                            f"from {ld} to {cd} "
                             f"({_duration_label(elapsed)} elapsed)…"
                         ),
                     )
@@ -262,9 +262,9 @@ def install_model_load_target_routing() -> None:
                         self,
                         self._load_lock,
                         model_id,
-                        lambda elapsed, position, total: (
+                        lambda elapsed, position, total, cd=current_device: (
                             f"Waiting for another model preparation to finish before loading "
-                            f"{cfg.name} on {current_device} "
+                            f"{cfg.name} on {cd} "
                             f"(queue {position} of {total}, {_duration_label(elapsed)} elapsed)…"
                         ),
                     )
