@@ -37,6 +37,7 @@ def expected_release_filenames(version: str) -> set[str]:
         f"InferBridge-{version}-dependency-inventory.json",
         f"InferBridge-{version}-dependency-freeze.txt",
         f"InferBridge-{version}-release-summary.json",
+        f"InferBridge-{version}-release-timings.json",
         "model-library-manifest.json",
     }
 
