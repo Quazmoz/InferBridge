@@ -34,6 +34,7 @@ def test_queue_preserves_stable_primary_selection() -> None:
     assert "operations.find(model => model.id === selectedId)" in script
     assert "operations[0]" in script
     assert "model.id === primary?.id" in script
+    assert "aria-current" in script
     assert "select.dispatchEvent(new Event('change'" in script
 
 
@@ -50,3 +51,19 @@ def test_queue_renders_safe_accessible_rows_without_mutation_loop() -> None:
     assert "signature === lastSignature && !panelWasMissing" in script
     assert "dockObserver.observe(dock" in script
     assert "innerHTML" not in script
+
+
+def test_queue_rows_show_truthful_progress_without_clipping_current_badge() -> None:
+    script = OPERATION_QUEUE_JS
+
+    assert "function progressPercent(model)" in script
+    assert "progress.overall_percent" in script
+    assert "progress.completed" in script
+    assert "track.setAttribute('role', 'progressbar')" in script
+    assert "track.setAttribute('aria-valuenow'" in script
+    assert "track.setAttribute('aria-valuetext'" in script
+    assert "row.style.setProperty('--ovrp-queue-progress'" in script
+    assert "title.appendChild(badge)" in script
+    assert "name.appendChild(badge)" not in script
+    assert ".ovrp-queue-row.indeterminate" in script
+    assert "@media(prefers-reduced-motion:reduce)" in script
