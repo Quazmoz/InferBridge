@@ -72,9 +72,7 @@ def test_remove_clears_token_metadata_and_status(tmp_path, monkeypatch):
     monkeypatch.delenv("HUGGING_FACE_HUB_TOKEN", raising=False)
     store = HuggingFaceCredentialStore(_settings(tmp_path))
     store.set_token(_token("b"))
-    store.write_metadata(
-        {"state": "connected", "username": "quinn", "last_checked": 123}
-    )
+    store.write_metadata({"state": "connected", "username": "quinn", "last_checked": 123})
 
     assert store.remove() is True
 
@@ -111,9 +109,7 @@ def test_known_gated_preflight_stops_before_network_without_token(tmp_path, monk
         client_factory=_client_factory(handler),
     )
 
-    result = asyncio.run(
-        service.preflight("meta-llama/Llama-3.2-1B-Instruct", access_type="gated")
-    )
+    result = asyncio.run(service.preflight("meta-llama/Llama-3.2-1B-Instruct", access_type="gated"))
 
     assert result["code"] == "hf_token_missing"
     assert result["recoverable"] is True
@@ -134,9 +130,7 @@ def test_public_model_is_probed_before_conversion(tmp_path, monkeypatch):
         client_factory=_client_factory(handler),
     )
 
-    result = asyncio.run(
-        service.preflight("Qwen/Qwen2.5-0.5B-Instruct", access_type="public")
-    )
+    result = asyncio.run(service.preflight("Qwen/Qwen2.5-0.5B-Instruct", access_type="public"))
 
     assert result["code"] == "hf_access_granted"
     assert calls == ["/Qwen/Qwen2.5-0.5B-Instruct/resolve/main/config.json"]
@@ -155,9 +149,7 @@ def test_unknown_custom_gated_model_is_probed_before_conversion(tmp_path, monkey
         client_factory=_client_factory(handler),
     )
 
-    result = asyncio.run(
-        service.preflight("publisher/custom-gated-model", access_type="unknown")
-    )
+    result = asyncio.run(service.preflight("publisher/custom-gated-model", access_type="unknown"))
 
     assert result["code"] == "hf_token_missing"
     assert result["access_type"] == "gated"
@@ -179,9 +171,7 @@ def test_valid_token_and_model_access_are_verified_without_exposing_token(tmp_pa
     store.set_token(token)
     service = HuggingFaceAccessService(store, client_factory=_client_factory(handler))
 
-    result = asyncio.run(
-        service.preflight("meta-llama/Llama-3.2-1B-Instruct", access_type="gated")
-    )
+    result = asyncio.run(service.preflight("meta-llama/Llama-3.2-1B-Instruct", access_type="gated"))
 
     assert result["code"] == "hf_access_granted"
     assert result["username"] == "quinn"
@@ -235,9 +225,7 @@ def test_invalid_replacement_preserves_existing_token_and_status(tmp_path):
 
     store = HuggingFaceCredentialStore(_settings(tmp_path))
     store.set_token(old_token)
-    store.write_metadata(
-        {"state": "connected", "username": "existing-user", "last_checked": 123}
-    )
+    store.write_metadata({"state": "connected", "username": "existing-user", "last_checked": 123})
     service = HuggingFaceAccessService(store, client_factory=_client_factory(handler))
 
     result = asyncio.run(service.test_token(replacement, persist=True))
@@ -252,11 +240,7 @@ def test_preflight_middleware_blocks_before_conversion_is_scheduled(tmp_path):
     app = FastAPI()
     app.state.settings = _settings(tmp_path)
     app.state.manager = SimpleNamespace(
-        catalog={
-            "llama": SimpleNamespace(
-                source_model="meta-llama/Llama-3.2-1B-Instruct"
-            )
-        },
+        catalog={"llama": SimpleNamespace(source_model="meta-llama/Llama-3.2-1B-Instruct")},
         _hf_access_metadata={
             "llama": {
                 "access_type": "gated",
@@ -379,9 +363,7 @@ def test_status_route_is_no_store_and_never_returns_token(tmp_path, monkeypatch)
     secret = _token("h")
     store = HuggingFaceCredentialStore(_settings(tmp_path))
     store.set_token(secret)
-    store.write_metadata(
-        {"state": "connected", "username": "quinn", "last_checked": 123}
-    )
+    store.write_metadata({"state": "connected", "username": "quinn", "last_checked": 123})
 
     app = FastAPI()
     app.state.settings = _settings(tmp_path)
@@ -443,9 +425,7 @@ def test_manager_entries_expose_structured_gated_metadata(tmp_path):
 
     assert entry["is_gated"] is True
     assert entry["huggingface_access"]["access_type"] == "gated"
-    assert entry["huggingface_access"]["license_url"].startswith(
-        "https://huggingface.co/"
-    )
+    assert entry["huggingface_access"]["license_url"].startswith("https://huggingface.co/")
 
 
 def test_huggingface_tokens_are_removed_from_errors_progress_and_diagnostics(tmp_path):
