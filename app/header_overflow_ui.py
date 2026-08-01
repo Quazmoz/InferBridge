@@ -100,14 +100,50 @@ trigger.innerHTML = '<svg width="17" height="17" viewBox="0 0 24 24" fill="curre
 const menu = document.createElement('div');
 menu.id = 'ov-header-more-menu';
 menu.setAttribute('role', 'menu');
+menu.setAttribute('aria-label', 'More actions');
 menu.hidden = true;
 wrap.append(trigger, menu);
 header.insertBefore(wrap, settingsButton || null);
+
+function enabledMenuButtons() {
+    return actions
+        .map(({ button }) => button)
+        .filter(button => button.parentElement?.classList.contains('ov-header-overflow-item') && !button.disabled);
+}
+
+function closeMenu({ restoreFocus = false } = {}) {
+    if (menu.hidden) {
+        if (restoreFocus) trigger.focus();
+        return;
+    }
+    menu.hidden = true;
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.setAttribute('aria-label', 'Open more actions');
+    if (restoreFocus) trigger.focus();
+}
+
+function openMenu({ focus = 'first' } = {}) {
+    menu.hidden = false;
+    trigger.setAttribute('aria-expanded', 'true');
+    trigger.setAttribute('aria-label', 'Close more actions');
+    const buttons = enabledMenuButtons();
+    const target = focus === 'last' ? buttons.at(-1) : buttons[0];
+    target?.focus();
+}
+
+function closeAfterAction() {
+    queueMicrotask(() => {
+        const focusStayedInMenu = menu.contains(document.activeElement);
+        closeMenu({ restoreFocus: focusStayedInMenu });
+    });
+}
+
 const items = actions.map(({ button, label }) => {
     const marker = document.createComment(`ov-header-placeholder-${button.id}`);
     button.parentNode?.insertBefore(marker, button);
     const item = document.createElement('div');
     item.className = 'ov-header-overflow-item';
+    item.setAttribute('role', 'none');
     const text = document.createElement('span');
     text.className = 'ov-header-overflow-label';
     text.textContent = label;
@@ -115,46 +151,81 @@ const items = actions.map(({ button, label }) => {
     item.addEventListener('click', event => {
         if (button.disabled || event.target === button || button.contains(event.target)) return;
         button.click();
+        closeAfterAction();
     });
     menu.appendChild(item);
     return { button, marker, item };
 });
 const compactQuery = window.matchMedia('(max-width: 760px)');
-function closeMenu({ restoreFocus = false } = {}) {
-    if (menu.hidden) return;
-    menu.hidden = true;
-    trigger.setAttribute('aria-expanded', 'false');
-    if (restoreFocus) trigger.focus();
-}
-function openMenu() {
-    menu.hidden = false;
-    trigger.setAttribute('aria-expanded', 'true');
-    const first = menu.querySelector('button:not([disabled])');
-    first?.focus();
-}
+
 function moveIntoMenu() {
     items.forEach(({ button, item }) => {
         if (button.parentNode !== item) item.prepend(button);
         button.setAttribute('role', 'menuitem');
+        button.tabIndex = -1;
     });
 }
+
 function restoreHeader() {
     closeMenu();
     items.forEach(({ button, marker }) => {
         marker.parentNode?.insertBefore(button, marker.nextSibling);
         button.removeAttribute('role');
+        button.removeAttribute('tabindex');
     });
 }
+
 function syncLayout() {
     if (compactQuery.matches) moveIntoMenu();
     else restoreHeader();
 }
+
+function focusMenuButton(direction) {
+    const buttons = enabledMenuButtons();
+    if (!buttons.length) return;
+    const currentIndex = buttons.indexOf(document.activeElement);
+    let nextIndex = 0;
+    if (direction === 'first') nextIndex = 0;
+    else if (direction === 'last') nextIndex = buttons.length - 1;
+    else if (direction === 'next') nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % buttons.length;
+    else if (direction === 'previous') nextIndex = currentIndex < 0 ? buttons.length - 1 : (currentIndex - 1 + buttons.length) % buttons.length;
+    buttons[nextIndex]?.focus();
+}
+
 trigger.addEventListener('click', () => {
     if (menu.hidden) openMenu();
     else closeMenu({ restoreFocus: true });
 });
+trigger.addEventListener('keydown', event => {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    event.preventDefault();
+    openMenu({ focus: event.key === 'ArrowUp' ? 'last' : 'first' });
+});
 menu.addEventListener('click', event => {
-    if (event.target.closest('button')) closeMenu();
+    if (!event.target.closest('button')) return;
+    closeAfterAction();
+});
+menu.addEventListener('keydown', event => {
+    const keyActions = {
+        ArrowDown: 'next',
+        ArrowRight: 'next',
+        ArrowUp: 'previous',
+        ArrowLeft: 'previous',
+        Home: 'first',
+        End: 'last',
+    };
+    const direction = keyActions[event.key];
+    if (direction) {
+        event.preventDefault();
+        focusMenuButton(direction);
+        return;
+    }
+    if (event.key === 'Tab') {
+        event.preventDefault();
+        closeMenu();
+        if (event.shiftKey) trigger.focus();
+        else (settingsButton || trigger).focus();
+    }
 });
 document.addEventListener('pointerdown', event => {
     if (!menu.hidden && !wrap.contains(event.target)) closeMenu();
