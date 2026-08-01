@@ -33,9 +33,7 @@ from pydantic import BaseModel, Field
 from app.brand import DISPLAY_NAME, LEGACY_DISPLAY_NAME
 from app.local_request_security import require_safe_browser_origin
 
-_HF_REPO_RE = re.compile(
-    r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}/[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$"
-)
+_HF_REPO_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}/[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$")
 _HF_TOKEN_RE = re.compile(r"^hf_[A-Za-z0-9]{8,500}$")
 _DPAPI_ENTROPY = b"InferBridge/HuggingFace/v1"
 _TOKEN_CONTEXT: contextvars.ContextVar[str | None] = contextvars.ContextVar(
@@ -163,9 +161,7 @@ class HuggingFaceCredentialStore:
 
     def _environment_token(self) -> str | None:
         value = (
-            os.environ.get("HF_TOKEN")
-            or os.environ.get("HUGGING_FACE_HUB_TOKEN")
-            or ""
+            os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN") or ""
         ).strip()
         return value or None
 
@@ -173,9 +169,7 @@ class HuggingFaceCredentialStore:
     def validate_token(token: str) -> str:
         clean = str(token or "").strip()
         if not _HF_TOKEN_RE.fullmatch(clean):
-            raise ValueError(
-                "Enter a valid Hugging Face user access token beginning with hf_."
-            )
+            raise ValueError("Enter a valid Hugging Face user access token beginning with hf_.")
         return clean
 
     @staticmethod
@@ -454,9 +448,7 @@ class HuggingFaceAccessService:
             action="replace_token",
         )
 
-    async def preflight(
-        self, source_model: str, *, access_type: str = "unknown"
-    ) -> dict[str, Any]:
+    async def preflight(self, source_model: str, *, access_type: str = "unknown") -> dict[str, Any]:
         repo_id = _safe_repo_id(source_model)
         normalized_type = str(access_type or "unknown").strip().lower()
         if normalized_type not in {"public", "gated", "unknown"}:
@@ -841,9 +833,7 @@ def register_huggingface_access_routes(app: FastAPI) -> None:
         message = "Stored Hugging Face token removed."
         if status_payload.get("source") == "environment":
             message += " HF_TOKEN is still configured as an environment fallback."
-        return _json_response(
-            {"removed": removed, "status": status_payload, "message": message}
-        )
+        return _json_response({"removed": removed, "status": status_payload, "message": message})
 
     @router.post("/test")
     async def test_access(request: Request):
