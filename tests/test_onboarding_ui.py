@@ -1,4 +1,5 @@
 from app.config import Settings  # noqa: F401 - installs composed UI extensions
+from app.onboarding_ui import ONBOARDING_UI
 from app.ui_extension import inject_multimodal_ui
 
 
@@ -46,10 +47,10 @@ def test_wizard_has_accessible_stages_and_real_connection_configuration():
     assert "https://" not in rendered
 
 
-def test_wizard_removes_the_broken_exit_action_but_keeps_close():
-    rendered = inject_multimodal_ui("<html><head></head><body></body></html>")
-
-    assert 'id="inferbridge-onboarding-exit-guard"' in rendered
-    assert "#ovw-shell [data-action=\"exit\"]" in rendered
-    assert "buttons.forEach(button => button.remove())" in rendered
-    assert 'id="ovw-close"' in rendered
+def test_wizard_omits_broken_exit_action_but_keeps_close():
+    assert "id:'exit'" not in ONBOARDING_UI
+    assert "action==='exit'" not in ONBOARDING_UI
+    assert "async function exitApp" not in ONBOARDING_UI
+    assert 'id="ovw-close"' in ONBOARDING_UI
+    assert "label:'Documentation'" in ONBOARDING_UI
+    assert "label:'Continue'" in ONBOARDING_UI
