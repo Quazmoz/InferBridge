@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app import ui_extension_vision as _vision
 from app.advisor_ui import ADVISOR_EXTENSION_JS
+from app.generation_state_ui import GENERATION_STATE_JS
 from app.hf_search_ui import HF_SEARCH_EXTENSION_JS
 from app.model_lifecycle_ui import MODEL_LIFECYCLE_EXTENSION_JS
 from app.release_ui import RELEASE_EXTENSION_JS
@@ -11,6 +12,7 @@ from app.responsive_ui import RESPONSIVE_EXTENSION_JS
 from app.ui_extension_vision import VISION_EXTENSION_JS, inject_multimodal_ui as _inject_vision_ui
 
 __all__ = [
+    "GENERATION_STATE_JS",
     "HF_SEARCH_EXTENSION_JS",
     "MODEL_LIFECYCLE_EXTENSION_JS",
     "RESPONSIVE_EXTENSION_JS",
@@ -19,6 +21,7 @@ __all__ = [
 ]
 
 _ADVISOR_EXTENSION_ID = "ovllm-hardware-advisor-extension"
+_GENERATION_STATE_EXTENSION_ID = "ovllm-generation-state-extension"
 _HF_SEARCH_EXTENSION_ID = "ovllm-hf-search-extension"
 _MODEL_LIFECYCLE_EXTENSION_ID = "ovllm-model-lifecycle-extension"
 _RELEASE_EXTENSION_ID = "ovllm-release-extension"
@@ -46,10 +49,11 @@ def inject_multimodal_ui(html: str) -> str:
     )
     html = _inject_script(html, _RELEASE_EXTENSION_ID, RELEASE_EXTENSION_JS)
     html = _inject_script(html, _HF_SEARCH_EXTENSION_ID, HF_SEARCH_EXTENSION_JS)
+    html = _inject_script(html, _RESPONSIVE_EXTENSION_ID, RESPONSIVE_EXTENSION_JS)
     return _inject_script(
         html,
-        _RESPONSIVE_EXTENSION_ID,
-        RESPONSIVE_EXTENSION_JS,
+        _GENERATION_STATE_EXTENSION_ID,
+        GENERATION_STATE_JS,
     )
 
 
