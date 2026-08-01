@@ -41,6 +41,15 @@ def test_hf_search_coalesces_requests_and_reports_accessible_state() -> None:
     assert "Search failed. Check the local server" in script
 
 
+def test_hf_search_keeps_auth_recovery_outside_the_inert_modal() -> None:
+    script = HF_SEARCH_EXTENSION_JS
+
+    assert "if (response.status === 401)" in script
+    assert "setCustomModelModalOpen(false)" in script
+    assert "handleAuthRequired()" in script
+    assert script.index("setCustomModelModalOpen(false)") < script.index("handleAuthRequired()")
+
+
 def test_hf_search_replaces_legacy_handlers_without_double_requests() -> None:
     script = HF_SEARCH_EXTENSION_JS
 
