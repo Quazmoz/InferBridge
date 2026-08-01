@@ -130,7 +130,10 @@ def test_release_build_deduplicates_unchanged_artifact_scans() -> None:
     assert "Get-ArtifactScanKey" in script
     assert "$Item.Length" in script
     assert "$Item.LastWriteTimeUtc.Ticks" in script
-    assert 'Invoke-ArtifactScan -Path $PortableZip -Label "Validate portable ZIP paths"' in script
+    assert (
+        'Invoke-ArtifactScan -Path $PortableZip -Label "Validate portable ZIP paths"'
+        in script
+    )
     assert "Invoke-ArtifactScan -Path $Artifact" in script
     assert 'Invoke-Checked "Generate SHA-256 checksums"' in script
     assert 'Invoke-Checked "Verify final SHA-256 checksums"' in script
