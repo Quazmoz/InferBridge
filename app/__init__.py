@@ -5,7 +5,10 @@ GenAI. Pure request/response logic remains importable in mock mode without an
 OpenVINO runtime.
 """
 
+from app.request_logging import install_request_log_filter
 from app.version import __version__
+
+install_request_log_filter()
 
 __all__ = [
     "__version__",
@@ -35,6 +38,7 @@ __all__ = [
     "rate_limit",
     "release_models",
     "release_routes",
+    "request_logging",
     "server",
     "startup_registration",
     "telemetry",
