@@ -48,12 +48,13 @@ class TrayApplication(
         self.poll_thread: threading.Thread | None = None
         self.last_status_payload: dict[str, Any] | None = None
         self.last_diagnostics_path: Path | None = None
+        resolved_data_dir = str(self.paths.data_root) if args.data_dir else None
         self.controller = DesktopServerController(
             paths=self.paths,
             options=ServerControllerOptions(
                 preferred_port=args.port,
                 portable=args.portable,
-                data_dir=args.data_dir,
+                data_dir=resolved_data_dir,
                 mock=args.mock,
             ),
             log_path=self.paths.logs_dir / "desktop.log",
