@@ -44,3 +44,12 @@ def test_wizard_has_accessible_stages_and_real_connection_configuration():
     assert "role','progressbar" in rendered
     assert "opener.hidden=false" in rendered
     assert "https://" not in rendered
+
+
+def test_wizard_removes_the_broken_exit_action_but_keeps_close():
+    rendered = inject_multimodal_ui("<html><head></head><body></body></html>")
+
+    assert 'id="inferbridge-onboarding-exit-guard"' in rendered
+    assert "#ovw-shell [data-action=\"exit\"]" in rendered
+    assert "buttons.forEach(button => button.remove())" in rendered
+    assert 'id="ovw-close"' in rendered
