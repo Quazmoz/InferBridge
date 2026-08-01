@@ -18,9 +18,14 @@ def test_supported_python_versions_are_consistent() -> None:
 
     assert project["project"]["requires-python"] == ">=3.11,<3.14"
     assert 'python-version: ["3.11", "3.12", "3.13"]' in ci
-    assert '$SupportedPythonVersions = @("3.11", "3.12", "3.13")' in installer
+    supported_versions = '$SupportedPythonVersions = @("3.11", "3.12", "3.13")'
+    assert supported_versions in installer
+    assert supported_versions in preflight
     assert "Get-PythonVersion" in installer
+    assert "Get-PythonVersion" in preflight
     assert "$venvVersion -notin $SupportedPythonVersions" in installer
+    assert "$version -in $SupportedPythonVersions" in preflight
+    assert "UNSUPPORTED version detected" in preflight
 
     for version in SUPPORTED_PYTHON:
         launcher = f'"py -{version}"'
