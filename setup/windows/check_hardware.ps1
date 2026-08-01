@@ -31,15 +31,36 @@ try {
 Write-Host ("OS:       {0} (build {1})" -f $osCaption, $osBuild)
 
 # --- Python ---
+$SupportedPythonVersions = @("3.11", "3.12", "3.13")
 $pythonOk = $false
+$unsupportedPythonVersions = [Collections.Generic.List[string]]::new()
 # Match the versions accepted by install_deps.ps1 and pyproject.toml.
 $candidates = @("py -3.11", "py -3.12", "py -3.13", "py", "python")
 
+function Get-PythonVersion {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath,
+        [string[]]$Arguments = @()
+    )
+
+    try {
+        $output = & $FilePath @Arguments -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>$null
+        if ($LASTEXITCODE -ne 0) { return $null }
+        $line = $output | Select-Object -Last 1
+        if ($null -eq $line) { return $null }
+        return $line.ToString().Trim()
+    } catch {
+        return $null
+    }
+}
+
 foreach ($candidate in $candidates) {
-    $parts = $candidate.Split(" ")
+    $parts = $candidate.Split(" ", 2)
     $exe = $parts[0]
-    
-    # Skip Microsoft Store dummy python aliases because they hang non-interactive sessions
+    $arguments = if ($parts.Length -gt 1) { @($parts[1]) } else { @() }
+
+    # Skip Microsoft Store dummy python aliases because they hang non-interactive sessions.
     if ($exe -match "^python") {
         $resolved = Get-Command $exe -ErrorAction SilentlyContinue
         if ($resolved -and $resolved.Source -match "Microsoft\\WindowsApps") {
@@ -47,22 +68,23 @@ foreach ($candidate in $candidates) {
         }
     }
 
-    try {
-        if ($parts.Length -gt 1) {
-            $arg = $parts[1]
-            $ver = & $exe $arg --version 2>&1
-        } else {
-            $ver = & $exe --version 2>&1
-        }
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host ("Python:   {0}  ({1})" -f $ver, $candidate) -ForegroundColor Green
-            $pythonOk = $true
-            break
-        }
-    } catch { }
+    $version = Get-PythonVersion -FilePath $exe -Arguments $arguments
+    if (-not $version) { continue }
+    if ($version -in $SupportedPythonVersions) {
+        Write-Host ("Python:   Python {0}  ({1})" -f $version, $candidate) -ForegroundColor Green
+        $pythonOk = $true
+        break
+    }
+    if (-not $unsupportedPythonVersions.Contains($version)) {
+        $unsupportedPythonVersions.Add($version)
+    }
 }
 if (-not $pythonOk) {
-    Write-Host "Python:   NOT FOUND. Install Python 3.11, 3.12, or 3.13 from python.org." -ForegroundColor Red
+    if ($unsupportedPythonVersions.Count -gt 0) {
+        Write-Host ("Python:   UNSUPPORTED version detected: {0}. Install Python 3.11, 3.12, or 3.13." -f ($unsupportedPythonVersions -join ", ")) -ForegroundColor Red
+    } else {
+        Write-Host "Python:   NOT FOUND. Install Python 3.11, 3.12, or 3.13 from python.org." -ForegroundColor Red
+    }
 }
 
 # --- Registry Long Paths Enabled Check & Auto-Remediation ---
@@ -176,8 +198,8 @@ try {
 if ($npu) {
     foreach ($n in $npu) {
         Write-Host ("NPU:      {0} [{1}]" -f $n.FriendlyName, $n.Status) -ForegroundColor Green
-        
-        # Try to query the signed driver version
+
+        # Try to query the signed driver version.
         try {
             $driver = $null
             try {
@@ -193,41 +215,38 @@ if ($npu) {
                 $ver = $driver.DriverVersion
                 $date = $driver.DriverDate
                 Write-Host ("          Driver version: {0} ({1})" -f $ver, $date) -ForegroundColor Green
-                
-                # Check for minimum recommended driver version (32.0.100.3104)
+
+                # Check for minimum recommended driver version (32.0.100.3104).
                 if ($ver -match "^(\d+)\.(\d+)\.(\d+)\.(\d+)") {
                     $major = [int]$Matches[1]
                     $minor = [int]$Matches[2]
                     $build1 = [int]$Matches[3]
                     $build2 = [int]$Matches[4]
-                    
-                    # 32.0.100.3104: major=32, minor=0, build1=100, build2=3104
+
                     $isOutdated = $false
                     if ($major -lt 32) { $isOutdated = $true }
                     elseif ($major -eq 32) {
                         if ($minor -lt 0) { $isOutdated = $true }
                         elseif ($minor -eq 0) {
                             if ($build1 -lt 100) { $isOutdated = $true }
-                            elseif ($build1 -eq 100) {
-                                if ($build2 -lt 3104) { $isOutdated = $true }
-                            }
+                            elseif ($build1 -eq 100 -and $build2 -lt 3104) { $isOutdated = $true }
                         }
                     }
-                    
+
                     if ($isOutdated) {
                         Write-Host "          WARNING: NPU driver version is older than recommended baseline (32.0.100.3104)." -ForegroundColor Yellow
                         Write-Host "                   This may cause OpenVINO GenAI graph compilation failures or segfaults." -ForegroundColor Yellow
                         Write-Host "                   Please update your drivers from the Intel Download Center." -ForegroundColor Yellow
-                      }
-                  }
-              }
-          } catch {
-              Write-Host "          Could not retrieve NPU driver version." -ForegroundColor DarkGray
-          }
-      }
-  } else {
-      Write-Host "NPU:      not detected via PnP (CPU/GPU will still work)." -ForegroundColor Yellow
-  }
+                    }
+                }
+            }
+        } catch {
+            Write-Host "          Could not retrieve NPU driver version." -ForegroundColor DarkGray
+        }
+    }
+} else {
+    Write-Host "NPU:      not detected via PnP (CPU/GPU will still work)." -ForegroundColor Yellow
+}
 
 Write-Host ""
 Write-Host "Preflight is informational; CPU inference works without GPU/NPU drivers." -ForegroundColor DarkGray
