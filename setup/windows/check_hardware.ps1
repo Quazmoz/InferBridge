@@ -32,8 +32,8 @@ Write-Host ("OS:       {0} (build {1})" -f $osCaption, $osBuild)
 
 # --- Python ---
 $pythonOk = $false
-# Candidates list, prioritizing specific versions, default launcher, then python
-$candidates = @("py -3.14", "py -3.13", "py -3.12", "py -3.11", "py", "python")
+# Match the versions accepted by install_deps.ps1 and pyproject.toml.
+$candidates = @("py -3.11", "py -3.12", "py -3.13", "py", "python")
 
 foreach ($candidate in $candidates) {
     $parts = $candidate.Split(" ")
@@ -62,7 +62,7 @@ foreach ($candidate in $candidates) {
     } catch { }
 }
 if (-not $pythonOk) {
-    Write-Host "Python:   NOT FOUND. Install Python 3.11, 3.12, 3.13 or 3.14 from python.org." -ForegroundColor Red
+    Write-Host "Python:   NOT FOUND. Install Python 3.11, 3.12, or 3.13 from python.org." -ForegroundColor Red
 }
 
 # --- Registry Long Paths Enabled Check & Auto-Remediation ---
