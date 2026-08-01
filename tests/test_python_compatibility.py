@@ -1,5 +1,5 @@
-from pathlib import Path
 import tomllib
+from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,6 +18,9 @@ def test_supported_python_versions_are_consistent() -> None:
 
     assert project["project"]["requires-python"] == ">=3.11,<3.14"
     assert 'python-version: ["3.11", "3.12", "3.13"]' in ci
+    assert '$SupportedPythonVersions = @("3.11", "3.12", "3.13")' in installer
+    assert "Get-PythonVersion" in installer
+    assert "$venvVersion -notin $SupportedPythonVersions" in installer
 
     for version in SUPPORTED_PYTHON:
         launcher = f'"py -{version}"'
