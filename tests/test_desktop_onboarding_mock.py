@@ -51,6 +51,12 @@ def test_fresh_mock_onboarding_reaches_chat_and_persists_completion(tmp_path):
     register_onboarding_routes(app, service=service, settings=settings)
 
     with TestClient(app) as client:
+        documentation = client.get("/v1/onboarding/documentation", follow_redirects=False)
+        assert documentation.status_code == 307
+        assert documentation.headers["location"] == (
+            "https://github.com/Quazmoz/InferBridge/blob/main/docs/FIRST_RUN.md"
+        )
+
         status = client.get("/v1/onboarding/status").json()
         assert status["completed"] is False
         scan = client.get("/v1/onboarding/system-scan").json()
