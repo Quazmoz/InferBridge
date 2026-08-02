@@ -17,6 +17,8 @@ __all__ = [
     "build_info",
     "chat_format",
     "config",
+    "context_budget",
+    "context_budget_ui",
     "data_migrations",
     "desktop_controller",
     "desktop_launcher",
