@@ -52,3 +52,17 @@ def test_split_status_includes_compact_recovery_summary(tmp_path) -> None:
     assert entry["recovery"]["model_id"] == MODEL_ID
     assert entry["recovery"]["conversion_output"] == "incomplete"
     assert "failure_details" not in entry["recovery"]
+
+
+def test_inferred_recovery_identity_is_stable_across_status_polls(tmp_path) -> None:
+    manager = _manager(tmp_path)
+    model_dir = Path(manager.catalog[MODEL_ID].model_path)
+    model_dir.mkdir(parents=True)
+    (model_dir / "partial.bin").write_bytes(b"partial")
+
+    first = status_split._lifecycle_catalog_entry(manager, MODEL_ID)["recovery"]
+    second = status_split._lifecycle_catalog_entry(manager, MODEL_ID)["recovery"]
+
+    assert first["recovery_id"] == second["recovery_id"]
+    assert first["recovery_id"].startswith("inferred-")
+    assert manager.model_recovery(MODEL_ID)["recovery_id"] == first["recovery_id"]
