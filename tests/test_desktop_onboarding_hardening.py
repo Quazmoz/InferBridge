@@ -1,13 +1,18 @@
 from pathlib import Path
 
+from app import errors
 from app.desktop_onboarding import (
+    DesktopOnboardingService,
     _STAGE_TIMEOUT_SECONDS,
+    _classify_native_runtime_failure,
     _windows_build,
     actual_device_is_unresolved,
     augment_windows_scan,
     sanitize_system_scan,
 )
 from app.onboarding_models import PreparationStage, SystemScanResponse
+from app.onboarding_service import PreparationJob
+from runtime import device_check
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -100,6 +105,40 @@ def test_long_running_stages_have_distinct_generous_timeouts():
     assert _STAGE_TIMEOUT_SECONDS[PreparationStage.CONVERTING] >= 6 * 60 * 60
     assert _STAGE_TIMEOUT_SECONDS[PreparationStage.COMPILING] >= 60 * 60
     assert _STAGE_TIMEOUT_SECONDS[PreparationStage.BENCHMARKING] >= 10 * 60
+
+
+def test_native_runtime_failure_is_classified_as_package_level(monkeypatch):
+    monkeypatch.setattr(errors.sys, "frozen", True, raising=False)
+    detail = (
+        'Cannot add extension. Cannot find entry point to the extension library. '
+        'Cannot load library "openvino_tokenizers.dll": 126'
+    )
+    job = PreparationJob(job_id="job", model_id="model", requested_device="NPU")
+    job.error_detail = detail
+    job.terminal(PreparationStage.FAILED, detail, error_code="preparation_failed")
+
+    assert _classify_native_runtime_failure(job) is True
+    assert job.error_code == "native_runtime_unavailable"
+    assert "Reinstall the latest InferBridge build" in job.error_detail
+    assert "falling back to CPU will not fix" in job.message
+
+
+def test_native_runtime_failure_disables_retry_and_cpu_fallback(monkeypatch):
+    monkeypatch.setattr(errors.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(device_check, "available_devices", lambda: ["CPU", "NPU"])
+    detail = 'Cannot load library "openvino_tokenizers.dll": 126'
+    job = PreparationJob(job_id="job", model_id="model", requested_device="NPU")
+    job.error_detail = detail
+    job.terminal(PreparationStage.FAILED, detail, error_code="preparation_failed")
+    service = object.__new__(DesktopOnboardingService)
+    service._jobs = {job.job_id: job}
+
+    response = service.progress(job.job_id)
+
+    assert response.error_code == "native_runtime_unavailable"
+    assert response.can_retry is False
+    assert response.can_fallback_to_cpu is False
+    assert "package-level error" in response.error_detail
 
 
 def test_normal_desktop_launch_cannot_silently_use_mock_runtime():
