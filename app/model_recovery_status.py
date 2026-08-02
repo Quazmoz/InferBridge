@@ -30,10 +30,15 @@ def install_model_recovery_status_extension() -> None:
         entry = original_lifecycle_entry(manager, model_id)
         if _model_is_active(manager, model_id):
             return entry
-        records = getattr(manager, "_model_recovery_records", {})
+        records = getattr(manager, "_model_recovery_records", None)
         record = records.get(model_id) if isinstance(records, dict) else None
         if record is None:
             record = _inferred_record(manager, model_id)
+            if isinstance(record, dict) and isinstance(records, dict):
+                # Keep one operation identity for the current process. Persisting is
+                # unnecessary here because incomplete output is inferred again after a
+                # restart, but a stable ID prevents polling from invalidating UI actions.
+                records[model_id] = record
         if isinstance(record, dict):
             entry["recovery"] = _summary_from_record(
                 manager,
