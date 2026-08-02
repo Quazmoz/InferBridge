@@ -31,7 +31,10 @@ if third_party.is_file():
 binaries = []
 hiddenimports = collect_submodules("app") + collect_submodules("runtime")
 
-for package in ("openvino", "openvino_genai"):
+# Collect every OpenVINO native distribution explicitly. openvino-genai loads the
+# tokenizer extension by DLL name at runtime, so relying on transitive collection can
+# leave openvino_tokenizers.dll without its package-owned companion binaries.
+for package in ("openvino", "openvino_genai", "openvino_tokenizers"):
     package_datas, package_binaries, package_hidden = collect_all(package)
     datas += package_datas
     binaries += package_binaries
@@ -67,6 +70,7 @@ for package in (
 for distribution in (
     "openvino",
     "openvino-genai",
+    "openvino-tokenizers",
     "optimum",
     "optimum-intel",
     "nncf",
