@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import re
 import ssl
+import sys
 
 from runtime import device_check
 
@@ -21,6 +22,66 @@ _SECRET_RE = re.compile(
 
 def _redact_secrets(text: str) -> str:
     return _SECRET_RE.sub("[redacted]", str(text or ""))
+
+
+def _exception_chain_text(exc: BaseException) -> str:
+    """Return bounded text from an exception and its cause/context chain."""
+
+    parts: list[str] = []
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        parts.append(f"{type(current).__name__}: {current}")
+        current = current.__cause__ or current.__context__
+    return "\n".join(parts)[:4000]
+
+
+def is_openvino_tokenizer_runtime_error(exc: BaseException) -> bool:
+    """Detect package-level OpenVINO tokenizer native-library failures.
+
+    These failures are independent of CPU/GPU/NPU selection. Retrying on another
+    device cannot repair a missing, incompatible, or unresolved tokenizer DLL.
+    """
+
+    text = _exception_chain_text(exc).lower()
+    tokenizer_marker = (
+        "openvino_tokenizers" in text
+        or "openvino tokenizer runtime" in text
+        or "openvino tokenizer extension" in text
+    )
+    if not tokenizer_marker:
+        return False
+    return any(
+        marker in text
+        for marker in (
+            "cannot load library",
+            "cannot add extension",
+            "entry point to the extension library",
+            "winerror 126",
+            "error 126",
+            ": 126",
+            "native runtime",
+            "package-level error",
+        )
+    )
+
+
+def format_openvino_tokenizer_runtime_error() -> str:
+    """Return an actionable message for a broken tokenizer native runtime."""
+
+    if getattr(sys, "frozen", False):
+        return (
+            "InferBridge could not load the bundled OpenVINO tokenizer runtime. Reinstall the "
+            "latest InferBridge build over the current installation; downloaded models, settings, "
+            "and logs are preserved. Changing devices or falling back to CPU will not fix this "
+            "package-level error."
+        )
+    return (
+        "OpenVINO could not load the tokenizer native runtime. Reinstall matching versions of "
+        "openvino, openvino-genai, and openvino-tokenizers, then retry. Changing devices will not "
+        "fix this dependency-level error."
+    )
 
 
 def is_tls_certificate_error(exc: BaseException) -> bool:
@@ -43,6 +104,8 @@ def is_tls_certificate_error(exc: BaseException) -> bool:
 
 def format_model_load_error(exc: BaseException) -> str:
     """Return a concise, actionable message for a failed model load."""
+    if is_openvino_tokenizer_runtime_error(exc):
+        return format_openvino_tokenizer_runtime_error()
     if is_tls_certificate_error(exc):
         bundle = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("SSL_CERT_FILE")
         hint = f" Active CA bundle: {bundle}." if bundle else ""
@@ -56,6 +119,9 @@ def format_model_load_error(exc: BaseException) -> str:
 
 def format_model_convert_error(exc: BaseException) -> str:
     """Return a concise, actionable message for a failed model conversion."""
+    if is_openvino_tokenizer_runtime_error(exc):
+        return format_openvino_tokenizer_runtime_error()
+
     text = _redact_secrets(str(exc))
     lowered = text.lower()
 
