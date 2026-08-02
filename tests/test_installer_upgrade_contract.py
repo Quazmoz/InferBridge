@@ -1,7 +1,9 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from scripts import release_scan
 from scripts.release_scan import verify_native_distribution
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -52,6 +54,14 @@ def test_pyinstaller_collects_openvino_tokenizer_distribution_explicitly():
     assert '"openvino-tokenizers",' in spec
 
 
+def test_runtime_hook_discovers_actual_openvino_dll_directories_and_avoids_smoke_dialogs():
+    hook = (ROOT / "packaging" / "runtime_hook.py").read_text(encoding="utf-8")
+
+    assert 'bundle_root.rglob("*.dll")' in hook
+    assert '"openvino_tokenizers.dll"' in hook
+    assert 'if "--native-smoke" in sys.argv[1:]' in hook
+
+
 def _native_distribution(tmp_path: Path) -> Path:
     (tmp_path / "InferBridge.exe").write_bytes(b"exe")
     native = tmp_path / "_internal" / "native"
@@ -73,11 +83,11 @@ def test_native_release_gate_requires_one_psutil_windows_extension(tmp_path):
     psutil_dir.mkdir()
     (psutil_dir / "_psutil_windows.cp313-win_amd64.pyd").write_bytes(b"pyd")
 
-    verify_native_distribution(root)
+    verify_native_distribution(root, run_native_smoke=False)
 
     (psutil_dir / "_psutil_windows_duplicate.pyd").write_bytes(b"pyd")
     with pytest.raises(RuntimeError, match="exactly one psutil Windows extension"):
-        verify_native_distribution(root)
+        verify_native_distribution(root, run_native_smoke=False)
 
 
 @pytest.mark.parametrize(
@@ -94,7 +104,76 @@ def test_native_release_gate_rejects_psutil_extension_outside_internal(tmp_path,
     extension.write_bytes(b"pyd")
 
     with pytest.raises(RuntimeError, match="must be contained under _internal"):
+        verify_native_distribution(root, run_native_smoke=False)
+
+
+def test_native_release_gate_rejects_duplicate_tokenizer_dll(tmp_path):
+    root = _native_distribution(tmp_path)
+    psutil_dir = root / "_internal" / "psutil"
+    psutil_dir.mkdir()
+    (psutil_dir / "_psutil_windows.pyd").write_bytes(b"pyd")
+    duplicate = root / "_internal" / "other" / "openvino_tokenizers.dll"
+    duplicate.parent.mkdir()
+    duplicate.write_bytes(b"dll")
+
+    with pytest.raises(RuntimeError, match="exactly one OpenVINO tokenizer extension"):
+        verify_native_distribution(root, run_native_smoke=False)
+
+
+def test_native_release_gate_rejects_tokenizer_dll_outside_internal(tmp_path):
+    root = _native_distribution(tmp_path)
+    psutil_dir = root / "_internal" / "psutil"
+    psutil_dir.mkdir()
+    (psutil_dir / "_psutil_windows.pyd").write_bytes(b"pyd")
+    internal = root / "_internal" / "native" / "openvino_tokenizers.dll"
+    internal.unlink()
+    (root / "openvino_tokenizers.dll").write_bytes(b"dll")
+
+    with pytest.raises(RuntimeError, match="must be contained under _internal"):
+        verify_native_distribution(root, run_native_smoke=False)
+
+
+def test_native_release_gate_executes_packaged_smoke_on_windows(monkeypatch, tmp_path):
+    root = _native_distribution(tmp_path)
+    psutil_dir = root / "_internal" / "psutil"
+    psutil_dir.mkdir()
+    (psutil_dir / "_psutil_windows.pyd").write_bytes(b"pyd")
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured.update(kwargs)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(release_scan.os, "name", "nt")
+    monkeypatch.setattr(release_scan.subprocess, "run", fake_run)
+
+    verify_native_distribution(root)
+
+    assert captured["command"] == [str(root / "InferBridge.exe"), "--native-smoke"]
+    assert captured["cwd"] == root
+    assert captured["timeout"] == 90
+
+
+def test_native_release_gate_surfaces_packaged_smoke_failure(monkeypatch, tmp_path):
+    root = _native_distribution(tmp_path)
+    psutil_dir = root / "_internal" / "psutil"
+    psutil_dir.mkdir()
+    (psutil_dir / "_psutil_windows.pyd").write_bytes(b"pyd")
+    monkeypatch.setattr(release_scan.os, "name", "nt")
+    monkeypatch.setattr(
+        release_scan.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=2,
+            stdout="",
+            stderr="Cannot load library openvino_tokenizers.dll: 126",
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="native smoke test failed") as exc_info:
         verify_native_distribution(root)
+    assert "openvino_tokenizers.dll" in str(exc_info.value)
 
 
 def test_packaged_smoke_rejects_missing_duplicate_or_sibling_psutil_extensions():
