@@ -40,9 +40,9 @@ if (-not $PsutilWindowsPath.StartsWith($InternalPrefix, [StringComparison]::Ordi
     throw "The psutil Windows extension must be contained under _internal."
 }
 
-& $Exe --native-smoke
-if ($LASTEXITCODE -ne 0) {
-    throw "Packaged OpenVINO native runtime smoke test failed with exit code $LASTEXITCODE."
+$NativeSmoke = Start-Process -FilePath $Exe -ArgumentList "--native-smoke" -WorkingDirectory $Root -PassThru -Wait -WindowStyle Hidden
+if ($NativeSmoke.ExitCode -ne 0) {
+    throw "Packaged OpenVINO native runtime smoke test failed with exit code $($NativeSmoke.ExitCode)."
 }
 
 $Data = Join-Path ([IO.Path]::GetTempPath()) ("OV LLM Packaged Smoke " + [guid]::NewGuid().ToString("N"))
