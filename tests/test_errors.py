@@ -32,6 +32,44 @@ def test_is_tls_certificate_error_handles_cause_cycle():
     assert not errors.is_tls_certificate_error(a)
 
 
+def test_openvino_tokenizer_runtime_error_matches_packaged_failure_chain():
+    root = RuntimeError(
+        'Cannot add extension. Cannot find entry point to the extension library. '
+        'Cannot load library "openvino_tokenizers.dll": 126'
+    )
+    wrapper = RuntimeError("model compilation failed")
+    wrapper.__cause__ = root
+
+    assert errors.is_openvino_tokenizer_runtime_error(wrapper)
+
+
+def test_openvino_tokenizer_runtime_error_rejects_unrelated_device_failure():
+    assert not errors.is_openvino_tokenizer_runtime_error(
+        RuntimeError("OpenVINO GPU plugin could not compile this model")
+    )
+
+
+def test_format_model_load_error_tokenizer_package_message(monkeypatch):
+    monkeypatch.setattr(errors.sys, "frozen", True, raising=False)
+    exc = RuntimeError('Cannot load library "openvino_tokenizers.dll": 126')
+
+    msg = errors.format_model_load_error(exc)
+
+    assert "Reinstall the latest InferBridge build" in msg
+    assert "falling back to CPU will not fix" in msg
+    assert "126" not in msg
+
+
+def test_format_model_convert_error_tokenizer_dependency_message(monkeypatch):
+    monkeypatch.setattr(errors.sys, "frozen", False, raising=False)
+    exc = RuntimeError("Cannot add extension openvino_tokenizers.dll: WinError 126")
+
+    msg = errors.format_model_convert_error(exc)
+
+    assert "matching versions" in msg
+    assert "openvino-tokenizers" in msg
+
+
 def test_format_model_load_error_tls_message_and_bundle(monkeypatch):
     monkeypatch.setenv("REQUESTS_CA_BUNDLE", r"C:\certs\corp.pem")
     msg = errors.format_model_load_error(ssl.SSLCertVerificationError("CERTIFICATE_VERIFY_FAILED"))
