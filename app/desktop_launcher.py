@@ -268,15 +268,25 @@ def _run_packaged_converter(arguments: list[str]) -> int:
 
     if getattr(sys, "frozen", False):
         original_which = model_converter.shutil.which
+        original_run_streaming_command = model_converter._run_streaming_command
 
         def packaged_which(command: str) -> str | None:
             if command == "optimum-cli":
                 return sys.executable
             return original_which(command)
 
-        def run_optimum(command: list[str]) -> None:
+        def run_optimum(
+            command: list[str],
+            *,
+            progress_emitter: Any = None,
+        ) -> None:
             from optimum.commands.optimum_cli import main as optimum_main
 
+            if progress_emitter is not None:
+                progress_emitter.emit(
+                    "converting",
+                    "Running packaged OpenVINO conversion…",
+                )
             previous = sys.argv
             sys.argv = list(command)
             try:
@@ -292,7 +302,31 @@ def _run_packaged_converter(arguments: list[str]) -> int:
 
         model_converter.shutil.which = packaged_which
         model_converter._run_streaming_command = run_optimum
+        try:
+            return model_converter.main(arguments)
+        finally:
+            model_converter.shutil.which = original_which
+            model_converter._run_streaming_command = original_run_streaming_command
     return model_converter.main(arguments)
+
+
+def _native_runtime_smoke() -> int:
+    """Verify that the frozen OpenVINO and tokenizer native libraries can load."""
+
+    try:
+        from openvino import Core
+
+        core = Core()
+        # OpenVINO GenAI resolves this extension by DLL name. Using the same lookup
+        # here catches missing transitive DLLs and incorrect PyInstaller search paths.
+        core.add_extension("openvino_tokenizers.dll")
+        import openvino_genai
+
+        getattr(openvino_genai, "LLMPipeline")
+    except Exception as exc:  # noqa: BLE001 - packaged native boundary
+        print(f"Packaged OpenVINO native smoke test failed: {exc}", file=sys.stderr, flush=True)
+        return 2
+    return 0
 
 
 def _diagnostic_export(args: argparse.Namespace) -> int:
@@ -334,6 +368,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=f"{DISPLAY_NAME} desktop tray launcher")
     parser.add_argument("--server-child", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--convert-model", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--native-smoke", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--instance-nonce", default="")
     parser.add_argument("--control-token", default="", help=argparse.SUPPRESS)
@@ -351,6 +386,8 @@ def main(argv: list[str] | None = None) -> int:
     args, remaining = parser.parse_known_args(arguments)
     if args.convert_model:
         return _run_packaged_converter(remaining)
+    if args.native_smoke:
+        return _native_runtime_smoke()
     if remaining:
         parser.error(f"unrecognized arguments: {' '.join(remaining)}")
     if args.port < 1 or args.port > 65535:
