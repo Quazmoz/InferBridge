@@ -9,10 +9,10 @@ import os
 import secrets
 import subprocess
 import sys
-import urllib.error
+import time
 import urllib.request
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -88,7 +88,7 @@ def _json_request(
                 return {}
             parsed = json.loads(data.decode("utf-8"))
             return parsed if isinstance(parsed, dict) else None
-    except (OSError, ValueError, urllib.error.URLError):
+    except (OSError, ValueError):
         return None
 
 
@@ -126,7 +126,7 @@ class DesktopServerController:
     def origin(self) -> str | None:
         return f"http://127.0.0.1:{self.port}" if self.port else None
 
-    def _server_command(self, metadata: InstanceMetadata, control_token: str) -> list[str]:
+    def _server_command(self, metadata: InstanceMetadata) -> list[str]:
         if getattr(sys, "frozen", False):
             command = [sys.executable, "--server-child"]
         else:
@@ -164,7 +164,7 @@ class DesktopServerController:
             environment = os.environ.copy()
             environment["OV_LLM_DESKTOP_CONTROL_TOKEN"] = control_token
             return subprocess.Popen(
-                self._server_command(metadata, control_token),
+                self._server_command(metadata),
                 stdin=subprocess.DEVNULL,
                 stdout=stream,
                 stderr=stream,
@@ -186,8 +186,6 @@ class DesktopServerController:
         if stale and verify_instance(stale):
             # If a prior tray crashed, the child owner monitor should stop the orphan.
             # Wait briefly for that bounded cleanup, but never kill an unowned process.
-            import time
-
             deadline = time.monotonic() + 6.0
             while time.monotonic() < deadline and verify_instance(stale):
                 time.sleep(0.25)
@@ -274,10 +272,11 @@ class DesktopServerController:
         return {"X-Desktop-Control": self.control_token}
 
     def control_get(self, path: str, *, timeout: float = 3.0) -> dict[str, Any] | None:
-        if not self.origin:
+        origin = self.origin
+        if origin is None:
             return None
         return _json_request(
-            f"{self.origin}{path}",
+            f"{origin}{path}",
             headers=self._control_headers(),
             timeout=timeout,
         )
@@ -289,10 +288,11 @@ class DesktopServerController:
         *,
         timeout: float = 30.0,
     ) -> dict[str, Any] | None:
-        if not self.origin:
+        origin = self.origin
+        if origin is None:
             return None
         return _json_request(
-            f"{self.origin}{path}",
+            f"{origin}{path}",
             method="POST",
             headers=self._control_headers(),
             body=body,
@@ -317,7 +317,8 @@ class DesktopServerController:
         return result
 
     def open_chat(self) -> bool:
-        return bool(self.origin and open_browser(f"{self.origin}/"))
+        origin = self.origin
+        return bool(origin and open_browser(f"{origin}/"))
 
     def stop(self) -> None:
         if not self.running:
@@ -353,14 +354,7 @@ class DesktopServerController:
         current_port = self.port
         self.stop()
         if current_port:
-            self.options = ServerControllerOptions(
-                preferred_port=current_port,
-                portable=self.options.portable,
-                data_dir=self.options.data_dir,
-                mock=self.options.mock,
-                startup_timeout_seconds=self.options.startup_timeout_seconds,
-                graceful_shutdown_seconds=self.options.graceful_shutdown_seconds,
-            )
+            self.options = replace(self.options, preferred_port=current_port)
         return self.start(open_chat=open_chat)
 
     def poll_unexpected_exit(self) -> str | None:
