@@ -52,6 +52,7 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           from app.cancellation_ui import CANCELLATION_UI_JS
+          from app.context_budget_ui import CONTEXT_BUDGET_JS
           from app.header_overflow_ui import HEADER_OVERFLOW_JS
           from app.hf_search_ui import HF_SEARCH_EXTENSION_JS
           from app.huggingface_access_ui import HUGGINGFACE_ACCESS_JS
@@ -63,6 +64,7 @@ jobs:
 
           scripts = {
               'cancellation': CANCELLATION_UI_JS,
+              'context-budget': CONTEXT_BUDGET_JS,
               'header-overflow': HEADER_OVERFLOW_JS,
               'hf-search': HF_SEARCH_EXTENSION_JS,
               'huggingface-access': HUGGINGFACE_ACCESS_JS,
@@ -76,6 +78,7 @@ jobs:
               Path(f'/tmp/inferbridge-{name}.js').write_text(script, encoding='utf-8')
           PY
           node --check /tmp/inferbridge-cancellation.js
+          node --check /tmp/inferbridge-context-budget.js
           node --check /tmp/inferbridge-header-overflow.js
           node --check /tmp/inferbridge-hf-search.js
           node --check /tmp/inferbridge-huggingface-access.js
@@ -215,6 +218,8 @@ jobs:
           python -m py_compile
           packaging/runtime_hook.py
           app/cancellation_ui.py
+          app/context_budget.py
+          app/context_budget_ui.py
           app/header_overflow_ui.py
           app/hf_search_ui.py
           app/huggingface_access.py
@@ -258,6 +263,8 @@ jobs:
           tests/test_installer_upgrade_contract.py
           tests/test_runtime_hook_upgrade.py
           tests/test_cancellation_ui.py
+          tests/test_context_budget.py
+          tests/test_context_budget_ui.py
           tests/test_header_overflow_ui.py
           tests/test_hf_search_ui.py
           tests/test_huggingface_access.py
