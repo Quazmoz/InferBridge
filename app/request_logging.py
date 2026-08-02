@@ -21,9 +21,11 @@ QUIET_SUCCESS_PATHS = frozenset(
 )
 SLOW_REQUEST_THRESHOLD_MS = 500.0
 _REQUEST_LOG_TEMPLATE = "HTTP %s %s - Status: %d - Latency: %.2fms"
+_QUIET_METHODS = frozenset({"GET", "HEAD"})
+_RequestLogFields = tuple[str, str, int, float]
 
 
-def _request_log_fields(record: logging.LogRecord) -> tuple[str, str, int, float] | None:
+def _request_log_fields(record: logging.LogRecord) -> _RequestLogFields | None:
     """Parse the server's structured successful-request log record."""
 
     if record.levelno != logging.INFO or record.msg != _REQUEST_LOG_TEMPLATE:
@@ -52,7 +54,7 @@ class PollingRequestLogFilter(logging.Filter):
 
         method, path, status_code, duration_ms = fields
         quiet_success = (
-            method in {"GET", "HEAD"}
+            method in _QUIET_METHODS
             and path in QUIET_SUCCESS_PATHS
             and 200 <= status_code < 400
             and duration_ms < self.slow_request_ms
