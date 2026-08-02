@@ -87,6 +87,23 @@ class OnboardingStateStore:
         self.path = Path(path)
         self._lock = threading.RLock()
 
+    def _quarantine_corrupt_state(self) -> None:
+        """Move an unreadable state file aside so recovery is reported only once."""
+
+        backup = self.path.with_suffix(self.path.suffix + ".corrupt")
+        try:
+            backup.parent.mkdir(parents=True, exist_ok=True)
+            self.path.replace(backup)
+            return
+        except OSError:
+            pass
+
+        # Some filesystems or security tools can block an atomic rename. Preserve a
+        # best-effort copy and remove the source only after the backup is durable.
+        with contextlib.suppress(OSError):
+            backup.write_bytes(self.path.read_bytes())
+            self.path.unlink()
+
     def load(self) -> StateLoadResult:
         with self._lock:
             if not self.path.exists():
@@ -95,10 +112,7 @@ class OnboardingStateStore:
                 raw = json.loads(self.path.read_text(encoding="utf-8-sig"))
                 return StateLoadResult(migrate_state(raw))
             except (OSError, TypeError, ValueError):
-                backup = self.path.with_suffix(self.path.suffix + ".corrupt")
-                with contextlib.suppress(OSError):
-                    backup.parent.mkdir(parents=True, exist_ok=True)
-                    backup.write_bytes(self.path.read_bytes())
+                self._quarantine_corrupt_state()
                 return StateLoadResult(
                     default_state(),
                     recovered=True,
@@ -118,9 +132,12 @@ class OnboardingStateStore:
         return normalized
 
     def update(self, **changes: Any) -> dict[str, Any]:
-        current = self.load().state
-        current.update(changes)
-        return self.save(current)
+        # Keep the complete read-modify-write transaction under one reentrant lock.
+        # Separate load/save locks allow concurrent updates to overwrite each other.
+        with self._lock:
+            current = self.load().state
+            current.update(changes)
+            return self.save(current)
 
     def status(self) -> OnboardingStatusResponse:
         loaded = self.load()
