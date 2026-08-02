@@ -47,6 +47,17 @@ def test_wizard_has_accessible_stages_and_real_connection_configuration():
     assert "https://" not in rendered
 
 
+def test_wizard_auto_opens_once_and_keeps_manual_onboarding_access():
+    assert "inferbridge.onboarding.auto-opened.v1" in ONBOARDING_UI
+    assert "function hasAutoOpened()" in ONBOARDING_UI
+    assert "function markAutoOpened()" in ONBOARDING_UI
+    assert "if(hasAutoOpened())return;markAutoOpened();show()" in ONBOARDING_UI
+    assert "Setup and onboarding" in ONBOARDING_UI
+    assert "Onboarding needs attention" in ONBOARDING_UI
+    assert "Restart onboarding" in ONBOARDING_UI
+    assert "opener.addEventListener('click'" in ONBOARDING_UI
+
+
 def test_wizard_omits_broken_exit_action_but_keeps_close():
     assert "id:'exit'" not in ONBOARDING_UI
     assert "action==='exit'" not in ONBOARDING_UI
