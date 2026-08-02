@@ -7,6 +7,7 @@ import os
 import re
 import sys
 from datetime import UTC, datetime
+from pathlib import Path
 
 _APP_TITLE = "InferBridge"
 _CURRENT_DATA_DIR_NAME = "InferBridge"
@@ -19,6 +20,7 @@ _WINDOWS_PATH_RE = re.compile(
     r'(?:[^\\/:*?"<>|\r\n]+\\)*[^\\/:*?"<>|\r\n]*'
 )
 _POSIX_HOME_RE = re.compile(r"(?<![A-Za-z0-9_])/(?:home|Users)/[^/\s]+(?:/[^\s]+)*")
+_DLL_DIRECTORY_HANDLES: list[object] = []
 
 
 def _restore_output(name: str, descriptor: int) -> None:
@@ -110,6 +112,60 @@ def _show_runtime_failure(detail: str) -> None:
                 sys.stderr.flush()
 
 
+def _configure_windows_native_search_path() -> None:
+    """Expose packaged OpenVINO DLL directories before native imports occur.
+
+    OpenVINO GenAI asks the runtime to load ``openvino_tokenizers.dll`` by its DLL
+    name. In a PyInstaller one-directory build, the extension and its companion
+    libraries can live in package subdirectories under ``sys._MEIPASS`` rather than
+    beside the executable. Register those directories explicitly so Windows can
+    resolve both the extension and its transitive dependencies.
+    """
+
+    if os.name != "nt" or not getattr(sys, "frozen", False):
+        return
+
+    bundle_root = Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
+    candidates = (
+        bundle_root,
+        bundle_root / "openvino" / "libs",
+        bundle_root / "openvino_genai",
+        bundle_root / "openvino_genai" / "libs",
+        bundle_root / "openvino_tokenizers",
+        bundle_root / "openvino_tokenizers" / "libs",
+    )
+    directories: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        if not candidate.is_dir():
+            continue
+        normalized = os.path.normcase(os.path.abspath(candidate))
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        directories.append(candidate)
+
+    if not directories:
+        return
+
+    existing_path = os.environ.get("PATH", "")
+    os.environ["PATH"] = os.pathsep.join(
+        [*(str(directory) for directory in directories), existing_path]
+    ).rstrip(os.pathsep)
+
+    add_dll_directory = getattr(os, "add_dll_directory", None)
+    if add_dll_directory is None:
+        return
+    for directory in directories:
+        try:
+            handle = add_dll_directory(str(directory))
+        except OSError:
+            continue
+        # The directory is removed when the handle is closed, so retain each handle
+        # for the lifetime of the frozen process.
+        _DLL_DIRECTORY_HANDLES.append(handle)
+
+
 def _validate_windows_native_runtime() -> None:
     """Fail cleanly when packaged Python and psutil native files do not match."""
 
@@ -134,7 +190,13 @@ def _register_for_update_restart() -> None:
     if os.name != "nt" or not getattr(sys, "frozen", False):
         return
     arguments = set(sys.argv[1:])
-    helper_modes = {"--server-child", "--convert-model", "--diagnostic", "--headless"}
+    helper_modes = {
+        "--server-child",
+        "--convert-model",
+        "--diagnostic",
+        "--headless",
+        "--native-smoke",
+    }
     if arguments & helper_modes or _portable_install():
         return
     try:
@@ -153,5 +215,6 @@ def _register_for_update_restart() -> None:
 _restore_output("stdout", 1)
 _restore_output("stderr", 2)
 _restore_input()
+_configure_windows_native_search_path()
 _validate_windows_native_runtime()
 _register_for_update_restart()
