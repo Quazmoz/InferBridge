@@ -14,8 +14,7 @@ from pathlib import Path
 
 from app.brand import DATA_DIR_NAME, DISPLAY_NAME, LEGACY_DATA_DIR_NAME
 
-_APP_DIR_NAME = DATA_DIR_NAME
-_TRUTHY = {"1", "true", "yes", "on"}
+_TRUTHY = frozenset({"1", "true", "yes", "on"})
 
 
 @dataclass(frozen=True)
@@ -118,7 +117,11 @@ def resolve_runtime_paths(
 ) -> RuntimePaths:
     values = os.environ if env is None else env
     packaged = bool(getattr(sys, "frozen", False))
-    desktop_mode = packaged or _truthy(values.get("OV_LLM_DESKTOP")) if desktop is None else desktop
+    desktop_mode = (
+        packaged or _truthy(values.get("OV_LLM_DESKTOP"))
+        if desktop is None
+        else desktop
+    )
     portable_mode = _truthy(values.get("OV_LLM_PORTABLE")) if portable is None else portable
     resource_root = packaged_resource_root()
 
@@ -199,7 +202,11 @@ def ensure_data_root_writable(paths: RuntimePaths) -> None:
         ) from exc
 
 
-def _rebased_entry(raw: dict, models_dir: Path, model_id: str) -> dict:
+def _rebased_entry(
+    raw: Mapping[str, object],
+    models_dir: Path,
+    model_id: str,
+) -> dict[str, object]:
     entry = dict(raw)
     configured = Path(str(entry.get("model_path") or model_id))
     leaf_name = configured.name or model_id
@@ -220,14 +227,14 @@ def materialize_user_catalog(paths: RuntimePaths) -> Path:
     if not isinstance(source, dict):
         raise RuntimeError("The packaged model catalog is invalid.")
 
-    existing: dict = {}
+    existing: dict[str, object] = {}
     if paths.models_file.exists():
         try:
             parsed = json.loads(paths.models_file.read_text(encoding="utf-8-sig"))
             if not isinstance(parsed, dict):
                 raise ValueError("catalog is not an object")
             existing = parsed
-        except (OSError, ValueError, json.JSONDecodeError):
+        except (OSError, ValueError):
             backup = paths.models_file.with_suffix(".json.corrupt")
             with contextlib.suppress(OSError):
                 shutil.copy2(paths.models_file, backup)
