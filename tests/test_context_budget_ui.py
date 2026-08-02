@@ -59,3 +59,14 @@ def test_context_budget_ui_observes_only_attachment_tray_mutations() -> None:
     assert "trayObserver.observe(tray, { childList: true })" in script
     assert "attachmentObserver.observe(inputArea" not in script
     assert "traySearchObserver.observe(document.documentElement" in script
+
+
+def test_context_budget_ui_only_rechecks_when_model_status_changes() -> None:
+    script = CONTEXT_BUDGET_JS
+
+    assert "let lastModelSignature = ''" in script
+    assert "function scheduleForModelStatus(response)" in script
+    assert "if (signature === lastModelSignature) return" in script
+    assert "lastModelSignature = signature" in script
+    assert "scheduleForModelStatus(response)" in script
+    assert "window.setTimeout(() => scheduleInspect(0), 0)" not in script
