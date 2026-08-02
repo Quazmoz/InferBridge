@@ -8,7 +8,7 @@ import urllib.request
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -36,10 +36,10 @@ _RELEASES_APIS = tuple(
     f"https://api.github.com/repos/{REPOSITORY_OWNER}/{repository}/releases?per_page=20"
     for repository in (REPOSITORY_NAME, LEGACY_REPOSITORY_NAME)
 )
-_RELEASES_API = _RELEASES_APIS[0]
 _MANIFEST_PREFIXES = (ARTIFACT_PREFIX, *LEGACY_ARTIFACT_PREFIXES)
 _MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 _DEFAULT_INTERVAL = timedelta(hours=24)
+_ModelT = TypeVar("_ModelT", bound=BaseModel)
 
 
 class UpdatePreferences(BaseModel):
@@ -56,7 +56,7 @@ class UpdateCache(BaseModel):
     releases_etag: str | None = None
     last_checked_at: datetime | None = None
     latest_checked_version: str | None = None
-    manifest: dict | None = None
+    manifest: dict[str, Any] | None = None
 
 
 class UpdateCheckResult(BaseModel):
@@ -78,11 +78,15 @@ class UpdateStore:
         self.cache_path = config_dir / "update-cache.json"
 
     @staticmethod
-    def _load(path: Path, model_type, default):
+    def _load(
+        path: Path,
+        model_type: type[_ModelT],
+        default_factory: Callable[[], _ModelT],
+    ) -> _ModelT:
         try:
             return model_type.model_validate_json(path.read_text(encoding="utf-8-sig"))
         except (OSError, ValueError):
-            return default
+            return default_factory()
 
     @staticmethod
     def _write(path: Path, model: BaseModel) -> None:
@@ -92,16 +96,20 @@ class UpdateStore:
         temporary.replace(path)
 
     def load_preferences(self) -> UpdatePreferences:
-        return self._load(self.preferences_path, UpdatePreferences, UpdatePreferences())
+        return self._load(self.preferences_path, UpdatePreferences, UpdatePreferences)
 
     def save_preferences(self, preferences: UpdatePreferences) -> None:
         self._write(self.preferences_path, preferences)
 
     def load_cache(self) -> UpdateCache:
-        return self._load(self.cache_path, UpdateCache, UpdateCache())
+        return self._load(self.cache_path, UpdateCache, UpdateCache)
 
     def save_cache(self, cache: UpdateCache) -> None:
         self._write(self.cache_path, cache)
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -124,7 +132,7 @@ def check_due(
     return current - previous >= interval
 
 
-def _read_json(response) -> object:
+def _read_json(response: Any) -> object:
     raw = response.read(_MAX_RESPONSE_BYTES + 1)
     if len(raw) > _MAX_RESPONSE_BYTES:
         raise ValueError("Update response exceeded the size limit.")
@@ -167,7 +175,12 @@ def _candidate_manifest_url(releases: object, channel: ReleaseChannel) -> tuple[
     return version, url
 
 
-def _fetch_release_index(*, opener: Callable, timeout_seconds: float, etag: str | None):
+def _fetch_release_index(
+    *,
+    opener: Callable[..., Any],
+    timeout_seconds: float,
+    etag: str | None,
+) -> tuple[object, str | None]:
     last_error: BaseException | None = None
     for index, releases_api in enumerate(_RELEASES_APIS):
         headers = {
@@ -202,8 +215,8 @@ class UpdateChecker:
         *,
         store: UpdateStore,
         installation_mode: InstallationMode,
-        opener: Callable = urllib.request.urlopen,
-        now: Callable[[], datetime] = lambda: datetime.now(UTC),
+        opener: Callable[..., Any] = urllib.request.urlopen,
+        now: Callable[[], datetime] = _utc_now,
         timeout_seconds: float = 4.0,
     ) -> None:
         self.store = store
@@ -322,11 +335,10 @@ class UpdateChecker:
             preferences.channel in {"beta", "nightly"}
             and manifest.channel == preferences.channel
         )
-        if (
-            latest < current
-            and not (same_channel_stream and same_base_version)
-            or manifest.version in preferences.skipped_versions
-        ):
+        older_release = latest < current and not (
+            same_channel_stream and same_base_version
+        )
+        if older_release or manifest.version in preferences.skipped_versions:
             return UpdateCheckResult(
                 status=fallback_status,
                 latest_version=manifest.version,
