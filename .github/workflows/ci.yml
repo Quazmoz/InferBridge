@@ -55,6 +55,7 @@ jobs:
           from app.header_overflow_ui import HEADER_OVERFLOW_JS
           from app.hf_search_ui import HF_SEARCH_EXTENSION_JS
           from app.huggingface_access_ui import HUGGINGFACE_ACCESS_JS
+          from app.model_recovery_ui import MODEL_RECOVERY_UI_JS
           from app.operation_queue_ui import OPERATION_QUEUE_JS
           from app.progress_operation_ui import PROGRESS_OPERATION_JS
           from app.progress_reliability import PROGRESS_RELIABILITY_JS
@@ -65,6 +66,7 @@ jobs:
               'header-overflow': HEADER_OVERFLOW_JS,
               'hf-search': HF_SEARCH_EXTENSION_JS,
               'huggingface-access': HUGGINGFACE_ACCESS_JS,
+              'model-recovery': MODEL_RECOVERY_UI_JS,
               'operation-queue': OPERATION_QUEUE_JS,
               'progress-operation': PROGRESS_OPERATION_JS,
               'progress-reliability': PROGRESS_RELIABILITY_JS,
@@ -77,6 +79,7 @@ jobs:
           node --check /tmp/inferbridge-header-overflow.js
           node --check /tmp/inferbridge-hf-search.js
           node --check /tmp/inferbridge-huggingface-access.js
+          node --check /tmp/inferbridge-model-recovery.js
           node --check /tmp/inferbridge-operation-queue.js
           node --check /tmp/inferbridge-progress-operation.js
           node --check /tmp/inferbridge-progress-reliability.js
@@ -218,6 +221,9 @@ jobs:
           app/huggingface_access_ui.py
           app/model_cancellation.py
           app/model_lifecycle_ui.py
+          app/model_recovery.py
+          app/model_recovery_status.py
+          app/model_recovery_ui.py
           app/operation_queue_ui.py
           app/progress_operation_ui.py
           app/request_logging.py
@@ -259,6 +265,9 @@ jobs:
           tests/test_model_cancellation.py
           tests/test_model_cancellation_race.py
           tests/test_model_lifecycle_ui.py
+          tests/test_model_recovery.py
+          tests/test_model_recovery_status.py
+          tests/test_model_recovery_ui.py
           tests/test_operation_queue_ui.py
           tests/test_progress_operation_ui.py
           tests/test_progress_protocol.py
