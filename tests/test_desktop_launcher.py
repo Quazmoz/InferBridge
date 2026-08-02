@@ -1,6 +1,7 @@
 import os
 import socket
-from types import SimpleNamespace
+import sys
+from types import ModuleType, SimpleNamespace
 
 from app import desktop_launcher, desktop_server
 from app.desktop_launcher import InstanceLock
@@ -171,3 +172,69 @@ def test_explicit_control_token_wins_but_environment_is_still_removed(monkeypatc
     assert desktop_launcher._server_child(args) == 0
     assert captured["control_token"] == "explicit-secret"
     assert "OV_LLM_DESKTOP_CONTROL_TOKEN" not in os.environ
+
+
+def test_packaged_converter_accepts_progress_emitter_and_restores_overrides(monkeypatch):
+    from runtime import model_converter
+
+    calls = {}
+    optimum = ModuleType("optimum")
+    commands = ModuleType("optimum.commands")
+    optimum_cli = ModuleType("optimum.commands.optimum_cli")
+
+    def fake_optimum_main():
+        calls["argv"] = list(sys.argv)
+        return 0
+
+    optimum_cli.main = fake_optimum_main
+    commands.optimum_cli = optimum_cli
+    optimum.commands = commands
+    monkeypatch.setitem(sys.modules, "optimum", optimum)
+    monkeypatch.setitem(sys.modules, "optimum.commands", commands)
+    monkeypatch.setitem(sys.modules, "optimum.commands.optimum_cli", optimum_cli)
+    monkeypatch.setattr(desktop_launcher.sys, "frozen", True, raising=False)
+
+    emitter = SimpleNamespace(
+        emit=lambda *args, **kwargs: calls.setdefault("progress", (args, kwargs))
+    )
+    original_runner = model_converter._run_streaming_command
+    original_which = model_converter.shutil.which
+
+    def fake_converter_main(arguments):
+        calls["arguments"] = arguments
+        assert model_converter.shutil.which("optimum-cli") == sys.executable
+        model_converter._run_streaming_command(
+            ["optimum-cli", "export", "openvino"],
+            progress_emitter=emitter,
+        )
+        return 0
+
+    monkeypatch.setattr(model_converter, "main", fake_converter_main)
+
+    assert desktop_launcher._run_packaged_converter(["--id", "tinyllama"]) == 0
+    assert calls["arguments"] == ["--id", "tinyllama"]
+    assert calls["argv"] == ["optimum-cli", "export", "openvino"]
+    assert calls["progress"][0][:2] == (
+        "converting",
+        "Running packaged OpenVINO conversion…",
+    )
+    assert model_converter._run_streaming_command is original_runner
+    assert model_converter.shutil.which is original_which
+
+
+def test_native_runtime_smoke_loads_tokenizer_extension_by_name(monkeypatch):
+    calls = []
+    openvino = ModuleType("openvino")
+    openvino_genai = ModuleType("openvino_genai")
+
+    class FakeCore:
+        def add_extension(self, path):
+            calls.append(path)
+
+    openvino.Core = FakeCore
+    openvino_genai.LLMPipeline = object()
+    monkeypatch.setitem(sys.modules, "openvino", openvino)
+    monkeypatch.setitem(sys.modules, "openvino_genai", openvino_genai)
+
+    assert desktop_launcher._native_runtime_smoke() == 0
+    assert calls == ["openvino_tokenizers.dll"]
