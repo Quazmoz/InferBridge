@@ -5,7 +5,12 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from app.model_recovery import RecoveryConflict
+from app.model_recovery import (
+    RecoveryConflict,
+    _inferred_record,
+    _model_is_active,
+    _summary_from_record,
+)
 
 _INSTALL_FLAG = "_MODEL_RECOVERY_STATUS_INSTALLED"
 logger = logging.getLogger("ov-llm.recovery")
@@ -23,11 +28,19 @@ def install_model_recovery_status_extension() -> None:
 
     def lifecycle_entry_with_recovery(manager: Any, model_id: str) -> dict[str, Any]:
         entry = original_lifecycle_entry(manager, model_id)
-        recovery_provider = getattr(manager, "model_recovery", None)
-        if callable(recovery_provider):
-            recovery = recovery_provider(model_id, include_details=False)
-            if isinstance(recovery, dict):
-                entry["recovery"] = recovery
+        if _model_is_active(manager, model_id):
+            return entry
+        records = getattr(manager, "_model_recovery_records", {})
+        record = records.get(model_id) if isinstance(records, dict) else None
+        if record is None:
+            record = _inferred_record(manager, model_id)
+        if isinstance(record, dict):
+            entry["recovery"] = _summary_from_record(
+                manager,
+                model_id,
+                record,
+                include_details=False,
+            )
         return entry
 
     async def recover_model_safely(
@@ -39,6 +52,21 @@ def install_model_recovery_status_extension() -> None:
         device: str | None = None,
     ) -> dict[str, Any]:
         try:
+            if model_id in self.catalog and action in {
+                "resume",
+                "retry_failed_stage",
+                "restart_download",
+                "remove_incomplete_files",
+            }:
+                cfg = self.catalog[model_id]
+                model_dir = cfg.abs_path(manager_module.BASE_DIR).resolve()
+                models_root = self.settings.models_dir.resolve()
+                if model_dir == models_root:
+                    raise RecoveryConflict(
+                        "unsafe_output_path",
+                        "Refusing to remove or replace the configured model-directory root.",
+                        current_recovery_id=recovery_id,
+                    )
             return await original_recover_model(
                 self,
                 model_id,
