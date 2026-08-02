@@ -111,5 +111,6 @@ def test_packaged_smoke_rejects_missing_duplicate_or_sibling_psutil_extensions()
 def test_packaged_smoke_executes_openvino_native_preflight():
     script = (ROOT / "scripts" / "smoke_test_packaged.ps1").read_text(encoding="utf-8")
 
-    assert "& $Exe --native-smoke" in script
+    assert 'Start-Process -FilePath $Exe -ArgumentList "--native-smoke"' in script
+    assert "-PassThru -Wait -WindowStyle Hidden" in script
     assert "Packaged OpenVINO native runtime smoke test failed" in script
