@@ -174,6 +174,15 @@ def test_explicit_control_token_wins_but_environment_is_still_removed(monkeypatc
     assert "OV_LLM_DESKTOP_CONTROL_TOKEN" not in os.environ
 
 
+def test_system_exit_code_is_bounded_and_predictable():
+    assert desktop_launcher._system_exit_code(None) == 0
+    assert desktop_launcher._system_exit_code(7) == 7
+    assert desktop_launcher._system_exit_code(True) == 1
+    assert desktop_launcher._system_exit_code("invalid arguments") == 2
+    assert desktop_launcher._system_exit_code(-1) == 2
+    assert desktop_launcher._system_exit_code(999) == 2
+
+
 def test_packaged_converter_accepts_progress_emitter_and_restores_overrides(monkeypatch):
     from runtime import model_converter
 
@@ -222,6 +231,56 @@ def test_packaged_converter_accepts_progress_emitter_and_restores_overrides(monk
     assert model_converter.shutil.which is original_which
 
 
+def test_packaged_converter_contains_unexpected_failure_and_restores_overrides(
+    monkeypatch, capsys
+):
+    from runtime import model_converter
+
+    monkeypatch.setattr(desktop_launcher.sys, "frozen", True, raising=False)
+    original_runner = model_converter._run_streaming_command
+    original_which = model_converter.shutil.which
+
+    def fail(_arguments):
+        raise RuntimeError("conversion exploded")
+
+    monkeypatch.setattr(model_converter, "main", fail)
+
+    assert desktop_launcher._run_packaged_converter(["--id", "tinyllama"]) == 2
+    assert "Packaged model conversion failed: conversion exploded" in capsys.readouterr().err
+    assert model_converter._run_streaming_command is original_runner
+    assert model_converter.shutil.which is original_which
+
+
+def test_packaged_converter_contains_optimum_string_system_exit(monkeypatch, capsys):
+    from runtime import model_converter
+
+    optimum = ModuleType("optimum")
+    commands = ModuleType("optimum.commands")
+    optimum_cli = ModuleType("optimum.commands.optimum_cli")
+
+    def fake_optimum_main():
+        raise SystemExit("invalid optimum arguments")
+
+    optimum_cli.main = fake_optimum_main
+    commands.optimum_cli = optimum_cli
+    optimum.commands = commands
+    monkeypatch.setitem(sys.modules, "optimum", optimum)
+    monkeypatch.setitem(sys.modules, "optimum.commands", commands)
+    monkeypatch.setitem(sys.modules, "optimum.commands.optimum_cli", optimum_cli)
+    monkeypatch.setattr(desktop_launcher.sys, "frozen", True, raising=False)
+    previous_argv = list(sys.argv)
+
+    def fake_converter_main(_arguments):
+        model_converter._run_streaming_command(["optimum-cli", "export", "openvino"])
+        return 0
+
+    monkeypatch.setattr(model_converter, "main", fake_converter_main)
+
+    assert desktop_launcher._run_packaged_converter(["--id", "tinyllama"]) == 2
+    assert "invalid optimum arguments" in capsys.readouterr().err
+    assert sys.argv == previous_argv
+
+
 def test_native_runtime_smoke_loads_tokenizer_extension_by_name(monkeypatch):
     calls = []
     openvino = ModuleType("openvino")
@@ -231,8 +290,11 @@ def test_native_runtime_smoke_loads_tokenizer_extension_by_name(monkeypatch):
         def add_extension(self, path):
             calls.append(path)
 
+    class FakePipeline:
+        pass
+
     openvino.Core = FakeCore
-    openvino_genai.LLMPipeline = object()
+    openvino_genai.LLMPipeline = FakePipeline
     monkeypatch.setitem(sys.modules, "openvino", openvino)
     monkeypatch.setitem(sys.modules, "openvino_genai", openvino_genai)
 
