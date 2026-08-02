@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from urllib.parse import urlsplit
 
 # These endpoints are requested repeatedly by the browser, health probes, or both.
 # Successful fast reads provide little operational value at INFO level, while errors
@@ -25,6 +26,15 @@ _QUIET_METHODS = frozenset({"GET", "HEAD"})
 _RequestLogFields = tuple[str, str, int, float]
 
 
+def _normalize_request_path(value: Any) -> str:
+    """Normalize logged request targets without broadening the quiet-route set."""
+
+    path = urlsplit(str(value)).path or "/"
+    if len(path) > 1:
+        path = path.rstrip("/") or "/"
+    return path
+
+
 def _request_log_fields(record: logging.LogRecord) -> _RequestLogFields | None:
     """Parse the server's structured successful-request log record."""
 
@@ -35,7 +45,12 @@ def _request_log_fields(record: logging.LogRecord) -> _RequestLogFields | None:
         return None
     method, path, status_code, duration_ms = args
     try:
-        return str(method).upper(), str(path), int(status_code), float(duration_ms)
+        return (
+            str(method).upper(),
+            _normalize_request_path(path),
+            int(status_code),
+            float(duration_ms),
+        )
     except (TypeError, ValueError, OverflowError):
         return None
 
