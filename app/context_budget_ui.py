@@ -31,6 +31,7 @@ CONTEXT_BUDGET_JS = r"""
     let panelOpen = false;
     let trayObserver = null;
     let traySearchObserver = null;
+    let lastModelSignature = '';
 
     const style = document.createElement('style');
     style.textContent = `
@@ -445,13 +446,32 @@ CONTEXT_BUDGET_JS = r"""
         }
     }
 
+    function scheduleForModelStatus(response) {
+        response.clone().json().then(payload => {
+            const models = Array.isArray(payload?.models?.available)
+                ? payload.models.available
+                : [];
+            const selected = models.find(model => model?.id === modelSelect.value) || null;
+            const signature = [
+                modelSelect.value,
+                selected?.is_loaded === true ? 'loaded' : 'not-loaded',
+                selected?.max_context_len || '',
+                selected?.max_output_tokens || '',
+                selected?.backend || '',
+            ].join('|');
+            if (signature === lastModelSignature) return;
+            lastModelSignature = signature;
+            scheduleInspect(0);
+        }).catch(() => {});
+    }
+
     const previousFetch = window.fetch.bind(window);
     window.fetch = async function contextBudgetAwareFetch(input, init = {}) {
         const target = endpoint(input);
         const method = String(init?.method || input?.method || 'GET').toUpperCase();
         const response = await previousFetch(input, init);
         if (target.sameOrigin && STATUS_PATHS.has(target.path) && method === 'GET' && response.ok) {
-            window.setTimeout(() => scheduleInspect(0), 0);
+            scheduleForModelStatus(response);
         }
         return response;
     };
