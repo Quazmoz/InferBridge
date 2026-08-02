@@ -10,12 +10,11 @@ import socket
 import subprocess
 import sys
 import time
-import urllib.error
 import urllib.request
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import BinaryIO
+from typing import Any, BinaryIO
 
 from app.brand import DISPLAY_NAME
 
@@ -61,7 +60,7 @@ def choose_available_port(preferred: int = 8000) -> int:
     raise RuntimeError("No local TCP port is available for the application server.")
 
 
-def _http_json(url: str, *, timeout: float = 1.5) -> dict | None:
+def _http_json(url: str, *, timeout: float = 1.5) -> dict[str, Any] | None:
     request = urllib.request.Request(url, headers={"Accept": "application/json"})
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
@@ -69,7 +68,7 @@ def _http_json(url: str, *, timeout: float = 1.5) -> dict | None:
                 return None
             payload = json.loads(response.read(128 * 1024).decode("utf-8"))
             return payload if isinstance(payload, dict) else None
-    except (OSError, ValueError, urllib.error.URLError):
+    except (OSError, ValueError):
         return None
 
 
@@ -107,14 +106,14 @@ def wait_for_readiness(
 def _write_metadata(path: Path, metadata: InstanceMetadata) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(metadata.__dict__, indent=2) + "\n", encoding="utf-8")
+    temporary.write_text(json.dumps(asdict(metadata), indent=2) + "\n", encoding="utf-8")
     temporary.replace(path)
 
 
 def _read_metadata(path: Path) -> InstanceMetadata | None:
     try:
         return InstanceMetadata.from_json(json.loads(path.read_text(encoding="utf-8-sig")))
-    except (OSError, ValueError, json.JSONDecodeError):
+    except (OSError, ValueError):
         return None
 
 
@@ -270,7 +269,7 @@ def _run_packaged_converter(arguments: list[str]) -> int:
     if getattr(sys, "frozen", False):
         original_which = model_converter.shutil.which
 
-        def packaged_which(command: str):
+        def packaged_which(command: str) -> str | None:
             if command == "optimum-cli":
                 return sys.executable
             return original_which(command)
