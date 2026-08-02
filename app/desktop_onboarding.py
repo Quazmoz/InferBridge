@@ -10,7 +10,7 @@ import shutil
 import time
 from pathlib import Path
 
-from app import model_registry as registry
+from app import errors, model_registry as registry
 from app.config import BASE_DIR
 from app.onboarding_models import (
     ItemStatus,
@@ -151,6 +151,21 @@ def actual_device_is_unresolved(actual_device: str | None) -> bool:
     except device_check.DeviceValidationError:
         return True
     return parsed.kind in _COMPOSITE_DEVICE_KINDS
+
+
+def _classify_native_runtime_failure(job: PreparationJob) -> bool:
+    """Mark tokenizer DLL failures as non-device-recoverable desktop errors."""
+
+    if job.status != "failed":
+        return False
+    detail = str(job.error_detail or job.message or "")
+    if not errors.is_openvino_tokenizer_runtime_error(RuntimeError(detail)):
+        return False
+    message = errors.format_openvino_tokenizer_runtime_error()
+    job.error_code = "native_runtime_unavailable"
+    job.error_detail = message
+    job.message = message
+    return True
 
 
 def _existing_volume_anchor(candidate: Path) -> Path | None:
@@ -324,7 +339,19 @@ class DesktopOnboardingService(OnboardingService):
         if job is None:
             raise KeyError("Unknown onboarding preparation job.")
         self._reject_unresolved_actual_device(job)
-        return super().progress(job_id)
+        native_runtime_failure = _classify_native_runtime_failure(job)
+        response = super().progress(job_id)
+        if native_runtime_failure:
+            response = response.model_copy(
+                update={
+                    "can_retry": False,
+                    "can_fallback_to_cpu": False,
+                    "error_code": job.error_code,
+                    "error_detail": job.error_detail,
+                    "message": job.message,
+                }
+            )
+        return response
 
     def complete(self, job_id: str):
         job = self._jobs.get(job_id)
