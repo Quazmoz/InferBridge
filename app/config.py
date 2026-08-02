@@ -13,6 +13,8 @@ from app.cancellation_ui import install_cancellation_ui_extension
 from app.chat_context_ui import install_chat_context_extension
 from app.chat_guard_ui import install_chat_guard_extension
 from app.chat_queue_ui import install_chat_queue_extension
+from app.context_budget import install_context_budget_routes_extension
+from app.context_budget_ui import install_context_budget_ui_extension
 from app.desktop_operations_ui import install_desktop_operations_ui_extension
 from app.doctor_ui import install_system_doctor_extension
 from app.engine_handoff_routes import install_engine_handoff_routes_extension
@@ -44,11 +46,13 @@ install_openvino_genai_compat()
 install_model_library_routes_extension()
 install_model_cancellation_routes_extension()
 install_model_recovery_routes_extension()
+install_context_budget_routes_extension()
 install_status_split_routes_extension()
 install_engine_handoff_routes_extension()
 install_huggingface_access_routes_extension()
 install_branding_extension()
 install_chat_context_extension()
+install_context_budget_ui_extension()
 install_chat_queue_extension()
 install_chat_guard_extension()
 install_ui_polish_extension()
@@ -109,7 +113,7 @@ def _int_env(
         logger.warning("Config: %s=%r is below %d; using %d", name, raw, minimum, default)
         return default
     if maximum is not None and value > maximum:
-        logger.warning("Config: %s=%r exceeds %d; using %d", name, raw, maximum, default)
+        logger.warning("Config: %s=%r exceeds %d; using %d", name, raw, default)
         return default
     return value
 
