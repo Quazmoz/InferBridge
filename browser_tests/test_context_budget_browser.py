@@ -60,7 +60,7 @@ def _budget_payload() -> dict:
         "max_context_tokens": 2048,
         "model_output_reserve_tokens": 512,
         "requested_output_tokens": 512,
-        "available_output_tokens": 550,
+        "available_output_tokens": 320,
         "effective_output_tokens": 320,
         "output_limited": True,
         "safety_tokens": 8,
