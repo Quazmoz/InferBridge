@@ -21,6 +21,12 @@ _WINDOWS_PATH_RE = re.compile(
 )
 _POSIX_HOME_RE = re.compile(r"(?<![A-Za-z0-9_])/(?:home|Users)/[^/\s]+(?:/[^\s]+)*")
 _DLL_DIRECTORY_HANDLES: list[object] = []
+_OPENVINO_NATIVE_NAMES = {
+    "openvino.dll",
+    "openvino_c.dll",
+    "openvino_genai.dll",
+    "openvino_tokenizers.dll",
+}
 
 
 def _restore_output(name: str, descriptor: int) -> None:
@@ -92,6 +98,13 @@ def _record_runtime_failure(detail: str) -> None:
         pass
 
 
+def _write_runtime_failure(message: str) -> None:
+    with contextlib.suppress(OSError):
+        if sys.stderr is not None:
+            sys.stderr.write(message + "\n")
+            sys.stderr.flush()
+
+
 def _show_runtime_failure(detail: str) -> None:
     message = (
         "The installed application contains incompatible runtime files, usually because "
@@ -101,15 +114,38 @@ def _show_runtime_failure(detail: str) -> None:
         "and logs.\n\n"
         f"Technical detail: {detail}"
     )
+    # Release validation launches the hidden native-smoke helper non-interactively.
+    # Never display a modal dialog in that mode because it would hang the build.
+    if "--native-smoke" in sys.argv[1:]:
+        _write_runtime_failure(message)
+        return
     try:
         import ctypes
 
         ctypes.windll.user32.MessageBoxW(None, message, _APP_TITLE, 0x10)
     except (AttributeError, OSError):
-        with contextlib.suppress(OSError):
-            if sys.stderr is not None:
-                sys.stderr.write(message + "\n")
-                sys.stderr.flush()
+        _write_runtime_failure(message)
+
+
+def _native_directory_candidates(bundle_root: Path) -> list[Path]:
+    """Return deterministic and discovered directories containing OpenVINO DLLs."""
+
+    candidates = [
+        bundle_root,
+        bundle_root / "openvino" / "libs",
+        bundle_root / "openvino_genai",
+        bundle_root / "openvino_genai" / "libs",
+        bundle_root / "openvino_tokenizers",
+        bundle_root / "openvino_tokenizers" / "libs",
+    ]
+    # PyInstaller hook behavior can change the destination directory across package
+    # versions. Discover the actual packaged DLL parents so a future layout change
+    # cannot silently bypass the Windows DLL search path registration.
+    with contextlib.suppress(OSError):
+        for dll in bundle_root.rglob("*.dll"):
+            if dll.name.lower() in _OPENVINO_NATIVE_NAMES:
+                candidates.append(dll.parent)
+    return candidates
 
 
 def _configure_windows_native_search_path() -> None:
@@ -126,17 +162,9 @@ def _configure_windows_native_search_path() -> None:
         return
 
     bundle_root = Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
-    candidates = (
-        bundle_root,
-        bundle_root / "openvino" / "libs",
-        bundle_root / "openvino_genai",
-        bundle_root / "openvino_genai" / "libs",
-        bundle_root / "openvino_tokenizers",
-        bundle_root / "openvino_tokenizers" / "libs",
-    )
     directories: list[Path] = []
     seen: set[str] = set()
-    for candidate in candidates:
+    for candidate in _native_directory_candidates(bundle_root):
         if not candidate.is_dir():
             continue
         normalized = os.path.normcase(os.path.abspath(candidate))
