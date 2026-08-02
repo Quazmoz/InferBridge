@@ -261,8 +261,25 @@ def _server_child(args: argparse.Namespace) -> int:
     )
 
 
+def _system_exit_code(value: object) -> int:
+    """Convert ``SystemExit.code`` into a predictable process exit code."""
+
+    if value is None:
+        return 0
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int) and 0 <= value <= 255:
+        return value
+    return 2
+
+
 def _run_packaged_converter(arguments: list[str]) -> int:
-    """Run the converter and Optimum CLI inside the frozen helper process."""
+    """Run the converter and Optimum CLI inside the frozen helper process.
+
+    The frozen launcher is windowed. Any exception that escapes this boundary causes
+    PyInstaller to display an interactive "Unhandled exception" dialog and blocks the
+    parent preparation job. Convert all helper failures into stderr plus an exit code.
+    """
 
     from runtime import model_converter
 
@@ -292,9 +309,12 @@ def _run_packaged_converter(arguments: list[str]) -> int:
             try:
                 result = optimum_main()
             except SystemExit as exc:
-                code = int(exc.code or 0)
+                code = _system_exit_code(exc.code)
+                if exc.code is not None and not isinstance(exc.code, int):
+                    print(str(exc.code), file=sys.stderr, flush=True)
                 if code:
                     raise subprocess.CalledProcessError(code, command) from exc
+                result = 0
             finally:
                 sys.argv = previous
             if isinstance(result, int) and result:
@@ -303,7 +323,18 @@ def _run_packaged_converter(arguments: list[str]) -> int:
         model_converter.shutil.which = packaged_which
         model_converter._run_streaming_command = run_optimum
         try:
-            return model_converter.main(arguments)
+            try:
+                return model_converter.main(arguments)
+            except SystemExit as exc:
+                if exc.code is not None and not isinstance(exc.code, int):
+                    print(str(exc.code), file=sys.stderr, flush=True)
+                return _system_exit_code(exc.code)
+            except KeyboardInterrupt:
+                print("Packaged model conversion cancelled.", file=sys.stderr, flush=True)
+                return 130
+            except Exception as exc:  # noqa: BLE001 - frozen helper process boundary
+                print(f"Packaged model conversion failed: {exc}", file=sys.stderr, flush=True)
+                return 2
         finally:
             model_converter.shutil.which = original_which
             model_converter._run_streaming_command = original_run_streaming_command
