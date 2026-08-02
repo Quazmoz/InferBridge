@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import threading
 from dataclasses import dataclass
@@ -93,13 +94,11 @@ class OnboardingStateStore:
             try:
                 raw = json.loads(self.path.read_text(encoding="utf-8-sig"))
                 return StateLoadResult(migrate_state(raw))
-            except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            except (OSError, TypeError, ValueError):
                 backup = self.path.with_suffix(self.path.suffix + ".corrupt")
-                try:
+                with contextlib.suppress(OSError):
                     backup.parent.mkdir(parents=True, exist_ok=True)
                     backup.write_bytes(self.path.read_bytes())
-                except OSError:
-                    pass
                 return StateLoadResult(
                     default_state(),
                     recovered=True,
