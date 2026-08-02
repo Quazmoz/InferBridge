@@ -145,7 +145,7 @@ def test_native_release_gate_executes_packaged_smoke_on_windows(monkeypatch, tmp
         captured.update(kwargs)
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
-    monkeypatch.setattr(release_scan.os, "name", "nt")
+    monkeypatch.setattr(release_scan, "os", SimpleNamespace(name="nt"))
     monkeypatch.setattr(release_scan.subprocess, "run", fake_run)
 
     verify_native_distribution(root)
@@ -160,7 +160,7 @@ def test_native_release_gate_surfaces_packaged_smoke_failure(monkeypatch, tmp_pa
     psutil_dir = root / "_internal" / "psutil"
     psutil_dir.mkdir()
     (psutil_dir / "_psutil_windows.pyd").write_bytes(b"pyd")
-    monkeypatch.setattr(release_scan.os, "name", "nt")
+    monkeypatch.setattr(release_scan, "os", SimpleNamespace(name="nt"))
     monkeypatch.setattr(
         release_scan.subprocess,
         "run",
