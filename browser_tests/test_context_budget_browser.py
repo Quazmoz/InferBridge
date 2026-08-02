@@ -54,9 +54,9 @@ def _budget_payload() -> dict:
     return {
         "model": MODEL_ID,
         "model_name": "TinyLlama 1.1B Chat",
-        "prompt_tokens": 1490,
+        "prompt_tokens": 1720,
         "max_prompt_tokens": 1536,
-        "prompt_budget_percent": 97.0,
+        "prompt_budget_percent": 112.0,
         "max_context_tokens": 2048,
         "model_output_reserve_tokens": 512,
         "requested_output_tokens": 512,
@@ -64,8 +64,8 @@ def _budget_payload() -> dict:
         "effective_output_tokens": 320,
         "output_limited": True,
         "safety_tokens": 8,
-        "context_usage_tokens": 1818,
-        "context_usage_percent": 88.8,
+        "context_usage_tokens": 2048,
+        "context_usage_percent": 100.0,
         "message_count": 7,
         "retained_message_count": 3,
         "dropped_message_count": 4,
@@ -76,7 +76,7 @@ def _budget_payload() -> dict:
         ],
         "dropped_preview_truncated": True,
         "will_truncate": True,
-        "prompt_over_budget": False,
+        "prompt_over_budget": True,
         "blocked": False,
         "system_instructions_retained": True,
         "attachment_count": 0,
@@ -120,9 +120,9 @@ def test_context_budget_chip_previews_omissions_and_reduces_output(
     page.locator("#user-input").fill("Keep this current draft in the budget calculation.")
 
     chip = page.locator("#ov-context-budget-chip")
-    expect(chip).to_contain_text("Context 1,490 / 1,536")
+    expect(chip).to_contain_text("Context 1,720 / 1,536")
     expect(chip).to_contain_text("2 turns omitted")
-    expect(chip).to_have_attribute("data-state", "warning")
+    expect(chip).to_have_attribute("data-state", "danger")
 
     chip.click()
     panel = page.locator("#ov-context-budget-panel")
