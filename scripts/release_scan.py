@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
+import subprocess
 import zipfile
 from pathlib import Path, PurePosixPath
 
@@ -83,7 +85,58 @@ def verify_release_requirements(path: Path) -> None:
             )
 
 
-def verify_native_distribution(root: Path) -> None:
+def _require_single_internal_file(root: Path, pattern: str, label: str) -> Path:
+    matches = list(root.rglob(pattern))
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"Packaged runtime must contain exactly one {label}; found {len(matches)}."
+        )
+    try:
+        matches[0].relative_to(root / "_internal")
+    except ValueError as exc:
+        raise RuntimeError(f"The packaged {label} must be contained under _internal.") from exc
+    return matches[0]
+
+
+def _run_packaged_native_smoke(root: Path) -> None:
+    """Load the frozen OpenVINO and tokenizer bindings in the built executable."""
+
+    if os.name != "nt":
+        return
+    executable = root / "InferBridge.exe"
+    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    try:
+        result = subprocess.run(  # noqa: S603 - executable is the just-built local artifact
+            [str(executable), "--native-smoke"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=90,
+            check=False,
+            creationflags=creationflags,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("Packaged OpenVINO native smoke test timed out.") from exc
+    except OSError as exc:
+        raise RuntimeError("Packaged OpenVINO native smoke test could not start.") from exc
+    if result.returncode == 0:
+        return
+    detail = "\n".join(
+        line.strip()
+        for line in (result.stderr or result.stdout or "").splitlines()
+        if line.strip()
+    )
+    if len(detail) > 800:
+        detail = detail[-800:]
+    suffix = f" Detail: {detail}" if detail else ""
+    raise RuntimeError(
+        f"Packaged OpenVINO native smoke test failed with exit code {result.returncode}.{suffix}"
+    )
+
+
+def verify_native_distribution(root: Path, *, run_native_smoke: bool = True) -> None:
     if not (root / "InferBridge.exe").is_file():
         raise RuntimeError("Packaged launcher executable is missing.")
     names = {item.name.lower() for item in root.rglob("*.dll")}
@@ -98,18 +151,12 @@ def verify_native_distribution(root: Path) -> None:
     if missing:
         raise RuntimeError("Packaged native components are missing: " + ", ".join(missing))
 
-    psutil_extensions = list(root.rglob("_psutil_windows*.pyd"))
-    if len(psutil_extensions) != 1:
-        raise RuntimeError(
-            "Packaged runtime must contain exactly one psutil Windows extension; "
-            f"found {len(psutil_extensions)}."
-        )
-    try:
-        psutil_extensions[0].relative_to(root / "_internal")
-    except ValueError as exc:
-        raise RuntimeError(
-            "The packaged psutil Windows extension must be contained under _internal."
-        ) from exc
+    _require_single_internal_file(root, "_psutil_windows*.pyd", "psutil Windows extension")
+    _require_single_internal_file(
+        root, "openvino_tokenizers.dll", "OpenVINO tokenizer extension"
+    )
+    if run_native_smoke:
+        _run_packaged_native_smoke(root)
 
 
 def _check_name(relative: Path, suffix: str) -> None:
