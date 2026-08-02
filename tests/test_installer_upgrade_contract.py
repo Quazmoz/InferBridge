@@ -45,12 +45,20 @@ def test_pyinstaller_collects_psutil_python_and_native_files_from_one_environmen
     assert '"psutil",' in spec
 
 
+def test_pyinstaller_collects_openvino_tokenizer_distribution_explicitly():
+    spec = (ROOT / "packaging" / "openvino_windows_llm.spec").read_text(encoding="utf-8")
+
+    assert '"openvino_tokenizers"' in spec
+    assert '"openvino-tokenizers",' in spec
+
+
 def _native_distribution(tmp_path: Path) -> Path:
     (tmp_path / "InferBridge.exe").write_bytes(b"exe")
     native = tmp_path / "_internal" / "native"
     native.mkdir(parents=True)
     for name in (
         "openvino.dll",
+        "openvino_tokenizers.dll",
         "openvino_intel_cpu_plugin.dll",
         "openvino_intel_gpu_plugin.dll",
         "openvino_intel_npu_plugin.dll",
@@ -98,3 +106,10 @@ def test_packaged_smoke_rejects_missing_duplicate_or_sibling_psutil_extensions()
     assert "$InternalPrefix = $InternalRoot + [IO.Path]::DirectorySeparatorChar" in script
     assert ".StartsWith($InternalPrefix, [StringComparison]::OrdinalIgnoreCase)" in script
     assert "must be contained under _internal" in script
+
+
+def test_packaged_smoke_executes_openvino_native_preflight():
+    script = (ROOT / "scripts" / "smoke_test_packaged.ps1").read_text(encoding="utf-8")
+
+    assert "& $Exe --native-smoke" in script
+    assert "Packaged OpenVINO native runtime smoke test failed" in script
