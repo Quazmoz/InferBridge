@@ -11,8 +11,9 @@ import asyncio
 import functools
 import re
 import secrets
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
 from pydantic import Field
@@ -245,9 +246,10 @@ def register_context_budget_routes(app: FastAPI) -> None:
                 status_code=400,
                 detail=f"Model '{body.model}' is an embedding model and has no chat context budget.",
             )
-        if multimodal.contents_have_images(message.content for message in body.messages) and not getattr(
-            engine, "supports_vision", False
-        ):
+        has_images = multimodal.contents_have_images(
+            message.content for message in body.messages
+        ) or body.image_count > 0
+        if has_images and not getattr(engine, "supports_vision", False):
             raise HTTPException(
                 status_code=400,
                 detail=f"Model '{body.model}' is not vision-capable and cannot accept image input.",
