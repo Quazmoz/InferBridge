@@ -113,7 +113,7 @@ def _int_env(
         logger.warning("Config: %s=%r is below %d; using %d", name, raw, minimum, default)
         return default
     if maximum is not None and value > maximum:
-        logger.warning("Config: %s=%r exceeds %d; using %d", name, raw, default)
+        logger.warning("Config: %s=%r exceeds %d; using %d", name, raw, maximum, default)
         return default
     return value
 
