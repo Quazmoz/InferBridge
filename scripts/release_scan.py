@@ -89,6 +89,7 @@ def verify_native_distribution(root: Path) -> None:
     names = {item.name.lower() for item in root.rglob("*.dll")}
     required = {
         "OpenVINO runtime": "openvino.dll",
+        "OpenVINO tokenizer extension": "openvino_tokenizers.dll",
         "CPU plugin": "openvino_intel_cpu_plugin.dll",
         "GPU plugin": "openvino_intel_gpu_plugin.dll",
         "NPU plugin": "openvino_intel_npu_plugin.dll",
