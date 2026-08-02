@@ -6,7 +6,7 @@ from app import chat_format
 from app.config import Settings
 from app.context_budget import analyze_prompt_budget
 from app.server import create_app
-from runtime.openvino_engine import MockEngine
+from runtime.openvino_engine import MockEngine, MockVisionEngine
 
 MODEL_ID = "model-1"
 
@@ -47,9 +47,9 @@ def _settings(
     )
 
 
-def _install_mock_engine(client: TestClient) -> MockEngine:
+def _install_engine(client: TestClient, *, vision: bool = False):
     manager = client.app.state.manager
-    engine = MockEngine(MODEL_ID)
+    engine = MockVisionEngine(MODEL_ID) if vision else MockEngine(MODEL_ID)
     manager.engines[MODEL_ID] = engine
     manager.devices[MODEL_ID] = "MOCK"
     return engine
@@ -91,7 +91,7 @@ def test_analyzer_matches_generation_prompt_and_preserves_whole_turns() -> None:
 def test_context_budget_route_matches_loaded_model_tokenizer_and_reports_omissions(tmp_path) -> None:
     app = create_app(_settings(tmp_path))
     with TestClient(app) as client:
-        engine = _install_mock_engine(client)
+        engine = _install_engine(client)
         response = client.post(
             "/v1/chat/context-budget",
             json={
@@ -132,7 +132,7 @@ def test_context_budget_route_includes_pending_attachment_reserve(tmp_path) -> N
         )
     )
     with TestClient(app) as client:
-        _install_mock_engine(client)
+        _install_engine(client, vision=True)
         response = client.post(
             "/v1/chat/context-budget",
             json={
@@ -152,10 +152,27 @@ def test_context_budget_route_includes_pending_attachment_reserve(tmp_path) -> N
     assert payload["blocked"] is False
 
 
+def test_context_budget_route_rejects_pending_images_for_text_model(tmp_path) -> None:
+    app = create_app(_settings(tmp_path, max_context_len=2048, max_output_tokens=512))
+    with TestClient(app) as client:
+        _install_engine(client)
+        response = client.post(
+            "/v1/chat/context-budget",
+            json={
+                "model": MODEL_ID,
+                "messages": [{"role": "user", "content": "Describe the image."}],
+                "image_count": 1,
+            },
+        )
+
+    assert response.status_code == 400
+    assert "not vision-capable" in response.json()["detail"]
+
+
 def test_context_budget_route_reports_output_limit_without_mutating_chat(tmp_path) -> None:
     app = create_app(_settings(tmp_path))
     with TestClient(app) as client:
-        _install_mock_engine(client)
+        _install_engine(client)
         response = client.post(
             "/v1/chat/context-budget",
             json={
@@ -177,7 +194,7 @@ def test_context_budget_route_reports_output_limit_without_mutating_chat(tmp_pat
 def test_context_budget_route_uses_api_key_and_browser_origin_policy(tmp_path) -> None:
     app = create_app(_settings(tmp_path, api_key="secret-key"))
     with TestClient(app) as client:
-        _install_mock_engine(client)
+        _install_engine(client)
         body = {
             "model": MODEL_ID,
             "messages": [{"role": "user", "content": "hello"}],
