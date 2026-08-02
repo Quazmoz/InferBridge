@@ -315,14 +315,14 @@ def _native_runtime_smoke() -> int:
 
     try:
         from openvino import Core
+        from openvino_genai import LLMPipeline
 
         core = Core()
         # OpenVINO GenAI resolves this extension by DLL name. Using the same lookup
         # here catches missing transitive DLLs and incorrect PyInstaller search paths.
         core.add_extension("openvino_tokenizers.dll")
-        import openvino_genai
-
-        getattr(openvino_genai, "LLMPipeline")
+        if not callable(LLMPipeline):
+            raise RuntimeError("OpenVINO GenAI LLMPipeline binding is unavailable.")
     except Exception as exc:  # noqa: BLE001 - packaged native boundary
         print(f"Packaged OpenVINO native smoke test failed: {exc}", file=sys.stderr, flush=True)
         return 2
