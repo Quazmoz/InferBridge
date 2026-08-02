@@ -140,7 +140,12 @@ def test_retry_failed_load_reuses_complete_output(monkeypatch, tmp_path) -> None
     assert recovery["recommended_action"] == "retry_failed_stage"
 
     calls = []
-    manager.schedule_load = lambda model_id, device=None: calls.append((model_id, device)) or object()
+
+    def schedule_load(model_id, device=None):
+        calls.append((model_id, device))
+        return object()
+
+    manager.schedule_load = schedule_load
     result = asyncio.run(
         manager.recover_model(
             MODEL_ID,
@@ -160,11 +165,12 @@ def test_restart_download_removes_cache_and_incomplete_output(monkeypatch, tmp_p
     manager = _manager(tmp_path)
     recovery = _prepare_interrupted_conversion(manager, tmp_path)
     calls = []
-    manager.schedule_convert = (
-        lambda model_id, device=None, *, load_after=True, **_kwargs:
-        calls.append((model_id, device, load_after)) or object()
-    )
 
+    def schedule_convert(model_id, device=None, *, load_after=True, **_kwargs):
+        calls.append((model_id, device, load_after))
+        return object()
+
+    manager.schedule_convert = schedule_convert
     result = asyncio.run(
         manager.recover_model(
             MODEL_ID,
