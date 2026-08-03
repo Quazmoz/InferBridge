@@ -14,6 +14,16 @@ def test_pyinstaller_is_windowed_one_directory_and_collects_openvino():
     assert "runtime_hook.py" in spec
     assert "OV_LLM_APP_ICON" in spec
     assert "icon=str(app_icon)" in spec
+    assert 'find_spec("optimum.commands.register")' in spec
+    assert '"optimum/commands/register"' in spec
+    assert 'hiddenimports.append(f"optimum.commands.register.{register_file.stem}")' in spec
+
+
+def test_packaged_smoke_requires_openvino_cli_registration_module():
+    smoke = (ROOT / "scripts" / "smoke_test_packaged.ps1").read_text(encoding="utf-8")
+    assert '"optimum\\commands\\register"' in smoke
+    assert '"register_openvino.py"' in smoke
+    assert "missing Optimum's OpenVINO CLI registration module" in smoke
 
 
 def test_windowed_runtime_hook_restores_redirected_child_streams():
