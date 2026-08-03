@@ -26,12 +26,25 @@ def _path_exists(path: Path) -> bool:
     return os.path.lexists(path)
 
 
+def _path_mode(path: str | os.PathLike[str]) -> int | None:
+    """Read a path mode across supported Windows/Python combinations."""
+
+    try:
+        return os.stat(path, follow_symlinks=False).st_mode
+    except (NotImplementedError, TypeError):
+        try:
+            return os.stat(path).st_mode
+        except OSError:
+            return None
+    except OSError:
+        return None
+
+
 def _make_writable(path: str | os.PathLike[str]) -> None:
     """Best-effort removal of a Windows read-only attribute."""
 
-    try:
-        mode = os.stat(path, follow_symlinks=False).st_mode
-    except OSError:
+    mode = _path_mode(path)
+    if mode is None:
         return
     writable_mode = mode | stat.S_IWUSR | stat.S_IWRITE
     try:
