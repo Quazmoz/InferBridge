@@ -150,6 +150,15 @@ def _records(manager: Any) -> dict[str, PreparationTimeoutRecord]:
     return value
 
 
+def _active_operation(manager: Any, model_id: str) -> bool:
+    load_task = getattr(manager, "load_tasks", {}).get(model_id)
+    convert_task = getattr(manager, "convert_tasks", {}).get(model_id)
+    return bool(
+        (load_task is not None and not load_task.done())
+        or (convert_task is not None and not convert_task.done())
+    )
+
+
 def preparation_timeouts(manager: Any) -> PreparationTimeouts:
     value = getattr(manager, _CONFIG_ATTR, None)
     if not isinstance(value, PreparationTimeouts):
@@ -272,6 +281,12 @@ def _mark_cleanup_complete(
         payload["cleanup_pending"] = False
 
 
+def _consume_watchdog_cancellation(task: asyncio.Task[Any]) -> bool:
+    """Remove one watchdog cancellation while preserving any external request."""
+
+    return task.uncancel() == 0
+
+
 async def _watch_operation(
     manager: Any,
     model_id: str,
@@ -366,12 +381,16 @@ async def run_with_preparation_watchdog(
         record = _records(manager).get(model_id)
         if record is not None and record.task_identity == id(current):
             _mark_cleanup_complete(manager, model_id, record)
+            if current.cancelling() and not _consume_watchdog_cancellation(current):
+                raise asyncio.CancelledError
         return result
     except asyncio.CancelledError:
         record = _records(manager).get(model_id)
         if record is None or record.task_identity != id(current):
             raise
         _mark_cleanup_complete(manager, model_id, record)
+        if not _consume_watchdog_cancellation(current):
+            raise
         return None
     finally:
         if not watcher.done():
@@ -467,13 +486,7 @@ def install_model_preparation_timeouts() -> None:
     ) -> None:
         record = _records(self).get(model_id)
         if record is not None:
-            active_load = getattr(self, "load_tasks", {}).get(model_id)
-            active_convert = getattr(self, "convert_tasks", {}).get(model_id)
-            active = bool(
-                (active_load is not None and not active_load.done())
-                or (active_convert is not None and not active_convert.done())
-            )
-            if phase == "ready" and not active:
+            if phase == "ready" and not _active_operation(self, model_id):
                 _records(self).pop(model_id, None)
                 _states(self).pop(model_id, None)
             else:
@@ -502,6 +515,8 @@ def install_model_preparation_timeouts() -> None:
         )
 
     def clear_progress_with_timeout_reset(self, model_id: str) -> None:
+        if model_id in _records(self) and _active_operation(self, model_id):
+            return
         _records(self).pop(model_id, None)
         _states(self).pop(model_id, None)
         original_clear_progress(self, model_id)
