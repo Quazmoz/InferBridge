@@ -17,15 +17,37 @@ from pathlib import Path
 from typing import Any, Callable
 
 _INSTALL_FLAG = "_inferbridge_resilient_cleanup_installed"
-_RETRY_DELAYS_SECONDS = (0.0, 0.1, 0.25, 0.5)
+_RETRY_DELAYS_SECONDS = (0.0, 0.15, 0.5, 1.0, 2.0)
+
+
+def _path_exists(path: Path) -> bool:
+    """Return true for ordinary paths and dangling links without following them."""
+
+    return os.path.lexists(path)
 
 
 def _make_writable(path: str | os.PathLike[str]) -> None:
     """Best-effort removal of a Windows read-only attribute."""
 
-    with contextlib.suppress(OSError, NotImplementedError):
+    try:
         mode = os.stat(path, follow_symlinks=False).st_mode
-        os.chmod(path, mode | stat.S_IWUSR, follow_symlinks=False)
+    except OSError:
+        return
+    writable_mode = mode | stat.S_IWUSR | stat.S_IWRITE
+    try:
+        os.chmod(path, writable_mode, follow_symlinks=False)
+        return
+    except (NotImplementedError, TypeError):
+        # Some supported Windows/Python combinations do not implement the
+        # follow_symlinks keyword for chmod. The recovery paths are independently
+        # checked for links before deletion, so the ordinary fallback remains safe.
+        pass
+    except OSError:
+        # A second attempt without follow_symlinks handles Windows implementations
+        # that reject the keyword with a platform-specific OSError.
+        pass
+    with contextlib.suppress(OSError):
+        os.chmod(path, writable_mode)
 
 
 def _clear_readonly_and_retry(
@@ -42,14 +64,14 @@ def _clear_readonly_and_retry(
 def _remove_tree(path: Path, *, description: str) -> bool:
     """Remove one verified tree with bounded retries for transient Windows locks."""
 
-    if not path.exists():
+    if not _path_exists(path):
         return False
 
     last_error: OSError | None = None
     for delay in _RETRY_DELAYS_SECONDS:
         if delay:
             time.sleep(delay)
-        if not path.exists():
+        if not _path_exists(path):
             return True
         try:
             shutil.rmtree(path, onerror=_clear_readonly_and_retry)
@@ -58,7 +80,7 @@ def _remove_tree(path: Path, *, description: str) -> bool:
         except OSError as exc:
             last_error = exc
             continue
-        if not path.exists():
+        if not _path_exists(path):
             return True
         last_error = OSError("The directory still exists after cleanup.")
 
@@ -76,6 +98,14 @@ def _remove_tree(path: Path, *, description: str) -> bool:
 def _remove_incomplete_output(manager: Any, cfg: Any) -> bool:
     from app import model_recovery
 
+    # Check links before exists(). A dangling link reports exists() == False and would
+    # otherwise survive cleanup while appearing to be an absent model directory.
+    model_dir = cfg.abs_path(model_recovery._base_dir())
+    if model_dir.is_symlink():
+        raise model_recovery.RecoveryConflict(
+            "unsafe_output_path",
+            "Refusing to remove an incomplete model through a symbolic link.",
+        )
     model_dir = model_recovery._ensure_removable_model_path(manager, cfg)
     return _remove_tree(model_dir, description="the incomplete OpenVINO files")
 
