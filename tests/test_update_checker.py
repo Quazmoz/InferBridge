@@ -120,6 +120,17 @@ def newer_version() -> str:
     return f"{parsed.major}.{parsed.minor + 1}.0"
 
 
+def same_base_beta_version() -> str:
+    """A beta pre-release sharing the installed version's major.minor.patch.
+
+    This exercises the carve-out that offers a beta-channel build of the base
+    version a user already runs, so it must track ``__version__``.
+    """
+
+    parsed = SemanticVersion.parse(__version__)
+    return f"{parsed.major}.{parsed.minor}.{parsed.patch}-beta.1"
+
+
 def opener_for(version: str, channel: str):
     calls = []
 
@@ -160,7 +171,7 @@ def test_fresh_update_checks_are_disabled_and_make_no_request(tmp_path):
 def test_stable_user_ignores_beta_release(tmp_path):
     store = UpdateStore(tmp_path)
     store.save_preferences(UpdatePreferences(enabled=True))
-    opener, _calls = opener_for("0.8.0-beta.1", "beta")
+    opener, _calls = opener_for(same_base_beta_version(), "beta")
     result = UpdateChecker(
         store=store,
         installation_mode="installed",
@@ -173,7 +184,7 @@ def test_stable_user_ignores_beta_release(tmp_path):
 def test_beta_user_sees_beta_release_and_installed_artifact(tmp_path):
     store = UpdateStore(tmp_path)
     store.save_preferences(UpdatePreferences(enabled=True, channel="beta"))
-    opener, calls = opener_for("0.8.0-beta.1", "beta")
+    opener, calls = opener_for(same_base_beta_version(), "beta")
     result = UpdateChecker(
         store=store,
         installation_mode="installed",
@@ -218,16 +229,19 @@ def test_installed_version_is_not_offered_as_an_update(tmp_path):
 
 
 def test_skip_version_persists_and_suppresses_prompt(tmp_path):
+    # Skip a genuinely newer version, so the suppression comes from the skip list
+    # rather than from the version merely being older than the installed one.
+    skipped = newer_version()
     store = UpdateStore(tmp_path)
-    store.save_preferences(UpdatePreferences(enabled=True, skipped_versions=["0.8.0"]))
-    opener, _calls = opener_for("0.8.0", "stable")
+    store.save_preferences(UpdatePreferences(enabled=True, skipped_versions=[skipped]))
+    opener, _calls = opener_for(skipped, "stable")
     result = UpdateChecker(
         store=store,
         installation_mode="installed",
         opener=opener,
     ).check(force=True)
     assert result.status == "current"
-    assert store.load_preferences().skipped_versions == ["0.8.0"]
+    assert store.load_preferences().skipped_versions == [skipped]
 
 
 def test_disabled_update_checks_make_no_request(tmp_path):
@@ -267,7 +281,7 @@ def test_malformed_manifest_is_rejected(tmp_path):
 
     def opener(request, timeout):
         if "api.github.com" in request.full_url:
-            return Response(release_payload("0.8.0", False))
+            return Response(release_payload(newer_version(), False))
         return Response({"schema_version": 999})
 
     result = UpdateChecker(
