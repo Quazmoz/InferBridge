@@ -34,19 +34,19 @@ def test_slow_active_conversion_is_not_timed_out() -> None:
     async def scenario() -> None:
         manager = FakeManager(
             PreparationTimeouts(
-                download_stall_seconds=0.03,
-                conversion_stall_seconds=0.03,
-                finalization_stall_seconds=0.03,
-                loading_seconds=0.03,
-                compilation_seconds=0.03,
-                poll_seconds=0.003,
+                download_stall_seconds=0.12,
+                conversion_stall_seconds=0.12,
+                finalization_stall_seconds=0.12,
+                loading_seconds=0.12,
+                compilation_seconds=0.12,
+                poll_seconds=0.005,
             )
         )
 
         async def operation() -> str:
             for _ in range(8):
                 _heartbeat(manager, "downloading", "Downloading model files…")
-                await asyncio.sleep(0.01)
+                await asyncio.sleep(0.02)
             return "complete"
 
         result = await run_with_preparation_watchdog(
@@ -68,12 +68,12 @@ def test_genuinely_stalled_conversion_is_cancelled_and_classified() -> None:
     async def scenario() -> None:
         manager = FakeManager(
             PreparationTimeouts(
-                download_stall_seconds=0.025,
-                conversion_stall_seconds=0.025,
-                finalization_stall_seconds=0.025,
+                download_stall_seconds=0.05,
+                conversion_stall_seconds=0.05,
+                finalization_stall_seconds=0.05,
                 loading_seconds=1.0,
                 compilation_seconds=1.0,
-                poll_seconds=0.003,
+                poll_seconds=0.005,
             )
         )
 
@@ -108,15 +108,15 @@ def test_compilation_uses_total_stage_deadline_even_with_parent_heartbeats() -> 
                 conversion_stall_seconds=1.0,
                 finalization_stall_seconds=1.0,
                 loading_seconds=1.0,
-                compilation_seconds=0.03,
-                poll_seconds=0.003,
+                compilation_seconds=0.08,
+                poll_seconds=0.005,
             )
         )
 
         async def operation() -> None:
             for _ in range(20):
                 _heartbeat(manager, "loading", "Still compiling Demo Model for CPU…")
-                await asyncio.sleep(0.01)
+                await asyncio.sleep(0.015)
 
         result = await run_with_preparation_watchdog(
             manager,
@@ -130,6 +130,42 @@ def test_compilation_uses_total_stage_deadline_even_with_parent_heartbeats() -> 
         assert len(manager.published) == 1
         record = manager.published[0]
         assert record.stage == "compilation"
+        assert record.inactivity_timeout is False
+        assert record.elapsed_seconds >= record.timeout_seconds
+
+    asyncio.run(scenario())
+
+
+def test_loading_wait_has_a_separate_total_deadline() -> None:
+    async def scenario() -> None:
+        manager = FakeManager(
+            PreparationTimeouts(
+                download_stall_seconds=1.0,
+                conversion_stall_seconds=1.0,
+                finalization_stall_seconds=1.0,
+                loading_seconds=0.08,
+                compilation_seconds=1.0,
+                poll_seconds=0.005,
+            )
+        )
+
+        async def operation() -> None:
+            for _ in range(20):
+                _heartbeat(manager, "queued", "Waiting for another model preparation…")
+                await asyncio.sleep(0.015)
+
+        result = await run_with_preparation_watchdog(
+            manager,
+            "demo",
+            "load",
+            operation,
+            on_timeout=manager.published.append,
+        )
+
+        assert result is None
+        assert len(manager.published) == 1
+        record = manager.published[0]
+        assert record.stage == "loading"
         assert record.inactivity_timeout is False
         assert record.elapsed_seconds >= record.timeout_seconds
 
