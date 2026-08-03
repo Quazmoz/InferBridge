@@ -3,7 +3,7 @@ import urllib.error
 from datetime import UTC, datetime, timedelta
 
 from app.brand import USER_AGENT_PRODUCT
-from app.release_models import artifact_filename
+from app.release_models import SemanticVersion, artifact_filename
 from app.update_checker import (
     UpdateCache,
     UpdateChecker,
@@ -109,6 +109,17 @@ def release_payload(version: str, prerelease: bool):
     ]
 
 
+def newer_version() -> str:
+    """A stable version strictly greater than the installed one.
+
+    Derived from ``__version__`` so a release bump cannot silently turn an
+    "update available" test into an "already installed" test.
+    """
+
+    parsed = SemanticVersion.parse(__version__)
+    return f"{parsed.major}.{parsed.minor + 1}.0"
+
+
 def opener_for(version: str, channel: str):
     calls = []
 
@@ -181,7 +192,7 @@ def test_beta_user_sees_beta_release_and_installed_artifact(tmp_path):
 def test_portable_user_receives_portable_artifact(tmp_path):
     store = UpdateStore(tmp_path)
     store.save_preferences(UpdatePreferences(enabled=True))
-    opener, _calls = opener_for("0.8.0", "stable")
+    opener, _calls = opener_for(newer_version(), "stable")
     result = UpdateChecker(
         store=store,
         installation_mode="portable",
@@ -189,6 +200,21 @@ def test_portable_user_receives_portable_artifact(tmp_path):
     ).check(force=True)
     assert result.status == "available"
     assert result.selected_artifact_type == "portable"
+
+
+def test_installed_version_is_not_offered_as_an_update(tmp_path):
+    """The release that published the running build is not an available update."""
+
+    store = UpdateStore(tmp_path)
+    store.save_preferences(UpdatePreferences(enabled=True))
+    opener, _calls = opener_for(__version__, "stable")
+    result = UpdateChecker(
+        store=store,
+        installation_mode="installed",
+        opener=opener,
+    ).check(force=True)
+    assert result.status == "current"
+    assert result.selected_artifact_type is None
 
 
 def test_skip_version_persists_and_suppresses_prompt(tmp_path):
@@ -263,7 +289,8 @@ def test_malformed_cached_manifest_is_cleared_and_refetched(tmp_path):
             manifest={"schema_version": 999},
         )
     )
-    opener, calls = opener_for("0.8.0", "stable")
+    published = newer_version()
+    opener, calls = opener_for(published, "stable")
 
     result = UpdateChecker(
         store=store,
@@ -274,4 +301,4 @@ def test_malformed_cached_manifest_is_cleared_and_refetched(tmp_path):
     assert result.status == "available"
     assert len(calls) == 2
     assert "If-none-match" not in calls[0][2]
-    assert store.load_cache().latest_checked_version == "0.8.0"
+    assert store.load_cache().latest_checked_version == published

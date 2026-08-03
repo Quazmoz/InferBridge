@@ -334,8 +334,11 @@ class UpdateChecker:
         same_channel_stream = (
             preferences.channel in {"beta", "nightly"} and manifest.channel == preferences.channel
         )
+        # An identical version is already installed. Without this guard the release that
+        # published the running build is reported as an available update forever.
+        already_installed = latest == current
         older_release = latest < current and not (same_channel_stream and same_base_version)
-        if older_release or manifest.version in preferences.skipped_versions:
+        if already_installed or older_release or manifest.version in preferences.skipped_versions:
             return UpdateCheckResult(
                 status=fallback_status,
                 latest_version=manifest.version,

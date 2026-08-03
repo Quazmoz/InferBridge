@@ -395,6 +395,14 @@ def create_app(settings: Settings) -> FastAPI:
     def auth_failure(source: str) -> HTTPException:
         now = time.monotonic()
         cutoff = now - _AUTH_FAILURE_WINDOW
+        # Drop sources whose failures have all aged out. Without this sweep the map
+        # grows once per distinct client address for the process lifetime.
+        for stale in [
+            key
+            for key, times in _auth_failures.items()
+            if key != source and not any(t > cutoff for t in times)
+        ]:
+            del _auth_failures[stale]
         failures = [t for t in _auth_failures.get(source, []) if t > cutoff]
         failures.append(now)
         _auth_failures[source] = failures
