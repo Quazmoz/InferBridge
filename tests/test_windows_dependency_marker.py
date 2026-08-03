@@ -31,7 +31,7 @@ def test_launcher_keeps_conversion_dependencies_aligned_without_expanding_minima
 
     assert 'set "CONVERT_REQ_FILE=%~dp0requirements-convert.txt"' in launcher
     assert 'set "CONVERT_DEPS_MARKER=%~dp0.convert_deps_installed"' in launcher
-    assert 'python -m pip show optimum-intel >nul 2>&1' in launcher
+    assert "python -m pip show optimum-intel >nul 2>&1" in launcher
     assert "if defined CONVERT_PROFILE" in launcher
     assert "$env:CONVERT_REQ_FILE" in launcher
     assert "$env:CONVERT_DEPS_MARKER" in launcher
@@ -40,9 +40,7 @@ def test_launcher_keeps_conversion_dependencies_aligned_without_expanding_minima
 
 
 def test_windows_setup_records_the_installed_requirements_profiles():
-    installer = (ROOT / "setup" / "windows" / "install_deps.ps1").read_text(
-        encoding="utf-8"
-    )
+    installer = (ROOT / "setup" / "windows" / "install_deps.ps1").read_text(encoding="utf-8")
 
     assert "$RequirementsPath" in installer
     assert "$DependencyMarker" in installer
@@ -50,7 +48,7 @@ def test_windows_setup_records_the_installed_requirements_profiles():
     assert "Set-Content -LiteralPath $DependencyMarker" in installer
     assert "$ProjectFile" in installer
     assert "$ProjectMarker" in installer
-    assert '"--no-deps", "--editable", $RepoRoot' in installer
+    assert '"--no-build-isolation", "--no-deps", "--editable", $RepoRoot' in installer
     assert "Get-FileHash -LiteralPath $ProjectFile -Algorithm SHA256" in installer
     assert "Set-Content -LiteralPath $ProjectMarker" in installer
     assert "$ConversionRequirementsPath" in installer
@@ -62,9 +60,27 @@ def test_windows_setup_records_the_installed_requirements_profiles():
     assert "Remove-Item -LiteralPath $ConversionDependencyMarker" in installer
 
 
+def test_windows_setup_preserves_python_launcher_arguments():
+    installer = (ROOT / "setup" / "windows" / "install_deps.ps1").read_text(encoding="utf-8")
+
+    assert "return [PSCustomObject]@{" in installer
+    assert "Executable = $exe" in installer
+    assert "Arguments = [string[]]$rest" in installer
+    assert "$pyExe = $py.Executable" in installer
+    assert "$pyRest = $py.Arguments" in installer
+
+
 def test_source_dependency_markers_are_ignored():
     ignored = (ROOT / ".gitignore").read_text(encoding="utf-8")
 
     assert ".deps_installed" in ignored
     assert ".convert_deps_installed" in ignored
     assert ".source_package_installed" in ignored
+
+
+def test_runtime_requirements_include_desktop_dependencies():
+    requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+
+    assert "pystray>=0.19.5" in requirements
+    assert '"pystray>=0.19.5"' in pyproject

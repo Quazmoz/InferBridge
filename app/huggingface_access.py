@@ -775,7 +775,11 @@ class HuggingFacePreflightMiddleware:
         if path == "/v1/models/convert" and cfg is not None:
             source_model = cfg.source_model
         trust_remote_code = bool(payload.get("trust_remote_code"))
-        if path == "/v1/models/download-custom" and cfg is not None and bool(getattr(cfg, "trust_remote_code", False)):
+        if (
+            path == "/v1/models/download-custom"
+            and cfg is not None
+            and bool(getattr(cfg, "trust_remote_code", False))
+        ):
             trust_remote_code = True
         if trust_remote_code:
             await self.app(scope, replay_receive, send)

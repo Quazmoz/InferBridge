@@ -88,7 +88,9 @@ def test_analyzer_matches_generation_prompt_and_preserves_whole_turns() -> None:
     assert "old question" not in analysis.prompt
 
 
-def test_context_budget_route_matches_loaded_model_tokenizer_and_reports_omissions(tmp_path) -> None:
+def test_context_budget_route_matches_loaded_model_tokenizer_and_reports_omissions(
+    tmp_path,
+) -> None:
     app = create_app(_settings(tmp_path))
     with TestClient(app) as client:
         engine = _install_engine(client)

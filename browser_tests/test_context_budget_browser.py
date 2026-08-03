@@ -4,7 +4,6 @@ import json
 
 from playwright.sync_api import Page, expect
 
-
 MODEL_ID = "tinyllama-1.1b-chat-fp16"
 
 
@@ -89,9 +88,7 @@ def test_context_budget_chip_previews_omissions_and_reduces_output(
     page: Page,
     inferbridge_url: str,
 ) -> None:
-    page.add_init_script(
-        "localStorage.setItem('inferbridge.onboarding.auto-opened.v1', '1')"
-    )
+    page.add_init_script("localStorage.setItem('inferbridge.onboarding.auto-opened.v1', '1')")
     page.goto(inferbridge_url, wait_until="networkidle")
 
     submitted = []

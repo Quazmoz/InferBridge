@@ -8,7 +8,7 @@ def test_pyinstaller_is_windowed_one_directory_and_collects_openvino():
     assert "console=False" in spec
     assert "COLLECT(" in spec
     assert 'collect_all("openvino")' not in spec
-    assert '("openvino", "openvino_genai")' in spec
+    assert '("openvino", "openvino_genai", "openvino_tokenizers")' in spec
     assert "models.json" in spec
     assert "web" in spec
     assert "runtime_hook.py" in spec

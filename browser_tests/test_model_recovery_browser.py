@@ -4,7 +4,6 @@ import json
 
 from playwright.sync_api import Page, expect
 
-
 RECOVERY_ID = "recovery-browser-test"
 MODEL_ID = "qwen2.5-3b-instruct-int4"
 
@@ -73,9 +72,7 @@ def test_recovery_screen_shows_state_details_and_starts_resume(
     page: Page,
     inferbridge_url: str,
 ) -> None:
-    page.add_init_script(
-        "localStorage.setItem('inferbridge.onboarding.auto-opened.v1', '1')"
-    )
+    page.add_init_script("localStorage.setItem('inferbridge.onboarding.auto-opened.v1', '1')")
     page.goto(inferbridge_url, wait_until="networkidle")
 
     submitted_actions = []
@@ -116,9 +113,7 @@ def test_recovery_screen_shows_state_details_and_starts_resume(
 
     overlay = page.locator("#ov-model-recovery-overlay")
     expect(overlay).to_be_visible()
-    expect(overlay.locator("#ovmr-title")).to_have_text(
-        "Qwen 2.5 3B preparation was interrupted"
-    )
+    expect(overlay.locator("#ovmr-title")).to_have_text("Qwen 2.5 3B preparation was interrupted")
     expect(overlay).to_contain_text("Downloaded files")
     expect(overlay).to_contain_text("Reusable")
     expect(overlay).to_contain_text("Conversion output")
@@ -132,9 +127,7 @@ def test_recovery_screen_shows_state_details_and_starts_resume(
     expect(overlay.locator(".ovmr-details-message")).to_have_text(
         "Conversion exited before OpenVINO files were complete."
     )
-    expect(overlay.locator(".ovmr-details-log")).to_contain_text(
-        "Converting model to OpenVINO IR."
-    )
+    expect(overlay.locator(".ovmr-details-log")).to_contain_text("Converting model to OpenVINO IR.")
 
     overlay.get_by_role("button", name="Resume preparation").click()
     expect(overlay).to_be_hidden()

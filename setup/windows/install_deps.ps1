@@ -93,7 +93,10 @@ function Resolve-Python {
         }
         $version = Get-PythonVersion -FilePath $exe -Arguments $rest
         if ($version -in $SupportedPythonVersions) {
-            return ,@($exe, $rest)
+            return [PSCustomObject]@{
+                Executable = $exe
+                Arguments = [string[]]$rest
+            }
         }
     }
     throw "No suitable Python found. Install Python 3.11, 3.12, or 3.13 from python.org, or pass -Python with the full python.exe path."
@@ -101,8 +104,8 @@ function Resolve-Python {
 
 
 $py = Resolve-Python -Preferred $Python
-$pyExe = $py[0]
-$pyRest = $py[1]
+$pyExe = $py.Executable
+$pyRest = $py.Arguments
 $CreatedVenv = $false
 
 if (-not (Test-Path $VenvDir)) {
@@ -144,7 +147,7 @@ try {
 
     Write-Host "Registering the InferBridge source package ..." -ForegroundColor Cyan
     Invoke-Checked -FilePath $venvPython -Arguments @(
-        "-m", "pip", "install", "--no-deps", "--editable", $RepoRoot
+        "-m", "pip", "install", "--no-build-isolation", "--no-deps", "--editable", $RepoRoot
     )
 } catch {
     $errText = $_.Exception.Message

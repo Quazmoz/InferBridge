@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import pytest
 
 from app import startup_registration
@@ -70,9 +68,7 @@ def test_source_desktop_startup_preserves_module_dispatch(monkeypatch, tmp_path)
     monkeypatch.delattr(startup_registration.sys, "frozen", raising=False)
 
     prefix = desktop_launcher_command_prefix()
-    registration = StartupRegistration.for_current_desktop_launcher(
-        backend=MemoryRegistryBackend()
-    )
+    registration = StartupRegistration.for_current_desktop_launcher(backend=MemoryRegistryBackend())
 
     assert prefix == (str(python.resolve()), "-m", "app.desktop_launcher")
     assert registration.expected_command == startup_command(
@@ -90,9 +86,7 @@ def test_frozen_desktop_startup_uses_executable_directly(monkeypatch, tmp_path):
     monkeypatch.setattr(startup_registration.sys, "executable", str(executable))
     monkeypatch.setattr(startup_registration.sys, "frozen", True, raising=False)
 
-    registration = StartupRegistration.for_current_desktop_launcher(
-        backend=MemoryRegistryBackend()
-    )
+    registration = StartupRegistration.for_current_desktop_launcher(backend=MemoryRegistryBackend())
 
     assert desktop_launcher_command_prefix() == (str(executable.resolve()),)
     assert registration.arguments == ()

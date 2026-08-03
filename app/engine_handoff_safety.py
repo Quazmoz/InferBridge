@@ -135,9 +135,7 @@ def install_engine_handoff_safety() -> None:
                     # convert a client/task cancellation into a generation or recovery
                     # error. Task.cancelling() retains that intent even if a nested
                     # cleanup coroutine caught the CancelledError without returning it.
-                    pending_cancellation = (
-                        pending_cancellation or _retained_task_cancellation()
-                    )
+                    pending_cancellation = pending_cancellation or _retained_task_cancellation()
                     if pending_cancellation is not None:
                         raise pending_cancellation
 

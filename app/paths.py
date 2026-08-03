@@ -117,11 +117,7 @@ def resolve_runtime_paths(
 ) -> RuntimePaths:
     values = os.environ if env is None else env
     packaged = bool(getattr(sys, "frozen", False))
-    desktop_mode = (
-        packaged or _truthy(values.get("OV_LLM_DESKTOP"))
-        if desktop is None
-        else desktop
-    )
+    desktop_mode = packaged or _truthy(values.get("OV_LLM_DESKTOP")) if desktop is None else desktop
     portable_mode = _truthy(values.get("OV_LLM_PORTABLE")) if portable is None else portable
     resource_root = packaged_resource_root()
 

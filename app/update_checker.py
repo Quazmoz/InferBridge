@@ -332,8 +332,7 @@ class UpdateChecker:
             and latest.patch == current.patch
         )
         same_channel_stream = (
-            preferences.channel in {"beta", "nightly"}
-            and manifest.channel == preferences.channel
+            preferences.channel in {"beta", "nightly"} and manifest.channel == preferences.channel
         )
         older_release = latest < current and not (same_channel_stream and same_base_version)
         if older_release or manifest.version in preferences.skipped_versions:

@@ -2,8 +2,8 @@ from pathlib import Path
 
 from app import errors
 from app.desktop_onboarding import (
-    DesktopOnboardingService,
     _STAGE_TIMEOUT_SECONDS,
+    DesktopOnboardingService,
     _classify_native_runtime_failure,
     _windows_build,
     actual_device_is_unresolved,
@@ -110,7 +110,7 @@ def test_long_running_stages_have_distinct_generous_timeouts():
 def test_native_runtime_failure_is_classified_as_package_level(monkeypatch):
     monkeypatch.setattr(errors.sys, "frozen", True, raising=False)
     detail = (
-        'Cannot add extension. Cannot find entry point to the extension library. '
+        "Cannot add extension. Cannot find entry point to the extension library. "
         'Cannot load library "openvino_tokenizers.dll": 126'
     )
     job = PreparationJob(job_id="job", model_id="model", requested_device="NPU")

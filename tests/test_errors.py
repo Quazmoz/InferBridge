@@ -34,7 +34,7 @@ def test_is_tls_certificate_error_handles_cause_cycle():
 
 def test_openvino_tokenizer_runtime_error_matches_packaged_failure_chain():
     root = RuntimeError(
-        'Cannot add extension. Cannot find entry point to the extension library. '
+        "Cannot add extension. Cannot find entry point to the extension library. "
         'Cannot load library "openvino_tokenizers.dll": 126'
     )
     wrapper = RuntimeError("model compilation failed")

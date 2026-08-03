@@ -81,19 +81,13 @@ class PreparationTimeouts:
     @classmethod
     def from_env(cls) -> PreparationTimeouts:
         return cls(
-            download_stall_seconds=_env_seconds(
-                "OV_LLM_DOWNLOAD_STALL_TIMEOUT_SECONDS", 600.0
-            ),
-            conversion_stall_seconds=_env_seconds(
-                "OV_LLM_CONVERSION_STALL_TIMEOUT_SECONDS", 900.0
-            ),
+            download_stall_seconds=_env_seconds("OV_LLM_DOWNLOAD_STALL_TIMEOUT_SECONDS", 600.0),
+            conversion_stall_seconds=_env_seconds("OV_LLM_CONVERSION_STALL_TIMEOUT_SECONDS", 900.0),
             finalization_stall_seconds=_env_seconds(
                 "OV_LLM_FINALIZATION_STALL_TIMEOUT_SECONDS", 300.0
             ),
             loading_seconds=_env_seconds("OV_LLM_LOADING_TIMEOUT_SECONDS", 1_800.0),
-            compilation_seconds=_env_seconds(
-                "OV_LLM_COMPILATION_TIMEOUT_SECONDS", 1_800.0
-            ),
+            compilation_seconds=_env_seconds("OV_LLM_COMPILATION_TIMEOUT_SECONDS", 1_800.0),
             poll_seconds=_env_seconds("OV_LLM_PREPARATION_WATCHDOG_POLL_SECONDS", 1.0),
         )
 
@@ -199,11 +193,7 @@ def record_preparation_heartbeat(
     now_monotonic = time.monotonic()
     now_epoch = time.time()
     current = _states(manager).get(model_id)
-    if (
-        current is not None
-        and current.stage == stage
-        and current.operation_id == operation_id
-    ):
+    if current is not None and current.stage == stage and current.operation_id == operation_id:
         stage_started = current.stage_started_monotonic
     else:
         stage_started = now_monotonic
@@ -217,9 +207,7 @@ def record_preparation_heartbeat(
 
 
 def _iso_timestamp(value: float) -> str:
-    return datetime.fromtimestamp(value, UTC).isoformat(timespec="seconds").replace(
-        "+00:00", "Z"
-    )
+    return datetime.fromtimestamp(value, UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _duration_label(seconds: float) -> str:
@@ -358,6 +346,7 @@ async def run_with_preparation_watchdog(
     current = asyncio.current_task()
     if current is None:  # pragma: no cover - asyncio always supplies a current task
         return await operation()
+    target = asyncio.create_task(operation())
 
     progress = getattr(manager, "progress", {}).get(model_id, {})
     operation_id = (
@@ -370,26 +359,24 @@ async def run_with_preparation_watchdog(
             manager,
             model_id,
             operation_kind,
-            current,
+            target,
             operation_id=operation_id,
             on_timeout=on_timeout,
         ),
         name=f"preparation-watchdog-{operation_kind}-{model_id}",
     )
     try:
-        result = await operation()
+        result = await target
         record = _records(manager).get(model_id)
-        if record is not None and record.task_identity == id(current):
+        if record is not None and record.task_identity == id(target):
             _mark_cleanup_complete(manager, model_id, record)
-            if current.cancelling() and not _consume_watchdog_cancellation(current):
-                raise asyncio.CancelledError
         return result
     except asyncio.CancelledError:
         record = _records(manager).get(model_id)
-        if record is None or record.task_identity != id(current):
+        if record is None or record.task_identity != id(target):
             raise
         _mark_cleanup_complete(manager, model_id, record)
-        if not _consume_watchdog_cancellation(current):
+        if current.cancelling():
             raise
         return None
     finally:
@@ -425,9 +412,7 @@ def _install_registry_shape() -> None:
                 "last_progress_at_iso": raw.get("last_progress_at_iso"),
                 "timeout_seconds": raw.get("timeout_seconds"),
                 "timeout_kind": raw.get("timeout_kind"),
-                "resumable_files_preserved": bool(
-                    raw.get("resumable_files_preserved", True)
-                ),
+                "resumable_files_preserved": bool(raw.get("resumable_files_preserved", True)),
                 "cleanup_pending": bool(raw.get("cleanup_pending", False)),
             }
         )
