@@ -71,7 +71,7 @@ RELEASE_EXTENSION_JS = r"""
       const wanted = manifest.artifacts.find(a => a.type === result.selected_artifact_type);
       if (wanted) {
         content.append(el('p', `SHA-256: ${wanted.sha256}`, 'muted'));
-        content.append(el('p', wanted.signed && wanted.signature_verified ? 'Signature: published metadata reports a verified installer signature. Confirm Authenticode after download.' : (wanted.contained_launcher_signed && wanted.contained_launcher_signature_verified ? 'Signature: the ZIP is unsigned. Published metadata reports a verified launcher signature; confirm it after extraction and verify the ZIP SHA-256 checksum.' : 'Signature: unsigned. Verify the published SHA-256 checksum before use.'));
+        content.append(el('p', wanted.signed && wanted.signature_verified ? 'Signature: published metadata reports a verified installer signature. Confirm Authenticode after download.' : (wanted.contained_launcher_signed && wanted.contained_launcher_signature_verified ? 'Signature: the ZIP is unsigned. Published metadata reports a verified launcher signature; confirm it after extraction and verify the ZIP SHA-256 checksum.' : 'Signature: unsigned. Verify the published SHA-256 checksum before use.')));
         const link=el('a', wanted.type === 'installer' ? 'Download Installer' : 'Download Portable ZIP', 'primary'); link.href=wanted.url; link.target='_blank'; link.rel='noreferrer'; actions.append(link);
       }
       const notes=el('a','View Release Notes'); notes.href=manifest.release_notes_url; notes.target='_blank'; notes.rel='noreferrer'; actions.append(notes);
