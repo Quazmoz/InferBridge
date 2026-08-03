@@ -121,14 +121,30 @@ def newer_version() -> str:
 
 
 def same_base_beta_version() -> str:
-    """A beta pre-release sharing the installed version's major.minor.patch.
+    """A beta pre-release of the installed base version, never equal to it.
 
-    This exercises the carve-out that offers a beta-channel build of the base
-    version a user already runs, so it must track ``__version__``.
+    Exercises the carve-out that offers a beta-channel build of the base version a
+    user already runs, so it must track ``__version__``. When the installed build is
+    itself a pre-release of that base, advance the beta counter instead of returning
+    the installed version, which would be filtered as already installed.
     """
 
     parsed = SemanticVersion.parse(__version__)
-    return f"{parsed.major}.{parsed.minor}.{parsed.patch}-beta.1"
+    base = f"{parsed.major}.{parsed.minor}.{parsed.patch}"
+    if not parsed.prerelease:
+        return f"{base}-beta.1"
+    trailing = parsed.prerelease[-1]
+    return f"{base}-beta.{int(trailing) + 1 if trailing.isdigit() else 1}"
+
+
+def installed_channel() -> str:
+    """The release channel that can legitimately publish ``__version__``.
+
+    A manifest may only declare ``stable`` for a final version, so tests that
+    republish the installed version must follow it onto the pre-release channel.
+    """
+
+    return "beta" if SemanticVersion.parse(__version__).prerelease else "stable"
 
 
 def opener_for(version: str, channel: str):
@@ -216,9 +232,10 @@ def test_portable_user_receives_portable_artifact(tmp_path):
 def test_installed_version_is_not_offered_as_an_update(tmp_path):
     """The release that published the running build is not an available update."""
 
+    channel = installed_channel()
     store = UpdateStore(tmp_path)
-    store.save_preferences(UpdatePreferences(enabled=True))
-    opener, _calls = opener_for(__version__, "stable")
+    store.save_preferences(UpdatePreferences(enabled=True, channel=channel))
+    opener, _calls = opener_for(__version__, channel)
     result = UpdateChecker(
         store=store,
         installation_mode="installed",
