@@ -13,8 +13,9 @@ import os
 import shutil
 import stat
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 _INSTALL_FLAG = "_inferbridge_resilient_cleanup_installed"
 _RETRY_DELAYS_SECONDS = (0.0, 0.15, 0.5, 1.0, 2.0)

@@ -74,10 +74,13 @@ def test_remove_tree_retries_a_transient_windows_lock(monkeypatch, tmp_path: Pat
     monkeypatch.setattr(model_recovery_cleanup.shutil, "rmtree", flaky_rmtree)
     monkeypatch.setattr(model_recovery_cleanup.time, "sleep", lambda _delay: None)
 
-    assert model_recovery_cleanup._remove_tree(
-        target,
-        description="the cached Hugging Face source files",
-    ) is True
+    assert (
+        model_recovery_cleanup._remove_tree(
+            target,
+            description="the cached Hugging Face source files",
+        )
+        is True
+    )
     assert calls == 2
     assert not target.exists()
 
@@ -230,5 +233,7 @@ def test_restart_download_keeps_recovery_when_cleanup_remains_locked(
 def test_cleanup_extension_replaces_raw_recovery_deletion_helpers() -> None:
     model_recovery_cleanup.install_model_recovery_cleanup()
 
-    assert model_recovery._remove_incomplete_output is model_recovery_cleanup._remove_incomplete_output
+    assert (
+        model_recovery._remove_incomplete_output is model_recovery_cleanup._remove_incomplete_output
+    )
     assert model_recovery._remove_download_cache is model_recovery_cleanup._remove_download_cache

@@ -220,9 +220,11 @@ def _validate_windows_native_runtime() -> None:
 
 def _optimum_command_name(command: object) -> str:
     command_metadata = getattr(command, "COMMAND", None)
-    return str(
-        getattr(command_metadata, "name", "") or getattr(command, "name", "") or ""
-    ).strip().lower()
+    return (
+        str(getattr(command_metadata, "name", "") or getattr(command, "name", "") or "")
+        .strip()
+        .lower()
+    )
 
 
 def _validate_packaged_optimum_cli() -> None:

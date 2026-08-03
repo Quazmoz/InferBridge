@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
+from app.brand import DISPLAY_NAME
 from app.config import Settings
 from app.desktop_operations import DesktopOperationsService
 from app.desktop_operations_models import (
@@ -72,7 +73,7 @@ def register_desktop_operations_routes(
     async def desktop_instance(request: Request):
         _require_loopback(request)
         return {
-            "application": "OpenVINO Windows LLM",
+            "application": DISPLAY_NAME,
             "instance_nonce": instance_nonce,
             "port": service.endpoint_port,
             "api_contract_version": "1",

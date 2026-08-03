@@ -269,12 +269,6 @@ def _mark_cleanup_complete(
         payload["cleanup_pending"] = False
 
 
-def _consume_watchdog_cancellation(task: asyncio.Task[Any]) -> bool:
-    """Remove one watchdog cancellation while preserving any external request."""
-
-    return task.uncancel() == 0
-
-
 async def _watch_operation(
     manager: Any,
     model_id: str,

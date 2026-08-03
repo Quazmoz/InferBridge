@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 import httpx
 
 from app import __version__, model_registry as registry
+from app.brand import DISPLAY_NAME
 from app.model_library_conversion import (
     conversion_health,
     directory_size_bytes,
@@ -668,7 +669,7 @@ class ModelLibraryService:
         }
         return {
             "schema_version": 1,
-            "application": "OpenVINO Windows LLM",
+            "application": DISPLAY_NAME,
             "exported_at": utc_now(),
             "models": models,
         }
