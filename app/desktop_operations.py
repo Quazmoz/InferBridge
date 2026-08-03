@@ -4,11 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
-import sys
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 from app import __version__
@@ -187,8 +185,7 @@ class DesktopOperationsService:
         npu = self._npu_status()
         try:
             startup = (
-                StartupRegistration(
-                    executable=Path(sys.executable),
+                StartupRegistration.for_current_desktop_launcher(
                     portable=self.paths.portable,
                 )
                 .state()
