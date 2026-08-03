@@ -226,6 +226,7 @@ jobs:
           app/huggingface_access_ui.py
           app/model_cancellation.py
           app/model_lifecycle_ui.py
+          app/model_preparation_timeouts.py
           app/model_recovery.py
           app/model_recovery_status.py
           app/model_recovery_ui.py
@@ -272,6 +273,7 @@ jobs:
           tests/test_model_cancellation.py
           tests/test_model_cancellation_race.py
           tests/test_model_lifecycle_ui.py
+          tests/test_model_preparation_timeouts.py
           tests/test_model_recovery.py
           tests/test_model_recovery_status.py
           tests/test_model_recovery_ui.py
