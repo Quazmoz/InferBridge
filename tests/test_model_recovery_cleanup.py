@@ -100,6 +100,26 @@ def test_readonly_callback_makes_a_file_writable_before_retry(tmp_path: Path) ->
     assert not target.exists()
 
 
+def test_make_writable_falls_back_when_follow_symlinks_is_unsupported(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "readonly.bin"
+    target.write_bytes(b"data")
+    calls: list[dict] = []
+
+    def fake_chmod(_path, _mode, **kwargs):
+        calls.append(kwargs)
+        if "follow_symlinks" in kwargs:
+            raise NotImplementedError
+
+    monkeypatch.setattr(model_recovery_cleanup.os, "chmod", fake_chmod)
+
+    model_recovery_cleanup._make_writable(target)
+
+    assert calls == [{"follow_symlinks": False}, {}]
+
+
 def test_cleanup_failure_is_actionable_and_does_not_expose_the_local_path(
     monkeypatch,
     tmp_path: Path,
@@ -124,6 +144,28 @@ def test_cleanup_failure_is_actionable_and_does_not_expose_the_local_path(
     assert str(target) not in str(captured.value)
     assert "antivirus" in str(captured.value).lower()
     assert target.exists()
+
+
+def test_incomplete_output_rejects_a_dangling_link_before_exists_check(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    manager = _manager(tmp_path)
+    cfg = manager.catalog[MODEL_ID]
+    target = cfg.abs_path(model_recovery._base_dir())
+    original_is_symlink = Path.is_symlink
+
+    def fake_is_symlink(path: Path) -> bool:
+        if path == target:
+            return True
+        return original_is_symlink(path)
+
+    monkeypatch.setattr(Path, "is_symlink", fake_is_symlink)
+
+    with pytest.raises(RecoveryConflict) as captured:
+        model_recovery_cleanup._remove_incomplete_output(manager, cfg)
+
+    assert captured.value.code == "unsafe_output_path"
 
 
 def test_restart_download_keeps_recovery_when_cleanup_remains_locked(
