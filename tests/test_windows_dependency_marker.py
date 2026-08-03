@@ -60,3 +60,11 @@ def test_windows_setup_records_the_installed_requirements_profiles():
     assert "Set-Content -LiteralPath $ConversionDependencyMarker" in installer
     assert "elseif ($CreatedVenv)" in installer
     assert "Remove-Item -LiteralPath $ConversionDependencyMarker" in installer
+
+
+def test_source_dependency_markers_are_ignored():
+    ignored = (ROOT / ".gitignore").read_text(encoding="utf-8")
+
+    assert ".deps_installed" in ignored
+    assert ".convert_deps_installed" in ignored
+    assert ".source_package_installed" in ignored
