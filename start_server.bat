@@ -44,7 +44,7 @@ if not errorlevel 1 set "PROJECT_CURRENT=1"
 
 if not defined PROJECT_CURRENT (
     echo Registering the InferBridge source package...
-    python -m pip install --no-deps --editable "%~dp0"
+    python -m pip install --no-build-isolation --no-deps --editable "%~dp0."
     if errorlevel 1 (
         echo ERROR: Failed to register the InferBridge source package.
         pause

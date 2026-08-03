@@ -22,7 +22,7 @@ def test_launcher_registers_editable_source_package_for_cwd_independent_commands
     assert 'set "PROJECT_MARKER=%~dp0.source_package_installed"' in launcher
     assert "$env:PROJECT_FILE" in launcher
     assert "$env:PROJECT_MARKER" in launcher
-    assert 'python -m pip install --no-deps --editable "%~dp0"' in launcher
+    assert 'python -m pip install --no-build-isolation --no-deps --editable "%~dp0."' in launcher
     assert "Failed to register the InferBridge source package" in launcher
 
 
