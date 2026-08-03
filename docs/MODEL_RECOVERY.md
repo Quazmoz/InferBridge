@@ -29,6 +29,8 @@ Retries loading when a complete OpenVINO model is present. Otherwise it retries 
 
 Removes the incomplete OpenVINO output and the safely identified Hugging Face cache directory for that exact source repository, then starts a fresh download and conversion. The WebGUI requires explicit confirmation.
 
+Windows cleanup retries transient sharing violations and clears read-only file attributes before retrying. If another process, antivirus scanner, or File Explorer window continues holding a file, the action returns a sanitized `cleanup_failed` conflict and preserves the recovery record so the user can close the conflicting process and retry.
+
 ### Remove incomplete files
 
 Removes only the incomplete OpenVINO model directory. Reusable Hugging Face cache data is retained. Complete OpenVINO models, symbolic links, paths outside the configured model directory, and the model-directory root itself are never removed through recovery actions.
@@ -83,5 +85,7 @@ Compact recovery summaries are included in model status rows. Failure details ar
 ## Limitations
 
 A resumable preparation reuses cached source files, but Optimum and Hugging Face ultimately determine which files can be reused. InferBridge restarts the conversion stage because partial OpenVINO IR output is not treated as trustworthy or appendable.
+
+A restart from download still uses the normal packaged converter after cleanup. It cannot repair a converter that is missing from or incorrectly bundled in the installed release; the package release gate separately verifies the OpenVINO Optimum registration modules before publishing.
 
 Real interrupted-download and conversion behavior must still be verified on Windows with representative Hugging Face models, including gated models and large sharded checkpoints.
