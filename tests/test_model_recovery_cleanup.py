@@ -3,6 +3,7 @@ import json
 import os
 import stat
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -98,6 +99,26 @@ def test_readonly_callback_makes_a_file_writable_before_retry(tmp_path: Path) ->
     )
 
     assert not target.exists()
+
+
+def test_path_mode_falls_back_when_follow_symlinks_is_unsupported(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "readonly.bin"
+    target.write_bytes(b"data")
+    calls: list[dict] = []
+
+    def fake_stat(_path, **kwargs):
+        calls.append(kwargs)
+        if "follow_symlinks" in kwargs:
+            raise NotImplementedError
+        return SimpleNamespace(st_mode=stat.S_IREAD)
+
+    monkeypatch.setattr(model_recovery_cleanup.os, "stat", fake_stat)
+
+    assert model_recovery_cleanup._path_mode(target) == stat.S_IREAD
+    assert calls == [{"follow_symlinks": False}, {}]
 
 
 def test_make_writable_falls_back_when_follow_symlinks_is_unsupported(
