@@ -96,6 +96,52 @@ def test_genuinely_stalled_conversion_is_cancelled_and_classified() -> None:
         assert record.inactivity_timeout is True
         assert record.cleanup_pending is False
         assert record.last_progress_at > 0
+        assert asyncio.current_task().cancelling() == 0
+
+    asyncio.run(scenario())
+
+
+def test_watchdog_preserves_a_simultaneous_external_cancellation() -> None:
+    async def scenario() -> None:
+        manager = FakeManager(
+            PreparationTimeouts(
+                download_stall_seconds=0.05,
+                conversion_stall_seconds=0.05,
+                finalization_stall_seconds=0.05,
+                loading_seconds=1.0,
+                compilation_seconds=1.0,
+                poll_seconds=0.005,
+            )
+        )
+        target: asyncio.Task[None]
+
+        async def operation() -> None:
+            _heartbeat(manager, "converting", "Converting model to OpenVINO IR…")
+            await asyncio.sleep(1.0)
+
+        def on_timeout(record: PreparationTimeoutRecord) -> None:
+            manager.published.append(record)
+            target.cancel()
+
+        async def wrapped() -> None:
+            await run_with_preparation_watchdog(
+                manager,
+                "demo",
+                "convert",
+                operation,
+                on_timeout=on_timeout,
+            )
+
+        target = asyncio.create_task(wrapped())
+        try:
+            await target
+        except asyncio.CancelledError:
+            pass
+        else:  # pragma: no cover - a regression would make the assertion fail
+            raise AssertionError("external cancellation was swallowed")
+
+        assert target.cancelled() is True
+        assert len(manager.published) == 1
 
     asyncio.run(scenario())
 
