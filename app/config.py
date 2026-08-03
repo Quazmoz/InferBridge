@@ -162,6 +162,7 @@ class Settings:
         from app.model_load_target import install_model_load_target_routing
         from app.model_preparation_timeouts import install_model_preparation_timeouts
         from app.model_recovery import install_model_recovery_manager_extension
+        from app.model_recovery_cleanup import install_model_recovery_cleanup
         from app.model_recovery_status import install_model_recovery_status_extension
         from app.status_split import install_status_manager_extension
         from app.structured_progress import install_structured_progress_protocol
@@ -176,6 +177,7 @@ class Settings:
         install_model_lifecycle_safety()
         install_model_cancellation_manager_extension()
         install_model_recovery_manager_extension()
+        install_model_recovery_cleanup()
         install_status_manager_extension()
         install_model_recovery_status_extension()
         install_huggingface_access_manager_extension()
