@@ -70,5 +70,7 @@ Thumbs.db
 mcp.json
 mcp.*.json
 
-# --- Dependency install marker (auto-created by start_server.bat) ---
+# --- Source dependency markers (auto-created by setup/start_server.bat) ---
 .deps_installed
+.convert_deps_installed
+.source_package_installed
