@@ -18,11 +18,11 @@ OpenVINO GenAI remains the inference runtime. InferBridge does not replace OpenV
 - [Portable ZIP](https://github.com/Quazmoz/InferBridge/releases/download/v0.8.0/InferBridge-0.8.0-windows-x64-portable.zip)
 - [SHA-256 checksums](https://github.com/Quazmoz/InferBridge/releases/download/v0.8.0/InferBridge-0.8.0-checksums.txt)
 
-**Current pre-release: `0.9.1-beta.1`.** Beta builds ship ahead of the next stable release and are marked pre-release on GitHub. Context budget visibility, model preparation recovery, and stage-aware preparation watchdogs are present only in the `0.9.x` beta artifacts; the published 0.8.0 release notes described those features, but they landed after the `v0.8.0` tag was cut. See [0.9.0-beta.1](docs/releases/0.9.0-beta.1.md) and [0.9.1-beta.1](docs/releases/0.9.1-beta.1.md).
+**Current pre-release: `0.9.2-beta.1`.** Beta builds ship ahead of the next stable release and are marked pre-release on GitHub. Context budget visibility, model preparation recovery, and stage-aware preparation watchdogs are present only in the `0.9.x` beta artifacts; the published 0.8.0 release notes described those features, but they landed after the `v0.8.0` tag was cut. See [0.9.2-beta.1](docs/releases/0.9.2-beta.1.md) for the installer upgrade and uninstall fixes.
 
-- [Windows installer](https://github.com/Quazmoz/InferBridge/releases/download/v0.9.1-beta.1/InferBridge-0.9.1-beta.1-windows-x64-installer.exe)
-- [Portable ZIP](https://github.com/Quazmoz/InferBridge/releases/download/v0.9.1-beta.1/InferBridge-0.9.1-beta.1-windows-x64-portable.zip)
-- [SHA-256 checksums](https://github.com/Quazmoz/InferBridge/releases/download/v0.9.1-beta.1/InferBridge-0.9.1-beta.1-checksums.txt)
+- [Windows installer](https://github.com/Quazmoz/InferBridge/releases/download/v0.9.2-beta.1/InferBridge-0.9.2-beta.1-windows-x64-installer.exe)
+- [Portable ZIP](https://github.com/Quazmoz/InferBridge/releases/download/v0.9.2-beta.1/InferBridge-0.9.2-beta.1-windows-x64-portable.zip)
+- [SHA-256 checksums](https://github.com/Quazmoz/InferBridge/releases/download/v0.9.2-beta.1/InferBridge-0.9.2-beta.1-checksums.txt)
 
 Releases from `v0.7.0` onward use the canonical `Quazmoz/InferBridge` repository and `InferBridge-<version>` artifact names. Releases through `v0.6.3` were published before the rename, and their repository links and artifact filenames intentionally retain the former product identity.
 
@@ -169,6 +169,7 @@ See [QUICKSTART.md](QUICKSTART.md) for the complete setup flow.
 
 ### Release notes
 
+- [0.9.2-beta.1](docs/releases/0.9.2-beta.1.md)
 - [0.9.1-beta.1](docs/releases/0.9.1-beta.1.md)
 - [0.9.0-beta.1](docs/releases/0.9.0-beta.1.md)
 - [0.8.0](docs/releases/0.8.0.md)
