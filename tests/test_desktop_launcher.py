@@ -1,12 +1,16 @@
+import io
 import os
 import socket
 import sys
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
+import pytest
+
 from app import desktop_launcher, desktop_server
 from app.desktop_launcher import InstanceLock
 from runtime.model_artifacts import validate_openvino_model_dir
+from runtime.progress_protocol import ProgressEventEmitter
 
 
 def _write_ready_model(path: Path, payload: bytes = b"weights") -> None:
@@ -251,6 +255,77 @@ def test_packaged_converter_accepts_progress_emitter_and_restores_overrides(
     assert model_converter.shutil.which is original_which
 
 
+def test_packaged_converter_forwards_in_process_progress_and_restores_streams(
+    monkeypatch,
+    tmp_path,
+):
+    """Optimum draws on this process's streams when conversion runs in the bundle.
+
+    Raw carriage-return redraws would reach the server as one unbounded line and stdout
+    must stay a pure JSON channel, so the packaged path routes both streams through the
+    converter's line emitter and restores them afterwards.
+    """
+
+    from runtime import model_converter
+    from runtime.progress_protocol import decode_progress_event
+
+    optimum = ModuleType("optimum")
+    commands = ModuleType("optimum.commands")
+    optimum_cli = ModuleType("optimum.commands.optimum_cli")
+    final = tmp_path / "model"
+    protocol_stream = io.StringIO()
+    human_stream = io.StringIO()
+
+    def fake_optimum_main():
+        # tqdm redraws with carriage returns and no newline, and Optimum prints to stdout.
+        sys.stderr.write("model.safetensors:  10%|# | 1.0MiB/10MiB\r")
+        sys.stderr.write("model.safetensors: 100%|##| 10MiB/10MiB\r")
+        print("Exporting OpenVINO model")
+        _write_ready_model(Path(sys.argv[-1]), b"new")
+        return 0
+
+    optimum_cli.main = fake_optimum_main
+    commands.optimum_cli = optimum_cli
+    optimum.commands = commands
+    monkeypatch.setitem(sys.modules, "optimum", optimum)
+    monkeypatch.setitem(sys.modules, "optimum.commands", commands)
+    monkeypatch.setitem(sys.modules, "optimum.commands.optimum_cli", optimum_cli)
+    monkeypatch.setattr(desktop_launcher.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(desktop_launcher.sys, "stderr", human_stream)
+
+    emitter = ProgressEventEmitter(
+        operation_id="producer-1",
+        model_id="model-1",
+        stream=protocol_stream,
+    )
+
+    def fake_converter_main(_arguments):
+        model_converter._run_model_export_command(
+            ["optimum-cli", "export", "openvino", str(final)],
+            progress_emitter=emitter,
+        )
+        return 0
+
+    monkeypatch.setattr(model_converter, "main", fake_converter_main)
+
+    original_stdout = sys.stdout
+    assert desktop_launcher._run_packaged_converter(["--id", "tinyllama"]) == 0
+    assert sys.stdout is original_stdout
+    assert sys.stderr is human_stream
+
+    human = human_stream.getvalue()
+    assert "model.safetensors" in human
+    assert "Exporting OpenVINO model" in human
+    # Every redraw became its own bounded line rather than one unterminated line.
+    assert "\r" not in human
+    assert max(len(line) for line in human.splitlines()) < 65536
+
+    events = [decode_progress_event(line) for line in protocol_stream.getvalue().splitlines()]
+    phases = [event.phase for event in events]
+    assert "downloading" in phases, "packaged conversion must report download progress"
+    assert any(event.percent == 100 for event in events)
+
+
 def test_packaged_converter_failure_preserves_previous_model(monkeypatch, tmp_path, capsys):
     from runtime import model_converter
 
@@ -275,9 +350,7 @@ def test_packaged_converter_failure_preserves_previous_model(monkeypatch, tmp_pa
     monkeypatch.setattr(desktop_launcher.sys, "frozen", True, raising=False)
 
     def fake_converter_main(_arguments):
-        model_converter._run_model_export_command(
-            ["optimum-cli", "export", "openvino", str(final)]
-        )
+        model_converter._run_model_export_command(["optimum-cli", "export", "openvino", str(final)])
         return 0
 
     monkeypatch.setattr(model_converter, "main", fake_converter_main)
@@ -302,9 +375,89 @@ def test_packaged_converter_contains_unexpected_failure_and_restores_overrides(m
     monkeypatch.setattr(model_converter, "main", fail)
 
     assert desktop_launcher._run_packaged_converter(["--id", "tinyllama"]) == 2
-    assert "Packaged model conversion failed: conversion exploded" in capsys.readouterr().err
+    # The frozen helper cannot show a traceback and the server surfaces only the tail of
+    # this stream, so the single reported line carries the exception type and origin.
+    failure = capsys.readouterr().err
+    assert "Packaged model conversion failed: RuntimeError: conversion exploded" in failure
+    assert "at test_desktop_launcher.py:" in failure
     assert model_converter._run_streaming_command is original_runner
     assert model_converter.shutil.which is original_which
+
+
+def test_failure_detail_names_the_exception_type_without_leaking_paths():
+    """An unactionable message such as OSError('could not get source code') needs context.
+
+    A packaged conversion once failed with only that text, which named neither the
+    exception type nor the module that raised it.
+    """
+
+    try:
+        raise OSError("could not get source code")
+    except OSError as exc:
+        detail = desktop_launcher._failure_detail(exc)
+
+    assert detail.startswith("OSError: could not get source code at test_desktop_launcher.py:")
+    assert "\\" not in detail and "/" not in detail
+
+
+def test_failure_detail_falls_back_to_the_exception_class_without_a_message():
+    detail = desktop_launcher._failure_detail(RuntimeError())
+    assert detail == "RuntimeError: RuntimeError"
+
+
+def test_native_smoke_mode_also_proves_the_conversion_import_chain(monkeypatch):
+    """Release validation must import what `optimum-cli export openvino` imports.
+
+    The chain executes decorators that read their own source through inspect.getsource,
+    so a bytecode-only bundle breaks every conversion. Only importing the OpenVINO
+    bindings left that regression to the user's first model download.
+    """
+
+    calls = []
+    monkeypatch.setattr(desktop_launcher, "_native_runtime_smoke", lambda: 0)
+    monkeypatch.setattr(
+        desktop_launcher,
+        "_conversion_import_smoke",
+        lambda: calls.append("conversion") or 0,
+    )
+
+    assert desktop_launcher.main(["--native-smoke"]) == 0
+    assert calls == ["conversion"]
+
+
+def test_native_smoke_mode_skips_conversion_import_after_a_native_failure(monkeypatch):
+    monkeypatch.setattr(desktop_launcher, "_native_runtime_smoke", lambda: 2)
+    monkeypatch.setattr(
+        desktop_launcher,
+        "_conversion_import_smoke",
+        lambda: pytest.fail("the conversion import must not run without native bindings"),
+    )
+
+    assert desktop_launcher.main(["--native-smoke"]) == 2
+
+
+def test_conversion_import_smoke_reports_the_module_that_failed(monkeypatch, capsys):
+    import importlib
+
+    def refuse(name):
+        raise OSError("could not get source code")
+
+    monkeypatch.setattr(importlib, "import_module", refuse)
+
+    assert desktop_launcher._conversion_import_smoke() == 2
+    error = capsys.readouterr().err
+    assert "optimum.exporters.openvino" in error
+    assert "OSError: could not get source code" in error
+
+
+def test_conversion_import_smoke_imports_both_export_entry_points(monkeypatch):
+    import importlib
+
+    imported = []
+    monkeypatch.setattr(importlib, "import_module", lambda name: imported.append(name))
+
+    assert desktop_launcher._conversion_import_smoke() == 0
+    assert imported == ["optimum.exporters.openvino", "optimum.intel.openvino"]
 
 
 def test_packaged_converter_contains_optimum_string_system_exit(monkeypatch, tmp_path, capsys):

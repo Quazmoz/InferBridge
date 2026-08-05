@@ -174,6 +174,58 @@ def test_console_progress_splits_carriage_returns_and_strips_ansi():
     ]
 
 
+def test_console_line_writer_splits_in_process_terminal_redraws():
+    """The packaged converter runs Optimum in-process, so tqdm redraws land here.
+
+    The parent server reads the helper pipe with readline, which fails when carriage
+    return redraws arrive without a newline, so each redraw must become its own line.
+    """
+
+    lines: list[str] = []
+    writer = mc.ConsoleLineWriter(lines.append)
+
+    written = writer.write("\x1b[2Kmodel.safetensors: 10%|# | 1.0MiB/10MiB\r")
+    writer.write("model.safetensors: 60%|###### | 6.0MiB/10MiB\rExporting\n")
+    writer.write("trailing without a separator")
+    assert lines == [
+        "model.safetensors: 10%|# | 1.0MiB/10MiB",
+        "model.safetensors: 60%|###### | 6.0MiB/10MiB",
+        "Exporting",
+    ]
+    assert written == len("\x1b[2Kmodel.safetensors: 10%|# | 1.0MiB/10MiB\r")
+
+    writer.drain()
+    assert lines[-1] == "trailing without a separator"
+    writer.drain()
+    assert len(lines) == 4
+
+
+def test_console_line_writer_bounds_output_that_never_gets_a_separator():
+    """Unseparated output must never grow past asyncio's readline limit.
+
+    asyncio.StreamReader.readline raises once 64 KiB arrives without a separator, which
+    would fail a healthy long download in the packaged application.
+    """
+
+    lines: list[str] = []
+    writer = mc.ConsoleLineWriter(lines.append)
+
+    for _ in range(64):
+        writer.write("x" * 1024)
+
+    assert lines, "buffered output must be flushed before the parent read limit"
+    assert max(len(line) for line in lines) <= mc.ConsoleLineWriter._MAX_PENDING_CHARS
+    assert mc.ConsoleLineWriter._MAX_PENDING_CHARS < 65536
+
+
+def test_console_line_writer_reports_utf8_so_progress_glyphs_survive():
+    writer = mc.ConsoleLineWriter(lambda _line: None)
+    assert writer.encoding == "utf-8"
+    assert writer.writable() is True
+    # tqdm calls flush after every redraw and must not fail on a non-file stream.
+    assert writer.flush() is None
+
+
 def test_progress_emitter_labels_download_bars(capsys):
     emitter = mc._ProgressLineEmitter()
     emitter.emit("model.safetensors: 25%|##5       | 1.0MiB/4.0MiB [00:01<00:03, 1.0MiB/s]")

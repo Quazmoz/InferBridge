@@ -99,7 +99,11 @@ def _require_single_internal_file(root: Path, pattern: str, label: str) -> Path:
 
 
 def _run_packaged_native_smoke(root: Path) -> None:
-    """Load the frozen OpenVINO and tokenizer bindings in the built executable."""
+    """Load the frozen OpenVINO bindings and the model-conversion import chain.
+
+    The timeout covers importing torch, Transformers, and Optimum Intel inside the
+    frozen bundle, which is far slower than loading the native bindings alone.
+    """
 
     if os.name != "nt":
         return
@@ -113,7 +117,7 @@ def _run_packaged_native_smoke(root: Path) -> None:
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=90,
+            timeout=300,
             check=False,
             creationflags=creationflags,
         )

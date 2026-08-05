@@ -12,13 +12,14 @@ from __future__ import annotations
 
 import argparse
 import codecs
+import io
 import logging
 import os
 import re
 import shutil
 import subprocess
 import sys
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
 from typing import BinaryIO, TextIO
 
@@ -107,6 +108,26 @@ def _clean_console_line(text: str) -> str:
     return _ANSI_ESCAPE_RE.sub("", str(text or "")).replace("\x00", "").strip()
 
 
+def _split_console_lines(pending: str) -> tuple[list[str], str]:
+    """Split buffered terminal output on newlines or carriage returns.
+
+    Returns the complete, cleaned lines plus the text still awaiting a separator.
+    """
+
+    lines: list[str] = []
+    while True:
+        match = re.search(r"[\r\n]", pending)
+        if match is None:
+            break
+        line = _clean_console_line(pending[: match.start()])
+        pending = pending[match.end() :]
+        while pending.startswith(("\r", "\n")):
+            pending = pending[1:]
+        if line:
+            lines.append(line)
+    return lines, pending
+
+
 def _iter_console_lines(chunks: Iterable[bytes]) -> Iterator[str]:
     """Yield terminal updates split on either newlines or carriage returns."""
 
@@ -115,22 +136,62 @@ def _iter_console_lines(chunks: Iterable[bytes]) -> Iterator[str]:
     for chunk in chunks:
         if not chunk:
             continue
-        pending += decoder.decode(chunk)
-        while True:
-            match = re.search(r"[\r\n]", pending)
-            if match is None:
-                break
-            line = _clean_console_line(pending[: match.start()])
-            pending = pending[match.end() :]
-            while pending.startswith(("\r", "\n")):
-                pending = pending[1:]
-            if line:
-                yield line
+        lines, pending = _split_console_lines(pending + decoder.decode(chunk))
+        yield from lines
 
     pending += decoder.decode(b"", final=True)
     line = _clean_console_line(pending)
     if line:
         yield line
+
+
+class ConsoleLineWriter(io.TextIOBase):
+    """Turn in-process terminal writes into whole progress lines.
+
+    The packaged converter runs Optimum inside this process, so ``tqdm`` and the
+    Transformers loader redraw on ``sys.stderr`` with carriage returns and no newline
+    for the duration of a download. The parent server consumes that pipe with
+    ``asyncio.StreamReader.readline``, which raises ``ValueError`` once its 64 KiB limit
+    fills without a separator, so raw redraws would fail a long download that is
+    otherwise healthy. Splitting the writes here gives the packaged application the same
+    line-oriented progress the subprocess path already produces.
+    """
+
+    # Emit well below asyncio's 64 KiB readline limit so the parent never overruns.
+    _MAX_PENDING_CHARS = 4096
+
+    def __init__(self, emit: Callable[[str], None]) -> None:
+        self._emit = emit
+        self._pending = ""
+
+    @property
+    def encoding(self) -> str:
+        # tqdm renders ASCII fallbacks when a stream reports no encoding. The lines are
+        # forwarded to the already UTF-8 configured real stderr, so advertise UTF-8.
+        return "utf-8"
+
+    def writable(self) -> bool:
+        return True
+
+    def write(self, text: str) -> int:
+        chunk = str(text or "")
+        lines, self._pending = _split_console_lines(self._pending + chunk)
+        for line in lines:
+            self._emit(line)
+        if len(self._pending) > self._MAX_PENDING_CHARS:
+            self.drain()
+        return len(chunk)
+
+    def flush(self) -> None:
+        return None
+
+    def drain(self) -> None:
+        """Emit any buffered text that never received a line separator."""
+
+        pending, self._pending = self._pending, ""
+        line = _clean_console_line(pending)
+        if line:
+            self._emit(line[: self._MAX_PENDING_CHARS])
 
 
 def _read_process_chunks(stream: BinaryIO, chunk_size: int = 4096) -> Iterator[bytes]:

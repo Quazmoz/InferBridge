@@ -131,9 +131,7 @@ def validate_openvino_model_dir(
 
         config = directory / _CONFIG_FILENAME
         if not _valid_config(config):
-            failures.append(
-                f"{_CONFIG_FILENAME} is missing, empty, oversized, or invalid"
-            )
+            failures.append(f"{_CONFIG_FILENAME} is missing, empty, oversized, or invalid")
             continue
 
         return ModelArtifactValidation(

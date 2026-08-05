@@ -152,7 +152,9 @@ def test_native_release_gate_executes_packaged_smoke_on_windows(monkeypatch, tmp
 
     assert captured["command"] == [str(root / "InferBridge.exe"), "--native-smoke"]
     assert captured["cwd"] == root
-    assert captured["timeout"] == 90
+    # The gate also imports torch, Transformers, and Optimum Intel inside the bundle to
+    # prove conversion can start, which takes far longer than loading native bindings.
+    assert captured["timeout"] == 300
 
 
 def test_native_release_gate_surfaces_packaged_smoke_failure(monkeypatch, tmp_path):

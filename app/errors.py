@@ -219,19 +219,23 @@ def format_model_convert_error(exc: BaseException) -> str:
             "or close the other InferBridge instance before retrying."
         )
 
-    if isinstance(exc, PermissionError) or _exception_chain_has_errno(
-        exc,
-        {errno.EACCES, errno.EBUSY, errno.EPERM},
-    ) or any(
-        marker in lowered_chain
-        for marker in (
-            "access is denied",
-            "permission denied",
-            "sharing violation",
-            "being used by another process",
-            "winerror 5",
-            "winerror 32",
-            "winerror 33",
+    if (
+        isinstance(exc, PermissionError)
+        or _exception_chain_has_errno(
+            exc,
+            {errno.EACCES, errno.EBUSY, errno.EPERM},
+        )
+        or any(
+            marker in lowered_chain
+            for marker in (
+                "access is denied",
+                "permission denied",
+                "sharing violation",
+                "being used by another process",
+                "winerror 5",
+                "winerror 32",
+                "winerror 33",
+            )
         )
     ):
         return (
