@@ -15,12 +15,10 @@ from pathlib import Path
 
 from app import multimodal
 from runtime.device_check import DeviceValidationError, parse_device_expression
+from runtime.model_artifacts import is_openvino_model_dir as _is_openvino_model_dir
 
 logger = logging.getLogger("ov-llm.registry")
 
-# Files that indicate a directory holds a converted OpenVINO IR model. A generic
-# config.json alone is not enough because Hugging Face caches contain one too.
-_IR_MARKERS = ("openvino_model.xml", "openvino_language_model.xml")
 _MODEL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 _SUPPORTED_BACKENDS = frozenset({"openvino-genai", "openvino-embeddings", "openvino-vlm"})
 _SUPPORTED_WEIGHT_FORMATS = frozenset({"int4", "int8", "fp16"})
@@ -224,10 +222,9 @@ def load_catalog(models_file: Path) -> dict[str, ModelConfig]:
 
 
 def is_openvino_model_dir(model_dir: Path) -> bool:
-    """Return whether *model_dir* contains a converted OpenVINO IR model."""
+    """Return whether *model_dir* contains a complete converted OpenVINO model."""
 
-    model_dir = Path(model_dir)
-    return model_dir.is_dir() and any((model_dir / marker).exists() for marker in _IR_MARKERS)
+    return _is_openvino_model_dir(model_dir)
 
 
 def is_downloaded(cfg: ModelConfig, base_dir: Path) -> bool:

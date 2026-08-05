@@ -1,0 +1,111 @@
+name: Windows Model Lifecycle
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main", "development", "beta"]
+    paths:
+      - "app/desktop_launcher.py"
+      - "app/engine_handoff_safety.py"
+      - "app/errors.py"
+      - "app/lifecycle_safety.py"
+      - "app/model_load_target.py"
+      - "app/model_recovery_cleanup.py"
+      - "runtime/model_artifacts.py"
+      - "runtime/model_converter.py"
+      - "runtime/model_output_transaction.py"
+      - "tests/test_desktop_launcher.py"
+      - "tests/test_engine_handoff_catalog.py"
+      - "tests/test_engine_handoff_safety.py"
+      - "tests/test_errors.py"
+      - "tests/test_lifecycle_delete_safety.py"
+      - "tests/test_model_artifacts.py"
+      - "tests/test_model_converter.py"
+      - "tests/test_model_load_target.py"
+      - "tests/test_model_output_lock.py"
+      - "tests/test_model_output_transaction.py"
+      - "tests/test_model_recovery_cleanup.py"
+      - ".github/workflows/model-lifecycle-windows.yml"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "app/desktop_launcher.py"
+      - "app/engine_handoff_safety.py"
+      - "app/errors.py"
+      - "app/lifecycle_safety.py"
+      - "app/model_load_target.py"
+      - "app/model_recovery_cleanup.py"
+      - "runtime/model_artifacts.py"
+      - "runtime/model_converter.py"
+      - "runtime/model_output_transaction.py"
+      - "tests/test_desktop_launcher.py"
+      - "tests/test_engine_handoff_catalog.py"
+      - "tests/test_engine_handoff_safety.py"
+      - "tests/test_errors.py"
+      - "tests/test_lifecycle_delete_safety.py"
+      - "tests/test_model_artifacts.py"
+      - "tests/test_model_converter.py"
+      - "tests/test_model_load_target.py"
+      - "tests/test_model_output_lock.py"
+      - "tests/test_model_output_transaction.py"
+      - "tests/test_model_recovery_cleanup.py"
+      - ".github/workflows/model-lifecycle-windows.yml"
+
+concurrency:
+  group: windows-model-lifecycle-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lifecycle:
+    name: Download, Convert, Load, Recover
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install targeted dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+
+      - name: Compile model lifecycle modules
+        run: >-
+          python -m py_compile
+          app/desktop_launcher.py
+          app/engine_handoff_safety.py
+          app/errors.py
+          app/lifecycle_safety.py
+          app/model_load_target.py
+          app/model_recovery_cleanup.py
+          runtime/model_artifacts.py
+          runtime/model_converter.py
+          runtime/model_output_transaction.py
+
+      - name: Run Windows model lifecycle regressions
+        env:
+          OV_LLM_MOCK: "true"
+        run: >-
+          pytest
+          tests/test_desktop_launcher.py
+          tests/test_engine_handoff_catalog.py
+          tests/test_engine_handoff_safety.py
+          tests/test_errors.py
+          tests/test_lifecycle_delete_safety.py
+          tests/test_model_artifacts.py
+          tests/test_model_converter.py
+          tests/test_model_load_target.py
+          tests/test_model_output_lock.py
+          tests/test_model_output_transaction.py
+          tests/test_model_recovery_cleanup.py

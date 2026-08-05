@@ -27,6 +27,18 @@ def _path_exists(path: Path) -> bool:
     return os.path.lexists(path)
 
 
+def _is_reparse_point(path: Path) -> bool:
+    """Detect symbolic links and Windows junctions without following them."""
+
+    try:
+        metadata = path.lstat()
+    except OSError:
+        return False
+    attributes = getattr(metadata, "st_file_attributes", 0)
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    return path.is_symlink() or bool(reparse_flag and attributes & reparse_flag)
+
+
 def _path_mode(path: str | os.PathLike[str]) -> int | None:
     """Read a path mode across supported Windows/Python combinations."""
 
@@ -75,11 +87,23 @@ def _clear_readonly_and_retry(
     remover(path)
 
 
+def _unsafe_path(message: str):
+    from app.model_recovery import RecoveryConflict
+
+    return RecoveryConflict("unsafe_output_path", message)
+
+
 def _remove_tree(path: Path, *, description: str) -> bool:
     """Remove one verified tree with bounded retries for transient Windows locks."""
 
     if not _path_exists(path):
         return False
+    if _is_reparse_point(path):
+        raise _unsafe_path(
+            f"Refusing to remove {description} through a symbolic link or junction."
+        )
+    if not path.is_dir():
+        raise _unsafe_path(f"Refusing to remove an unexpected path for {description}.")
 
     last_error: OSError | None = None
     for delay in _RETRY_DELAYS_SECONDS:
@@ -109,19 +133,64 @@ def _remove_tree(path: Path, *, description: str) -> bool:
     ) from last_error
 
 
+def _output_state_with_staging(cfg: Any) -> str:
+    """Include transaction staging in recovery's incomplete-output classification."""
+
+    from app import model_recovery, model_registry
+    from runtime.model_output_transaction import model_output_transaction_paths
+
+    model_dir = cfg.abs_path(model_recovery._base_dir())
+    if model_registry.is_openvino_model_dir(model_dir):
+        return "complete"
+    staging_dir, _backup_dir = model_output_transaction_paths(model_dir)
+    if model_dir.exists() or _path_exists(staging_dir):
+        return "incomplete"
+    return "missing"
+
+
 def _remove_incomplete_output(manager: Any, cfg: Any) -> bool:
     from app import model_recovery
+    from runtime.model_output_transaction import model_output_transaction_paths
 
-    # Check links before exists(). A dangling link reports exists() == False and would
-    # otherwise survive cleanup while appearing to be an absent model directory.
+    # Check reparse points before exists(). A dangling link reports exists() == False
+    # and a Windows junction reports is_symlink() == False, but neither may be followed.
     model_dir = cfg.abs_path(model_recovery._base_dir())
-    if model_dir.is_symlink():
+    if _is_reparse_point(model_dir):
         raise model_recovery.RecoveryConflict(
             "unsafe_output_path",
-            "Refusing to remove an incomplete model through a symbolic link.",
+            "Refusing to remove an incomplete model through a symbolic link or junction.",
         )
     model_dir = model_recovery._ensure_removable_model_path(manager, cfg)
-    return _remove_tree(model_dir, description="the incomplete OpenVINO files")
+    staging_dir, _backup_dir = model_output_transaction_paths(model_dir)
+
+    ensure_within = getattr(manager, "_ensure_within_models_dir", None)
+    if callable(ensure_within):
+        try:
+            ensure_within(model_dir)
+            ensure_within(staging_dir)
+        except ValueError as exc:
+            raise model_recovery.RecoveryConflict(
+                "unsafe_output_path",
+                "The incomplete output is outside the configured model directory.",
+            ) from exc
+
+    if _is_reparse_point(staging_dir) or (
+        _path_exists(staging_dir) and not staging_dir.is_dir()
+    ):
+        raise model_recovery.RecoveryConflict(
+            "unsafe_output_path",
+            "Refusing to remove an unexpected model staging link, junction, or file.",
+        )
+
+    removed_staging = _remove_tree(
+        staging_dir,
+        description="the incomplete staged OpenVINO files",
+    )
+    removed_output = _remove_tree(
+        model_dir,
+        description="the incomplete OpenVINO files",
+    )
+    return removed_staging or removed_output
 
 
 def _remove_download_cache(cfg: Any) -> bool:
@@ -133,21 +202,22 @@ def _remove_download_cache(cfg: Any) -> bool:
             "cache_unavailable",
             "The source model cache cannot be safely identified for a fresh download.",
         )
-    if cache_path.is_symlink():
+    if _is_reparse_point(cache_path):
         raise model_recovery.RecoveryConflict(
             "unsafe_cache_path",
-            "Refusing to remove a Hugging Face cache through a symbolic link.",
+            "Refusing to remove a Hugging Face cache through a symbolic link or junction.",
         )
     return _remove_tree(cache_path, description="the cached Hugging Face source files")
 
 
 def install_model_recovery_cleanup() -> None:
-    """Replace recovery's raw tree deletion helpers with resilient equivalents."""
+    """Replace recovery's raw deletion and output-state helpers with resilient versions."""
 
     from app import model_recovery
 
     if getattr(model_recovery, _INSTALL_FLAG, False):
         return
+    model_recovery._output_state = _output_state_with_staging
     model_recovery._remove_incomplete_output = _remove_incomplete_output
     model_recovery._remove_download_cache = _remove_download_cache
     setattr(model_recovery, _INSTALL_FLAG, True)

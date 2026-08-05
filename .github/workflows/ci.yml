@@ -200,7 +200,9 @@ jobs:
           app/status_split.py
           app/status_split_ui.py
           app/structured_progress.py
+          runtime/model_artifacts.py
           runtime/model_converter.py
+          runtime/model_output_transaction.py
           runtime/progress_protocol.py
           scripts/release_tools.py
           scripts/release_manifest.py
@@ -229,18 +231,22 @@ jobs:
           tests/test_cancellation_ui.py
           tests/test_context_budget.py
           tests/test_context_budget_ui.py
+          tests/test_errors.py
           tests/test_header_overflow_ui.py
           tests/test_hf_search_ui.py
           tests/test_huggingface_access.py
           tests/test_huggingface_access_ui.py
+          tests/test_model_artifacts.py
           tests/test_model_cancellation.py
           tests/test_model_cancellation_race.py
           tests/test_model_lifecycle_ui.py
+          tests/test_model_output_transaction.py
           tests/test_model_preparation_timeouts.py
           tests/test_model_recovery.py
           tests/test_model_recovery_cleanup.py
           tests/test_model_recovery_status.py
           tests/test_model_recovery_ui.py
+          tests/test_model_registry.py
           tests/test_operation_queue_ui.py
           tests/test_progress_operation_ui.py
           tests/test_progress_protocol.py
@@ -248,6 +254,7 @@ jobs:
           tests/test_status_split.py
           tests/test_status_split_ui.py
           tests/test_structured_progress.py
+          tests/test_structured_progress_tail.py
           tests/test_model_converter.py
           tests/test_progress_reliability.py
           tests/test_progress_ui.py

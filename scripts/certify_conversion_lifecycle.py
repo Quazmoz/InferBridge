@@ -12,6 +12,7 @@ from pathlib import Path
 
 from app.config import Settings
 from app.model_manager import ModelManager
+from runtime.model_artifacts import validate_openvino_model_dir
 
 
 def _now() -> str:
@@ -100,18 +101,21 @@ async def _run(args: argparse.Namespace) -> int:
         if retry is None:
             raise RuntimeError("Retry conversion was not scheduled.")
         await retry
-        converted = (model_dir / "openvino_model.xml").is_file() and (
+        validation = validate_openvino_model_dir(model_dir)
+        ir_present = (model_dir / "openvino_model.xml").is_file() and (
             model_dir / "openvino_model.bin"
         ).is_file()
         report["retry"] = {
             "scheduled": True,
-            "converted_ir_present": converted,
+            "converted_ir_present": ir_present,
+            "runnable_artifact_present": validation.ready,
+            "artifact_validation": validation.reason,
             "output_bytes": sum(
                 path.stat().st_size for path in model_dir.rglob("*") if path.is_file()
             ),
-            "passed": converted,
+            "passed": validation.ready,
         }
-        report["passed"] = bool(cancelled and converted)
+        report["passed"] = bool(cancelled and validation.ready)
         return_code = 0 if report["passed"] else 1
         await manager.shutdown()
     except Exception as exc:  # noqa: BLE001 - retained report records failed lifecycle

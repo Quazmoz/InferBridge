@@ -1,10 +1,23 @@
 import io
 import json
+import subprocess
+import sys
 
 import pytest
 
 from runtime import model_converter as mc
+from runtime.model_artifacts import validate_openvino_model_dir
 from runtime.progress_protocol import ProgressEventEmitter, decode_progress_event
+
+
+def _write_ready_model(path, payload=b"weights"):
+    path.mkdir(parents=True, exist_ok=True)
+    (path / "openvino_model.xml").write_text(
+        "<net name='model' version='11'></net>",
+        encoding="utf-8",
+    )
+    (path / "openvino_model.bin").write_bytes(payload)
+    (path / "config.json").write_text("{}", encoding="utf-8")
 
 
 def test_build_export_command_basic():
@@ -38,8 +51,6 @@ def test_export_model_raises_when_cli_missing(monkeypatch, tmp_path, capsys):
 
 def test_conversion_progress_survives_cp1252_stdout(monkeypatch):
     """Progress glyphs from tqdm/Transformers must not crash conversion on cp1252."""
-    import sys
-
     glyph_line = "Loading weights:  50%|█▏    | 1/272"
 
     legacy = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", newline="")
@@ -55,15 +66,19 @@ def test_conversion_progress_survives_cp1252_stdout(monkeypatch):
     assert "▏".encode() in raw.getvalue()
 
 
-def test_export_model_runs_streaming_command_and_makes_parent(monkeypatch, tmp_path, capsys):
+def test_export_model_runs_transactional_command_and_makes_parent(
+    monkeypatch,
+    tmp_path,
+    capsys,
+):
     captured = {}
 
-    def fake_streaming_command(cmd, **kwargs):
+    def fake_export_command(cmd, **kwargs):
         captured["cmd"] = cmd
         captured["progress_emitter"] = kwargs.get("progress_emitter")
 
     monkeypatch.setattr(mc.shutil, "which", lambda name: "/usr/bin/optimum-cli")
-    monkeypatch.setattr(mc, "_run_streaming_command", fake_streaming_command)
+    monkeypatch.setattr(mc, "_run_model_export_command", fake_export_command)
 
     out = tmp_path / "ir" / "model"
     result = mc.export_model("org/model", out, "int8")
@@ -78,15 +93,53 @@ def test_export_model_runs_streaming_command_and_makes_parent(monkeypatch, tmp_p
     assert "Saving OpenVINO IR" in console
 
 
+def test_model_export_command_publishes_complete_staged_output(tmp_path):
+    final = tmp_path / "model"
+    script = (
+        "from pathlib import Path; import sys; "
+        "p=Path(sys.argv[1]); p.mkdir(parents=True); "
+        "(p/'openvino_model.xml').write_text(\"<net name='model' version='11'></net>\"); "
+        "(p/'openvino_model.bin').write_bytes(b'new'); "
+        "(p/'config.json').write_text('{}')"
+    )
+
+    mc._run_model_export_command([sys.executable, "-c", script, str(final)])
+
+    assert validate_openvino_model_dir(final).ready is True
+    assert (final / "openvino_model.bin").read_bytes() == b"new"
+    assert not (tmp_path / ".model.inferbridge-staging").exists()
+    assert not (tmp_path / ".model.inferbridge-backup").exists()
+
+
+def test_model_export_command_failure_preserves_previous_model(tmp_path):
+    final = tmp_path / "model"
+    _write_ready_model(final, b"old")
+    script = (
+        "from pathlib import Path; import sys; "
+        "p=Path(sys.argv[1]); p.mkdir(parents=True); "
+        "(p/'partial.bin').write_bytes(b'partial'); raise SystemExit(7)"
+    )
+
+    with pytest.raises(subprocess.CalledProcessError) as raised:
+        mc._run_model_export_command([sys.executable, "-c", script, str(final)])
+
+    assert raised.value.returncode == 7
+    assert raised.value.cmd[-1] == str(final)
+    assert validate_openvino_model_dir(final).ready is True
+    assert (final / "openvino_model.bin").read_bytes() == b"old"
+    assert not (tmp_path / ".model.inferbridge-staging").exists()
+    assert not (tmp_path / ".model.inferbridge-backup").exists()
+
+
 def test_export_model_stdout_is_jsonl_and_human_output_is_stderr(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(mc.shutil, "which", lambda name: "/usr/bin/optimum-cli")
 
-    def fake_streaming_command(cmd, *, progress_emitter=None):
+    def fake_export_command(cmd, *, progress_emitter=None):
         assert progress_emitter is not None
         progress_emitter.emit("converting", "Converting model to OpenVINO IR…", percent=50)
         print("Optimum human diagnostic", file=mc.sys.stderr)
 
-    monkeypatch.setattr(mc, "_run_streaming_command", fake_streaming_command)
+    monkeypatch.setattr(mc, "_run_model_export_command", fake_export_command)
     mc.export_model("org/model", tmp_path / "out", model_id="model-1")
 
     captured = capsys.readouterr()

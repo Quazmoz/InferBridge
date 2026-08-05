@@ -1,9 +1,9 @@
 """Keep explicit model load device requests authoritative and failure-safe.
 
 The newest explicit device request wins, including when a startup load or a previous
-OpenVINO compilation is already in flight. A working engine is retained until its
-replacement has compiled successfully so a bad target or driver failure does not
-silently take the model offline.
+OpenVINO compilation is already in flight. A working engine is retained and remains
+usable until its replacement has compiled successfully so a bad target or driver failure
+does not silently take the model offline.
 """
 
 from __future__ import annotations
@@ -190,6 +190,41 @@ def install_model_load_target_routing() -> None:
                 engine.close()
             raise
 
+    async def _acquire_stable_handoff_lock(
+        self,
+        model_id: str,
+        current_device: str,
+    ) -> tuple[Any | None, asyncio.Lock | None]:
+        """Lease the current engine only for the short replacement handoff."""
+
+        cfg = self.catalog[model_id]
+        while True:
+            previous_engine = self.engines.get(model_id)
+            if previous_engine is None:
+                return None, None
+
+            previous_lock = self.get_lock(model_id)
+            previous_device = device_check.normalize_device(previous_engine.device)
+            await _acquire_with_progress(
+                self,
+                previous_lock,
+                model_id,
+                lambda elapsed, _position, _total, pd=previous_device, cd=current_device: (
+                    f"Replacement ready. Waiting for the active request before switching "
+                    f"{cfg.name} from {pd} to {cd} "
+                    f"({_duration_label(elapsed)} elapsed)…"
+                ),
+            )
+
+            latest_engine = self.engines.get(model_id)
+            latest_lock = self.get_lock(model_id)
+            if latest_engine is previous_engine and latest_lock is previous_lock:
+                return previous_engine, previous_lock
+
+            previous_lock.release()
+            if latest_engine is None:
+                return None, None
+
     async def device_authoritative_load_task(
         self,
         model_id: str,
@@ -240,23 +275,9 @@ def install_model_load_target_routing() -> None:
                     current_device = latest_target
                     continue
 
-                loaded_engine = self.engines.get(model_id)
-                model_lock = self.locks.get(model_id) if loaded_engine is not None else None
-                if model_lock is not None:
-                    loaded_device = device_check.normalize_device(loaded_engine.device)
-                    await _acquire_with_progress(
-                        self,
-                        model_lock,
-                        model_id,
-                        lambda elapsed, _position, _total, ld=loaded_device, cd=current_device: (
-                            f"Waiting for the active request before switching {cfg.name} "
-                            f"from {ld} to {cd} "
-                            f"({_duration_label(elapsed)} elapsed)…"
-                        ),
-                    )
-
                 replacement = None
                 load_lock_acquired = False
+                handoff_lock: asyncio.Lock | None = None
                 try:
                     await _acquire_with_progress(
                         self,
@@ -313,7 +334,8 @@ def install_model_load_target_routing() -> None:
                     self._set_progress(
                         model_id,
                         "loading",
-                        f"Compiling {cfg.name} for {current_device}…",
+                        f"Compiling {cfg.name} for {current_device}. "
+                        "The currently loaded model remains available…",
                     )
                     replacement = await _build_engine_cancellation_safe(
                         self,
@@ -341,7 +363,16 @@ def install_model_load_target_routing() -> None:
                         current_device = latest_target
                         continue
 
-                    previous_engine = self.engines.get(model_id)
+                    previous_engine, handoff_lock = await _acquire_stable_handoff_lock(
+                        self,
+                        model_id,
+                        current_device,
+                    )
+                    latest_target = targets.get(model_id, current_device)
+                    if latest_target != current_device:
+                        current_device = latest_target
+                        continue
+
                     previous_device = (
                         device_check.normalize_device(previous_engine.device)
                         if previous_engine is not None
@@ -390,10 +421,10 @@ def install_model_load_target_routing() -> None:
                     if replacement is not None:
                         with contextlib.suppress(Exception):
                             replacement.close()
+                    if handoff_lock is not None and handoff_lock.locked():
+                        handoff_lock.release()
                     if load_lock_acquired and self._load_lock.locked():
                         self._load_lock.release()
-                    if model_lock is not None and model_lock.locked():
-                        model_lock.release()
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 - surfaced through model status

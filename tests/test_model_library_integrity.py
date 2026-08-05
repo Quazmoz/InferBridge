@@ -49,8 +49,12 @@ def _definition(model_id="custom-small", **changes):
 
 def _converted_dir(path: Path) -> Path:
     path.mkdir(parents=True)
-    (path / "openvino_model.xml").write_text("<net/>", encoding="utf-8")
+    (path / "openvino_model.xml").write_text(
+        "<net name='model' version='11'></net>",
+        encoding="utf-8",
+    )
     (path / "openvino_model.bin").write_bytes(b"openvino")
+    (path / "config.json").write_text("{}", encoding="utf-8")
     return path
 
 

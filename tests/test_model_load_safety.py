@@ -33,7 +33,12 @@ def _config(tmp_path, *, weight_format: str = "int4") -> ModelConfig:
 def _mark_converted(cfg: ModelConfig, tmp_path) -> None:
     model_dir = cfg.abs_path(tmp_path)
     model_dir.mkdir(parents=True)
-    (model_dir / "openvino_model.xml").write_text("<xml />", encoding="utf-8")
+    (model_dir / "openvino_model.xml").write_text(
+        "<net name='model' version='11'></net>",
+        encoding="utf-8",
+    )
+    (model_dir / "openvino_model.bin").write_bytes(b"weights")
+    (model_dir / "config.json").write_text("{}", encoding="utf-8")
 
 
 def test_int4_conversion_defaults_are_npu_portable(tmp_path) -> None:

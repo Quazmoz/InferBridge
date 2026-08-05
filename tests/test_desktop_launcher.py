@@ -1,10 +1,22 @@
 import os
 import socket
 import sys
+from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
 from app import desktop_launcher, desktop_server
 from app.desktop_launcher import InstanceLock
+from runtime.model_artifacts import validate_openvino_model_dir
+
+
+def _write_ready_model(path: Path, payload: bytes = b"weights") -> None:
+    path.mkdir(parents=True, exist_ok=True)
+    (path / "openvino_model.xml").write_text(
+        "<net name='model' version='11'></net>",
+        encoding="utf-8",
+    )
+    (path / "openvino_model.bin").write_bytes(payload)
+    (path / "config.json").write_text("{}", encoding="utf-8")
 
 
 def test_port_selection_falls_back_when_preferred_is_busy():
@@ -183,16 +195,21 @@ def test_system_exit_code_is_bounded_and_predictable():
     assert desktop_launcher._system_exit_code(999) == 2
 
 
-def test_packaged_converter_accepts_progress_emitter_and_restores_overrides(monkeypatch):
+def test_packaged_converter_accepts_progress_emitter_and_restores_overrides(
+    monkeypatch,
+    tmp_path,
+):
     from runtime import model_converter
 
     calls = {}
     optimum = ModuleType("optimum")
     commands = ModuleType("optimum.commands")
     optimum_cli = ModuleType("optimum.commands.optimum_cli")
+    final = tmp_path / "model"
 
     def fake_optimum_main():
         calls["argv"] = list(sys.argv)
+        _write_ready_model(Path(sys.argv[-1]), b"new")
         return 0
 
     optimum_cli.main = fake_optimum_main
@@ -212,8 +229,8 @@ def test_packaged_converter_accepts_progress_emitter_and_restores_overrides(monk
     def fake_converter_main(arguments):
         calls["arguments"] = arguments
         assert model_converter.shutil.which("optimum-cli") == sys.executable
-        model_converter._run_streaming_command(
-            ["optimum-cli", "export", "openvino"],
+        model_converter._run_model_export_command(
+            ["optimum-cli", "export", "openvino", str(final)],
             progress_emitter=emitter,
         )
         return 0
@@ -222,13 +239,54 @@ def test_packaged_converter_accepts_progress_emitter_and_restores_overrides(monk
 
     assert desktop_launcher._run_packaged_converter(["--id", "tinyllama"]) == 0
     assert calls["arguments"] == ["--id", "tinyllama"]
-    assert calls["argv"] == ["optimum-cli", "export", "openvino"]
+    assert calls["argv"][:3] == ["optimum-cli", "export", "openvino"]
+    assert calls["argv"][-1] == str(tmp_path / ".model.inferbridge-staging")
     assert calls["progress"][0][:2] == (
         "converting",
         "Running packaged OpenVINO conversion…",
     )
+    assert validate_openvino_model_dir(final, thorough=True).ready is True
+    assert (final / "openvino_model.bin").read_bytes() == b"new"
     assert model_converter._run_streaming_command is original_runner
     assert model_converter.shutil.which is original_which
+
+
+def test_packaged_converter_failure_preserves_previous_model(monkeypatch, tmp_path, capsys):
+    from runtime import model_converter
+
+    optimum = ModuleType("optimum")
+    commands = ModuleType("optimum.commands")
+    optimum_cli = ModuleType("optimum.commands.optimum_cli")
+    final = tmp_path / "model"
+    _write_ready_model(final, b"old")
+
+    def fake_optimum_main():
+        staging = Path(sys.argv[-1])
+        staging.mkdir(parents=True)
+        (staging / "partial.bin").write_bytes(b"partial")
+        raise SystemExit(7)
+
+    optimum_cli.main = fake_optimum_main
+    commands.optimum_cli = optimum_cli
+    optimum.commands = commands
+    monkeypatch.setitem(sys.modules, "optimum", optimum)
+    monkeypatch.setitem(sys.modules, "optimum.commands", commands)
+    monkeypatch.setitem(sys.modules, "optimum.commands.optimum_cli", optimum_cli)
+    monkeypatch.setattr(desktop_launcher.sys, "frozen", True, raising=False)
+
+    def fake_converter_main(_arguments):
+        model_converter._run_model_export_command(
+            ["optimum-cli", "export", "openvino", str(final)]
+        )
+        return 0
+
+    monkeypatch.setattr(model_converter, "main", fake_converter_main)
+
+    assert desktop_launcher._run_packaged_converter(["--id", "tinyllama"]) == 2
+    assert "Packaged model conversion failed" in capsys.readouterr().err
+    assert validate_openvino_model_dir(final, thorough=True).ready is True
+    assert (final / "openvino_model.bin").read_bytes() == b"old"
+    assert not (tmp_path / ".model.inferbridge-staging").exists()
 
 
 def test_packaged_converter_contains_unexpected_failure_and_restores_overrides(monkeypatch, capsys):
@@ -249,7 +307,7 @@ def test_packaged_converter_contains_unexpected_failure_and_restores_overrides(m
     assert model_converter.shutil.which is original_which
 
 
-def test_packaged_converter_contains_optimum_string_system_exit(monkeypatch, capsys):
+def test_packaged_converter_contains_optimum_string_system_exit(monkeypatch, tmp_path, capsys):
     from runtime import model_converter
 
     optimum = ModuleType("optimum")
@@ -269,7 +327,9 @@ def test_packaged_converter_contains_optimum_string_system_exit(monkeypatch, cap
     previous_argv = list(sys.argv)
 
     def fake_converter_main(_arguments):
-        model_converter._run_streaming_command(["optimum-cli", "export", "openvino"])
+        model_converter._run_model_export_command(
+            ["optimum-cli", "export", "openvino", str(tmp_path / "model")]
+        )
         return 0
 
     monkeypatch.setattr(model_converter, "main", fake_converter_main)

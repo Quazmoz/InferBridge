@@ -107,14 +107,21 @@ def test_load_catalog_rejects_invalid_runtime_contracts(tmp_path):
     assert catalog["valid-embedding"].max_prompt_len == 512
 
 
-def test_is_downloaded_detects_ir_markers(tmp_path):
+def test_is_downloaded_requires_complete_ir_artifacts(tmp_path):
     path = _write_catalog(tmp_path, {"m1": {"name": "M1", "model_path": "ir/m1"}})
     cfg = load_catalog(path)["m1"]
     assert not is_downloaded(cfg, tmp_path)
 
     model_dir = tmp_path / "ir" / "m1"
     model_dir.mkdir(parents=True)
-    (model_dir / "openvino_model.xml").write_text("<xml/>")
+    (model_dir / "openvino_model.xml").write_text(
+        "<net name='model' version='11'></net>",
+        encoding="utf-8",
+    )
+    assert not is_downloaded(cfg, tmp_path)
+
+    (model_dir / "openvino_model.bin").write_bytes(b"weights")
+    (model_dir / "config.json").write_text("{}", encoding="utf-8")
     assert is_downloaded(cfg, tmp_path)
 
 

@@ -105,8 +105,12 @@ def test_model_library_routes_and_converted_import(tmp_path):
     settings = _settings(tmp_path)
     source = tmp_path / "external-model"
     source.mkdir()
-    (source / "openvino_model.xml").write_text("<net/>", encoding="utf-8")
+    (source / "openvino_model.xml").write_text(
+        "<net name='model' version='11'></net>",
+        encoding="utf-8",
+    )
     (source / "openvino_model.bin").write_bytes(b"openvino")
+    (source / "config.json").write_text("{}", encoding="utf-8")
 
     app = create_app(settings)
     with TestClient(app) as client:
@@ -128,7 +132,10 @@ def test_model_library_routes_and_converted_import(tmp_path):
         )
         assert imported.status_code == 200, imported.text
         assert imported.json()["conversion_health"]["status"] == "compatible"
-        assert (settings.models_dir / "imported-openvino" / "openvino_model.xml").is_file()
+        target = settings.models_dir / "imported-openvino"
+        assert (target / "openvino_model.xml").is_file()
+        assert (target / "openvino_model.bin").is_file()
+        assert (target / "config.json").is_file()
 
         refreshed = client.get(
             "/v1/model-library",

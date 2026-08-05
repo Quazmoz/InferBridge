@@ -11,6 +11,7 @@ from app import model_recovery, model_recovery_cleanup
 from app.config import Settings
 from app.model_manager import ModelManager
 from app.model_recovery import RecoveryConflict
+from runtime.model_output_transaction import model_output_transaction_paths
 
 MODEL_ID = "cleanup-model"
 
@@ -192,6 +193,55 @@ def test_incomplete_output_rejects_a_dangling_link_before_exists_check(
     assert captured.value.code == "unsafe_output_path"
 
 
+def test_incomplete_output_rejects_windows_junction_before_cleanup(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    manager = _manager(tmp_path)
+    cfg = manager.catalog[MODEL_ID]
+    model_dir = cfg.abs_path(model_recovery._base_dir())
+    model_dir.mkdir(parents=True)
+    (model_dir / "partial.bin").write_bytes(b"partial")
+    original_lstat = Path.lstat
+
+    def fake_lstat(path: Path):
+        metadata = original_lstat(path)
+        if path == model_dir:
+            return SimpleNamespace(
+                st_file_attributes=getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400),
+                st_mode=metadata.st_mode,
+            )
+        return metadata
+
+    monkeypatch.setattr(Path, "lstat", fake_lstat)
+
+    with pytest.raises(RecoveryConflict) as captured:
+        model_recovery_cleanup._remove_incomplete_output(manager, cfg)
+
+    assert captured.value.code == "unsafe_output_path"
+    assert (model_dir / "partial.bin").is_file()
+
+
+def test_incomplete_output_cleanup_removes_transaction_staging(tmp_path: Path) -> None:
+    manager = _manager(tmp_path)
+    cfg = manager.catalog[MODEL_ID]
+    model_dir = cfg.abs_path(model_recovery._base_dir())
+    staging_dir, _backup_dir = model_output_transaction_paths(model_dir)
+    staging_dir.mkdir(parents=True)
+    (staging_dir / "partial.bin").write_bytes(b"partial")
+
+    recovery = manager.model_recovery(MODEL_ID)
+    assert recovery is not None
+    assert recovery["conversion_output"] == "incomplete"
+    assert recovery["actions"]["remove_incomplete_files"] is True
+
+    removed = model_recovery_cleanup._remove_incomplete_output(manager, cfg)
+
+    assert removed is True
+    assert not staging_dir.exists()
+    assert not model_dir.exists()
+
+
 def test_restart_download_keeps_recovery_when_cleanup_remains_locked(
     monkeypatch,
     tmp_path: Path,
@@ -233,6 +283,7 @@ def test_restart_download_keeps_recovery_when_cleanup_remains_locked(
 def test_cleanup_extension_replaces_raw_recovery_deletion_helpers() -> None:
     model_recovery_cleanup.install_model_recovery_cleanup()
 
+    assert model_recovery._output_state is model_recovery_cleanup._output_state_with_staging
     assert (
         model_recovery._remove_incomplete_output is model_recovery_cleanup._remove_incomplete_output
     )
