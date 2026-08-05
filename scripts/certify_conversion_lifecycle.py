@@ -102,8 +102,12 @@ async def _run(args: argparse.Namespace) -> int:
             raise RuntimeError("Retry conversion was not scheduled.")
         await retry
         validation = validate_openvino_model_dir(model_dir)
+        ir_present = (model_dir / "openvino_model.xml").is_file() and (
+            model_dir / "openvino_model.bin"
+        ).is_file()
         report["retry"] = {
             "scheduled": True,
+            "converted_ir_present": ir_present,
             "runnable_artifact_present": validation.ready,
             "artifact_validation": validation.reason,
             "output_bytes": sum(
