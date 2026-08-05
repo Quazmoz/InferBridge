@@ -193,6 +193,34 @@ def test_incomplete_output_rejects_a_dangling_link_before_exists_check(
     assert captured.value.code == "unsafe_output_path"
 
 
+def test_incomplete_output_rejects_windows_junction_before_cleanup(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    manager = _manager(tmp_path)
+    cfg = manager.catalog[MODEL_ID]
+    model_dir = cfg.abs_path(model_recovery._base_dir())
+    model_dir.mkdir(parents=True)
+    (model_dir / "partial.bin").write_bytes(b"partial")
+    original_lstat = Path.lstat
+
+    def fake_lstat(path: Path):
+        metadata = original_lstat(path)
+        if path == model_dir:
+            return SimpleNamespace(
+                st_file_attributes=getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400),
+            )
+        return metadata
+
+    monkeypatch.setattr(Path, "lstat", fake_lstat)
+
+    with pytest.raises(RecoveryConflict) as captured:
+        model_recovery_cleanup._remove_incomplete_output(manager, cfg)
+
+    assert captured.value.code == "unsafe_output_path"
+    assert (model_dir / "partial.bin").is_file()
+
+
 def test_incomplete_output_cleanup_removes_transaction_staging(tmp_path: Path) -> None:
     manager = _manager(tmp_path)
     cfg = manager.catalog[MODEL_ID]
