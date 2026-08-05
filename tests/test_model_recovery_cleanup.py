@@ -201,6 +201,11 @@ def test_incomplete_output_cleanup_removes_transaction_staging(tmp_path: Path) -
     staging_dir.mkdir(parents=True)
     (staging_dir / "partial.bin").write_bytes(b"partial")
 
+    recovery = manager.model_recovery(MODEL_ID)
+    assert recovery is not None
+    assert recovery["conversion_output"] == "incomplete"
+    assert recovery["actions"]["remove_incomplete_files"] is True
+
     removed = model_recovery_cleanup._remove_incomplete_output(manager, cfg)
 
     assert removed is True
@@ -249,6 +254,7 @@ def test_restart_download_keeps_recovery_when_cleanup_remains_locked(
 def test_cleanup_extension_replaces_raw_recovery_deletion_helpers() -> None:
     model_recovery_cleanup.install_model_recovery_cleanup()
 
+    assert model_recovery._output_state is model_recovery_cleanup._output_state_with_staging
     assert (
         model_recovery._remove_incomplete_output is model_recovery_cleanup._remove_incomplete_output
     )
