@@ -253,7 +253,7 @@ def _run_streaming_command(
     *,
     progress_emitter: ProgressEventEmitter | None = None,
 ) -> None:
-    """Run *command* into validated staging, then publish the model atomically."""
+    """Run one conversion command and forward its human and structured output."""
 
     if not command:
         raise ValueError("Conversion command cannot be empty.")
@@ -263,38 +263,58 @@ def _run_streaming_command(
     environment.setdefault("PYTHONIOENCODING", "utf-8")
     environment.setdefault("COLUMNS", "120")
 
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        env=environment,
+        bufsize=-1,
+    )
+    if process.stdout is None:  # pragma: no cover - defensive subprocess contract
+        process.kill()
+        process.wait()
+        raise RuntimeError("Could not capture optimum-cli output.")
+
+    emitter = _ProgressLineEmitter(progress_emitter, human_stream=sys.stderr)
+    try:
+        for line in _iter_console_lines(_read_process_chunks(process.stdout)):
+            emitter.emit(line)
+        return_code = process.wait()
+    except BaseException:
+        if process.poll() is None:
+            process.kill()
+        process.wait()
+        raise
+    finally:
+        process.stdout.close()
+
+    if return_code != 0:
+        raise subprocess.CalledProcessError(return_code, command)
+
+
+def _run_model_export_command(
+    command: list[str],
+    *,
+    progress_emitter: ProgressEventEmitter | None = None,
+) -> None:
+    """Run an export in validated staging and publish it transactionally."""
+
+    if not command:
+        raise ValueError("Conversion command cannot be empty.")
+
     final_output = Path(command[-1])
     with staged_model_output(final_output) as staging_output:
         staged_command = [*command[:-1], str(staging_output)]
-        process = subprocess.Popen(
-            staged_command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            env=environment,
-            bufsize=-1,
-        )
-        if process.stdout is None:  # pragma: no cover - defensive subprocess contract
-            process.kill()
-            process.wait()
-            raise RuntimeError("Could not capture optimum-cli output.")
-
-        emitter = _ProgressLineEmitter(progress_emitter, human_stream=sys.stderr)
         try:
-            for line in _iter_console_lines(_read_process_chunks(process.stdout)):
-                emitter.emit(line)
-            return_code = process.wait()
-        except BaseException:
-            if process.poll() is None:
-                process.kill()
-            process.wait()
-            raise
-        finally:
-            process.stdout.close()
-
-        if return_code != 0:
-            # Report the user-facing final output path rather than the private staging
-            # path, while the transaction removes incomplete files automatically.
-            raise subprocess.CalledProcessError(return_code, command)
+            _run_streaming_command(staged_command, progress_emitter=progress_emitter)
+        except subprocess.CalledProcessError as exc:
+            # Keep private transaction paths out of parent-process diagnostics.
+            raise subprocess.CalledProcessError(
+                exc.returncode,
+                command,
+                output=exc.output,
+                stderr=exc.stderr,
+            ) from exc
 
 
 def export_model(
@@ -353,7 +373,7 @@ def export_model(
     )
     progress.emit("downloading", "Downloading model metadata and weights…", percent=0)
     try:
-        _run_streaming_command(command, progress_emitter=progress)
+        _run_model_export_command(command, progress_emitter=progress)
     except BaseException as exc:
         progress.emit("error", f"Conversion failed: {exc}")
         raise
