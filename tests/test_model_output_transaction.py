@@ -73,6 +73,20 @@ def test_incomplete_success_output_is_rejected_without_replacing_model(tmp_path)
     assert not _staging(final).exists()
 
 
+def test_second_model_preparation_process_is_rejected(tmp_path):
+    final = tmp_path / "model"
+    _write_model(final, b"old")
+
+    with pytest.raises(RuntimeError, match="already preparing this model"):
+        with staged_model_output(final):
+            with staged_model_output(final):
+                pass
+
+    assert validate_openvino_model_dir(final).ready is True
+    assert (final / "openvino_model.bin").read_bytes() == b"old"
+    assert not _staging(final).exists()
+
+
 def test_stale_backup_restores_previous_model_before_new_attempt(tmp_path):
     final = tmp_path / "model"
     backup = _backup(final)
