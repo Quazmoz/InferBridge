@@ -7,6 +7,7 @@ into short, actionable messages for the UI and logs.
 
 from __future__ import annotations
 
+import errno
 import os
 import re
 import ssl
@@ -51,6 +52,17 @@ def _exception_chain_text(exc: BaseException) -> str:
         parts.append(f"{type(current).__name__}: {current}")
         current = current.__cause__ or current.__context__
     return "\n".join(parts)[:4000]
+
+
+def _exception_chain_has_errno(exc: BaseException, values: set[int]) -> bool:
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if getattr(current, "errno", None) in values:
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 def is_openvino_tokenizer_runtime_error(exc: BaseException) -> bool:
@@ -126,7 +138,7 @@ def format_model_load_error(exc: BaseException) -> str:
         bundle = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("SSL_CERT_FILE")
         hint = f" Active CA bundle: {bundle}." if bundle else ""
         return (
-            "HTTPS download failed while contacting huggingface.co — Python could not verify the "
+            "HTTPS download failed while contacting huggingface.co. Python could not verify the "
             "TLS certificate. On Windows, install python-certifi-win32, or set REQUESTS_CA_BUNDLE / "
             "SSL_CERT_FILE to your organization's CA bundle, then retry." + hint
         )
@@ -139,7 +151,9 @@ def format_model_convert_error(exc: BaseException) -> str:
         return format_openvino_tokenizer_runtime_error()
 
     text = _redact_secrets(str(exc))
+    chain_text = _redact_secrets(_exception_chain_text(exc))
     lowered = text.lower()
+    lowered_chain = chain_text.lower()
 
     if "not in the authorized list" in lowered or "403 client error" in lowered:
         model_url = None
@@ -179,9 +193,51 @@ def format_model_convert_error(exc: BaseException) -> str:
         bundle = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("SSL_CERT_FILE")
         hint = f" Active CA bundle: {bundle}." if bundle else ""
         return (
-            "HTTPS download failed while contacting huggingface.co — Python could not verify the "
+            "HTTPS download failed while contacting huggingface.co. Python could not verify the "
             "TLS certificate. On Windows, install python-certifi-win32, or set REQUESTS_CA_BUNDLE / "
             "SSL_CERT_FILE to your organization's CA bundle, then retry." + hint
+        )
+
+    if _exception_chain_has_errno(exc, {errno.ENOSPC}) or any(
+        marker in lowered_chain
+        for marker in (
+            "no space left on device",
+            "disk full",
+            "not enough space",
+            "winerror 112",
+        )
+    ):
+        return (
+            "There is not enough free disk space to finish downloading and converting this model. "
+            "Free space on the drive containing InferBridge model data, then retry. Cached download "
+            "files and any previously working model are preserved when possible."
+        )
+
+    if "already preparing this model" in lowered_chain:
+        return (
+            "Another InferBridge process is already preparing this model. Wait for it to finish, "
+            "or close the other InferBridge instance before retrying."
+        )
+
+    if isinstance(exc, PermissionError) or _exception_chain_has_errno(
+        exc,
+        {errno.EACCES, errno.EBUSY, errno.EPERM},
+    ) or any(
+        marker in lowered_chain
+        for marker in (
+            "access is denied",
+            "permission denied",
+            "sharing violation",
+            "being used by another process",
+            "winerror 5",
+            "winerror 32",
+            "winerror 33",
+        )
+    ):
+        return (
+            "InferBridge could not update the model files because Windows is using or blocking them. "
+            "Close other InferBridge instances and File Explorer windows on the model folder, allow "
+            "any antivirus scan to finish, then retry. Any previously working model is preserved."
         )
 
     # Clean up long Optimum/subprocess tracebacks to focus on the root error.
