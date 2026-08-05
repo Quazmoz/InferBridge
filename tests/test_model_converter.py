@@ -66,15 +66,19 @@ def test_conversion_progress_survives_cp1252_stdout(monkeypatch):
     assert "▏".encode() in raw.getvalue()
 
 
-def test_export_model_runs_streaming_command_and_makes_parent(monkeypatch, tmp_path, capsys):
+def test_export_model_runs_transactional_command_and_makes_parent(
+    monkeypatch,
+    tmp_path,
+    capsys,
+):
     captured = {}
 
-    def fake_streaming_command(cmd, **kwargs):
+    def fake_export_command(cmd, **kwargs):
         captured["cmd"] = cmd
         captured["progress_emitter"] = kwargs.get("progress_emitter")
 
     monkeypatch.setattr(mc.shutil, "which", lambda name: "/usr/bin/optimum-cli")
-    monkeypatch.setattr(mc, "_run_streaming_command", fake_streaming_command)
+    monkeypatch.setattr(mc, "_run_model_export_command", fake_export_command)
 
     out = tmp_path / "ir" / "model"
     result = mc.export_model("org/model", out, "int8")
@@ -89,7 +93,7 @@ def test_export_model_runs_streaming_command_and_makes_parent(monkeypatch, tmp_p
     assert "Saving OpenVINO IR" in console
 
 
-def test_streaming_command_publishes_complete_staged_output(tmp_path):
+def test_model_export_command_publishes_complete_staged_output(tmp_path):
     final = tmp_path / "model"
     script = (
         "from pathlib import Path; import sys; "
@@ -99,7 +103,7 @@ def test_streaming_command_publishes_complete_staged_output(tmp_path):
         "(p/'config.json').write_text('{}')"
     )
 
-    mc._run_streaming_command([sys.executable, "-c", script, str(final)])
+    mc._run_model_export_command([sys.executable, "-c", script, str(final)])
 
     assert validate_openvino_model_dir(final).ready is True
     assert (final / "openvino_model.bin").read_bytes() == b"new"
@@ -107,7 +111,7 @@ def test_streaming_command_publishes_complete_staged_output(tmp_path):
     assert not (tmp_path / ".model.inferbridge-backup").exists()
 
 
-def test_streaming_command_failure_preserves_previous_model(tmp_path):
+def test_model_export_command_failure_preserves_previous_model(tmp_path):
     final = tmp_path / "model"
     _write_ready_model(final, b"old")
     script = (
@@ -117,9 +121,10 @@ def test_streaming_command_failure_preserves_previous_model(tmp_path):
     )
 
     with pytest.raises(subprocess.CalledProcessError) as raised:
-        mc._run_streaming_command([sys.executable, "-c", script, str(final)])
+        mc._run_model_export_command([sys.executable, "-c", script, str(final)])
 
     assert raised.value.returncode == 7
+    assert raised.value.cmd[-1] == str(final)
     assert validate_openvino_model_dir(final).ready is True
     assert (final / "openvino_model.bin").read_bytes() == b"old"
     assert not (tmp_path / ".model.inferbridge-staging").exists()
@@ -129,12 +134,12 @@ def test_streaming_command_failure_preserves_previous_model(tmp_path):
 def test_export_model_stdout_is_jsonl_and_human_output_is_stderr(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(mc.shutil, "which", lambda name: "/usr/bin/optimum-cli")
 
-    def fake_streaming_command(cmd, *, progress_emitter=None):
+    def fake_export_command(cmd, *, progress_emitter=None):
         assert progress_emitter is not None
         progress_emitter.emit("converting", "Converting model to OpenVINO IR…", percent=50)
         print("Optimum human diagnostic", file=mc.sys.stderr)
 
-    monkeypatch.setattr(mc, "_run_streaming_command", fake_streaming_command)
+    monkeypatch.setattr(mc, "_run_model_export_command", fake_export_command)
     mc.export_model("org/model", tmp_path / "out", model_id="model-1")
 
     captured = capsys.readouterr()
