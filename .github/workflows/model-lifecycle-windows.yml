@@ -6,15 +6,20 @@ on:
     branches: ["main", "development", "beta"]
     paths:
       - "app/desktop_launcher.py"
+      - "app/engine_handoff_safety.py"
+      - "app/errors.py"
       - "app/model_load_target.py"
       - "app/model_recovery_cleanup.py"
       - "runtime/model_artifacts.py"
       - "runtime/model_converter.py"
       - "runtime/model_output_transaction.py"
       - "tests/test_desktop_launcher.py"
+      - "tests/test_engine_handoff_safety.py"
+      - "tests/test_errors.py"
       - "tests/test_model_artifacts.py"
       - "tests/test_model_converter.py"
       - "tests/test_model_load_target.py"
+      - "tests/test_model_output_lock.py"
       - "tests/test_model_output_transaction.py"
       - "tests/test_model_recovery_cleanup.py"
       - ".github/workflows/model-lifecycle-windows.yml"
@@ -22,15 +27,20 @@ on:
     branches: ["main"]
     paths:
       - "app/desktop_launcher.py"
+      - "app/engine_handoff_safety.py"
+      - "app/errors.py"
       - "app/model_load_target.py"
       - "app/model_recovery_cleanup.py"
       - "runtime/model_artifacts.py"
       - "runtime/model_converter.py"
       - "runtime/model_output_transaction.py"
       - "tests/test_desktop_launcher.py"
+      - "tests/test_engine_handoff_safety.py"
+      - "tests/test_errors.py"
       - "tests/test_model_artifacts.py"
       - "tests/test_model_converter.py"
       - "tests/test_model_load_target.py"
+      - "tests/test_model_output_lock.py"
       - "tests/test_model_output_transaction.py"
       - "tests/test_model_recovery_cleanup.py"
       - ".github/workflows/model-lifecycle-windows.yml"
@@ -68,6 +78,8 @@ jobs:
         run: >-
           python -m py_compile
           app/desktop_launcher.py
+          app/engine_handoff_safety.py
+          app/errors.py
           app/model_load_target.py
           app/model_recovery_cleanup.py
           runtime/model_artifacts.py
@@ -80,8 +92,11 @@ jobs:
         run: >-
           pytest
           tests/test_desktop_launcher.py
+          tests/test_engine_handoff_safety.py
+          tests/test_errors.py
           tests/test_model_artifacts.py
           tests/test_model_converter.py
           tests/test_model_load_target.py
+          tests/test_model_output_lock.py
           tests/test_model_output_transaction.py
           tests/test_model_recovery_cleanup.py
