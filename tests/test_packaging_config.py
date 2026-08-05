@@ -26,6 +26,31 @@ def test_pyinstaller_is_windowed_one_directory_and_collects_openvino():
     assert 'hiddenimports.append(f"optimum.commands.register.{register_file.stem}")' in spec
 
 
+def test_conversion_packages_ship_python_sources_not_only_bytecode():
+    """Frozen conversion needs .py files on disk, not just PyInstaller's archive.
+
+    Importing ``optimum.intel.openvino`` runs Transformers decorators that call
+    ``inspect.getsource`` on the module being imported, and ``import torch`` tokenizes its
+    own config modules. With bytecode alone, linecache finds no lines and every packaged
+    conversion failed with OSError("could not get source code") before downloading
+    anything, while the same conversion worked from a source checkout.
+    """
+
+    spec = (ROOT / "packaging" / "openvino_windows_llm.spec").read_text(encoding="utf-8")
+    assert "datas += collect_data_files(package, include_py_files=True)" in spec
+    assert 'datas += collect_data_files("torch", include_py_files=True)' in spec
+    assert "inspect.getsource" in spec
+    for package in ('"optimum"', '"optimum.intel"', '"nncf"', '"transformers"'):
+        assert package in spec
+    # pystray is a tray-only dependency and is deliberately not source-collected.
+    assert 'collect_data_files("pystray", include_py_files=False)' in spec
+
+
+def test_native_smoke_validation_allows_for_the_conversion_import_chain():
+    scan = (ROOT / "scripts" / "release_scan.py").read_text(encoding="utf-8")
+    assert "timeout=300" in scan
+
+
 def test_packaged_smoke_requires_openvino_cli_registration_module():
     smoke = (ROOT / "scripts" / "smoke_test_packaged.ps1").read_text(encoding="utf-8")
     assert '"optimum\\commands\\register"' in smoke

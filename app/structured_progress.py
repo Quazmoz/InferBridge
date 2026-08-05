@@ -181,9 +181,7 @@ def install_structured_progress_protocol() -> None:
             return []
         _ensure_state(self)
 
-        lines: collections.deque[str] = collections.deque(
-            maxlen=_CONVERTER_DIAGNOSTIC_TAIL_LINES
-        )
+        lines: collections.deque[str] = collections.deque(maxlen=_CONVERTER_DIAGNOSTIC_TAIL_LINES)
         while True:
             raw = await stream.readline()
             if not raw:

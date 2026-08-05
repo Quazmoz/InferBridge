@@ -99,9 +99,7 @@ def _remove_tree(path: Path, *, description: str) -> bool:
     if not _path_exists(path):
         return False
     if _is_reparse_point(path):
-        raise _unsafe_path(
-            f"Refusing to remove {description} through a symbolic link or junction."
-        )
+        raise _unsafe_path(f"Refusing to remove {description} through a symbolic link or junction.")
     if not path.is_dir():
         raise _unsafe_path(f"Refusing to remove an unexpected path for {description}.")
 
@@ -174,9 +172,7 @@ def _remove_incomplete_output(manager: Any, cfg: Any) -> bool:
                 "The incomplete output is outside the configured model directory.",
             ) from exc
 
-    if _is_reparse_point(staging_dir) or (
-        _path_exists(staging_dir) and not staging_dir.is_dir()
-    ):
+    if _is_reparse_point(staging_dir) or (_path_exists(staging_dir) and not staging_dir.is_dir()):
         raise model_recovery.RecoveryConflict(
             "unsafe_output_path",
             "Refusing to remove an unexpected model staging link, junction, or file.",

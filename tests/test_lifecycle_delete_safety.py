@@ -3,8 +3,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.lifecycle_safety import _reject_reparse_point_delete
 from app import model_library_conversion
+from app.lifecycle_safety import _reject_reparse_point_delete
 
 
 def _manager_for(path: Path):
