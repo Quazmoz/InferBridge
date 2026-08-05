@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -91,9 +92,29 @@ def subprocess_list2cmdline(arguments: list[str]) -> str:
     return subprocess.list2cmdline(arguments)
 
 
-def startup_command(executable: Path, *, portable: bool, open_browser: bool = False) -> str:
+def desktop_launcher_command_prefix() -> tuple[str, ...]:
+    """Return the executable prefix that can relaunch this desktop entry point.
+
+    Frozen builds are self-contained executables. Source and editable installs must
+    retain the ``-m app.desktop_launcher`` module dispatch; registering only
+    ``python.exe`` would start an idle interpreter instead of InferBridge.
+    """
+
+    executable = str(Path(sys.executable).expanduser().resolve())
+    if getattr(sys, "frozen", False):
+        return (executable,)
+    return (executable, "-m", "app.desktop_launcher")
+
+
+def startup_command(
+    executable: Path,
+    *,
+    portable: bool,
+    open_browser: bool = False,
+    arguments: Sequence[str] = (),
+) -> str:
     executable = Path(executable).expanduser().resolve()
-    command = [str(executable), "--startup"]
+    command = [str(executable), *(str(argument) for argument in arguments), "--startup"]
     if portable:
         command.append("--portable")
     if not open_browser:
@@ -121,19 +142,51 @@ class StartupRegistration:
         self,
         *,
         executable: Path | None = None,
+        arguments: Sequence[str] = (),
         portable: bool = False,
         backend: RegistryBackend | None = None,
     ) -> None:
         self.executable = Path(executable or sys.executable).expanduser().resolve()
+        self.arguments = tuple(str(argument) for argument in arguments)
         self.portable = bool(portable)
         self.backend = backend or WinRegBackend()
 
+    @classmethod
+    def for_current_desktop_launcher(
+        cls,
+        *,
+        portable: bool = False,
+        backend: RegistryBackend | None = None,
+    ) -> StartupRegistration:
+        command = desktop_launcher_command_prefix()
+        return cls(
+            executable=Path(command[0]),
+            arguments=command[1:],
+            portable=portable,
+            backend=backend,
+        )
+
     @property
     def expected_command(self) -> str:
-        return startup_command(self.executable, portable=self.portable, open_browser=False)
+        return startup_command(
+            self.executable,
+            arguments=self.arguments,
+            portable=self.portable,
+            open_browser=False,
+        )
 
     def _migrate_legacy_if_enabled(self) -> None:
         current = self.backend.read(RUN_KEY, CURRENT_VALUE_NAME)
+        if self.arguments:
+            previous_source_command = startup_command(
+                self.executable,
+                portable=self.portable,
+                open_browser=False,
+            )
+            if current == previous_source_command:
+                self.backend.write(RUN_KEY, CURRENT_VALUE_NAME, self.expected_command)
+                current = self.expected_command
+
         legacy = self.backend.read(RUN_KEY, LEGACY_VALUE_NAME)
         if current is None and _recognized_legacy_command(legacy):
             self.backend.write(RUN_KEY, CURRENT_VALUE_NAME, self.expected_command)

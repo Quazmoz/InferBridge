@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Validate OpenVINO Windows LLM through its public HTTP contract."""
+"""Validate InferBridge through its public HTTP contract.
+
+This validator is deliberately dependency-free so it can run against a packaged or
+remote server without importing the application package.
+"""
 
 from __future__ import annotations
 
@@ -461,7 +465,7 @@ class Validator:
 def markdown(report: dict[str, Any]) -> str:
     summary = report["summary"]
     lines = [
-        "# OpenVINO Windows LLM API Validation",
+        "# InferBridge API Validation",
         "",
         f"- Generated: `{report['generated_at']}`",
         f"- Profile: `{report['profile']}`",

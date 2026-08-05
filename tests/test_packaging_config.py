@@ -1,6 +1,13 @@
+import os
+import runpy
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def _hook_namespace():
+    return runpy.run_path(str(ROOT / "packaging" / "runtime_hook.py"))
 
 
 def test_pyinstaller_is_windowed_one_directory_and_collects_openvino():
@@ -8,12 +15,22 @@ def test_pyinstaller_is_windowed_one_directory_and_collects_openvino():
     assert "console=False" in spec
     assert "COLLECT(" in spec
     assert 'collect_all("openvino")' not in spec
-    assert '("openvino", "openvino_genai")' in spec
+    assert '("openvino", "openvino_genai", "openvino_tokenizers")' in spec
     assert "models.json" in spec
     assert "web" in spec
     assert "runtime_hook.py" in spec
     assert "OV_LLM_APP_ICON" in spec
     assert "icon=str(app_icon)" in spec
+    assert 'find_spec("optimum.commands.register")' in spec
+    assert '"optimum/commands/register"' in spec
+    assert 'hiddenimports.append(f"optimum.commands.register.{register_file.stem}")' in spec
+
+
+def test_packaged_smoke_requires_openvino_cli_registration_module():
+    smoke = (ROOT / "scripts" / "smoke_test_packaged.ps1").read_text(encoding="utf-8")
+    assert '"optimum\\commands\\register"' in smoke
+    assert '"register_openvino.py"' in smoke
+    assert "missing Optimum's OpenVINO CLI registration module" in smoke
 
 
 def test_windowed_runtime_hook_restores_redirected_child_streams():
@@ -21,6 +38,38 @@ def test_windowed_runtime_hook_restores_redirected_child_streams():
     assert "os.dup(descriptor)" in hook
     assert '_restore_output("stdout", 1)' in hook
     assert '_restore_output("stderr", 2)' in hook
+
+
+def test_windowed_runtime_hook_never_leaves_a_none_standard_stream(monkeypatch):
+    """A windowed launcher has no descriptor to duplicate; None would abort startup.
+
+    Packaged third-party code writes to and flushes ``sys.stdout``/``sys.stderr``
+    unconditionally. Leaving either as None turned the packaged Optimum validation into
+    an ``AttributeError`` and a runtime-failure exit.
+    """
+
+    restore_output = _hook_namespace()["_restore_output"]
+
+    def refuse_dup(_descriptor):
+        raise OSError("no console descriptor is available")
+
+    monkeypatch.setattr(os, "dup", refuse_dup)
+    for name, descriptor in (("stdout", 1), ("stderr", 2)):
+        monkeypatch.setattr(sys, name, None)
+        restore_output(name, descriptor)
+        stream = getattr(sys, name)
+        assert stream is not None
+        stream.write("packaged output must not raise\n")
+        stream.flush()
+        stream.close()
+
+
+def test_windowed_runtime_hook_keeps_a_usable_descriptor(monkeypatch):
+    restore_output = _hook_namespace()["_restore_output"]
+    monkeypatch.setattr(sys, "stdout", None)
+    restore_output("stdout", 1)
+    assert sys.stdout is not None
+    sys.stdout.flush()
 
 
 def test_installer_is_per_user_and_preserves_data_by_default():

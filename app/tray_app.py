@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import sys
 import threading
 from pathlib import Path
 from typing import Any
@@ -59,8 +58,7 @@ class TrayApplication(
             ),
             log_path=self.paths.logs_dir / "desktop.log",
         )
-        self.startup = StartupRegistration(
-            executable=Path(sys.executable),
+        self.startup = StartupRegistration.for_current_desktop_launcher(
             portable=self.paths.portable,
         )
         self.command_file = self.paths.data_root / "tray-command.json"

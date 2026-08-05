@@ -8,6 +8,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from app.brand import DISPLAY_NAME
+
 
 class TrayPhase(StrEnum):
     UNKNOWN = "unknown"
@@ -211,7 +213,7 @@ def menu_state(
 
 
 def tooltip(snapshot: TraySnapshot) -> str:
-    lines = ["OpenVINO Windows LLM", snapshot.server_status]
+    lines = [DISPLAY_NAME, snapshot.server_status]
     if snapshot.active_model_name or snapshot.active_model_id:
         lines.append(f"Model: {snapshot.active_model_name or snapshot.active_model_id}")
     if snapshot.actual_device:

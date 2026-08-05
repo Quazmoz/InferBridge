@@ -1,4 +1,4 @@
-"""Restore windowed streams, validate native dependencies, and register update restarts."""
+"""Restore windowed streams, validate packaged dependencies, and register restarts."""
 
 from __future__ import annotations
 
@@ -29,9 +29,20 @@ _OPENVINO_NATIVE_NAMES = {
 }
 
 
+def _discard_stream() -> object | None:
+    """Open a writable sink for a windowed process that has no usable descriptor."""
+
+    try:
+        return open(os.devnull, "w", buffering=1, encoding="utf-8", errors="backslashreplace")
+    except OSError:
+        return None
+
+
 def _restore_output(name: str, descriptor: int) -> None:
     if getattr(sys, name, None) is not None:
         return
+    stream: object | None
+    duplicate: int | None = None
     try:
         duplicate = os.dup(descriptor)
         stream = os.fdopen(
@@ -42,8 +53,16 @@ def _restore_output(name: str, descriptor: int) -> None:
             errors="backslashreplace",
         )
     except OSError:
-        return
-    setattr(sys, name, stream)
+        # The windowed launcher started without a console has no standard descriptor to
+        # duplicate. Leaving the attribute as None is not safe: packaged third-party code
+        # writes to and flushes these streams unconditionally, and an AttributeError there
+        # aborts startup. Discard the output instead of failing.
+        if duplicate is not None:
+            with contextlib.suppress(OSError):
+                os.close(duplicate)
+        stream = _discard_stream()
+    if stream is not None:
+        setattr(sys, name, stream)
 
 
 def _restore_input() -> None:
@@ -127,6 +146,15 @@ def _show_runtime_failure(detail: str) -> None:
         _write_runtime_failure(message)
 
 
+def _fail_runtime_validation(error: BaseException) -> None:
+    """Record one sanitized packaged-runtime failure and terminate immediately."""
+
+    detail = _safe_error_detail(error)
+    _record_runtime_failure(detail)
+    _show_runtime_failure(detail)
+    os._exit(_RUNTIME_FAILURE_EXIT_CODE)
+
+
 def _native_directory_candidates(bundle_root: Path) -> list[Path]:
     """Return deterministic and discovered directories containing OpenVINO DLLs."""
 
@@ -206,10 +234,41 @@ def _validate_windows_native_runtime() -> None:
         # process proves the extension initialized instead of merely being present on disk.
         psutil.Process(os.getpid()).create_time()
     except Exception as error:  # noqa: BLE001 - this is the frozen native dependency boundary
-        detail = _safe_error_detail(error)
-        _record_runtime_failure(detail)
-        _show_runtime_failure(detail)
-        os._exit(_RUNTIME_FAILURE_EXIT_CODE)
+        _fail_runtime_validation(error)
+
+
+def _optimum_command_name(command: object) -> str:
+    command_metadata = getattr(command, "COMMAND", None)
+    return (
+        str(getattr(command_metadata, "name", "") or getattr(command, "name", "") or "")
+        .strip()
+        .lower()
+    )
+
+
+def _validate_packaged_optimum_cli() -> None:
+    """Prove Optimum can discover the packaged OpenVINO export registration.
+
+    Optimum 2.x walks the physical ``optimum.commands.register`` namespace at runtime.
+    Merely bundling ``register_openvino.py`` is not sufficient if PyInstaller leaves it
+    inaccessible to that filesystem scan. The release native-smoke process exercises
+    the same discovery function used by ``optimum-cli export openvino`` without starting
+    a model download.
+    """
+
+    if not getattr(sys, "frozen", False) or "--native-smoke" not in sys.argv[1:]:
+        return
+    try:
+        from optimum.commands.optimum_cli import load_optimum_namespace_cli_commands
+
+        registrations = load_optimum_namespace_cli_commands()
+        names = {_optimum_command_name(command) for command, _parent in registrations}
+        if "openvino" not in names:
+            raise RuntimeError(
+                "The packaged Optimum CLI cannot discover the OpenVINO export command."
+            )
+    except Exception as error:  # noqa: BLE001 - frozen plugin discovery boundary
+        _fail_runtime_validation(error)
 
 
 def _register_for_update_restart() -> None:
@@ -245,4 +304,5 @@ _restore_output("stderr", 2)
 _restore_input()
 _configure_windows_native_search_path()
 _validate_windows_native_runtime()
+_validate_packaged_optimum_cli()
 _register_for_update_restart()

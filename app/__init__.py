@@ -31,6 +31,7 @@ __all__ = [
     "model_library_ui",
     "model_manager",
     "model_recovery",
+    "model_recovery_cleanup",
     "model_recovery_status",
     "model_recovery_ui",
     "model_registry",

@@ -110,7 +110,12 @@ def _write_record(manager: Any, model_id: str, record: dict[str, Any]) -> None:
 
 
 def _clear_record(manager: Any, model_id: str) -> None:
-    manager._model_recovery_records.pop(model_id, None)
+    records = getattr(manager, "_model_recovery_records", None)
+    if isinstance(records, dict):
+        records.pop(model_id, None)
+    settings = getattr(manager, "settings", None)
+    if settings is None or not getattr(settings, "models_dir", None):
+        return
     with contextlib.suppress(OSError):
         _record_path(manager, model_id).unlink()
 
@@ -118,11 +123,7 @@ def _clear_record(manager: Any, model_id: str) -> None:
 def _hub_cache_root() -> Path:
     configured = (
         os.environ.get("HUGGINGFACE_HUB_CACHE")
-        or (
-            str(Path(os.environ["HF_HOME"]) / "hub")
-            if os.environ.get("HF_HOME")
-            else ""
-        )
+        or (str(Path(os.environ["HF_HOME"]) / "hub") if os.environ.get("HF_HOME") else "")
         or str(Path.home() / ".cache" / "huggingface" / "hub")
     )
     return Path(configured).expanduser().resolve()
@@ -268,9 +269,7 @@ def _summary_from_record(
         payload["failure_details"] = {
             "message": str(record.get("message") or "Model preparation was interrupted."),
             "log_tail": [
-                str(line)
-                for line in record.get("log_tail", [])
-                if isinstance(line, str) and line
+                str(line) for line in record.get("log_tail", []) if isinstance(line, str) and line
             ][-10:],
         }
     return payload
@@ -425,9 +424,7 @@ def install_model_recovery_manager_extension() -> None:
             "recovery_id": recovery_id,
             "model_id": model_id,
             "operation_id": operation_id if isinstance(operation_id, str) else None,
-            "operation_type": operation_type
-            if operation_type in {"load", "convert"}
-            else None,
+            "operation_type": operation_type if operation_type in {"load", "convert"} else None,
             "terminal_state": phase,
             "interrupted_at": int(time.time()),
             "failed_stage": _failed_stage(previous_phase, operation_type),
@@ -442,9 +439,7 @@ def install_model_recovery_manager_extension() -> None:
         try:
             _write_record(self, model_id, record)
         except OSError:
-            manager_module.logger.exception(
-                "Could not persist recovery state for '%s'", model_id
-            )
+            manager_module.logger.exception("Could not persist recovery state for '%s'", model_id)
             self._model_recovery_records[model_id] = record
 
     def model_recovery(
@@ -569,9 +564,7 @@ def install_model_recovery_manager_extension() -> None:
                     load_after=True,
                 )
                 started_action = (
-                    "retry_conversion"
-                    if action == "retry_failed_stage"
-                    else "resume_conversion"
+                    "retry_conversion" if action == "retry_failed_stage" else "resume_conversion"
                 )
 
             if task is None and model_id not in self.engines:

@@ -231,9 +231,7 @@ def test_packaged_converter_accepts_progress_emitter_and_restores_overrides(monk
     assert model_converter.shutil.which is original_which
 
 
-def test_packaged_converter_contains_unexpected_failure_and_restores_overrides(
-    monkeypatch, capsys
-):
+def test_packaged_converter_contains_unexpected_failure_and_restores_overrides(monkeypatch, capsys):
     from runtime import model_converter
 
     monkeypatch.setattr(desktop_launcher.sys, "frozen", True, raising=False)

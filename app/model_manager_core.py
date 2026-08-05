@@ -31,6 +31,10 @@ logger = logging.getLogger("ov-llm.manager")
 
 TASKKILL_TIMEOUT_SECONDS = 5.0
 CONVERTER_EXIT_TIMEOUT_SECONDS = 5.0
+# Backstop deadline for one native engine build. The stage-aware preparation watchdog
+# owns the user-visible policy when installed; this only catches a build that hangs
+# with no watchdog present.
+DEFAULT_ENGINE_BUILD_TIMEOUT_SECONDS = 1800.0
 
 _PROGRESS_PERCENT_RE = re.compile(r"(?<!\d)(100(?:\.0+)?|[1-9]?\d(?:\.\d+)?)\s*%")
 _PROGRESS_SECRET_RE = re.compile(
@@ -388,81 +392,105 @@ class ModelManager:
             draft_model_path=draft_model_path,
         )
 
+    def _engine_build_timeout_seconds(self) -> float:
+        """Return the backstop deadline for one native engine build.
+
+        When the stage-aware preparation watchdog is installed its configured budget is
+        authoritative, so this deadline stays above it instead of silently capping it.
+        """
+
+        config = getattr(self, "_preparation_timeouts", None)
+        budgets = [
+            float(value)
+            for value in (
+                getattr(config, "loading_seconds", None),
+                getattr(config, "compilation_seconds", None),
+            )
+            if isinstance(value, int | float) and value > 0
+        ]
+        if not budgets:
+            return DEFAULT_ENGINE_BUILD_TIMEOUT_SECONDS
+        # A grace margin lets the watchdog publish its stage-specific error first.
+        return max(budgets) + 60.0
+
     async def _load_task(
         self, model_id: str, device: str, draft_model_path: str | None = None
     ) -> None:
         cfg = self.catalog[model_id]
         try:
             try:
-                async with asyncio.timeout(600):
-                    async with self._load_lock:
-                        if model_id in self.engines:
-                            self._set_progress(
-                                model_id, "ready", f"{cfg.name} is already loaded.", percent=100
-                            )
-                            self._clear_status(model_id)
-                            return
-
-                        self._set_status(model_id, "loading")
+                async with self._load_lock:
+                    if model_id in self.engines:
                         self._set_progress(
-                            model_id, "loading", f"Checking local model files for {cfg.name}…"
+                            model_id, "ready", f"{cfg.name} is already loaded.", percent=100
                         )
+                        self._clear_status(model_id)
+                        return
 
-                        # Validate device + on-disk model for real (non-mock) loads.
-                        if not self.force_mock:
-                            available = device_check.available_devices()
-                            if not device_check.is_device_available(device, available):
-                                raise RuntimeError(errors.format_device_error(device, available))
-                            if not registry.is_downloaded(cfg, BASE_DIR):
-                                if self.settings.auto_convert:
-                                    logger.info(
-                                        "Model '%s' not found locally. Auto-convert is enabled. Starting conversion...",
-                                        model_id,
-                                    )
-                                    self._set_progress(
-                                        model_id,
-                                        "downloading",
-                                        f"{cfg.name} is not converted yet. Downloading and converting first…",
-                                    )
-                                    await self._convert_task(model_id, device, load_after=False)
-                                    self._set_status(model_id, "loading")
-                                    self._set_progress(
-                                        model_id,
-                                        "loading",
-                                        f"Loading {cfg.name} on {device}…",
-                                    )
-                                    if not registry.is_downloaded(cfg, BASE_DIR):
-                                        raise RuntimeError(
-                                            f"Auto-conversion failed for '{cfg.name}'. Please check logs."
-                                        )
-                                else:
+                    self._set_status(model_id, "loading")
+                    self._set_progress(
+                        model_id, "loading", f"Checking local model files for {cfg.name}…"
+                    )
+
+                    # Validate device + on-disk model for real (non-mock) loads.
+                    if not self.force_mock:
+                        available = device_check.available_devices()
+                        if not device_check.is_device_available(device, available):
+                            raise RuntimeError(errors.format_device_error(device, available))
+                        if not registry.is_downloaded(cfg, BASE_DIR):
+                            if self.settings.auto_convert:
+                                logger.info(
+                                    "Model '%s' not found locally. Auto-convert is enabled. Starting conversion...",
+                                    model_id,
+                                )
+                                self._set_progress(
+                                    model_id,
+                                    "downloading",
+                                    f"{cfg.name} is not converted yet. Downloading and converting first…",
+                                )
+                                # Downloading and quantizing multi-gigabyte weights has no
+                                # useful fixed deadline; the converter reports its own
+                                # progress and is bounded by the preparation watchdog.
+                                await self._convert_task(model_id, device, load_after=False)
+                                self._set_status(model_id, "loading")
+                                self._set_progress(
+                                    model_id,
+                                    "loading",
+                                    f"Loading {cfg.name} on {device}…",
+                                )
+                                if not registry.is_downloaded(cfg, BASE_DIR):
                                     raise RuntimeError(
-                                        errors.format_model_not_converted(
-                                            cfg.name,
-                                            str(cfg.abs_path(BASE_DIR)),
-                                            cfg.source_model,
-                                            weight_format=cfg.weight_format,
-                                        )
+                                        f"Auto-conversion failed for '{cfg.name}'. Please check logs."
                                     )
+                            else:
+                                raise RuntimeError(
+                                    errors.format_model_not_converted(
+                                        cfg.name,
+                                        str(cfg.abs_path(BASE_DIR)),
+                                        cfg.source_model,
+                                        weight_format=cfg.weight_format,
+                                    )
+                                )
 
-                        self._set_progress(model_id, "loading", f"Loading {cfg.name} on {device}…")
-                        loop = asyncio.get_running_loop()
+                    self._set_progress(model_id, "loading", f"Loading {cfg.name} on {device}…")
+                    loop = asyncio.get_running_loop()
+                    async with asyncio.timeout(self._engine_build_timeout_seconds()):
                         engine = await loop.run_in_executor(
                             None, self._build_engine, model_id, device, draft_model_path
                         )
 
-                        self.engines[model_id] = engine
-                        self.locks[model_id] = asyncio.Lock()
-                        self.devices[model_id] = engine.device
-                        self._set_progress(
-                            model_id,
-                            "ready",
-                            f"{cfg.name} is ready on {engine.device}.",
-                            percent=100,
-                        )
-                        self._clear_status(model_id)
-                        logger.info("Loaded '%s' on %s", model_id, engine.device)
-                        self.emit_event("info", f"Loaded {cfg.name} on {engine.device}")
+                    self.engines[model_id] = engine
+                    self.locks[model_id] = asyncio.Lock()
+                    self.devices[model_id] = engine.device
+                    self._set_progress(
+                        model_id,
+                        "ready",
+                        f"{cfg.name} is ready on {engine.device}.",
+                        percent=100,
+                    )
+                    self._clear_status(model_id)
+                    logger.info("Loaded '%s' on %s", model_id, engine.device)
+                    self.emit_event("info", f"Loaded {cfg.name} on {engine.device}")
             except Exception as exc:  # noqa: BLE001 - surfaced to the UI as a status
                 self.engines.pop(model_id, None)
                 self.locks.pop(model_id, None)

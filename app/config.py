@@ -160,7 +160,9 @@ class Settings:
         from app.lifecycle_safety import install_model_lifecycle_safety
         from app.model_cancellation import install_model_cancellation_manager_extension
         from app.model_load_target import install_model_load_target_routing
+        from app.model_preparation_timeouts import install_model_preparation_timeouts
         from app.model_recovery import install_model_recovery_manager_extension
+        from app.model_recovery_cleanup import install_model_recovery_cleanup
         from app.model_recovery_status import install_model_recovery_status_extension
         from app.status_split import install_status_manager_extension
         from app.structured_progress import install_structured_progress_protocol
@@ -175,10 +177,14 @@ class Settings:
         install_model_lifecycle_safety()
         install_model_cancellation_manager_extension()
         install_model_recovery_manager_extension()
+        install_model_recovery_cleanup()
         install_status_manager_extension()
         install_model_recovery_status_extension()
         install_huggingface_access_manager_extension()
         install_huggingface_manager_safety()
+        # Install watchdogs last so late cancellation and recovery wrappers cannot
+        # replace a stage-timeout error while native cleanup is still completing.
+        install_model_preparation_timeouts()
         install_desktop_shutdown_safety()
 
     @classmethod

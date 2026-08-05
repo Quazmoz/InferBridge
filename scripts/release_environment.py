@@ -60,13 +60,15 @@ def _marker_applies(marker: str | None) -> bool:
         return True
     try:
         from packaging.markers import Marker
-    except ImportError:
+    except ImportError as exc:
         match = re.fullmatch(
             r"platform_system\s*==\s*['\"](?P<value>[^'\"]+)['\"]",
             marker.strip(),
         )
         if not match:
-            raise RuntimeError(f"Unsupported requirement marker without packaging: {marker}")
+            raise RuntimeError(
+                f"Unsupported requirement marker without packaging: {marker}"
+            ) from exc
         return platform.system() == match.group("value")
     return bool(Marker(marker).evaluate())
 

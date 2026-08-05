@@ -24,6 +24,18 @@ def test_fast_successful_polling_requests_are_demoted():
     assert request_filter.filter(_request_record(path="/v1/events")) is False
 
 
+def test_polling_paths_are_normalized_before_matching():
+    request_filter = PollingRequestLogFilter(slow_request_ms=500)
+
+    assert request_filter.filter(_request_record(path="/health/")) is False
+    assert request_filter.filter(_request_record(path="/v1/events?cursor=17&limit=50")) is False
+    assert (
+        request_filter.filter(_request_record(path="http://127.0.0.1/v1/models/status?x=1"))
+        is False
+    )
+    assert request_filter.filter(_request_record(path="/v1/events-extra?cursor=17")) is True
+
+
 def test_failures_slow_requests_and_non_polling_routes_remain_visible():
     request_filter = PollingRequestLogFilter(slow_request_ms=500)
 

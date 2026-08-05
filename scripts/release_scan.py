@@ -124,9 +124,7 @@ def _run_packaged_native_smoke(root: Path) -> None:
     if result.returncode == 0:
         return
     detail = "\n".join(
-        line.strip()
-        for line in (result.stderr or result.stdout or "").splitlines()
-        if line.strip()
+        line.strip() for line in (result.stderr or result.stdout or "").splitlines() if line.strip()
     )
     if len(detail) > 800:
         detail = detail[-800:]
@@ -152,9 +150,7 @@ def verify_native_distribution(root: Path, *, run_native_smoke: bool = True) -> 
         raise RuntimeError("Packaged native components are missing: " + ", ".join(missing))
 
     _require_single_internal_file(root, "_psutil_windows*.pyd", "psutil Windows extension")
-    _require_single_internal_file(
-        root, "openvino_tokenizers.dll", "OpenVINO tokenizer extension"
-    )
+    _require_single_internal_file(root, "openvino_tokenizers.dll", "OpenVINO tokenizer extension")
     if run_native_smoke:
         _run_packaged_native_smoke(root)
 

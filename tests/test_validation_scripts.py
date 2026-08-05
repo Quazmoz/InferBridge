@@ -42,7 +42,7 @@ def test_markdown_contains_summary_and_checks():
         ],
     }
     result = markdown(report)
-    assert "# OpenVINO Windows LLM API Validation" in result
+    assert "# InferBridge API Validation" in result
     assert "1 passed" in result
     assert "test-model" in result
     assert "Health" in result

@@ -3,7 +3,7 @@ import urllib.error
 from datetime import UTC, datetime, timedelta
 
 from app.brand import USER_AGENT_PRODUCT
-from app.release_models import artifact_filename
+from app.release_models import SemanticVersion, artifact_filename
 from app.update_checker import (
     UpdateCache,
     UpdateChecker,
@@ -109,6 +109,44 @@ def release_payload(version: str, prerelease: bool):
     ]
 
 
+def newer_version() -> str:
+    """A stable version strictly greater than the installed one.
+
+    Derived from ``__version__`` so a release bump cannot silently turn an
+    "update available" test into an "already installed" test.
+    """
+
+    parsed = SemanticVersion.parse(__version__)
+    return f"{parsed.major}.{parsed.minor + 1}.0"
+
+
+def same_base_beta_version() -> str:
+    """A beta pre-release of the installed base version, never equal to it.
+
+    Exercises the carve-out that offers a beta-channel build of the base version a
+    user already runs, so it must track ``__version__``. When the installed build is
+    itself a pre-release of that base, advance the beta counter instead of returning
+    the installed version, which would be filtered as already installed.
+    """
+
+    parsed = SemanticVersion.parse(__version__)
+    base = f"{parsed.major}.{parsed.minor}.{parsed.patch}"
+    if not parsed.prerelease:
+        return f"{base}-beta.1"
+    trailing = parsed.prerelease[-1]
+    return f"{base}-beta.{int(trailing) + 1 if trailing.isdigit() else 1}"
+
+
+def installed_channel() -> str:
+    """The release channel that can legitimately publish ``__version__``.
+
+    A manifest may only declare ``stable`` for a final version, so tests that
+    republish the installed version must follow it onto the pre-release channel.
+    """
+
+    return "beta" if SemanticVersion.parse(__version__).prerelease else "stable"
+
+
 def opener_for(version: str, channel: str):
     calls = []
 
@@ -149,7 +187,7 @@ def test_fresh_update_checks_are_disabled_and_make_no_request(tmp_path):
 def test_stable_user_ignores_beta_release(tmp_path):
     store = UpdateStore(tmp_path)
     store.save_preferences(UpdatePreferences(enabled=True))
-    opener, _calls = opener_for("0.8.0-beta.1", "beta")
+    opener, _calls = opener_for(same_base_beta_version(), "beta")
     result = UpdateChecker(
         store=store,
         installation_mode="installed",
@@ -162,7 +200,7 @@ def test_stable_user_ignores_beta_release(tmp_path):
 def test_beta_user_sees_beta_release_and_installed_artifact(tmp_path):
     store = UpdateStore(tmp_path)
     store.save_preferences(UpdatePreferences(enabled=True, channel="beta"))
-    opener, calls = opener_for("0.8.0-beta.1", "beta")
+    opener, calls = opener_for(same_base_beta_version(), "beta")
     result = UpdateChecker(
         store=store,
         installation_mode="installed",
@@ -181,7 +219,7 @@ def test_beta_user_sees_beta_release_and_installed_artifact(tmp_path):
 def test_portable_user_receives_portable_artifact(tmp_path):
     store = UpdateStore(tmp_path)
     store.save_preferences(UpdatePreferences(enabled=True))
-    opener, _calls = opener_for("0.8.0", "stable")
+    opener, _calls = opener_for(newer_version(), "stable")
     result = UpdateChecker(
         store=store,
         installation_mode="portable",
@@ -191,17 +229,36 @@ def test_portable_user_receives_portable_artifact(tmp_path):
     assert result.selected_artifact_type == "portable"
 
 
-def test_skip_version_persists_and_suppresses_prompt(tmp_path):
+def test_installed_version_is_not_offered_as_an_update(tmp_path):
+    """The release that published the running build is not an available update."""
+
+    channel = installed_channel()
     store = UpdateStore(tmp_path)
-    store.save_preferences(UpdatePreferences(enabled=True, skipped_versions=["0.8.0"]))
-    opener, _calls = opener_for("0.8.0", "stable")
+    store.save_preferences(UpdatePreferences(enabled=True, channel=channel))
+    opener, _calls = opener_for(__version__, channel)
     result = UpdateChecker(
         store=store,
         installation_mode="installed",
         opener=opener,
     ).check(force=True)
     assert result.status == "current"
-    assert store.load_preferences().skipped_versions == ["0.8.0"]
+    assert result.selected_artifact_type is None
+
+
+def test_skip_version_persists_and_suppresses_prompt(tmp_path):
+    # Skip a genuinely newer version, so the suppression comes from the skip list
+    # rather than from the version merely being older than the installed one.
+    skipped = newer_version()
+    store = UpdateStore(tmp_path)
+    store.save_preferences(UpdatePreferences(enabled=True, skipped_versions=[skipped]))
+    opener, _calls = opener_for(skipped, "stable")
+    result = UpdateChecker(
+        store=store,
+        installation_mode="installed",
+        opener=opener,
+    ).check(force=True)
+    assert result.status == "current"
+    assert store.load_preferences().skipped_versions == [skipped]
 
 
 def test_disabled_update_checks_make_no_request(tmp_path):
@@ -241,7 +298,7 @@ def test_malformed_manifest_is_rejected(tmp_path):
 
     def opener(request, timeout):
         if "api.github.com" in request.full_url:
-            return Response(release_payload("0.8.0", False))
+            return Response(release_payload(newer_version(), False))
         return Response({"schema_version": 999})
 
     result = UpdateChecker(
@@ -263,7 +320,8 @@ def test_malformed_cached_manifest_is_cleared_and_refetched(tmp_path):
             manifest={"schema_version": 999},
         )
     )
-    opener, calls = opener_for("0.8.0", "stable")
+    published = newer_version()
+    opener, calls = opener_for(published, "stable")
 
     result = UpdateChecker(
         store=store,
@@ -274,4 +332,4 @@ def test_malformed_cached_manifest_is_cleared_and_refetched(tmp_path):
     assert result.status == "available"
     assert len(calls) == 2
     assert "If-none-match" not in calls[0][2]
-    assert store.load_cache().latest_checked_version == "0.8.0"
+    assert store.load_cache().latest_checked_version == published

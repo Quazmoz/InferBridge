@@ -25,6 +25,11 @@ $InternalRoot = (Join-Path $Root "_internal").TrimEnd('\')
 if (-not (Test-Path $InternalRoot -PathType Container)) {
     throw "Packaged distribution is missing the PyInstaller _internal directory."
 }
+$OptimumRegisterRoot = Join-Path $InternalRoot "optimum\commands\register"
+$OpenVinoRegistration = Join-Path $OptimumRegisterRoot "register_openvino.py"
+if (-not (Test-Path $OpenVinoRegistration -PathType Leaf)) {
+    throw "Packaged distribution is missing Optimum's OpenVINO CLI registration module."
+}
 $PsutilWindowsBinaries = @(Get-ChildItem $Root -Recurse -File -Filter "_psutil_windows*.pyd")
 if ($PsutilWindowsBinaries.Count -ne 1) {
     $Found = if ($PsutilWindowsBinaries.Count) {

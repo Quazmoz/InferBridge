@@ -20,6 +20,8 @@ python-dotenv>=1.0.0
 psutil>=5.9.0
 # Validates and decodes local JPEG, PNG, and WebP image inputs for VLM requests.
 pillow>=10.0.0
+# Native Windows notification-area integration used by the desktop launcher.
+pystray>=0.19.5
 
 # --- Windows enterprise TLS trust (no-op / not installed elsewhere) ---
 # Merges the Windows OS trust store into certifi so Hugging Face conversions

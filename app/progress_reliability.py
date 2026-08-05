@@ -110,12 +110,8 @@ PROGRESS_RELIABILITY_JS = r"""
 
     function strictPercent(value) {
         if (value === null || value === undefined || value === '') return null;
-        const raw = value;
-        if (raw !== null) {
-            const parsed = Number(raw);
-            return Number.isFinite(parsed) ? Math.max(0, Math.min(100, parsed)) : null;
-        }
-        return null;
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? Math.max(0, Math.min(100, parsed)) : null;
     }
 
     function aggregateDownloadPercent(progress) {
@@ -127,8 +123,6 @@ PROGRESS_RELIABILITY_JS = r"""
         const average = values.reduce((sum, value) => sum + Math.max(0, Math.min(100, value)), 0) / values.length;
         return Math.round(average);
     }
-
-    const phaseStageExpression = /fetching|downloading/;
 
     function progressCount(progress) {
         const completed = Number(progress?.completed);
@@ -180,19 +174,21 @@ PROGRESS_RELIABILITY_JS = r"""
             overall: 0,
         } : previous;
 
+        // A phase without any reported number stays indeterminate: the track animates
+        // instead of claiming a misleading 0%.
         const raw = overallPercent ?? phasePercent ?? aggregatePercent ?? null;
-        let overall = prior?.overall ?? 0;
-        let trackPercent = raw ?? 0;
+        let trackPercent = raw;
         let progressScope = overallPercent !== null ? 'overall' : 'phase';
-        let determinate = trackPercent !== null;
-        const candidate = overallPercent ?? phasePercent ?? aggregatePercent ?? 0;
-        overall = Math.max(prior.overall, candidate);
+        let determinate = raw !== null;
+        // Overall progress is a monotonic floor built from the completed stage base plus
+        // whatever the current stage reports, so a new phase never rewinds the bar.
         const metaStart = meta.stage >= 0 ? meta.stage * 33 : 0;
-        overall = Math.max(prior.overall, meta.start);
+        let overall = Math.max(prior.overall ?? 0, metaStart, raw ?? 0);
         if (phase === 'ready') {
             trackPercent = 100;
             progressScope = 'overall';
             determinate = true;
+            overall = 100;
         } else if (phase === 'error' || phase === 'cancelled') {
             trackPercent = null;
             determinate = false;
@@ -210,6 +206,7 @@ PROGRESS_RELIABILITY_JS = r"""
             startedAt,
             targetDevice,
             terminal: ['ready', 'error', 'cancelled'].includes(phase),
+            overall,
         });
 
         return {

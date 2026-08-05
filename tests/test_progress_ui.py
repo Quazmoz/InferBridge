@@ -50,8 +50,12 @@ def test_progress_controller_uses_truthful_phase_progress():
     assert "% of current phase" in rendered
     assert "progress is not measurable for this phase" in rendered
     assert "aggregateDownloadPercent" in rendered
-    assert "meta.start" in rendered
-    assert "Math.max(prior.overall, meta.start)" in rendered
+    # A phase with no reported number must stay indeterminate rather than render 0%.
+    assert "let determinate = raw !== null;" in rendered
+    # Overall progress is a monotonic floor and must be seeded from a defined value.
+    assert "const metaStart = meta.stage >= 0 ? meta.stage * 33 : 0;" in rendered
+    assert "Math.max(prior.overall ?? 0, metaStart, raw ?? 0)" in rendered
+    assert "meta.start" not in rendered
 
 
 def test_progress_controller_renders_optimistically_before_first_poll():

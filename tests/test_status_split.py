@@ -155,9 +155,7 @@ def test_model_advisor_snapshot_skips_one_broken_model() -> None:
 
     manager.catalog_entry = catalog_entry
 
-    assert status_split._model_advisor_snapshot(manager) == {
-        "healthy": {"status": "ready"}
-    }
+    assert status_split._model_advisor_snapshot(manager) == {"healthy": {"status": "ready"}}
 
 
 def test_request_metrics_remain_live_during_telemetry_cache_window(monkeypatch, tmp_path) -> None:

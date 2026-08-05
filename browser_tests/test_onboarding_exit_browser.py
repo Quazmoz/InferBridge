@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from playwright.sync_api import Page, expect
 
-
 AUTO_OPEN_KEY = "inferbridge.onboarding.auto-opened.v1"
 
 

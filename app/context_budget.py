@@ -171,9 +171,7 @@ def analyze_prompt_budget(
 
 def _actual_image_count(messages: list[dict[str, Any]]) -> int:
     return sum(
-        1
-        for message in messages
-        for _ in multimodal.iter_image_payloads(message.get("content"))
+        1 for message in messages for _ in multimodal.iter_image_payloads(message.get("content"))
     )
 
 
@@ -246,9 +244,10 @@ def register_context_budget_routes(app: FastAPI) -> None:
                 status_code=400,
                 detail=f"Model '{body.model}' is an embedding model and has no chat context budget.",
             )
-        has_images = multimodal.contents_have_images(
-            message.content for message in body.messages
-        ) or body.image_count > 0
+        has_images = (
+            multimodal.contents_have_images(message.content for message in body.messages)
+            or body.image_count > 0
+        )
         if has_images and not getattr(engine, "supports_vision", False):
             raise HTTPException(
                 status_code=400,
@@ -261,7 +260,9 @@ def register_context_budget_routes(app: FastAPI) -> None:
         model_output_reserve = max(0, max_context_len - max_prompt_len)
 
         use_tools = bool(body.tools) and body.tool_choice != "none"
-        system_override = tools.format_tools_for_prompt(body.tools, body.tool_choice) if use_tools else ""
+        system_override = (
+            tools.format_tools_for_prompt(body.tools, body.tool_choice) if use_tools else ""
+        )
         if system_override:
             multimodal.preflight_request_contents([system_override])
 

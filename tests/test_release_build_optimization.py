@@ -14,7 +14,6 @@ from scripts.release_environment import (
     write_metadata,
 )
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -73,9 +72,7 @@ def test_portable_archive_preserves_versioned_root_without_staging_copy(tmp_path
     assert not (tmp_path / "portable-stage").exists()
 
 
-def test_checksum_generation_defers_independent_verification(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_checksum_generation_defers_independent_verification(tmp_path: Path, monkeypatch) -> None:
     version = "1.2.3"
     artifact_names = [
         artifact_filename(version, "portable"),
@@ -130,10 +127,7 @@ def test_release_build_deduplicates_unchanged_artifact_scans() -> None:
     assert "Get-ArtifactScanKey" in script
     assert "$Item.Length" in script
     assert "$Item.LastWriteTimeUtc.Ticks" in script
-    assert (
-        'Invoke-ArtifactScan -Path $PortableZip -Label "Validate portable ZIP paths"'
-        in script
-    )
+    assert 'Invoke-ArtifactScan -Path $PortableZip -Label "Validate portable ZIP paths"' in script
     assert "Invoke-ArtifactScan -Path $Artifact" in script
     assert 'Invoke-Checked "Generate SHA-256 checksums"' in script
     assert 'Invoke-Checked "Verify final SHA-256 checksums"' in script

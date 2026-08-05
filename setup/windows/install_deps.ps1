@@ -21,6 +21,10 @@ $RepoRoot = Split-Path -Parent $SetupRoot
 $VenvDir = Join-Path $RepoRoot ".venv"
 $RequirementsPath = Join-Path $RepoRoot "requirements.txt"
 $DependencyMarker = Join-Path $RepoRoot ".deps_installed"
+$ProjectFile = Join-Path $RepoRoot "pyproject.toml"
+$ProjectMarker = Join-Path $RepoRoot ".source_package_installed"
+$ConversionRequirementsPath = Join-Path $RepoRoot "requirements-convert.txt"
+$ConversionDependencyMarker = Join-Path $RepoRoot ".convert_deps_installed"
 $SupportedPythonVersions = @("3.11", "3.12", "3.13")
 
 function Invoke-Checked {
@@ -89,7 +93,10 @@ function Resolve-Python {
         }
         $version = Get-PythonVersion -FilePath $exe -Arguments $rest
         if ($version -in $SupportedPythonVersions) {
-            return ,@($exe, $rest)
+            return [PSCustomObject]@{
+                Executable = $exe
+                Arguments = [string[]]$rest
+            }
         }
     }
     throw "No suitable Python found. Install Python 3.11, 3.12, or 3.13 from python.org, or pass -Python with the full python.exe path."
@@ -97,13 +104,15 @@ function Resolve-Python {
 
 
 $py = Resolve-Python -Preferred $Python
-$pyExe = $py[0]
-$pyRest = $py[1]
+$pyExe = $py.Executable
+$pyRest = $py.Arguments
+$CreatedVenv = $false
 
 if (-not (Test-Path $VenvDir)) {
     Write-Host "Creating virtual environment at $VenvDir ..." -ForegroundColor Cyan
     try {
         Invoke-Checked -FilePath $pyExe -Arguments ($pyRest + @("-m", "venv", $VenvDir))
+        $CreatedVenv = $true
     } catch {
         Write-Host "ERROR: Failed to create virtual environment." -ForegroundColor Red
         Write-Host "       Check if you have write access to $RepoRoot or run setup in an Administrator terminal." -ForegroundColor Yellow
@@ -131,8 +140,15 @@ try {
 
     if ($WithConvert) {
         Write-Host "Installing conversion dependencies (requirements-convert.txt) ..." -ForegroundColor Cyan
-        Invoke-Checked -FilePath $venvPython -Arguments @("-m", "pip", "install", "-r", (Join-Path $RepoRoot "requirements-convert.txt"))
+        Invoke-Checked -FilePath $venvPython -Arguments @(
+            "-m", "pip", "install", "-r", $ConversionRequirementsPath
+        )
     }
+
+    Write-Host "Registering the InferBridge source package ..." -ForegroundColor Cyan
+    Invoke-Checked -FilePath $venvPython -Arguments @(
+        "-m", "pip", "install", "--no-build-isolation", "--no-deps", "--editable", $RepoRoot
+    )
 } catch {
     $errText = $_.Exception.Message
     Write-Host ""
@@ -167,9 +183,24 @@ try {
     throw $_
 }
 
-# Record the exact runtime requirements content installed into this environment.
+# Record the exact requirements content installed into this environment. Runtime and
+# conversion profiles are tracked independently so Minimal setups stay lightweight.
 $requirementsHash = (Get-FileHash -LiteralPath $RequirementsPath -Algorithm SHA256).Hash
 Set-Content -LiteralPath $DependencyMarker -Value $requirementsHash -NoNewline -Encoding ascii
+$projectHash = (Get-FileHash -LiteralPath $ProjectFile -Algorithm SHA256).Hash
+Set-Content -LiteralPath $ProjectMarker -Value $projectHash -NoNewline -Encoding ascii
+
+if ($WithConvert) {
+    $conversionRequirementsHash = (
+        Get-FileHash -LiteralPath $ConversionRequirementsPath -Algorithm SHA256
+    ).Hash
+    Set-Content -LiteralPath $ConversionDependencyMarker `
+        -Value $conversionRequirementsHash -NoNewline -Encoding ascii
+} elseif ($CreatedVenv) {
+    # A newly created Minimal environment must not inherit a stale marker from a
+    # previously deleted full environment in the same checkout.
+    Remove-Item -LiteralPath $ConversionDependencyMarker -Force -ErrorAction SilentlyContinue
+}
 
 Write-Host "Dependencies installed." -ForegroundColor Green
 Invoke-Checked -FilePath $venvPython -Arguments @("-m", "app.server", "--check-devices")

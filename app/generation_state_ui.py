@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 GENERATION_STATE_JS = r"""
 (() => {
     'use strict';

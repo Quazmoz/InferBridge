@@ -1,5 +1,6 @@
 # PyInstaller one-directory build for the Windows desktop tray launcher.
 
+import importlib.util
 import os
 from pathlib import Path
 
@@ -30,6 +31,36 @@ if third_party.is_file():
 
 binaries = []
 hiddenimports = collect_submodules("app") + collect_submodules("runtime")
+
+# Optimum 2.x discovers accelerator-specific CLI commands by walking the on-disk
+# PEP 420 namespace at optimum.commands.register. PyInstaller normally places Python
+# modules in its archive, where pathlib.iterdir() cannot see them. Materialize every
+# installed registration module in the frozen filesystem and also mark it as a hidden
+# import so `optimum-cli export openvino` is available in installed and portable builds.
+optimum_register_spec = importlib.util.find_spec("optimum.commands.register")
+if (
+    optimum_register_spec is None
+    or optimum_register_spec.submodule_search_locations is None
+):
+    raise RuntimeError(
+        "The release environment is missing the optimum.commands.register namespace."
+    )
+optimum_register_files = sorted(
+    {
+        register_file
+        for location in optimum_register_spec.submodule_search_locations
+        for register_file in Path(location).glob("*.py")
+        if register_file.name != "__init__.py"
+    },
+    key=lambda path: str(path).lower(),
+)
+if not optimum_register_files:
+    raise RuntimeError(
+        "The release environment contains no Optimum CLI registration modules."
+    )
+for register_file in optimum_register_files:
+    datas.append((str(register_file), "optimum/commands/register"))
+    hiddenimports.append(f"optimum.commands.register.{register_file.stem}")
 
 # Collect every OpenVINO native distribution explicitly. openvino-genai loads the
 # tokenizer extension by DLL name at runtime, so relying on transitive collection can
