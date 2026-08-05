@@ -33,6 +33,21 @@ def _active(task: asyncio.Task[Any] | None) -> bool:
     return bool(task is not None and not task.done())
 
 
+def _apply_switching_capabilities(entry: dict[str, Any], *, switching: bool) -> dict[str, Any]:
+    """Expose a loaded-but-switching model without pretending it can be unloaded."""
+
+    if not switching or not entry.get("is_loaded"):
+        return entry
+    entry["is_loading"] = True
+    entry["can_unload"] = False
+    progress = entry.get("progress")
+    if isinstance(progress, dict):
+        message = progress.get("message")
+        if isinstance(message, str) and message.strip():
+            entry["status_label"] = message.strip()
+    return entry
+
+
 @asynccontextmanager
 async def current_engine_lease(manager: Any, requested_engine: Any) -> AsyncIterator[Any]:
     """Yield a stable current engine while holding its matching model lock.
@@ -85,6 +100,7 @@ def install_engine_handoff_safety() -> None:
         return
 
     original_unload = manager_class.unload
+    original_catalog_entry = manager_class.catalog_entry
 
     async def generate_with_current_engine(self, engine, prompt, params):
         async with self._track_generation():
@@ -143,6 +159,11 @@ def install_engine_handoff_safety() -> None:
                     if pending_cancellation is not None:
                         raise pending_cancellation
 
+    def catalog_entry_with_handoff(self, model_id: str) -> dict[str, Any]:
+        entry = original_catalog_entry(self, model_id)
+        load_task = getattr(self, "load_tasks", {}).get(model_id)
+        return _apply_switching_capabilities(entry, switching=_active(load_task))
+
     def unload_when_idle(self, model_id: str) -> bool:
         # Shutdown must remain able to force cleanup after its bounded generation
         # drain timeout. Normal API requests still reject unloading a busy engine.
@@ -166,5 +187,6 @@ def install_engine_handoff_safety() -> None:
 
     manager_class.generate = generate_with_current_engine
     manager_class.stream = stream_with_current_engine
+    manager_class.catalog_entry = catalog_entry_with_handoff
     manager_class.unload = unload_when_idle
     setattr(manager_class, _INSTALL_FLAG, True)
