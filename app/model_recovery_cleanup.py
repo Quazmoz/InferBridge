@@ -111,6 +111,7 @@ def _remove_tree(path: Path, *, description: str) -> bool:
 
 def _remove_incomplete_output(manager: Any, cfg: Any) -> bool:
     from app import model_recovery
+    from runtime.model_output_transaction import model_output_transaction_paths
 
     # Check links before exists(). A dangling link reports exists() == False and would
     # otherwise survive cleanup while appearing to be an absent model directory.
@@ -121,7 +122,23 @@ def _remove_incomplete_output(manager: Any, cfg: Any) -> bool:
             "Refusing to remove an incomplete model through a symbolic link.",
         )
     model_dir = model_recovery._ensure_removable_model_path(manager, cfg)
-    return _remove_tree(model_dir, description="the incomplete OpenVINO files")
+
+    staging_dir, _backup_dir = model_output_transaction_paths(model_dir)
+    if staging_dir.is_symlink() or (_path_exists(staging_dir) and not staging_dir.is_dir()):
+        raise model_recovery.RecoveryConflict(
+            "unsafe_output_path",
+            "Refusing to remove an unexpected model staging path.",
+        )
+
+    removed_staging = _remove_tree(
+        staging_dir,
+        description="the incomplete staged OpenVINO files",
+    )
+    removed_output = _remove_tree(
+        model_dir,
+        description="the incomplete OpenVINO files",
+    )
+    return removed_staging or removed_output
 
 
 def _remove_download_cache(cfg: Any) -> bool:
