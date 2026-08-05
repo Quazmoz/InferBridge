@@ -110,11 +110,13 @@ def _publish_staged_output(staging_dir: Path, final_dir: Path, backup_dir: Path)
 
 @contextmanager
 def staged_model_output(final_dir: str | Path) -> Iterator[Path]:
-    """Yield a clean staging directory and publish it only after validation.
+    """Yield a clean staging path and publish it only after validation.
 
     The live model remains untouched while Optimum downloads and exports. Any exception
-    removes only the staging directory. A successful context validates the staged IR,
-    moves the old model aside, publishes the new one, and then removes the backup.
+    removes only the staging path. A successful context validates the staged IR, moves
+    the old model aside, publishes the new one, and then removes the backup. The staging
+    directory is deliberately absent at entry so Optimum can create it using its normal
+    first-conversion path.
     """
 
     final = Path(final_dir)
@@ -127,7 +129,6 @@ def staged_model_output(final_dir: str | Path) -> Iterator[Path]:
 
     _recover_stale_backup(final, backup)
     _remove_path(staging)
-    staging.mkdir(parents=False, exist_ok=False)
 
     try:
         yield staging
