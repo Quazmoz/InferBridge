@@ -117,6 +117,64 @@ def test_failed_device_switch_keeps_the_working_engine_available() -> None:
         assert manager.engines[MODEL_ID] is working_engine
 
 
+def test_loaded_model_remains_usable_while_replacement_compiles() -> None:
+    replacement_started = threading.Event()
+    release_replacement = threading.Event()
+
+    with _client() as client:
+        first = client.post(
+            "/v1/models/load",
+            json={"model": MODEL_ID, "device": "GPU"},
+        )
+        assert first.status_code == 200, first.text
+        _wait_for_device(client, "GPU")
+
+        manager = client.app.state.manager
+        working_engine = manager.engines[MODEL_ID]
+        working_lock = manager.get_lock(MODEL_ID)
+
+        def blocking_npu_build(
+            model_id: str,
+            device: str,
+            draft_model_path: str | None = None,
+        ) -> MockEngine:
+            assert device == "NPU"
+            replacement_started.set()
+            if not release_replacement.wait(timeout=5):
+                raise TimeoutError("Test did not release the replacement engine build")
+            return MockEngine(model_id, str(Path("models") / model_id), device)
+
+        manager._build_engine = blocking_npu_build
+        switch = client.post(
+            "/v1/models/load",
+            json={"model": MODEL_ID, "device": "NPU"},
+        )
+        assert switch.status_code == 200, switch.text
+        assert replacement_started.wait(timeout=2), "NPU replacement build did not start"
+
+        try:
+            assert manager.engines[MODEL_ID] is working_engine
+            assert manager.get_lock(MODEL_ID) is working_lock
+            assert working_lock.locked() is False
+
+            chat = client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": MODEL_ID,
+                    "messages": [{"role": "user", "content": "still available"}],
+                    "max_tokens": 16,
+                    "stream": False,
+                },
+            )
+            assert chat.status_code == 200, chat.text
+            assert chat.json()["choices"][0]["message"]["content"]
+        finally:
+            release_replacement.set()
+
+        entry = _wait_for_device(client, "NPU")
+        assert entry["device"] == "NPU"
+
+
 def test_newest_device_request_retargets_in_flight_first_load() -> None:
     first_build_started = threading.Event()
     release_first_build = threading.Event()
