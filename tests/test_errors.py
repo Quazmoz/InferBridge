@@ -70,6 +70,33 @@ def test_format_model_convert_error_tokenizer_dependency_message(monkeypatch):
     assert "openvino-tokenizers" in msg
 
 
+def test_format_model_convert_error_collapses_nested_failure_prefixes():
+    exc = RuntimeError(
+        "Conversion failed: RuntimeError: Conversion failed: Conversion failed: "
+        "Command '['optimum-cli', 'export']' returned non-zero exit status 1."
+    )
+
+    msg = errors.format_model_convert_error(exc)
+
+    assert msg == (
+        "Conversion failed: Command '['optimum-cli', 'export']' returned non-zero exit status 1."
+    )
+    assert msg.count("Conversion failed") == 1
+
+
+def test_format_model_convert_error_collapses_traceback_wrapper():
+    exc = RuntimeError(
+        "optimum-cli failed\n"
+        "Traceback (most recent call last):\n"
+        "RuntimeError: Conversion failed: OSError: disk full"
+    )
+
+    msg = errors.format_model_convert_error(exc)
+
+    assert msg == "Conversion failed: OSError: disk full"
+    assert msg.count("Conversion failed") == 1
+
+
 def test_format_model_load_error_tls_message_and_bundle(monkeypatch):
     monkeypatch.setenv("REQUESTS_CA_BUNDLE", r"C:\certs\corp.pem")
     msg = errors.format_model_load_error(ssl.SSLCertVerificationError("CERTIFICATE_VERIFY_FAILED"))
