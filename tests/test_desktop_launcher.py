@@ -350,9 +350,7 @@ def test_packaged_converter_failure_preserves_previous_model(monkeypatch, tmp_pa
     monkeypatch.setattr(desktop_launcher.sys, "frozen", True, raising=False)
 
     def fake_converter_main(_arguments):
-        model_converter._run_model_export_command(
-            ["optimum-cli", "export", "openvino", str(final)]
-        )
+        model_converter._run_model_export_command(["optimum-cli", "export", "openvino", str(final)])
         return 0
 
     monkeypatch.setattr(model_converter, "main", fake_converter_main)

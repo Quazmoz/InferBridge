@@ -177,20 +177,34 @@ def test_incomplete_output_rejects_a_dangling_link_before_exists_check(
 ) -> None:
     manager = _manager(tmp_path)
     cfg = manager.catalog[MODEL_ID]
-    target = cfg.abs_path(model_recovery._base_dir())
+    model_dir = cfg.abs_path(model_recovery._base_dir())
+    model_dir.parent.mkdir(parents=True, exist_ok=True)
+    original_lstat = Path.lstat
     original_is_symlink = Path.is_symlink
 
+    # A dangling link answers lstat() but reports exists() == False, and carries no
+    # reparse attribute, so only the is_symlink() branch of the guard can catch it.
+    def fake_lstat(path: Path):
+        if path == model_dir:
+            return SimpleNamespace(
+                st_file_attributes=0,
+                st_mode=original_lstat(model_dir.parent).st_mode,
+            )
+        return original_lstat(path)
+
     def fake_is_symlink(path: Path) -> bool:
-        if path == target:
+        if path == model_dir:
             return True
         return original_is_symlink(path)
 
+    monkeypatch.setattr(Path, "lstat", fake_lstat)
     monkeypatch.setattr(Path, "is_symlink", fake_is_symlink)
 
     with pytest.raises(RecoveryConflict) as captured:
         model_recovery_cleanup._remove_incomplete_output(manager, cfg)
 
     assert captured.value.code == "unsafe_output_path"
+    assert not model_dir.exists()
 
 
 def test_incomplete_output_rejects_windows_junction_before_cleanup(

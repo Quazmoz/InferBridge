@@ -52,10 +52,12 @@ def _wait_for_load_task(client: TestClient, timeout: float = 10.0) -> dict:
     manager = client.app.state.manager
     last_entry: dict = {}
     while time.time() < deadline:
-        last_entry = _model_entry(client)
         task = manager.load_tasks.get(MODEL_ID)
         if task is None or task.done():
-            return last_entry
+            # Read the entry only after the task settled. Sampling it first races the
+            # task's own final status and progress update.
+            return _model_entry(client)
+        last_entry = _model_entry(client)
         time.sleep(0.02)
     raise AssertionError(f"{MODEL_ID} load did not settle; last status was {last_entry}")
 
