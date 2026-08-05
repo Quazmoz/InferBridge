@@ -14,6 +14,7 @@ on:
       - "runtime/model_converter.py"
       - "runtime/model_output_transaction.py"
       - "tests/test_desktop_launcher.py"
+      - "tests/test_engine_handoff_catalog.py"
       - "tests/test_engine_handoff_safety.py"
       - "tests/test_errors.py"
       - "tests/test_model_artifacts.py"
@@ -35,6 +36,7 @@ on:
       - "runtime/model_converter.py"
       - "runtime/model_output_transaction.py"
       - "tests/test_desktop_launcher.py"
+      - "tests/test_engine_handoff_catalog.py"
       - "tests/test_engine_handoff_safety.py"
       - "tests/test_errors.py"
       - "tests/test_model_artifacts.py"
@@ -92,6 +94,7 @@ jobs:
         run: >-
           pytest
           tests/test_desktop_launcher.py
+          tests/test_engine_handoff_catalog.py
           tests/test_engine_handoff_safety.py
           tests/test_errors.py
           tests/test_model_artifacts.py
