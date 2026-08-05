@@ -11,6 +11,7 @@ from app import model_recovery, model_recovery_cleanup
 from app.config import Settings
 from app.model_manager import ModelManager
 from app.model_recovery import RecoveryConflict
+from runtime.model_output_transaction import model_output_transaction_paths
 
 MODEL_ID = "cleanup-model"
 
@@ -190,6 +191,21 @@ def test_incomplete_output_rejects_a_dangling_link_before_exists_check(
         model_recovery_cleanup._remove_incomplete_output(manager, cfg)
 
     assert captured.value.code == "unsafe_output_path"
+
+
+def test_incomplete_output_cleanup_removes_transaction_staging(tmp_path: Path) -> None:
+    manager = _manager(tmp_path)
+    cfg = manager.catalog[MODEL_ID]
+    model_dir = cfg.abs_path(model_recovery._base_dir())
+    staging_dir, _backup_dir = model_output_transaction_paths(model_dir)
+    staging_dir.mkdir(parents=True)
+    (staging_dir / "partial.bin").write_bytes(b"partial")
+
+    removed = model_recovery_cleanup._remove_incomplete_output(manager, cfg)
+
+    assert removed is True
+    assert not staging_dir.exists()
+    assert not model_dir.exists()
 
 
 def test_restart_download_keeps_recovery_when_cleanup_remains_locked(
