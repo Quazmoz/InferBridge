@@ -109,6 +109,21 @@ def _remove_tree(path: Path, *, description: str) -> bool:
     ) from last_error
 
 
+def _output_state_with_staging(cfg: Any) -> str:
+    """Include transaction staging in recovery's incomplete-output classification."""
+
+    from app import model_recovery, model_registry
+    from runtime.model_output_transaction import model_output_transaction_paths
+
+    model_dir = cfg.abs_path(model_recovery._base_dir())
+    if model_registry.is_openvino_model_dir(model_dir):
+        return "complete"
+    staging_dir, _backup_dir = model_output_transaction_paths(model_dir)
+    if model_dir.exists() or _path_exists(staging_dir):
+        return "incomplete"
+    return "missing"
+
+
 def _remove_incomplete_output(manager: Any, cfg: Any) -> bool:
     from app import model_recovery
     from runtime.model_output_transaction import model_output_transaction_paths
@@ -169,12 +184,13 @@ def _remove_download_cache(cfg: Any) -> bool:
 
 
 def install_model_recovery_cleanup() -> None:
-    """Replace recovery's raw tree deletion helpers with resilient equivalents."""
+    """Replace recovery's raw deletion and output-state helpers with resilient versions."""
 
     from app import model_recovery
 
     if getattr(model_recovery, _INSTALL_FLAG, False):
         return
+    model_recovery._output_state = _output_state_with_staging
     model_recovery._remove_incomplete_output = _remove_incomplete_output
     model_recovery._remove_download_cache = _remove_download_cache
     setattr(model_recovery, _INSTALL_FLAG, True)
