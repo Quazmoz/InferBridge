@@ -14,6 +14,8 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 _INSTALL_FLAG = "_ENGINE_HANDOFF_SAFETY_INSTALLED"
+_CURRENT_MODEL_AVAILABLE_COPY = "The currently loaded model remains available…"
+_FIRST_LOAD_COPY = "First load can take several minutes…"
 
 
 class ModelBusyError(ValueError):
@@ -31,6 +33,14 @@ def _retained_task_cancellation() -> asyncio.CancelledError | None:
 
 def _active(task: asyncio.Task[Any] | None) -> bool:
     return bool(task is not None and not task.done())
+
+
+def _accurate_load_message(message: str, *, has_loaded_engine: bool) -> str:
+    """Avoid claiming continuity when the model is being loaded for the first time."""
+
+    if has_loaded_engine:
+        return message
+    return message.replace(_CURRENT_MODEL_AVAILABLE_COPY, _FIRST_LOAD_COPY)
 
 
 def _apply_switching_capabilities(entry: dict[str, Any], *, switching: bool) -> dict[str, Any]:
@@ -101,6 +111,7 @@ def install_engine_handoff_safety() -> None:
 
     original_unload = manager_class.unload
     original_catalog_entry = manager_class.catalog_entry
+    original_set_progress = manager_class._set_progress
 
     async def generate_with_current_engine(self, engine, prompt, params):
         async with self._track_generation():
@@ -159,6 +170,28 @@ def install_engine_handoff_safety() -> None:
                     if pending_cancellation is not None:
                         raise pending_cancellation
 
+    def set_progress_with_accurate_load_copy(
+        self,
+        model_id: str,
+        phase: str,
+        message: str,
+        *,
+        percent: float | None = None,
+        append_log: str | None = None,
+    ) -> None:
+        message = _accurate_load_message(
+            message,
+            has_loaded_engine=model_id in self.engines,
+        )
+        original_set_progress(
+            self,
+            model_id,
+            phase,
+            message,
+            percent=percent,
+            append_log=append_log,
+        )
+
     def catalog_entry_with_handoff(self, model_id: str) -> dict[str, Any]:
         entry = original_catalog_entry(self, model_id)
         load_task = getattr(self, "load_tasks", {}).get(model_id)
@@ -187,6 +220,7 @@ def install_engine_handoff_safety() -> None:
 
     manager_class.generate = generate_with_current_engine
     manager_class.stream = stream_with_current_engine
+    manager_class._set_progress = set_progress_with_accurate_load_copy
     manager_class.catalog_entry = catalog_entry_with_handoff
     manager_class.unload = unload_when_idle
     setattr(manager_class, _INSTALL_FLAG, True)
