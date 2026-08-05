@@ -123,6 +123,16 @@ def _remove_incomplete_output(manager: Any, cfg: Any) -> bool:
         )
     model_dir = model_recovery._ensure_removable_model_path(manager, cfg)
 
+    ensure_within = getattr(manager, "_ensure_within_models_dir", None)
+    if callable(ensure_within):
+        try:
+            ensure_within(model_dir)
+        except ValueError as exc:
+            raise model_recovery.RecoveryConflict(
+                "unsafe_output_path",
+                "The incomplete output is outside the configured model directory.",
+            ) from exc
+
     staging_dir, _backup_dir = model_output_transaction_paths(model_dir)
     if staging_dir.is_symlink() or (_path_exists(staging_dir) and not staging_dir.is_dir()):
         raise model_recovery.RecoveryConflict(
