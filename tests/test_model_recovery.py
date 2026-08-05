@@ -43,6 +43,16 @@ def _manager(tmp_path: Path) -> ModelManager:
     return ModelManager(_settings(tmp_path))
 
 
+def _write_ready_model(model_dir: Path) -> None:
+    model_dir.mkdir(parents=True, exist_ok=True)
+    (model_dir / "openvino_model.xml").write_text(
+        "<net name='model' version='11'></net>",
+        encoding="utf-8",
+    )
+    (model_dir / "openvino_model.bin").write_bytes(b"weights")
+    (model_dir / "config.json").write_text("{}", encoding="utf-8")
+
+
 def _prepare_interrupted_conversion(manager: ModelManager, tmp_path: Path) -> dict:
     model_dir = Path(manager.catalog[MODEL_ID].model_path)
     model_dir.mkdir(parents=True, exist_ok=True)
@@ -126,8 +136,7 @@ def test_retry_failed_load_reuses_complete_output(monkeypatch, tmp_path) -> None
     _prepare_cache(monkeypatch, tmp_path)
     manager = _manager(tmp_path)
     model_dir = Path(manager.catalog[MODEL_ID].model_path)
-    model_dir.mkdir(parents=True)
-    (model_dir / "openvino_model.xml").write_text("<xml/>", encoding="utf-8")
+    _write_ready_model(model_dir)
 
     manager._set_status(MODEL_ID, "loading")
     manager._set_progress(MODEL_ID, "loading", "Loading model")

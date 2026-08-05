@@ -7,6 +7,7 @@ records, preserves cancellation/error terminal states, and exposes a stable API 
 
 from __future__ import annotations
 
+import collections
 import logging
 import uuid
 from typing import Any
@@ -19,6 +20,7 @@ _INSTALL_FLAG = "_STRUCTURED_PROGRESS_PROTOCOL_INSTALLED"
 _TERMINAL_STATES = {"cancelled", "error"}
 _CONVERSION_PHASES = {"downloading", "converting", "finalizing"}
 _CONVERSION_STATUSES = {"queued_convert", "converting"}
+_CONVERTER_DIAGNOSTIC_TAIL_LINES = 200
 
 
 def _ensure_state(manager: Any) -> None:
@@ -179,7 +181,9 @@ def install_structured_progress_protocol() -> None:
             return []
         _ensure_state(self)
 
-        lines: list[str] = []
+        lines: collections.deque[str] = collections.deque(
+            maxlen=_CONVERTER_DIAGNOSTIC_TAIL_LINES
+        )
         while True:
             raw = await stream.readline()
             if not raw:
@@ -258,7 +262,7 @@ def install_structured_progress_protocol() -> None:
                     percent=next_percent,
                     append_log=line,
                 )
-        return lines
+        return list(lines)
 
     manager_class.__init__ = init_with_progress_operations
     manager_class._set_progress = set_progress_with_operation

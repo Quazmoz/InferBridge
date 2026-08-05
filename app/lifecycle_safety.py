@@ -25,6 +25,23 @@ def _mapping(manager: Any, name: str) -> dict:
     return value
 
 
+def _reject_reparse_point_delete(manager: Any, model_id: str) -> None:
+    """Keep Delete from traversing a symbolic link or Windows junction."""
+
+    from app.config import BASE_DIR
+    from app.model_library_conversion import is_reparse_point
+
+    cfg = manager.catalog.get(model_id)
+    if cfg is None:
+        return
+    model_dir = cfg.abs_path(BASE_DIR)
+    if is_reparse_point(model_dir):
+        raise ValueError(
+            f"Refusing to delete model '{model_id}' through a symbolic link or Windows junction. "
+            "Remove the link manually after confirming its target."
+        )
+
+
 def install_model_lifecycle_safety() -> None:
     """Install conversion/load/delete coordination on ``ModelManager``."""
 
@@ -211,6 +228,7 @@ def install_model_lifecycle_safety() -> None:
         if _active(convert_task):
             raise ValueError(f"Model '{model_id}' is still converting and cannot be deleted.")
 
+        _reject_reparse_point_delete(self, model_id)
         _mapping(self, _FOLLOWUPS_ATTR).pop(model_id, None)
         _mapping(self, _CALLBACKS_ATTR).pop(model_id, None)
         return original_delete(self, model_id)

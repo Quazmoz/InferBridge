@@ -1,3 +1,4 @@
+import errno
 import ssl
 
 from app import errors
@@ -68,6 +69,65 @@ def test_format_model_convert_error_tokenizer_dependency_message(monkeypatch):
 
     assert "matching versions" in msg
     assert "openvino-tokenizers" in msg
+
+
+def test_format_model_convert_error_collapses_nested_failure_prefixes():
+    exc = RuntimeError(
+        "Conversion failed: RuntimeError: Conversion failed: Conversion failed: "
+        "Command '['optimum-cli', 'export']' returned non-zero exit status 1."
+    )
+
+    msg = errors.format_model_convert_error(exc)
+
+    assert msg == (
+        "Conversion failed: Command '['optimum-cli', 'export']' returned non-zero exit status 1."
+    )
+    assert msg.count("Conversion failed") == 1
+
+
+def test_format_model_convert_error_collapses_traceback_wrapper():
+    exc = RuntimeError(
+        "optimum-cli failed\n"
+        "Traceback (most recent call last):\n"
+        "RuntimeError: Conversion failed: OSError: disk full"
+    )
+
+    msg = errors.format_model_convert_error(exc)
+
+    assert "not enough free disk space" in msg
+    assert "disk full" not in msg.lower()
+
+
+def test_format_model_convert_error_reports_disk_exhaustion_from_cause():
+    root = OSError(errno.ENOSPC, "No space left on device")
+    wrapper = RuntimeError("Optimum export failed")
+    wrapper.__cause__ = root
+
+    msg = errors.format_model_convert_error(wrapper)
+
+    assert "not enough free disk space" in msg
+    assert "previously working model" in msg
+
+
+def test_format_model_convert_error_reports_windows_file_lock():
+    exc = PermissionError(errno.EACCES, "Access is denied")
+
+    msg = errors.format_model_convert_error(exc)
+
+    assert "Windows is using or blocking" in msg
+    assert "antivirus" in msg
+    assert "previously working model" in msg
+
+
+def test_format_model_convert_error_preserves_cross_process_lock_guidance():
+    exc = RuntimeError(
+        "Another InferBridge process is already preparing this model. Wait for it to finish."
+    )
+
+    msg = errors.format_model_convert_error(exc)
+
+    assert "Another InferBridge process" in msg
+    assert "close the other InferBridge instance" in msg
 
 
 def test_format_model_load_error_tls_message_and_bundle(monkeypatch):

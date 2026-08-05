@@ -22,6 +22,7 @@ from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import BinaryIO, TextIO
 
+from runtime.model_output_transaction import staged_model_output
 from runtime.progress_protocol import ProgressEventEmitter
 
 _venv_bin = str(Path(sys.executable).parent)
@@ -252,7 +253,10 @@ def _run_streaming_command(
     *,
     progress_emitter: ProgressEventEmitter | None = None,
 ) -> None:
-    """Run *command*, forwarding human logs and emitting structured progress."""
+    """Run one conversion command and forward its human and structured output."""
+
+    if not command:
+        raise ValueError("Conversion command cannot be empty.")
 
     environment = os.environ.copy()
     environment.setdefault("PYTHONUNBUFFERED", "1")
@@ -286,6 +290,31 @@ def _run_streaming_command(
 
     if return_code != 0:
         raise subprocess.CalledProcessError(return_code, command)
+
+
+def _run_model_export_command(
+    command: list[str],
+    *,
+    progress_emitter: ProgressEventEmitter | None = None,
+) -> None:
+    """Run an export in validated staging and publish it transactionally."""
+
+    if not command:
+        raise ValueError("Conversion command cannot be empty.")
+
+    final_output = Path(command[-1])
+    with staged_model_output(final_output) as staging_output:
+        staged_command = [*command[:-1], str(staging_output)]
+        try:
+            _run_streaming_command(staged_command, progress_emitter=progress_emitter)
+        except subprocess.CalledProcessError as exc:
+            # Keep private transaction paths out of parent-process diagnostics.
+            raise subprocess.CalledProcessError(
+                exc.returncode,
+                command,
+                output=exc.output,
+                stderr=exc.stderr,
+            ) from exc
 
 
 def export_model(
@@ -344,7 +373,7 @@ def export_model(
     )
     progress.emit("downloading", "Downloading model metadata and weights…", percent=0)
     try:
-        _run_streaming_command(command, progress_emitter=progress)
+        _run_model_export_command(command, progress_emitter=progress)
     except BaseException as exc:
         progress.emit("error", f"Conversion failed: {exc}")
         raise
