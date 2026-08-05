@@ -8,6 +8,7 @@ on:
       - "app/desktop_launcher.py"
       - "app/engine_handoff_safety.py"
       - "app/errors.py"
+      - "app/lifecycle_safety.py"
       - "app/model_load_target.py"
       - "app/model_recovery_cleanup.py"
       - "runtime/model_artifacts.py"
@@ -17,6 +18,7 @@ on:
       - "tests/test_engine_handoff_catalog.py"
       - "tests/test_engine_handoff_safety.py"
       - "tests/test_errors.py"
+      - "tests/test_lifecycle_delete_safety.py"
       - "tests/test_model_artifacts.py"
       - "tests/test_model_converter.py"
       - "tests/test_model_load_target.py"
@@ -30,6 +32,7 @@ on:
       - "app/desktop_launcher.py"
       - "app/engine_handoff_safety.py"
       - "app/errors.py"
+      - "app/lifecycle_safety.py"
       - "app/model_load_target.py"
       - "app/model_recovery_cleanup.py"
       - "runtime/model_artifacts.py"
@@ -39,6 +42,7 @@ on:
       - "tests/test_engine_handoff_catalog.py"
       - "tests/test_engine_handoff_safety.py"
       - "tests/test_errors.py"
+      - "tests/test_lifecycle_delete_safety.py"
       - "tests/test_model_artifacts.py"
       - "tests/test_model_converter.py"
       - "tests/test_model_load_target.py"
@@ -82,6 +86,7 @@ jobs:
           app/desktop_launcher.py
           app/engine_handoff_safety.py
           app/errors.py
+          app/lifecycle_safety.py
           app/model_load_target.py
           app/model_recovery_cleanup.py
           runtime/model_artifacts.py
@@ -97,6 +102,7 @@ jobs:
           tests/test_engine_handoff_catalog.py
           tests/test_engine_handoff_safety.py
           tests/test_errors.py
+          tests/test_lifecycle_delete_safety.py
           tests/test_model_artifacts.py
           tests/test_model_converter.py
           tests/test_model_load_target.py
