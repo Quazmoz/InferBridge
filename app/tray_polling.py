@@ -86,7 +86,10 @@ class TrayPollingMixin:
             return
         name = command.get("command") if isinstance(command, dict) else None
         if name == "quit":
-            self.stop_event.set()
+            # Setting the stop event alone leaves the pystray message loop running, so the
+            # process keeps holding its installation files. An installer or upgrade asking
+            # this instance to exit needs the same full shutdown the tray menu performs.
+            self.quit()
         elif name in {"start", "start-open-chat"} and not self.controller.running:
             self._start_server(open_chat=name == "start-open-chat")
         elif name == "start-open-chat":

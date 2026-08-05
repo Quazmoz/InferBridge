@@ -12,23 +12,25 @@ OpenVINO GenAI remains the inference runtime. InferBridge does not replace OpenV
 
 ## Project and release status
 
-**Current stable release: `0.6.1`.** This historical release was published before the InferBridge rename. Its repository links and artifact filenames intentionally retain the former product identity.
+**Current stable release: `0.8.0`.**
 
-**Current development version: `0.7.0`.** Version 0.7.0 completes the InferBridge product and repository rename while preserving existing models, settings, command-line compatibility, installer upgrade identity, data paths, API contracts, and approved current and legacy update sources. No 0.7.0 release has been published.
+- [Windows installer](https://github.com/Quazmoz/InferBridge/releases/download/v0.8.0/InferBridge-0.8.0-windows-x64-installer.exe)
+- [Portable ZIP](https://github.com/Quazmoz/InferBridge/releases/download/v0.8.0/InferBridge-0.8.0-windows-x64-portable.zip)
+- [SHA-256 checksums](https://github.com/Quazmoz/InferBridge/releases/download/v0.8.0/InferBridge-0.8.0-checksums.txt)
 
-Historical `v0.6.1` downloads:
+**Current pre-release: `0.9.2-beta.1`.** Beta builds ship ahead of the next stable release and are marked pre-release on GitHub. Context budget visibility, model preparation recovery, and stage-aware preparation watchdogs are present only in the `0.9.x` beta artifacts; the published 0.8.0 release notes described those features, but they landed after the `v0.8.0` tag was cut. See [0.9.2-beta.1](docs/releases/0.9.2-beta.1.md) for the installer upgrade and uninstall fixes.
 
-- [Windows installer](https://github.com/Quazmoz/openvino-windows-llm/releases/download/v0.6.1/OpenVINO-Windows-LLM-0.6.1-windows-x64-installer.exe)
-- [Portable ZIP](https://github.com/Quazmoz/openvino-windows-llm/releases/download/v0.6.1/OpenVINO-Windows-LLM-0.6.1-windows-x64-portable.zip)
-- [SHA-256 checksums](https://github.com/Quazmoz/openvino-windows-llm/releases/download/v0.6.1/OpenVINO-Windows-LLM-0.6.1-checksums.txt)
+- [Windows installer](https://github.com/Quazmoz/InferBridge/releases/download/v0.9.2-beta.1/InferBridge-0.9.2-beta.1-windows-x64-installer.exe)
+- [Portable ZIP](https://github.com/Quazmoz/InferBridge/releases/download/v0.9.2-beta.1/InferBridge-0.9.2-beta.1-windows-x64-portable.zip)
+- [SHA-256 checksums](https://github.com/Quazmoz/InferBridge/releases/download/v0.9.2-beta.1/InferBridge-0.9.2-beta.1-checksums.txt)
 
-New releases use the canonical `Quazmoz/InferBridge` repository and `InferBridge-<version>` artifact names.
+Releases from `v0.7.0` onward use the canonical `Quazmoz/InferBridge` repository and `InferBridge-<version>` artifact names. Releases through `v0.6.3` were published before the rename, and their repository links and artifact filenames intentionally retain the former product identity.
 
 > **Validation scope:** Mock-mode tests validate API, UI, packaging, lifecycle, and state contracts. Real CPU, GPU, and NPU claims require the Windows certification harness on suitable hardware with mock mode disabled. An unsigned development installer is not a signed production release.
 
-The retained 0.6.1 evidence comes from one Intel Core Ultra 9 185H laptop running Windows 11 build 26200 and OpenVINO `2026.2.1`. It is not a claim that every Intel system, model, precision, driver, or OpenVINO release will behave the same way.
+The retained 0.6.1 hardware evidence comes from one Intel Core Ultra 9 185H laptop running Windows 11 build 26200 and OpenVINO `2026.2.1`. It is not a claim that every Intel system, model, precision, driver, or OpenVINO release will behave the same way, and no later release has been recertified on hardware.
 
-> **Signing status:** The historical 0.6.1 installer and portable ZIP are not Authenticode-signed. Windows SmartScreen may warn on first launch. Verify downloads against the published SHA-256 checksums.
+> **Signing status:** No published InferBridge installer or portable ZIP is Authenticode-signed. Windows reports an unknown publisher and SmartScreen may warn on first launch. Verify downloads against the published SHA-256 checksums.
 
 ## Download, install, choose a model, and chat
 
@@ -164,7 +166,14 @@ See [QUICKSTART.md](QUICKSTART.md) for the complete setup flow.
 
 - [InferBridge migration and repository rename](docs/INFERBRIDGE_MIGRATION.md)
 - [InferBridge identity inventory](docs/INFERBRIDGE_IDENTITY_INVENTORY.md)
-- [InferBridge 0.7.0 release notes](docs/releases/0.7.0.md)
+
+### Release notes
+
+- [0.9.2-beta.1](docs/releases/0.9.2-beta.1.md)
+- [0.9.1-beta.1](docs/releases/0.9.1-beta.1.md)
+- [0.9.0-beta.1](docs/releases/0.9.0-beta.1.md)
+- [0.8.0](docs/releases/0.8.0.md)
+- [0.7.0](docs/releases/0.7.0.md) — product and repository rename
 
 ## Implemented capabilities
 
@@ -230,7 +239,7 @@ Portable mode uses:
 
 Configuration, logs, models, Hugging Face cache, OpenVINO compiled cache, benchmarks, diagnostics, and onboarding state are separated. Normal upgrades and uninstall preserve mutable data unless the user explicitly requests removal.
 
-InferBridge 0.7.0 recognizes the legacy `%LOCALAPPDATA%\OpenVINOWindowsLLM` data directory and does not automatically move or merge multi-gigabyte model data. See [DATA_PATHS.md](docs/DATA_PATHS.md) and [UPGRADE_ROLLBACK.md](docs/UPGRADE_ROLLBACK.md).
+InferBridge 0.7.0 and later recognize the legacy `%LOCALAPPDATA%\OpenVINOWindowsLLM` data directory and do not automatically move or merge multi-gigabyte model data. See [DATA_PATHS.md](docs/DATA_PATHS.md) and [UPGRADE_ROLLBACK.md](docs/UPGRADE_ROLLBACK.md).
 
 Existing environment variables remain supported:
 

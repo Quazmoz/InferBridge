@@ -29,9 +29,20 @@ _OPENVINO_NATIVE_NAMES = {
 }
 
 
+def _discard_stream() -> object | None:
+    """Open a writable sink for a windowed process that has no usable descriptor."""
+
+    try:
+        return open(os.devnull, "w", buffering=1, encoding="utf-8", errors="backslashreplace")
+    except OSError:
+        return None
+
+
 def _restore_output(name: str, descriptor: int) -> None:
     if getattr(sys, name, None) is not None:
         return
+    stream: object | None
+    duplicate: int | None = None
     try:
         duplicate = os.dup(descriptor)
         stream = os.fdopen(
@@ -42,8 +53,16 @@ def _restore_output(name: str, descriptor: int) -> None:
             errors="backslashreplace",
         )
     except OSError:
-        return
-    setattr(sys, name, stream)
+        # The windowed launcher started without a console has no standard descriptor to
+        # duplicate. Leaving the attribute as None is not safe: packaged third-party code
+        # writes to and flushes these streams unconditionally, and an AttributeError there
+        # aborts startup. Discard the output instead of failing.
+        if duplicate is not None:
+            with contextlib.suppress(OSError):
+                os.close(duplicate)
+        stream = _discard_stream()
+    if stream is not None:
+        setattr(sys, name, stream)
 
 
 def _restore_input() -> None:
@@ -220,9 +239,11 @@ def _validate_windows_native_runtime() -> None:
 
 def _optimum_command_name(command: object) -> str:
     command_metadata = getattr(command, "COMMAND", None)
-    return str(
-        getattr(command_metadata, "name", "") or getattr(command, "name", "") or ""
-    ).strip().lower()
+    return (
+        str(getattr(command_metadata, "name", "") or getattr(command, "name", "") or "")
+        .strip()
+        .lower()
+    )
 
 
 def _validate_packaged_optimum_cli() -> None:

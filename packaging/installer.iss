@@ -50,7 +50,13 @@ VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription={#MyAppName} installer
 VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppVersionNumeric}
-CloseApplications=yes
+; The tray launcher and its server child are windowed processes with no top-level window,
+; so Restart Manager's graceful shutdown cannot close them and an upgrade previously failed
+; with "Setup was unable to automatically close all applications". PrepareToInstall asks a
+; running instance to exit through its own command file first; force is the backstop that
+; guarantees the locked files are released. Force is scoped by Restart Manager to processes
+; holding files under {app}.
+CloseApplications=force
 CloseApplicationsFilter={#MyAppExeName},{#MyLegacyAppExeName},*.dll,*.pyd
 RestartApplications=yes
 SetupLogging=yes
@@ -82,6 +88,11 @@ Type: files; Name: "{app}\python*.dll"
 Type: files; Name: "{app}\*.pyd"
 Type: files; Name: "{app}\*.dll"
 
+; The uninstaller removes its own files last, so the emptied program directory can survive
+; the run. Removing it only when empty can never take user files with it.
+[UninstallDelete]
+Type: dirifempty; Name: "{app}"
+
 [Files]
 Source: "{#SourceRoot}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
@@ -93,6 +104,142 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDi
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
 
 [Code]
+const
+  ShutdownWaitMilliseconds = 15000;
+  ShutdownPollMilliseconds = 500;
+  ForceStopSettleMilliseconds = 2000;
+  RemoveTreeAttempts = 3;
+  RemoveTreeSettleMilliseconds = 750;
+  RunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
+
+function DataRootPath(Index: Integer): String;
+begin
+  if Index = 0 then
+    Result := ExpandConstant('{localappdata}\InferBridge')
+  else
+    Result := ExpandConstant('{localappdata}\OpenVINOWindowsLLM');
+end;
+
+function InstanceRunning(): Boolean;
+var
+  Index: Integer;
+  LockFile: String;
+begin
+  Result := False;
+  for Index := 0 to 1 do
+  begin
+    LockFile := DataRootPath(Index) + '\desktop-instance.lock';
+    if not FileExists(LockFile) then
+      Continue;
+    { A live tray holds this file open without delete sharing. A lock file left behind by
+      an earlier run deletes cleanly and the application recreates it at the next start. }
+    if not DeleteFile(LockFile) then
+    begin
+      Result := True;
+      exit;
+    end;
+  end;
+end;
+
+procedure RequestGracefulShutdown();
+var
+  Index: Integer;
+  Root: String;
+begin
+  for Index := 0 to 1 do
+  begin
+    Root := DataRootPath(Index);
+    if DirExists(Root) then
+      SaveStringToFile(
+        Root + '\tray-command.json',
+        '{"command": "quit", "created_at": "installer"}',
+        False);
+  end;
+end;
+
+procedure TerminateImage(const ImageName: String);
+var
+  ResultCode: Integer;
+begin
+  { /T also ends the server child, which holds the same program files as its parent. }
+  Exec(
+    ExpandConstant('{sys}\taskkill.exe'),
+    '/F /T /IM "' + ImageName + '"',
+    '',
+    SW_HIDE,
+    ewWaitUntilTerminated,
+    ResultCode);
+end;
+
+procedure StopRunningInstance();
+var
+  Waited: Integer;
+begin
+  if not InstanceRunning() then
+    exit;
+  { Ask the running instance to stop its server and exit on its own so in-flight state is
+    written out. }
+  RequestGracefulShutdown();
+  Waited := 0;
+  while (Waited < ShutdownWaitMilliseconds) and InstanceRunning() do
+  begin
+    Sleep(ShutdownPollMilliseconds);
+    Waited := Waited + ShutdownPollMilliseconds;
+  end;
+  if not InstanceRunning() then
+    exit;
+  { A release older than 0.9.2-beta.1 ignores the shutdown request and a hung instance
+    cannot honour it. Setup could fall back to a forced Restart Manager pass, but the
+    uninstaller performs no such pass, so terminate here instead of leaving the program
+    directory and the user data directory behind while reporting success.
+
+    This only runs while the installed instance still holds its lock, so an unrelated
+    portable instance is normally untouched; one running at the same moment is ended too. }
+  TerminateImage('{#MyAppExeName}');
+  TerminateImage('{#MyLegacyAppExeName}');
+  Sleep(ForceStopSettleMilliseconds);
+end;
+
+function RemoveTree(const Path: String): Boolean;
+var
+  Attempt, ResultCode: Integer;
+begin
+  if not DirExists(Path) then
+  begin
+    Result := True;
+    exit;
+  end;
+  for Attempt := 1 to RemoveTreeAttempts do
+  begin
+    DelTree(Path, True, True, True);
+    if not DirExists(Path) then
+    begin
+      Result := True;
+      exit;
+    end;
+    { Read-only, system, and hidden attributes block deletion, and an antivirus scan or a
+      recently exited process can hold a handle for a moment. Clear the attributes, let the
+      transient handle close, and try again before reporting the path as remaining. }
+    Exec(
+      ExpandConstant('{cmd}'),
+      '/c attrib -r -s -h "' + Path + '\*" /s /d',
+      '',
+      SW_HIDE,
+      ewWaitUntilTerminated,
+      ResultCode);
+    Sleep(RemoveTreeSettleMilliseconds);
+  end;
+  Result := not DirExists(Path);
+end;
+
+procedure RemoveStartupRegistration();
+begin
+  { Start with Windows survives uninstall otherwise, and Windows then tries to launch a
+    deleted executable at every logon. }
+  RegDeleteValue(HKCU, RunKey, 'InferBridge');
+  RegDeleteValue(HKCU, RunKey, 'OpenVINOWindowsLLM');
+end;
+
 function CoreVersionPart(const Value: String; PartIndex: Integer): Integer;
 var
   Clean, Segment: String;
@@ -159,20 +306,53 @@ begin
       mbConfirmation, MB_YESNO) = IDYES;
 end;
 
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  Result := '';
+  StopRunningInstance();
+end;
+
+function InitializeUninstall(): Boolean;
+begin
+  { Runs before any file is removed. Without this the tray keeps its program files and its
+    log files open, so the uninstaller leaves a partly populated installation behind. }
+  StopRunningInstance();
+  Result := True;
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
-  ResultCode: Integer;
+  Choice: Integer;
+  Remaining: String;
 begin
-  if CurUninstallStep = usPostUninstall then
+  if CurUninstallStep <> usPostUninstall then
+    exit;
+
+  Remaining := '';
+  RemoveStartupRegistration();
+  { The uninstaller only removes files it recorded at install time. Compiled Python caches
+    and any payload left by an interrupted upgrade are not recorded and would otherwise
+    keep the program directory alive. }
+  if not RemoveTree(ExpandConstant('{app}\_internal')) then
+    Remaining := Remaining + ExpandConstant('{app}\_internal') + #13#10;
+
+  Choice := SuppressibleMsgBox(
+    'Keep downloaded models, settings, logs, benchmark data, onboarding state, and configuration backups?' + #13#10 + #13#10 +
+    'Choose Yes to preserve data for a future installation. Choose No to remove the user data directory.',
+    mbConfirmation, MB_YESNO, IDYES);
+  if Choice = IDNO then
   begin
-    ResultCode := SuppressibleMsgBox(
-      'Keep downloaded models, settings, logs, benchmark data, onboarding state, and configuration backups?' + #13#10 + #13#10 +
-      'Choose Yes to preserve data for a future installation. Choose No to remove the user data directory.',
-      mbConfirmation, MB_YESNO, IDYES);
-    if ResultCode = IDNO then
-    begin
-      DelTree(ExpandConstant('{localappdata}\InferBridge'), True, True, True);
-      DelTree(ExpandConstant('{localappdata}\OpenVINOWindowsLLM'), True, True, True);
-    end;
+    if not RemoveTree(DataRootPath(0)) then
+      Remaining := Remaining + DataRootPath(0) + #13#10;
+    if not RemoveTree(DataRootPath(1)) then
+      Remaining := Remaining + DataRootPath(1) + #13#10;
   end;
+
+  { Reporting the exact paths beats silently discarding the DelTree result and telling the
+    user the uninstall succeeded while gigabytes of model data remain on disk. }
+  if Remaining <> '' then
+    SuppressibleMsgBox(
+      'These folders could not be removed completely:' + #13#10 + #13#10 + Remaining + #13#10 +
+      'Close any program still using them and delete them manually.',
+      mbInformation, MB_OK, IDOK);
 end;
