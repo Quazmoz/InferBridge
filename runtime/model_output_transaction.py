@@ -30,6 +30,16 @@ def _transaction_path(final_dir: Path, suffix: str) -> Path:
     return final_dir.parent / f".{final_dir.name}{suffix}"
 
 
+def model_output_transaction_paths(final_dir: str | Path) -> tuple[Path, Path]:
+    """Return the staging and backup paths owned by one model output transaction."""
+
+    final = Path(final_dir)
+    return (
+        _transaction_path(final, _STAGING_SUFFIX),
+        _transaction_path(final, _BACKUP_SUFFIX),
+    )
+
+
 def _clear_readonly_and_retry(function, path: str, _exc_info) -> None:
     os.chmod(path, stat.S_IWRITE)
     function(path)
@@ -124,8 +134,7 @@ def staged_model_output(final_dir: str | Path) -> Iterator[Path]:
         raise RuntimeError("Refusing to convert into a model directory symbolic link.")
 
     final.parent.mkdir(parents=True, exist_ok=True)
-    staging = _transaction_path(final, _STAGING_SUFFIX)
-    backup = _transaction_path(final, _BACKUP_SUFFIX)
+    staging, backup = model_output_transaction_paths(final)
 
     _recover_stale_backup(final, backup)
     _remove_path(staging)
@@ -141,4 +150,4 @@ def staged_model_output(final_dir: str | Path) -> Iterator[Path]:
         raise
 
 
-__all__ = ["staged_model_output"]
+__all__ = ["model_output_transaction_paths", "staged_model_output"]
