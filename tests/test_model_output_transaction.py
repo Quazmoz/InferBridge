@@ -31,6 +31,7 @@ def test_successful_staged_output_replaces_live_model(tmp_path):
     with staged_model_output(final) as staging:
         assert final.is_dir()
         assert staging == _staging(final)
+        assert not staging.exists()
         _write_model(staging, b"new")
 
     assert validate_openvino_model_dir(final).ready is True
@@ -45,6 +46,7 @@ def test_failed_conversion_preserves_previous_model(tmp_path):
 
     with pytest.raises(RuntimeError, match="converter failed"):
         with staged_model_output(final) as staging:
+            staging.mkdir()
             (staging / "partial.bin").write_bytes(b"partial")
             raise RuntimeError("converter failed")
 
@@ -60,6 +62,7 @@ def test_incomplete_success_output_is_rejected_without_replacing_model(tmp_path)
 
     with pytest.raises(RuntimeError, match="staged OpenVINO model is incomplete"):
         with staged_model_output(final) as staging:
+            staging.mkdir()
             (staging / "openvino_model.xml").write_text(
                 "<net name='model' version='11'></net>",
                 encoding="utf-8",
