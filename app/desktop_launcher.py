@@ -273,6 +273,23 @@ def _system_exit_code(value: object) -> int:
     return 2
 
 
+def _failure_detail(error: BaseException) -> str:
+    """Describe a frozen helper failure with its type and originating frame.
+
+    The parent server surfaces only the tail of this stream, and a windowed helper has
+    nowhere to show a traceback. A bare message such as "could not get source code" names
+    neither the exception type nor the module that raised it, so include both. Only the
+    file name is reported, never the full bundle path.
+    """
+
+    import traceback
+
+    detail = str(error).strip() or error.__class__.__name__
+    frames = traceback.extract_tb(error.__traceback__)
+    origin = f" at {Path(frames[-1].filename).name}:{frames[-1].lineno}" if frames else ""
+    return f"{error.__class__.__name__}: {detail}{origin}"
+
+
 def _run_packaged_converter(arguments: list[str]) -> int:
     """Run the converter and Optimum CLI inside the frozen helper process.
 
@@ -304,8 +321,21 @@ def _run_packaged_converter(arguments: list[str]) -> int:
                     "converting",
                     "Running packaged OpenVINO conversion…",
                 )
+            # A packaged conversion runs Optimum in this process, so tqdm and the
+            # Transformers loader draw on these streams directly. Route them through the
+            # same line emitter the subprocess path uses: carriage-return redraws become
+            # whole lines the parent's readline() can consume, stdout stays a pure JSON
+            # progress channel, and download progress reaches the packaged UI instead of
+            # a single static message for the whole export.
+            emitter = model_converter._ProgressLineEmitter(
+                progress_emitter,
+                human_stream=sys.stderr,
+            )
+            console = model_converter.ConsoleLineWriter(emitter.emit)
             previous = sys.argv
+            previous_stdout, previous_stderr = sys.stdout, sys.stderr
             sys.argv = list(command)
+            sys.stdout = sys.stderr = console
             try:
                 result = optimum_main()
             except SystemExit as exc:
@@ -316,7 +346,11 @@ def _run_packaged_converter(arguments: list[str]) -> int:
                     raise subprocess.CalledProcessError(code, command) from exc
                 result = 0
             finally:
+                # Restore first: the emitter writes to the real stderr it captured, so a
+                # failing drain must not leave this process without usable streams.
+                sys.stdout, sys.stderr = previous_stdout, previous_stderr
                 sys.argv = previous
+                console.drain()
             if isinstance(result, int) and result:
                 raise subprocess.CalledProcessError(result, command)
 
@@ -333,7 +367,11 @@ def _run_packaged_converter(arguments: list[str]) -> int:
                 print("Packaged model conversion cancelled.", file=sys.stderr, flush=True)
                 return 130
             except Exception as exc:  # noqa: BLE001 - frozen helper process boundary
-                print(f"Packaged model conversion failed: {exc}", file=sys.stderr, flush=True)
+                print(
+                    f"Packaged model conversion failed: {_failure_detail(exc)}",
+                    file=sys.stderr,
+                    flush=True,
+                )
                 return 2
         finally:
             model_converter.shutil.which = original_which
@@ -357,6 +395,33 @@ def _native_runtime_smoke() -> int:
     except Exception as exc:  # noqa: BLE001 - packaged native boundary
         print(f"Packaged OpenVINO native smoke test failed: {exc}", file=sys.stderr, flush=True)
         return 2
+    return 0
+
+
+def _conversion_import_smoke() -> int:
+    """Import the model-export chain that every packaged conversion needs.
+
+    ``optimum-cli export openvino`` imports these modules before it downloads a single
+    byte, and importing them executes decorators that read their own Python source with
+    ``inspect.getsource``. A bundle that ships only bytecode therefore fails every
+    conversion with ``OSError("could not get source code")`` while the same code works
+    from a source checkout. Import the chain during release validation so that
+    packaging regression fails the build instead of the user's first model download.
+    """
+
+    import importlib
+
+    for module in ("optimum.exporters.openvino", "optimum.intel.openvino"):
+        try:
+            importlib.import_module(module)
+        except Exception as exc:  # noqa: BLE001 - packaged conversion import boundary
+            print(
+                f"Packaged model conversion smoke test failed importing {module}: "
+                f"{type(exc).__name__}: {exc}",
+                file=sys.stderr,
+                flush=True,
+            )
+            return 2
     return 0
 
 
@@ -418,7 +483,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.convert_model:
         return _run_packaged_converter(remaining)
     if args.native_smoke:
-        return _native_runtime_smoke()
+        return _native_runtime_smoke() or _conversion_import_smoke()
     if remaining:
         parser.error(f"unrecognized arguments: {' '.join(remaining)}")
     if args.port < 1 or args.port > 65535:

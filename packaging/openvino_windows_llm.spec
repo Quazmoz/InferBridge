@@ -85,6 +85,16 @@ datas += collect_data_files("pystray", include_py_files=False)
 
 # Optimum performs dynamic command and exporter discovery. Conversion remains in the
 # same frozen directory, so the packaged launcher can dispatch the converter helper.
+#
+# These packages must ship their Python sources, not only the bytecode PyInstaller keeps
+# in its archive. Modules along the conversion import chain read their own source through
+# inspect.getsource while they are being imported: Transformers applies
+# add_start_docstrings_to_model_forward to optimum.intel.openvino model classes, and that
+# decorator calls inspect.getsource to measure the docstring indentation. linecache finds
+# no lines for an archived module, so a bytecode-only bundle raises
+# OSError("could not get source code") when `optimum-cli export openvino` imports
+# optimum.intel.openvino - before the first model byte is downloaded, which fails every
+# conversion in the installed application while the source checkout keeps working.
 for package in (
     "optimum",
     "optimum.intel",
@@ -96,7 +106,14 @@ for package in (
     "sentencepiece",
 ):
     hiddenimports += collect_submodules(package)
-    datas += collect_data_files(package, include_py_files=False)
+    datas += collect_data_files(package, include_py_files=True)
+
+# torch is pulled in transitively by Optimum rather than collected above, and its config
+# modules tokenize their own source in torch.utils._config_module.install_config_module
+# during `import torch`. Collect those sources here so the frozen converter cannot depend
+# on a third-party hook continuing to do it. Sources a hook already collected are
+# deduplicated, so this only guarantees the invariant.
+datas += collect_data_files("torch", include_py_files=True)
 
 for distribution in (
     "openvino",
