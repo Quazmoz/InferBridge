@@ -50,6 +50,23 @@ def test_truncated_ir_xml_is_not_ready(tmp_path):
     assert "truncated" in result.reason
 
 
+def test_thorough_validation_rejects_corruption_between_valid_xml_boundaries(tmp_path):
+    model_dir = tmp_path / "model"
+    model_dir.mkdir()
+    malformed = "<net>" + ("<layers></layers>" * 600) + "<broken></net>"
+    (model_dir / "openvino_model.xml").write_text(malformed, encoding="utf-8")
+    (model_dir / "openvino_model.bin").write_bytes(b"weights")
+    (model_dir / "config.json").write_text("{}", encoding="utf-8")
+
+    # Frequent model-list polling uses the bounded boundary probe.
+    assert validate_openvino_model_dir(model_dir).ready is True
+
+    # Publication parses the entire XML stream before replacing a working model.
+    result = validate_openvino_model_dir(model_dir, thorough=True)
+    assert result.ready is False
+    assert "malformed" in result.reason
+
+
 def test_empty_weights_are_not_ready(tmp_path):
     model_dir = tmp_path / "model"
     model_dir.mkdir()
@@ -79,7 +96,7 @@ def test_invalid_config_is_not_ready(tmp_path):
 def test_standard_openvino_model_artifact_is_ready(tmp_path):
     model_dir = _write_ready_model(tmp_path)
 
-    result = validate_openvino_model_dir(model_dir)
+    result = validate_openvino_model_dir(model_dir, thorough=True)
 
     assert result.ready is True
     assert result.ir_xml == model_dir / "openvino_model.xml"
@@ -90,7 +107,7 @@ def test_standard_openvino_model_artifact_is_ready(tmp_path):
 def test_language_model_artifact_is_ready(tmp_path):
     model_dir = _write_ready_model(tmp_path, "openvino_language_model.xml")
 
-    result = validate_openvino_model_dir(model_dir)
+    result = validate_openvino_model_dir(model_dir, thorough=True)
 
     assert result.ready is True
     assert result.ir_xml == model_dir / "openvino_language_model.xml"
