@@ -29,6 +29,10 @@ def _retained_task_cancellation() -> asyncio.CancelledError | None:
     return asyncio.CancelledError()
 
 
+def _active(task: asyncio.Task[Any] | None) -> bool:
+    return bool(task is not None and not task.done())
+
+
 @asynccontextmanager
 async def current_engine_lease(manager: Any, requested_engine: Any) -> AsyncIterator[Any]:
     """Yield a stable current engine while holding its matching model lock.
@@ -144,6 +148,13 @@ def install_engine_handoff_safety() -> None:
         # drain timeout. Normal API requests still reject unloading a busy engine.
         if getattr(self, "_model_manager_shutting_down", False):
             return original_unload(self, model_id)
+
+        load_task = getattr(self, "load_tasks", {}).get(model_id)
+        if _active(load_task):
+            raise ModelBusyError(
+                f"Model '{model_id}' is still loading or switching devices. "
+                "Wait for model preparation to finish before unloading it."
+            )
 
         lock = self.locks.get(model_id)
         if lock is not None and lock.locked():
