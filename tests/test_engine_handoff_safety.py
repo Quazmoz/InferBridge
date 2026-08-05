@@ -55,6 +55,7 @@ class FakeManager:
         self.catalog = {"demo": SimpleNamespace(name="Demo")} if managed else {}
         self.locks = {"demo": asyncio.Lock()}
         self.devices = {"demo": "CPU"} if engine is not None else {}
+        self.load_tasks = {}
         self.status_overrides = {}
         self.progress = {}
         self.events = []
@@ -197,6 +198,29 @@ def test_unload_is_rejected_while_model_lock_is_busy():
                 ModelManager.unload(manager, "demo")
         finally:
             lock.release()
+
+    asyncio.run(scenario())
+
+
+def test_unload_is_rejected_while_device_switch_is_active():
+    async def scenario():
+        engine = FakeEngine("demo", "old")
+        manager = FakeManager(engine)
+        release = asyncio.Event()
+
+        async def switching():
+            await release.wait()
+
+        task = asyncio.create_task(switching())
+        manager.load_tasks["demo"] = task
+        try:
+            with pytest.raises(ValueError, match="loading or switching devices"):
+                ModelManager.unload(manager, "demo")
+            assert manager.engines["demo"] is engine
+            assert engine.closed is False
+        finally:
+            release.set()
+            await task
 
     asyncio.run(scenario())
 
