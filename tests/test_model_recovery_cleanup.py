@@ -209,6 +209,7 @@ def test_incomplete_output_rejects_windows_junction_before_cleanup(
         if path == model_dir:
             return SimpleNamespace(
                 st_file_attributes=getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400),
+                st_mode=metadata.st_mode,
             )
         return metadata
 
