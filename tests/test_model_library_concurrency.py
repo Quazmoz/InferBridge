@@ -31,8 +31,12 @@ def test_duplicate_concurrent_import_does_not_delete_winning_model(tmp_path, mon
     service = ModelLibraryService(settings, manager)
     source = tmp_path / "converted-source"
     source.mkdir()
-    (source / "openvino_model.xml").write_text("<net/>", encoding="utf-8")
+    (source / "openvino_model.xml").write_text(
+        "<net name='model' version='11'></net>",
+        encoding="utf-8",
+    )
     (source / "openvino_model.bin").write_bytes(b"openvino")
+    (source / "config.json").write_text("{}", encoding="utf-8")
 
     barrier = Barrier(2)
     original_copytree = service_module.shutil.copytree
@@ -69,4 +73,5 @@ def test_duplicate_concurrent_import_does_not_delete_winning_model(tmp_path, mon
     target = settings.models_dir / "concurrent-model"
     assert (target / "openvino_model.xml").is_file()
     assert (target / "openvino_model.bin").is_file()
+    assert (target / "config.json").is_file()
     assert "concurrent-model" in manager.catalog
