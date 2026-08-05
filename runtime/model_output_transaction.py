@@ -29,6 +29,7 @@ _STAGING_SUFFIX = ".inferbridge-staging"
 _BACKUP_SUFFIX = ".inferbridge-backup"
 _LOCK_SUFFIX = ".inferbridge.lock"
 _LOCK_CONFLICT_ERRNOS = {errno.EACCES, errno.EAGAIN, errno.EDEADLK}
+_LOCK_CONFLICT_WINDOWS_ERRORS = {5, 32, 33}
 _REPLACE_RETRY_DELAYS_SECONDS = (0.0, 0.1, 0.25, 0.5, 1.0)
 _TRANSIENT_REPLACE_ERRNOS = {errno.EACCES, errno.EBUSY, errno.EPERM}
 _TRANSIENT_WINDOWS_ERRORS = {5, 32, 33}
@@ -78,12 +79,31 @@ def _lock_conflict() -> RuntimeError:
     )
 
 
-def _acquire_file_lock(lock_file: BinaryIO) -> str:
+def _is_lock_conflict_error(exc: OSError) -> bool:
+    return exc.errno in _LOCK_CONFLICT_ERRNOS or getattr(exc, "winerror", None) in (
+        _LOCK_CONFLICT_WINDOWS_ERRORS
+    )
+
+
+def _initialize_lock_file(lock_file: BinaryIO) -> None:
+    """Ensure the byte-range lock has one durable byte without assuming it is readable."""
+
     lock_file.seek(0, os.SEEK_END)
     if lock_file.tell() == 0:
         lock_file.write(b"\0")
         lock_file.flush()
     lock_file.seek(0)
+
+
+def _acquire_file_lock(lock_file: BinaryIO) -> str:
+    try:
+        _initialize_lock_file(lock_file)
+    except OSError as exc:
+        # On Windows, reading or seeking into another process's locked byte can fail
+        # before msvcrt.locking() is reached. Normalize that race as ordinary contention.
+        if _is_lock_conflict_error(exc):
+            raise _lock_conflict() from exc
+        raise
 
     if os.name == "nt":
         import msvcrt
@@ -91,7 +111,7 @@ def _acquire_file_lock(lock_file: BinaryIO) -> str:
         try:
             msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
         except OSError as exc:
-            if exc.errno in _LOCK_CONFLICT_ERRNOS:
+            if _is_lock_conflict_error(exc):
                 raise _lock_conflict() from exc
             raise
         return "windows"
@@ -101,7 +121,7 @@ def _acquire_file_lock(lock_file: BinaryIO) -> str:
     try:
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError as exc:
-        if exc.errno in _LOCK_CONFLICT_ERRNOS:
+        if _is_lock_conflict_error(exc):
             raise _lock_conflict() from exc
         raise
     return "posix"
@@ -127,6 +147,8 @@ def _model_output_lock(final_dir: Path) -> Iterator[None]:
     try:
         lock_file = lock_path.open("a+b")
     except OSError as exc:
+        if _path_exists(lock_path) and _is_lock_conflict_error(exc):
+            raise _lock_conflict() from exc
         raise RuntimeError(
             "InferBridge could not create the model preparation lock. Check write "
             "permissions for the configured model directory, then retry."
