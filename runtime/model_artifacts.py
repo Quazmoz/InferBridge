@@ -12,10 +12,10 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from xml.etree import ElementTree
 
 _IR_MARKERS = ("openvino_model.xml", "openvino_language_model.xml")
 _CONFIG_FILENAME = "config.json"
+_XML_PROBE_BYTES = 4096
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,13 +36,23 @@ def _nonempty_file(path: Path) -> bool:
 
 
 def _valid_ir_xml(path: Path) -> bool:
-    if not _nonempty_file(path):
-        return False
+    """Check the bounded beginning and end of an OpenVINO IR XML document."""
+
     try:
-        ElementTree.parse(path)
-    except (ElementTree.ParseError, OSError):
+        size = path.stat().st_size
+        if not path.is_file() or size <= 0:
+            return False
+        with path.open("rb") as stream:
+            head = stream.read(_XML_PROBE_BYTES)
+            stream.seek(max(0, size - _XML_PROBE_BYTES))
+            tail = stream.read(_XML_PROBE_BYTES)
+    except OSError:
         return False
-    return True
+
+    # OpenVINO IR files use a ``net`` root. Checking both boundaries catches the
+    # common interrupted-write case without parsing a potentially very large graph
+    # on every model-status request.
+    return b"<net" in head and b"</net>" in tail
 
 
 def _valid_config(path: Path) -> bool:
@@ -58,10 +68,10 @@ def _valid_config(path: Path) -> bool:
 def validate_openvino_model_dir(model_dir: str | Path) -> ModelArtifactValidation:
     """Return whether *model_dir* is complete enough for OpenVINO GenAI to load.
 
-    A ready directory must contain a parseable primary IR XML file, its non-empty
-    sibling BIN weights file, and a valid JSON object in ``config.json``. These are
-    stable requirements across the text, embedding, and vision model layouts used by
-    Optimum Intel, while avoiding assumptions about optional tokenizer filenames.
+    A ready directory must contain a structurally complete primary IR XML file, its
+    non-empty sibling BIN weights file, and a valid JSON object in ``config.json``.
+    These are stable requirements across the text, embedding, and vision model layouts
+    used by Optimum Intel, while avoiding assumptions about optional tokenizer files.
     """
 
     directory = Path(model_dir)
