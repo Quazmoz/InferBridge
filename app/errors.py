@@ -18,10 +18,26 @@ _SECRET_RE = re.compile(
     r"(hf_[A-Za-z0-9_=-]{8,}|Bearer\s+[A-Za-z0-9._~+/=-]+|token\s*[:=]\s*[A-Za-z0-9._~+/=-]+)",
     re.IGNORECASE,
 )
+_CONVERSION_FAILURE_WRAPPER_RE = re.compile(
+    r"^(?:(?:RuntimeError|Exception):\s*)?(?:Conversion failed:\s*)+",
+    re.IGNORECASE,
+)
 
 
 def _redact_secrets(text: str) -> str:
     return _SECRET_RE.sub("[redacted]", str(text or ""))
+
+
+def _format_conversion_failure_detail(detail: str) -> str:
+    """Return one conversion prefix around the underlying actionable detail."""
+
+    clean = str(detail or "").strip()
+    while clean:
+        unwrapped = _CONVERSION_FAILURE_WRAPPER_RE.sub("", clean, count=1).strip()
+        if unwrapped == clean:
+            break
+        clean = unwrapped
+    return f"Conversion failed: {clean}" if clean else "Conversion failed."
 
 
 def _exception_chain_text(exc: BaseException) -> str:
@@ -177,9 +193,11 @@ def format_model_convert_error(exc: BaseException) -> str:
                     any(err in line.lower() for err in ("error", "exception", "failed", "oserror"))
                     and ":" in line
                 ):
-                    return f"Conversion failed: {line}"
-            return f"Conversion failed: {lines[-1]}"
+                    return _format_conversion_failure_detail(line)
+            return _format_conversion_failure_detail(lines[-1])
 
+    if _CONVERSION_FAILURE_WRAPPER_RE.match(text):
+        return _format_conversion_failure_detail(text)
     return text
 
 
