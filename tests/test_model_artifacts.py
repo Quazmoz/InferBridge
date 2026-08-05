@@ -11,7 +11,10 @@ def _write_ready_model(tmp_path, marker: str = "openvino_model.xml"):
     model_dir.mkdir()
     (model_dir / marker).write_text(_VALID_IR_XML, encoding="utf-8")
     (model_dir / marker).with_suffix(".bin").write_bytes(b"weights")
-    (model_dir / "config.json").write_text(json.dumps({"model_type": "test"}), encoding="utf-8")
+    (model_dir / "config.json").write_text(
+        json.dumps({"model_type": "test"}),
+        encoding="utf-8",
+    )
     return model_dir
 
 
