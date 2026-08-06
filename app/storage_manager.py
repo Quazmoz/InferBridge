@@ -82,6 +82,14 @@ class StorageManagerService:
             global_cleanup=global_cleanup,
         )
 
+    def _source_cache_path(self, source_model: str) -> Path | None:
+        """Return the lexical cache path after the existing source identifier validation."""
+
+        if model_recovery._source_cache_path(source_model) is None:
+            return None
+        root = model_recovery._hub_cache_root()
+        return root / f"models--{source_model.replace('/', '--')}"
+
     def _safe_model_measurement(self, model_id: str) -> tuple[Path, TreeMeasurement, bool]:
         cfg = self.manager.catalog[model_id]
         model_dir = cfg.abs_path(model_recovery._base_dir())
@@ -274,7 +282,7 @@ class StorageManagerService:
             converted_reclaimable += model_reclaimable
 
             if cfg.source_model:
-                cache_path = model_recovery._source_cache_path(cfg.source_model)
+                cache_path = self._source_cache_path(cfg.source_model)
                 if cache_path is not None:
                     key = os.path.normcase(str(cache_path))
                     group = cache_groups.setdefault(
@@ -446,7 +454,7 @@ class StorageManagerService:
         ]
         for related_id in related_ids:
             self._reject_model_activity(related_id, loaded=False)
-        cache_path = model_recovery._source_cache_path(cfg.source_model)
+        cache_path = self._source_cache_path(cfg.source_model)
         if cache_path is None:
             raise StorageConflict(
                 "cache_unavailable",
