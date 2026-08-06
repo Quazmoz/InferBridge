@@ -103,7 +103,11 @@ def create_desktop_app(
     from app.release_routes import register_release_routes
     from app.storage_manager import StorageManagerService, register_storage_manager_routes
     from app.storage_manager_ui import install_storage_manager_ui_extension
+    from app.storage_root_safety import install_storage_root_safety
 
+    # Filesystem safety is a backend contract and must not depend on whether the
+    # browser extension happens to install first. The UI installer remains idempotent.
+    install_storage_root_safety()
     # Install after the shared UI chain but before app.server binds the composed
     # injection function. The installer also repairs late test imports safely.
     install_storage_manager_ui_extension()
