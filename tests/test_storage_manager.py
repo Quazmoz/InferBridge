@@ -253,11 +253,29 @@ def test_cleanup_scope_blocks_new_lifecycle_work(tmp_path: Path) -> None:
             manager.schedule_load("first")
         with pytest.raises(ValueError, match="Storage cleanup is active"):
             manager.schedule_convert("first")
+        with pytest.raises(ValueError, match="Storage cleanup is active"):
+            manager.delete("first")
 
     manager.schedule_load("first")
     manager.schedule_convert("first")
     assert manager.load_calls == ["first"]
     assert manager.convert_calls == ["first"]
+
+
+def test_storage_delete_uses_guarded_upstream_delete(tmp_path: Path) -> None:
+    models_dir = tmp_path / "models"
+    config = FakeConfig("first", "First", models_dir / "first")
+    write_bytes(config.abs_path(Path()) / "model.bin", 12)
+    service, _manager = make_service(tmp_path, [config])
+
+    result = asyncio.run(
+        service.cleanup(
+            StorageCleanupRequest(action="delete_converted_model", model_id="first")
+        )
+    )
+
+    assert result["freed_bytes"] == 12
+    assert not config.abs_path(Path()).exists()
 
 
 def test_storage_routes_require_local_ui_for_cleanup(tmp_path: Path) -> None:
