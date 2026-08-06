@@ -15,11 +15,22 @@ _USAGE_SCHEMA_VERSION = 1
 
 
 class StorageRuntimeState:
+    def __new__(cls, *, manager: Any, usage_file: Path):
+        existing = getattr(manager, "_storage_runtime_state", None)
+        if isinstance(existing, cls):
+            return existing
+        instance = super().__new__(cls)
+        manager._storage_runtime_state = instance
+        return instance
+
     def __init__(self, *, manager: Any, usage_file: Path) -> None:
+        if getattr(self, "_storage_runtime_state_initialized", False):
+            return
         self.manager = manager
         self._guard_lock = threading.RLock()
         self._cleaning_models: set[str] = set()
         self._mutating_models: set[str] = set()
+        self._temporary_models: dict[str, int] = {}
         self._global_cleanup = False
         self._usage_lock = threading.RLock()
         self._usage_file = usage_file
@@ -27,6 +38,7 @@ class StorageRuntimeState:
         self._usage_flushed_at: dict[str, int] = dict(self._usage)
         self._install_usage_observer()
         self._install_lifecycle_guard()
+        self._storage_runtime_state_initialized = True
 
     def _load_usage(self) -> dict[str, int]:
         try:
@@ -161,12 +173,28 @@ class StorageRuntimeState:
         if callable(upstream_temporary):
 
             async def build_temporary_engine(model_id: str, *args: Any, **kwargs: Any):
-                if self.cleanup_blocks(model_id):
-                    raise ValueError(
-                        f"Storage cleanup is active for model '{model_id}'. "
-                        "Retry after it finishes."
+                with self._guard_lock:
+                    if (
+                        self._global_cleanup
+                        or model_id in self._cleaning_models
+                        or model_id in self._mutating_models
+                    ):
+                        raise ValueError(
+                            f"Storage cleanup is active for model '{model_id}'. "
+                            "Retry after it finishes."
+                        )
+                    self._temporary_models[model_id] = (
+                        self._temporary_models.get(model_id, 0) + 1
                     )
-                return await upstream_temporary(model_id, *args, **kwargs)
+                try:
+                    return await upstream_temporary(model_id, *args, **kwargs)
+                finally:
+                    with self._guard_lock:
+                        remaining = self._temporary_models.get(model_id, 1) - 1
+                        if remaining > 0:
+                            self._temporary_models[model_id] = remaining
+                        else:
+                            self._temporary_models.pop(model_id, None)
 
             self.manager.build_temporary_engine = build_temporary_engine
         self.manager._storage_cleanup_guard_installed = True
@@ -179,9 +207,9 @@ class StorageRuntimeState:
                     f"Storage cleanup is active for model '{model_id}'. "
                     "Retry after it finishes."
                 )
-            if model_id in self._mutating_models:
+            if model_id in self._mutating_models or model_id in self._temporary_models:
                 raise ValueError(
-                    f"Model '{model_id}' already has a destructive action in progress."
+                    f"Model '{model_id}' already has a destructive or temporary action in progress."
                 )
             self._mutating_models.add(model_id)
             if block_lifecycle:
@@ -208,17 +236,23 @@ class StorageRuntimeState:
     ):
         with self._guard_lock:
             if self._global_cleanup or any(
-                model_id in self._cleaning_models or model_id in self._mutating_models
+                model_id in self._cleaning_models
+                or model_id in self._mutating_models
+                or model_id in self._temporary_models
                 for model_id in model_ids
             ):
                 raise StorageConflict(
                     "cleanup_active",
-                    "Another storage cleanup is already active. Wait for it to finish.",
+                    "Another storage or temporary model operation is active. Wait for it to finish.",
                 )
-            if global_cleanup and (self._cleaning_models or self._mutating_models):
+            if global_cleanup and (
+                self._cleaning_models
+                or self._mutating_models
+                or self._temporary_models
+            ):
                 raise StorageConflict(
                     "cleanup_active",
-                    "Another storage cleanup is already active. Wait for it to finish.",
+                    "Another storage or temporary model operation is active. Wait for it to finish.",
                 )
             self._global_cleanup = global_cleanup
             self._cleaning_models.update(model_ids)
