@@ -101,6 +101,13 @@ def create_desktop_app(
         resolve_runtime_paths,
     )
     from app.release_routes import register_release_routes
+    from app.storage_manager import StorageManagerService, register_storage_manager_routes
+    from app.storage_manager_ui import install_storage_manager_ui_extension
+
+    # Install after the shared UI chain but before app.server binds the composed
+    # injection function. The installer also repairs late test imports safely.
+    install_storage_manager_ui_extension()
+
     from app.server import create_app
 
     paths = resolve_runtime_paths(portable=portable, desktop=True)
@@ -145,9 +152,15 @@ def create_desktop_app(
         paths=paths,
         endpoint_port=port,
     )
+    storage = StorageManagerService(
+        settings=settings,
+        manager=app.state.manager,
+        paths=paths,
+    )
     app.state.desktop_paths = paths
     app.state.onboarding_service = onboarding
     app.state.desktop_operations_service = operations
+    app.state.storage_manager_service = storage
     app.state.shutting_down = False
 
     @app.middleware("http")
@@ -171,6 +184,7 @@ def create_desktop_app(
         control_token=control_token,
     )
     register_release_routes(app, paths=paths)
+    register_storage_manager_routes(app, service=storage)
     return app
 
 
