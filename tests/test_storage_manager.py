@@ -10,7 +10,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app import storage_manager
+from app import storage_manager, storage_safety
 from app.storage_manager import (
     StorageCleanupRequest,
     StorageConflict,
@@ -76,12 +76,19 @@ class FakeManager:
 
     def delete(self, model_id: str) -> dict:
         config = self.catalog[model_id]
-        size = sum(path.stat().st_size for path in config.abs_path(Path()).rglob("*") if path.is_file())
+        size = sum(
+            path.stat().st_size
+            for path in config.abs_path(Path()).rglob("*")
+            if path.is_file()
+        )
         shutil.rmtree(config.abs_path(Path()))
         return {"deleted": True, "freed_bytes": size}
 
 
-def make_service(tmp_path: Path, configs: list[FakeConfig]) -> tuple[StorageManagerService, FakeManager]:
+def make_service(
+    tmp_path: Path,
+    configs: list[FakeConfig],
+) -> tuple[StorageManagerService, FakeManager]:
     models_dir = tmp_path / "models"
     config_dir = tmp_path / "config"
     compiled_dir = tmp_path / "cache" / "openvino"
@@ -202,7 +209,11 @@ def test_incomplete_cleanup_preserves_transaction_backup(
         shutil.rmtree(staging, ignore_errors=False)
         return True
 
-    monkeypatch.setattr(storage_manager.model_recovery, "_remove_incomplete_output", remove_incomplete)
+    monkeypatch.setattr(
+        storage_manager.model_recovery,
+        "_remove_incomplete_output",
+        remove_incomplete,
+    )
 
     result = asyncio.run(
         service.cleanup(StorageCleanupRequest(action="remove_incomplete_data", model_id="first"))
@@ -223,7 +234,7 @@ def test_measurement_rejects_reparse_point(
 ) -> None:
     target = tmp_path / "cache"
     target.mkdir()
-    monkeypatch.setattr(storage_manager, "is_reparse_point", lambda path: path == target)
+    monkeypatch.setattr(storage_safety, "is_reparse_point", lambda path: path == target)
 
     measured = storage_manager._measure_tree(target, root=target)
 
@@ -296,3 +307,26 @@ def test_unsafe_model_path_does_not_run_conversion_health(
     row = snapshot["models"][0]
     assert row["conversion_health"]["status"] == "unsafe_path"
     assert row["cleanup"]["available"] is False
+
+
+def test_incomplete_cleanup_rejects_unsafe_model_before_health_check(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    models_dir = tmp_path / "models"
+    outside = tmp_path / "outside" / "first"
+    write_bytes(outside / "partial.bin", 4)
+    config = FakeConfig("first", "First", outside)
+    service, _manager = make_service(tmp_path, [config])
+
+    def unexpected_health(_cfg):
+        raise AssertionError("conversion health must not inspect an unsafe path")
+
+    monkeypatch.setattr(storage_manager, "conversion_health", unexpected_health)
+    with pytest.raises(StorageConflict, match="unsafe managed path"):
+        asyncio.run(
+            service.cleanup(
+                StorageCleanupRequest(action="remove_incomplete_data", model_id="first")
+            )
+        )
+    assert (outside / "partial.bin").is_file()
