@@ -396,8 +396,22 @@ class StorageManagerService:
     async def _delete_model(self, model_id: str) -> dict[str, Any]:
         self._require_model(model_id)
         self._reject_model_activity(model_id, loaded=True)
+        _model_dir, measurement, unsafe_model = self._safe_model_measurement(model_id)
+        if unsafe_model or measurement.unsafe:
+            raise StorageConflict(
+                "unsafe_path",
+                (
+                    "InferBridge refused to remove this model through an unsafe managed "
+                    "path. Remove the symbolic link or Windows junction manually."
+                ),
+            )
+        if measurement.unreadable:
+            raise StorageConflict(
+                "storage_unreadable",
+                "InferBridge could not inspect all model files safely. Close programs using them.",
+            )
         try:
-            result = await asyncio.to_thread(self.manager.delete, model_id)
+            result = await asyncio.to_thread(self._state.delete_model, model_id)
         except ValueError as exc:
             text = str(exc).lower()
             code = (
@@ -475,6 +489,19 @@ class StorageManagerService:
             _measure_tree(staging_dir, root=models_root),
             _measure_tree(record_path, root=record_path.parent, allow_file=True),
         )
+        if any(measurement.unsafe for measurement in measurements):
+            raise StorageConflict(
+                "unsafe_path",
+                (
+                    "InferBridge refused to remove incomplete preparation data through "
+                    "a symbolic link or Windows junction."
+                ),
+            )
+        if any(measurement.unreadable for measurement in measurements):
+            raise StorageConflict(
+                "storage_unreadable",
+                "InferBridge could not inspect all incomplete preparation files safely.",
+            )
         before = sum(measurement.size_bytes for measurement in measurements)
         if health.get("status") == "incomplete":
             try:
@@ -549,7 +576,8 @@ class StorageManagerService:
 
             with self._state.cleanup_scope(
                 model_ids=related_ids,
-                global_cleanup=request.action == "clear_compiled_cache",
+                global_cleanup=request.action
+                in {"clear_compiled_cache", "remove_huggingface_cache"},
             ):
                 if request.action == "delete_converted_model":
                     result = await self._delete_model(model_id)
