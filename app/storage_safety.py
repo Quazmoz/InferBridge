@@ -162,10 +162,13 @@ def _active_task(tasks: dict[str, Any], model_id: str) -> bool:
 
 def _model_activity(manager: Any, model_id: str) -> dict[str, bool]:
     status = getattr(manager, "status_overrides", {}).get(model_id, {}).get("status")
+    recovery_lock = getattr(manager, "_model_recovery_locks", {}).get(model_id)
+    recovering = bool(recovery_lock is not None and recovery_lock.locked())
     preparing = (
         status in _ACTIVE_STATUSES
         or _active_task(getattr(manager, "load_tasks", {}), model_id)
         or _active_task(getattr(manager, "convert_tasks", {}), model_id)
+        or recovering
     )
     return {
         "loaded": model_id in getattr(manager, "engines", {}),
