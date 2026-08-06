@@ -183,9 +183,7 @@ class StorageRuntimeState:
                             f"Storage cleanup is active for model '{model_id}'. "
                             "Retry after it finishes."
                         )
-                    self._temporary_models[model_id] = (
-                        self._temporary_models.get(model_id, 0) + 1
-                    )
+                    self._temporary_models[model_id] = self._temporary_models.get(model_id, 0) + 1
                 try:
                     return await upstream_temporary(model_id, *args, **kwargs)
                 finally:
