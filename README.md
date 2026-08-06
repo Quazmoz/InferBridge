@@ -2,7 +2,7 @@
 
 **Local AI for Intel hardware. Powered by OpenVINO GenAI.**
 
-InferBridge turns Intel Windows PCs into local AI workstations. It provides a Windows-first, OpenAI-compatible server with streaming chat, local vision chat, text embeddings, model lifecycle management, CPU/GPU/NPU device targeting, System Doctor diagnostics, hardware benchmarking, a built-in browser UI, and a deterministic mock engine.
+InferBridge turns Intel Windows PCs into local AI workstations. It provides a Windows-first, OpenAI-compatible server with streaming chat, local vision chat, text embeddings, model lifecycle and recovery workflows, secure Hugging Face access, context-budget visibility, CPU/GPU/NPU device targeting, System Doctor diagnostics, hardware benchmarking, a built-in browser UI, and a deterministic mock engine.
 
 OpenVINO GenAI remains the inference runtime. InferBridge does not replace OpenVINO, claim ownership of it, or imply affiliation with Intel. The project does not require Docker, cloud inference, Electron, or a Node frontend toolchain.
 
@@ -12,7 +12,7 @@ OpenVINO GenAI remains the inference runtime. InferBridge does not replace OpenV
 
 ## Project and release status
 
-**Current stable release: `0.9.5`.** See [0.9.5](docs/releases/0.9.5.md) for the full record. It brings transactional model conversion, strict converted-artifact validation, working packaged model conversion, working install-over-existing and uninstall, uninterrupted device switching, model preparation recovery, stage-aware preparation watchdogs, and context budget visibility to the stable channel. Those features are described in the published 0.8.0 release notes but are not present in the 0.8.0 artifacts, because they landed after the `v0.8.0` tag was cut.
+**Current stable release: `0.9.5`.** See [0.9.5](docs/releases/0.9.5.md) for the full record. It brings transactional model preparation, strict converted-artifact validation, working packaged conversion, reliable install-over-existing and uninstall flows, uninterrupted device switching, model preparation recovery, stage-aware preparation watchdogs, secure Hugging Face access, and context-budget visibility to the stable channel.
 
 - [Windows installer](https://github.com/Quazmoz/InferBridge/releases/download/v0.9.5/InferBridge-0.9.5-windows-x64-installer.exe)
 - [Portable ZIP](https://github.com/Quazmoz/InferBridge/releases/download/v0.9.5/InferBridge-0.9.5-windows-x64-portable.zip)
@@ -138,6 +138,9 @@ See [QUICKSTART.md](QUICKSTART.md) for the complete setup flow.
 - [Open WebUI and n8n integrations](docs/INTEGRATIONS.md)
 - [Device support](docs/DEVICE_SUPPORT.md)
 - [Verified Model Library](docs/MODEL_LIBRARY.md)
+- [Model preparation cancellation](docs/model-cancellation.md)
+- [Model preparation recovery](docs/MODEL_RECOVERY.md)
+- [Context budget visibility](docs/CONTEXT_BUDGET.md)
 
 ### Data, diagnostics, and support
 
@@ -166,13 +169,6 @@ See [QUICKSTART.md](QUICKSTART.md) for the complete setup flow.
 ### Release notes
 
 - [0.9.5](docs/releases/0.9.5.md) — current stable release
-- [0.9.3-beta.2](docs/releases/0.9.3-beta.2.md)
-- [0.9.3-beta.1](docs/releases/0.9.3-beta.1.md)
-- [0.9.2-beta.1](docs/releases/0.9.2-beta.1.md)
-- [0.9.1-beta.1](docs/releases/0.9.1-beta.1.md)
-- [0.9.0-beta.1](docs/releases/0.9.0-beta.1.md)
-- [0.8.0](docs/releases/0.8.0.md)
-- [0.7.0](docs/releases/0.7.0.md) — product and repository rename
 
 ## Implemented capabilities
 
@@ -191,12 +187,15 @@ See [QUICKSTART.md](QUICKSTART.md) for the complete setup flow.
 - Maintained model catalog plus custom Hugging Face registration
 - Verified Model Library with retained official evidence and local benchmark evidence
 - System Doctor checks for runtime, devices, routing, memory, disk, model readiness, and NPU state
-- Background conversion with sanitized progress, cancellation, and incomplete-output protection
+- Transactional conversion staging, strict artifact validation, bounded backup and rollback, and incomplete-output protection
+- Sanitized progress, operation-scoped cancellation, cross-process preparation locks, and serialized lifecycle operations
+- Recovery state with resume, failed-stage retry, fresh-download restart, and incomplete-output cleanup actions
+- Stage-aware download, conversion, finalization, loading, and compilation watchdogs that distinguish slow progress from a stalled operation
+- Secure Hugging Face token storage with Windows DPAPI, gated-model access preflight, and environment variables retained as an advanced fallback
 - Optional conversion when loading a missing model
-- Serialized load, unload, delete, conversion, and cancellation operations
 - OpenVINO hardware discovery and NPU readiness checks
+- Uninterrupted device switching that keeps the working engine available until replacement handoff
 - Local benchmark persistence and conservative target recommendations
-- Warnings before loading another model while one is already active
 
 ### Windows desktop distribution
 
@@ -215,7 +214,11 @@ See [QUICKSTART.md](QUICKSTART.md) for the complete setup flow.
 
 - Responsive local chat with browser-stored conversation history
 - Light and dark themes
-- Model selection, device targeting, load, unload, and deletion controls
+- Model selection, device targeting, load, unload, deletion, conversion, and cancellation controls
+- Model preparation recovery with reusable-cache status, recommended actions, and sanitized failure details
+- Exact tokenizer-backed context-budget preflight with whole-turn omission visibility and output-limit actions
+- Secure Hugging Face access settings and gated-model preflight without storing tokens in browser localStorage
+- Active operation progress and queue visibility
 - System Doctor diagnostics and privacy-safe support report copying
 - Hardware Benchmark comparisons with TTFT and tokens-per-second measurements
 - Dependency-free Markdown rendering, syntax highlighting, and code copying
@@ -269,18 +272,28 @@ GET    /health                   Runtime and lifecycle summary
 GET    /health/live              Liveness probe
 GET    /health/ready             Readiness probe
 
-GET    /v1/models                OpenAI-style model list
-POST   /v1/chat/completions      Streaming or non-streaming chat
-POST   /v1/responses             Responses API
-POST   /v1/embeddings            Float or base64 embeddings
+GET    /v1/models                     OpenAI-style model list
+POST   /v1/chat/completions           Streaming or non-streaming chat
+POST   /v1/chat/context-budget        Exact context-window preflight
+POST   /v1/responses                  Responses API
+POST   /v1/embeddings                 Float or base64 embeddings
 
-POST   /v1/models/register       Register a custom model
-POST   /v1/models/convert        Convert a model
-POST   /v1/models/load           Load a model
-POST   /v1/models/unload         Unload a model
-POST   /v1/models/delete         Delete an unloaded model
+POST   /v1/models/register            Register a custom model
+POST   /v1/models/convert             Convert a model
+POST   /v1/models/load                Load a model
+POST   /v1/models/unload              Unload a model
+POST   /v1/models/delete              Delete an unloaded model
+POST   /v1/models/cancel              Cancel the current preparation operation
+GET    /v1/models/recovery/{model_id} Get sanitized recovery details
+POST   /v1/models/recovery/action     Apply a scoped recovery action
 
-GET    /v1/devices               OpenVINO device discovery
+GET    /v1/huggingface/status         Read masked Hugging Face access status
+POST   /v1/huggingface/token          Validate and securely store a token
+DELETE /v1/huggingface/token          Remove the securely stored token
+POST   /v1/huggingface/test           Test configured Hugging Face access
+POST   /v1/huggingface/preflight      Check model access before conversion
+
+GET    /v1/devices                    OpenVINO device discovery
 GET    /v1/system/status         Telemetry, lifecycle, metrics, events
 GET    /v1/model-library         Curated model library
 POST   /v1/model-library/refresh Refresh approved model definitions
@@ -384,6 +397,8 @@ Linux GPU and NPU support remains driver-dependent and experimental. InferBridge
 - Diagnostics exclude prompts, chat history, model weights, source images, keys, and certificates.
 - Model and conversion lifecycle operations are serialized and bounded.
 - Incomplete conversion output is not presented as a valid model.
+- Recovery and destructive cleanup refuse symbolic links, Windows junctions, unexpected files, and paths outside configured storage.
+- User-supplied Hugging Face tokens use Windows DPAPI storage, are never returned by the API, and are not stored in browser localStorage.
 - Certificates, private keys, passwords, tokens, and signing secrets must never enter the repository.
 
 Conversation history remains in browser localStorage and is not persisted by the server.
