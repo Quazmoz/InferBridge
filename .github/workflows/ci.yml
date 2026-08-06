@@ -182,6 +182,7 @@ jobs:
           app/cancellation_ui.py
           app/context_budget.py
           app/context_budget_ui.py
+          app/desktop_server.py
           app/header_overflow_ui.py
           app/hf_search_ui.py
           app/huggingface_access.py
@@ -199,6 +200,11 @@ jobs:
           app/responsive_ui.py
           app/status_split.py
           app/status_split_ui.py
+          app/storage_manager.py
+          app/storage_manager_ui.py
+          app/storage_root_safety.py
+          app/storage_safety.py
+          app/storage_state.py
           app/structured_progress.py
           runtime/model_artifacts.py
           runtime/model_converter.py
@@ -253,6 +259,10 @@ jobs:
           tests/test_request_logging.py
           tests/test_status_split.py
           tests/test_status_split_ui.py
+          tests/test_storage_manager.py
+          tests/test_storage_manager_second_pass.py
+          tests/test_storage_manager_ui.py
+          tests/test_storage_root_safety.py
           tests/test_structured_progress.py
           tests/test_structured_progress_tail.py
           tests/test_model_converter.py
