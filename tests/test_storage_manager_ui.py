@@ -18,5 +18,6 @@ def test_storage_manager_ui_is_injected_once(monkeypatch) -> None:
     assert "/v1/storage/cleanup" in first
     assert "X-OV-LLM-UI" in first
     assert "ov-header-more-menu" in first
+    assert "ov-header-more-btn" in first
     assert "Storage and cache manager" in first
     assert "Transaction backups remain protected" in first
