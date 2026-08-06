@@ -21,19 +21,16 @@ _INSTALL_FLAG = "_storage_root_safety_installed"
 
 
 def _hub_cache_root(service: Any) -> Path:
+    explicit = str(os.environ.get("HUGGINGFACE_HUB_CACHE") or "").strip()
+    if explicit:
+        return Path(explicit).expanduser().absolute()
+    hf_home = str(os.environ.get("HF_HOME") or "").strip()
+    if hf_home:
+        return Path(hf_home).expanduser().absolute() / "hub"
     configured = getattr(service.paths, "huggingface_cache_dir", None)
     if configured is not None:
         return Path(configured).expanduser().absolute() / "hub"
-    raw = (
-        os.environ.get("HUGGINGFACE_HUB_CACHE")
-        or (
-            str(Path(os.environ["HF_HOME"]).expanduser().absolute() / "hub")
-            if os.environ.get("HF_HOME")
-            else ""
-        )
-        or str(Path.home() / ".cache" / "huggingface" / "hub")
-    )
-    return Path(raw).expanduser().absolute()
+    return Path.home() / ".cache" / "huggingface" / "hub"
 
 
 def install_storage_root_safety() -> None:
