@@ -6,11 +6,17 @@ on:
     branches: ["main", "development", "beta"]
     paths:
       - "app/desktop_launcher.py"
+      - "app/desktop_server.py"
       - "app/engine_handoff_safety.py"
       - "app/errors.py"
       - "app/lifecycle_safety.py"
       - "app/model_load_target.py"
       - "app/model_recovery_cleanup.py"
+      - "app/storage_manager.py"
+      - "app/storage_manager_ui.py"
+      - "app/storage_root_safety.py"
+      - "app/storage_safety.py"
+      - "app/storage_state.py"
       - "runtime/model_artifacts.py"
       - "runtime/model_converter.py"
       - "runtime/model_output_transaction.py"
@@ -25,16 +31,26 @@ on:
       - "tests/test_model_output_lock.py"
       - "tests/test_model_output_transaction.py"
       - "tests/test_model_recovery_cleanup.py"
+      - "tests/test_storage_manager.py"
+      - "tests/test_storage_manager_second_pass.py"
+      - "tests/test_storage_manager_ui.py"
+      - "tests/test_storage_root_safety.py"
       - ".github/workflows/model-lifecycle-windows.yml"
   pull_request:
     branches: ["main"]
     paths:
       - "app/desktop_launcher.py"
+      - "app/desktop_server.py"
       - "app/engine_handoff_safety.py"
       - "app/errors.py"
       - "app/lifecycle_safety.py"
       - "app/model_load_target.py"
       - "app/model_recovery_cleanup.py"
+      - "app/storage_manager.py"
+      - "app/storage_manager_ui.py"
+      - "app/storage_root_safety.py"
+      - "app/storage_safety.py"
+      - "app/storage_state.py"
       - "runtime/model_artifacts.py"
       - "runtime/model_converter.py"
       - "runtime/model_output_transaction.py"
@@ -49,6 +65,10 @@ on:
       - "tests/test_model_output_lock.py"
       - "tests/test_model_output_transaction.py"
       - "tests/test_model_recovery_cleanup.py"
+      - "tests/test_storage_manager.py"
+      - "tests/test_storage_manager_second_pass.py"
+      - "tests/test_storage_manager_ui.py"
+      - "tests/test_storage_root_safety.py"
       - ".github/workflows/model-lifecycle-windows.yml"
 
 concurrency:
@@ -84,11 +104,17 @@ jobs:
         run: >-
           python -m py_compile
           app/desktop_launcher.py
+          app/desktop_server.py
           app/engine_handoff_safety.py
           app/errors.py
           app/lifecycle_safety.py
           app/model_load_target.py
           app/model_recovery_cleanup.py
+          app/storage_manager.py
+          app/storage_manager_ui.py
+          app/storage_root_safety.py
+          app/storage_safety.py
+          app/storage_state.py
           runtime/model_artifacts.py
           runtime/model_converter.py
           runtime/model_output_transaction.py
@@ -109,3 +135,7 @@ jobs:
           tests/test_model_output_lock.py
           tests/test_model_output_transaction.py
           tests/test_model_recovery_cleanup.py
+          tests/test_storage_manager.py
+          tests/test_storage_manager_second_pass.py
+          tests/test_storage_manager_ui.py
+          tests/test_storage_root_safety.py
