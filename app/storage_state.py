@@ -19,6 +19,7 @@ class StorageRuntimeState:
         self.manager = manager
         self._guard_lock = threading.RLock()
         self._cleaning_models: set[str] = set()
+        self._mutating_models: set[str] = set()
         self._global_cleanup = False
         self._usage_lock = threading.RLock()
         self._usage_file = usage_file
@@ -124,6 +125,8 @@ class StorageRuntimeState:
             return
         upstream_load = self.manager.schedule_load
         upstream_convert = self.manager.schedule_convert
+        upstream_delete = self.manager.delete
+        self._upstream_delete = upstream_delete
 
         def schedule_load(model_id: str, *args: Any, **kwargs: Any):
             if self.cleanup_blocks(model_id):
@@ -139,8 +142,21 @@ class StorageRuntimeState:
                 )
             return upstream_convert(model_id, *args, **kwargs)
 
+        def delete(model_id: str, *args: Any, **kwargs: Any):
+            with self._external_mutation(model_id, block_lifecycle=True):
+                return upstream_delete(model_id, *args, **kwargs)
+
         self.manager.schedule_load = schedule_load
         self.manager.schedule_convert = schedule_convert
+        self.manager.delete = delete
+        upstream_recover = getattr(self.manager, "recover_model", None)
+        if callable(upstream_recover):
+
+            async def recover_model(model_id: str, *args: Any, **kwargs: Any):
+                with self._external_mutation(model_id):
+                    return await upstream_recover(model_id, *args, **kwargs)
+
+            self.manager.recover_model = recover_model
         upstream_temporary = getattr(self.manager, "build_temporary_engine", None)
         if callable(upstream_temporary):
 
@@ -156,6 +172,34 @@ class StorageRuntimeState:
         self.manager._storage_cleanup_guard_installed = True
 
     @contextlib.contextmanager
+    def _external_mutation(self, model_id: str, *, block_lifecycle: bool = False):
+        with self._guard_lock:
+            if self._global_cleanup or model_id in self._cleaning_models:
+                raise ValueError(
+                    f"Storage cleanup is active for model '{model_id}'. "
+                    "Retry after it finishes."
+                )
+            if model_id in self._mutating_models:
+                raise ValueError(
+                    f"Model '{model_id}' already has a destructive action in progress."
+                )
+            self._mutating_models.add(model_id)
+            if block_lifecycle:
+                self._cleaning_models.add(model_id)
+        try:
+            yield
+        finally:
+            with self._guard_lock:
+                if block_lifecycle:
+                    self._cleaning_models.discard(model_id)
+                self._mutating_models.discard(model_id)
+
+    def delete_model(self, model_id: str) -> dict[str, Any]:
+        """Call the composed delete implementation from inside a storage cleanup scope."""
+
+        return self._upstream_delete(model_id)
+
+    @contextlib.contextmanager
     def cleanup_scope(
         self,
         *,
@@ -164,13 +208,14 @@ class StorageRuntimeState:
     ):
         with self._guard_lock:
             if self._global_cleanup or any(
-                model_id in self._cleaning_models for model_id in model_ids
+                model_id in self._cleaning_models or model_id in self._mutating_models
+                for model_id in model_ids
             ):
                 raise StorageConflict(
                     "cleanup_active",
                     "Another storage cleanup is already active. Wait for it to finish.",
                 )
-            if global_cleanup and self._cleaning_models:
+            if global_cleanup and (self._cleaning_models or self._mutating_models):
                 raise StorageConflict(
                     "cleanup_active",
                     "Another storage cleanup is already active. Wait for it to finish.",
