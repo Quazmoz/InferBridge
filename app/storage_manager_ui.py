@@ -6,6 +6,7 @@ import contextlib
 import sys
 
 from app import ui_extension
+from app.storage_root_safety import install_storage_root_safety
 
 _EXTENSION_ID = "ovllm-storage-manager-extension"
 
@@ -44,7 +45,7 @@ function recoveryRows(){return (data.recovery_items||[]).map(item=>`<div class="
 function render(){const totals=data?.totals||{};summary.innerHTML=[['Converted models',totals.converted_models_bytes],['Hugging Face cache',totals.huggingface_cache_bytes],['Recovery data',totals.incomplete_recovery_bytes],['Compiled cache',totals.compiled_cache_bytes],['Reclaimable now',totals.currently_reclaimable_bytes,'reclaim']].map(([label,value,kind])=>`<div class="sm-stat ${kind||''}"><span>${esc(label)}</span><strong>${bytes(value)}</strong></div>`).join('');const compiled=data.compiled_cache||{};const compiledRows=`<div class="sm-row"><div class="sm-primary"><strong>OpenVINO compiled cache</strong><span>Reusable device-specific compilation artifacts</span></div><div class="sm-cell"><span>Cache size</span><strong>${bytes(compiled.size_bytes)}</strong></div><div class="sm-cell sm-optional"><span>State</span><strong>${esc(compiled.state)}</strong></div><div class="sm-cell"><span>Future effect</span><strong>Next load may slow</strong></div>${capabilityButton(compiled.cleanup,'Clear cache')}</div>`;content.innerHTML=section('Converted models','Health and last successful use',modelRows(),'No converted models are using managed storage.')+section('Reusable Hugging Face source cache','Shared downloads are counted once',cacheRows(),'No reusable source cache was found.')+section('Interrupted preparation and recovery','Transaction backups are protected',recoveryRows(),'No incomplete preparation data was found.')+section('OpenVINO compiled cache','Clear only while all models are unloaded',compiledRows,'No compiled cache was found.')}
 async function load(){controller?.abort();controller=new AbortController();content.innerHTML='<div class="sm-loading">Scanning managed storage…</div>';summary.innerHTML='';setMessage();try{data=await api('/v1/storage',{signal:controller.signal});render()}catch(error){if(error.name==='AbortError')return;content.innerHTML='<div class="sm-empty">Storage inventory is unavailable.</div>';setMessage(error.message||String(error),true)}}
 function close(){modal.classList.add('hidden');modal.setAttribute('aria-hidden','true');controller?.abort();returnFocus?.focus?.()}
-trigger.addEventListener('click',()=>{returnFocus=document.activeElement;modal.classList.remove('hidden');modal.setAttribute('aria-hidden','false');$('#sm-close').focus();load()});
+trigger.addEventListener('click',()=>{returnFocus=moreMenu?.contains(trigger)?document.getElementById('ov-header-more-btn'):document.activeElement;modal.classList.remove('hidden');modal.setAttribute('aria-hidden','false');$('#sm-close').focus();load()});
 $('#sm-close').addEventListener('click',close);$('#sm-done').addEventListener('click',close);$('#sm-refresh').addEventListener('click',load);modal.addEventListener('click',event=>{if(event.target===modal)close()});
 modal.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();close()}});
 content.addEventListener('click',async event=>{const button=event.target.closest('[data-action]');if(!button||button.disabled)return;const action=button.dataset.action;const modelId=button.dataset.model||'';const reclaim=bytes(button.dataset.bytes);const consequence=action==='delete_converted_model'?'The model must be converted again before it can be loaded.':action==='remove_huggingface_cache'?'A future conversion will download the source files again.':action==='clear_compiled_cache'?'The next model load may take longer while OpenVINO recompiles.':'Only incomplete output, staging files, and recovery metadata will be removed. Protected transaction backups are not touched.';if(!window.confirm(`Reclaim approximately ${reclaim}?\n\n${consequence}`))return;button.disabled=true;setMessage('Cleaning managed storage…');try{const body={action,...(modelId?{model_id:modelId}:{})};const result=await api('/v1/storage/cleanup',{method:'POST',body:JSON.stringify(body)});await load();setMessage(`${result.message} Freed ${bytes(result.freed_bytes)}.`)}catch(error){setMessage(error.message||String(error),true);button.disabled=false}});
@@ -56,6 +57,7 @@ content.addEventListener('click',async event=>{const button=event.target.closest
 def install_storage_manager_ui_extension() -> None:
     """Append the storage manager after the existing composed UI extensions."""
 
+    install_storage_root_safety()
     if getattr(ui_extension, "_STORAGE_MANAGER_UI_INSTALLED", False):
         return
     previous = ui_extension.inject_multimodal_ui
