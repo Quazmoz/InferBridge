@@ -46,6 +46,8 @@ def _lexically_within(path: Path, root: Path) -> bool:
 def _measure_tree(path: Path, *, root: Path, allow_file: bool = False) -> TreeMeasurement:
     """Measure a managed path without following symbolic links or junctions."""
 
+    if _path_exists(root) and is_reparse_point(root):
+        return TreeMeasurement(present=_path_exists(path), unsafe=True)
     if not _lexically_within(path, root):
         return TreeMeasurement(present=_path_exists(path), unsafe=True)
     if not _path_exists(path):
@@ -182,6 +184,11 @@ def _all_lifecycle_idle(manager: Any) -> bool:
     for tasks in (getattr(manager, "load_tasks", {}), getattr(manager, "convert_tasks", {})):
         if any(task is not None and not task.done() for task in tasks.values()):
             return False
+    if any(
+        lock is not None and lock.locked()
+        for lock in getattr(manager, "_model_recovery_locks", {}).values()
+    ):
+        return False
     return not any(
         value.get("status") in _ACTIVE_STATUSES
         for value in getattr(manager, "status_overrides", {}).values()
