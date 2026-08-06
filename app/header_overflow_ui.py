@@ -106,9 +106,8 @@ wrap.append(trigger, menu);
 header.insertBefore(wrap, settingsButton || null);
 
 function enabledMenuButtons() {
-    return actions
-        .map(({ button }) => button)
-        .filter(button => button.parentElement?.classList.contains('ov-header-overflow-item') && !button.disabled);
+    return Array.from(menu.querySelectorAll('.ov-header-overflow-item .icon-btn'))
+        .filter(button => !button.disabled);
 }
 
 function closeMenu({ restoreFocus = false } = {}) {
