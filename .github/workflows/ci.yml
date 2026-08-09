@@ -199,6 +199,7 @@ jobs:
           app/progress_operation_ui.py
           app/request_logging.py
           app/responsive_ui.py
+          app/responses_api.py
           app/status_split.py
           app/status_split_ui.py
           app/storage_manager.py
@@ -259,6 +260,7 @@ jobs:
           tests/test_progress_operation_ui.py
           tests/test_progress_protocol.py
           tests/test_request_logging.py
+          tests/test_responses_api_parity.py
           tests/test_status_split.py
           tests/test_status_split_ui.py
           tests/test_storage_manager.py
