@@ -1,13 +1,12 @@
 """OpenAI Responses API compatibility layer.
 
-The core runtime exposes one generation contract for Chat Completions and Responses.
-This module keeps the Responses surface close to the current OpenAI wire shape while
-reusing InferBridge's existing prompt budgeting, model locks, cancellation, tool parser,
-and OpenVINO generation parameters.
+InferBridge uses the same local OpenVINO generation engine for Chat Completions and
+Responses. This module keeps Responses-specific request, output, streaming, tool, and
+error semantics out of the main server module while reusing the existing prompt budget,
+model locks, cancellation, structured output, and tool-call parser.
 
-Only local function tools are supported. OpenAI-hosted tools such as web search, file
-search, code interpreter, computer use, and MCP are deliberately rejected by the
-request schema because InferBridge does not provide those services.
+Only local function tools are supported. Hosted OpenAI tools are deliberately rejected
+by the request schema because InferBridge does not provide those services.
 """
 
 from __future__ import annotations
@@ -37,6 +36,38 @@ from runtime.openvino_engine import BaseEngine, GenParams
 logger = logging.getLogger("ov-llm.responses")
 
 
+def _response_input_contents(request_input: Any) -> tuple[list[Any], list[str]]:
+    """Return bounded content/role inputs for multimodal and text preflight.
+
+    Responses input may contain normal messages plus function-call history and
+    function-call outputs. Function arguments and outputs are still user-controlled
+    text and must pass the same request-size validation as message content.
+    """
+
+    if isinstance(request_input, str):
+        return [request_input], ["user"]
+    if not isinstance(request_input, list):
+        return [], []
+
+    contents: list[Any] = []
+    roles: list[str] = []
+    for item in request_input:
+        if not isinstance(item, dict):
+            continue
+        item_type = str(item.get("type") or "")
+        if item_type == "function_call_output":
+            contents.append(item.get("output", ""))
+            roles.append("user")
+        elif item_type == "function_call":
+            contents.append(item.get("arguments", ""))
+            roles.append("assistant")
+        else:
+            contents.append(item.get("content", ""))
+            role = str(item.get("role", "user"))
+            roles.append("system" if role == "developer" else role)
+    return contents, roles
+
+
 def _normalize_and_build_response_prompt(
     engine: BaseEngine,
     request_input: Any,
@@ -46,7 +77,12 @@ def _normalize_and_build_response_prompt(
     tool_choice: Any,
     use_tools: bool,
 ) -> tuple[list[dict[str, Any]], str, int]:
-    tool_instructions = tools.format_tools_for_prompt(request_tools, tool_choice) if use_tools else ""
+    contents, roles = _response_input_contents(request_input)
+    multimodal.preflight_request_contents(contents, roles=roles)
+
+    tool_instructions = (
+        tools.format_tools_for_prompt(request_tools, tool_choice) if use_tools else ""
+    )
     if tool_instructions:
         multimodal.preflight_request_contents([tool_instructions])
 
@@ -94,7 +130,12 @@ def _usage(input_tokens: int, output_tokens: int) -> ResponseUsage:
     )
 
 
-def _message_item(item_id: str, text: str, *, status: str = "completed") -> ResponseOutputMessage:
+def _message_item(
+    item_id: str,
+    text: str,
+    *,
+    status: str = "completed",
+) -> ResponseOutputMessage:
     return ResponseOutputMessage(
         id=item_id,
         status=status,
@@ -235,8 +276,19 @@ def install_responses_api(
                     lora_alpha=request.lora_alpha,
                 )
 
+            if current_params.stop:
+                visible_text, hit_stop = chat_format.truncate_at_stop(
+                    text,
+                    current_params.stop,
+                )
+                if hit_stop:
+                    text = visible_text
+                    completion_tokens = await asyncio.to_thread(
+                        engine.count_tokens,
+                        text,
+                    )
+
             output: list[ResponseOutputMessage | ResponseFunctionCall] = []
-            visible_text = text
             if use_tools:
                 remaining, parsed = tools.parse_tool_calls(text, response_tools)
                 if remaining:
@@ -245,14 +297,7 @@ def install_responses_api(
                 if not parsed and not remaining:
                     output.append(_message_item(message_id, text))
             else:
-                if current_params.stop:
-                    visible_text, hit = chat_format.truncate_at_stop(text, current_params.stop)
-                    if hit:
-                        completion_tokens = await asyncio.to_thread(
-                            engine.count_tokens,
-                            visible_text,
-                        )
-                output.append(_message_item(message_id, visible_text))
+                output.append(_message_item(message_id, text))
 
             latency = time.perf_counter() - started
             manager.record_request(
@@ -320,7 +365,11 @@ def install_responses_api(
                     "item_id": message_id,
                     "output_index": output_index,
                     "content_index": 0,
-                    "part": {"type": "output_text", "text": "", "annotations": []},
+                    "part": {
+                        "type": "output_text",
+                        "text": "",
+                        "annotations": [],
+                    },
                 },
             )
 
@@ -375,13 +424,16 @@ def install_responses_api(
                     async for piece in stream_gen:
                         full_text += piece
                     if params.stop:
-                        full_text, _ = chat_format.truncate_at_stop(full_text, params.stop)
+                        full_text, _ = chat_format.truncate_at_stop(
+                            full_text,
+                            params.stop,
+                        )
 
                     remaining, parsed = tools.parse_tool_calls(full_text, response_tools)
                     output_index = 0
                     if remaining or not parsed:
-                        visible = remaining or full_text
-                        output.append(_message_item(message_id, visible))
+                        visible_text = remaining or full_text
+                        output.append(_message_item(message_id, visible_text))
                         yield message_added(output_index)
                         yield content_added(output_index)
                         yield event(
@@ -390,10 +442,10 @@ def install_responses_api(
                                 "item_id": message_id,
                                 "output_index": output_index,
                                 "content_index": 0,
-                                "delta": visible,
+                                "delta": visible_text,
                             },
                         )
-                        for payload in message_done(output_index, visible):
+                        for payload in message_done(output_index, visible_text):
                             yield payload
                         output_index += 1
 
@@ -440,16 +492,16 @@ def install_responses_api(
                     yield content_added(0)
                     stopper = chat_format.StopStreamer(params.stop or [])
                     async for piece in stream_gen:
-                        emit = stopper.feed(piece)
-                        if emit:
-                            full_text += emit
+                        emitted = stopper.feed(piece)
+                        if emitted:
+                            full_text += emitted
                             yield event(
                                 "response.output_text.delta",
                                 {
                                     "item_id": message_id,
                                     "output_index": 0,
                                     "content_index": 0,
-                                    "delta": emit,
+                                    "delta": emitted,
                                 },
                             )
                         if stopper.stopped:
@@ -480,7 +532,11 @@ def install_responses_api(
                 }
                 yield event(
                     "error",
-                    {"code": error["code"], "message": error["message"], "param": None},
+                    {
+                        "code": error["code"],
+                        "message": error["message"],
+                        "param": None,
+                    },
                 )
                 failed_response = _response_object(
                     request,
@@ -503,9 +559,17 @@ def install_responses_api(
                 yield "data: [DONE]\n\n"
                 return
 
-            completion_tokens = await asyncio.to_thread(engine.count_tokens, full_text)
+            completion_tokens = await asyncio.to_thread(
+                engine.count_tokens,
+                full_text,
+            )
             latency = time.perf_counter() - started
-            manager.record_request(engine.model_id, prompt_tokens, completion_tokens, latency)
+            manager.record_request(
+                engine.model_id,
+                prompt_tokens,
+                completion_tokens,
+                latency,
+            )
             record_key_metrics(prompt_tokens, completion_tokens, latency)
             completed_response = _response_object(
                 request,
@@ -536,11 +600,7 @@ def install_responses_api(
                 ),
             )
 
-        response_contents = (
-            [message.get("content") for message in request.input if isinstance(message, dict)]
-            if isinstance(request.input, list)
-            else [request.input]
-        )
+        response_contents, _response_roles = _response_input_contents(request.input)
         validate_generation_request(
             engine,
             request.model,
