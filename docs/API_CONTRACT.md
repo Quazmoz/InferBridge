@@ -49,24 +49,65 @@ Dynamic LoRA and speculative decoding depend on the installed OpenVINO GenAI ver
 
 ### `POST /v1/responses`
 
-Supported fields:
+Supported request fields:
 
 - `model`
 - `input` as text or message-like input
 - `instructions`
 - `max_output_tokens`
 - `temperature`
+- `top_p`
 - `stream`
+- `tools` for local function definitions
+- `tool_choice` as `auto`, `none`, `required`, or a specific function
+- `parallel_tool_calls`
+- `text.format` as `text`, `json_object`, or `json_schema`
 - `lora_path`
 - `lora_alpha`
 
-Non-streaming responses return an OpenAI-style response object. Streaming emits:
+InferBridge additionally accepts `stop`, `seed`, and the older `response_format` field as local compatibility extensions so callers can reach capabilities already exposed by the shared OpenVINO generation layer. Use `text.format` for new Responses clients.
+
+Function tools use the Responses-style flat shape:
+
+```json
+{
+  "type": "function",
+  "name": "get_weather",
+  "description": "Get current weather.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "city": {"type": "string"}
+    },
+    "required": ["city"]
+  }
+}
+```
+
+For compatibility, the Chat Completions nested `function` shape is also accepted. InferBridge returns function calls but does not execute them. Hosted OpenAI tools such as web search, file search, code interpreter, computer use, and MCP are not implemented and are rejected rather than silently ignored.
+
+Tool calling uses the same bounded prompt-and-parser shim as Chat Completions. Malformed function-call JSON receives bounded retry handling. `parallel_tool_calls` is accepted and multiple parsed calls can be returned, but actual parallel execution remains the responsibility of the client.
+
+Structured output is translated into the existing OpenVINO `response_format` generation contract. Strict schema enforcement therefore still depends on the installed OpenVINO GenAI version and model support.
+
+Non-streaming response objects include OpenAI-style token usage with `input_tokens`, `output_tokens`, `total_tokens`, and zero-valued cached/reasoning detail fields when the local runtime does not expose those categories.
+
+Streaming uses Server-Sent Events and can emit:
 
 - `response.created`
+- `response.output_item.added`
+- `response.content_part.added`
 - `response.output_text.delta`
 - `response.output_text.done`
+- `response.content_part.done`
+- `response.function_call_arguments.delta`
+- `response.function_call_arguments.done`
+- `response.output_item.done`
 - `response.completed`
+- `error` and `response.failed` for sanitized generation failures
 - `data: [DONE]`
+
+The final `response.completed` event contains the completed response object and token usage. Client cancellation closes the underlying model stream so the generation worker can stop and the model lock can be released for the next request.
 
 This route is the recommended compatibility path for n8n workflows that use the Responses API.
 
@@ -138,11 +179,12 @@ InferBridge uses conventional status codes:
 - `404` unknown model
 - `409` model is unloaded, busy, loading, or in a conflicting lifecycle state
 - `413` request body exceeds the configured maximum
+- `422` schema validation failure, including unsupported Responses tool types or tool choices
 - `429` configured rate limit or repeated authentication failures
 - `500` inference, conversion, deletion, or internal runtime failure
 - `503` no model is available or readiness is temporarily blocked
 
-Responses include an `X-Request-ID`. Safe client-supplied IDs are preserved; invalid values are replaced to prevent log injection.
+Responses include an `X-Request-ID`. Safe client-supplied IDs are preserved; invalid values are replaced to prevent log injection. Native inference errors are logged with the request ID while client-visible failure bodies remain sanitized.
 
 ## Automated validation profiles
 
