@@ -1,5 +1,6 @@
 """Source-level contract checks for the runtime model health center."""
 
+import sys
 from pathlib import Path
 
 from app import model_library_ui, runtime_health_ui, storage_manager_ui, ui_extension
@@ -39,6 +40,9 @@ def test_runtime_health_ui_wraps_model_library_and_storage_manager(monkeypatch):
     monkeypatch.delattr(ui_extension, "_MODEL_LIBRARY_UI_EXTENSION_INSTALLED", raising=False)
     monkeypatch.delattr(ui_extension, "_STORAGE_MANAGER_UI_INSTALLED", raising=False)
     monkeypatch.delattr(ui_extension, "_RUNTIME_HEALTH_UI_EXTENSION_INSTALLED", raising=False)
+    server = sys.modules.get("app.server")
+    if server is not None:
+        monkeypatch.setattr(server, "inject_multimodal_ui", server.inject_multimodal_ui)
 
     model_library_ui.install_model_library_ui_extension()
     storage_manager_ui.install_storage_manager_ui_extension()
