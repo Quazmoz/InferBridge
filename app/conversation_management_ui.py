@@ -215,6 +215,7 @@ CONVERSATION_MANAGEMENT_JS = r"""
     const MAX_IMPORT_BYTES = 4 * 1024 * 1024;
     const MAX_IMPORT_MESSAGES = 2000;
     const MAX_IMPORT_TEXT = 3 * 1024 * 1024;
+    const MAX_DATE_MS = 8_640_000_000_000_000;
     const RETENTION_DAYS = new Map([
         ['forever', 0], ['30', 30], ['90', 90], ['180', 180], ['365', 365],
     ]);
@@ -237,13 +238,19 @@ CONVERSATION_MANAGEMENT_JS = r"""
         if (typeof showToast === 'function') showToast(message);
     }
 
+    function safeTimestamp(value, fallback = Date.now()) {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric) || numeric <= 0 || numeric > MAX_DATE_MS) return fallback;
+        return numeric;
+    }
+
     function normalizeChat(chat) {
         if (!chat || typeof chat !== 'object') return chat;
         chat.pinned = chat.pinned === true;
         chat.archived = chat.archived === true;
         chat.manualTitle = chat.manualTitle === true;
-        if (!Number.isFinite(Number(chat.created))) chat.created = Date.now();
-        if (!Number.isFinite(Number(chat.updated))) chat.updated = Number(chat.created) || Date.now();
+        chat.created = safeTimestamp(chat.created);
+        chat.updated = Math.max(chat.created, safeTimestamp(chat.updated, chat.created));
         if (typeof chat.title !== 'string' || !chat.title.trim()) chat.title = 'New chat';
         chat.title = chat.title.trim().slice(0, 120);
         return chat;
@@ -289,14 +296,18 @@ CONVERSATION_MANAGEMENT_JS = r"""
             : chats;
         let previousChats = null;
         let previousActive = null;
+        let previousChatsRead = false;
+        let previousActiveRead = false;
         try {
             previousChats = localStorage.getItem(CHATS_KEY);
+            previousChatsRead = true;
             previousActive = localStorage.getItem(ACTIVE_CHAT_KEY);
+            previousActiveRead = true;
             localStorage.setItem(CHATS_KEY, JSON.stringify(nextChats));
             localStorage.setItem(ACTIVE_CHAT_KEY, activeChatId || '');
         } catch (error) {
-            restoreStorageValue(CHATS_KEY, previousChats);
-            restoreStorageValue(ACTIVE_CHAT_KEY, previousActive);
+            if (previousChatsRead) restoreStorageValue(CHATS_KEY, previousChats);
+            if (previousActiveRead) restoreStorageValue(ACTIVE_CHAT_KEY, previousActive);
             notify('Could not save chats. Browser local storage may be full.');
             console.warn('InferBridge conversation storage failed:', error);
             return false;
@@ -778,7 +789,6 @@ CONVERSATION_MANAGEMENT_JS = r"""
         const archiving = !chat.archived;
         const wasActive = chat.id === activeChatId;
         const previous = { archived: chat.archived, updated: chat.updated };
-        if (archiving && wasActive && typeof isGenerating !== 'undefined' && isGenerating) stopGeneration();
         chat.archived = archiving;
         chat.updated = Date.now();
         if (!persistChats()) {
@@ -789,6 +799,7 @@ CONVERSATION_MANAGEMENT_JS = r"""
         }
 
         if (archiving && wasActive) {
+            if (typeof isGenerating !== 'undefined' && isGenerating) stopGeneration();
             let next = chats.find(candidate => !candidate.archived && candidate.id !== chat.id);
             if (!next) {
                 next = makeChat([]);
@@ -833,7 +844,9 @@ CONVERSATION_MANAGEMENT_JS = r"""
     }
 
     function exportableMessages(chat) {
-        return (chat.messages || []).map(message => {
+        return (chat.messages || [])
+            .filter(message => ['user', 'assistant'].includes(message?.role))
+            .map(message => {
             const output = {
                 role: message.role === 'user' ? 'user' : 'assistant',
                 content: messageText(message),
@@ -845,8 +858,8 @@ CONVERSATION_MANAGEMENT_JS = r"""
                 if (Number.isFinite(Number(message.meta.tps))) meta.tps = Number(message.meta.tps);
                 if (Object.keys(meta).length) output.meta = meta;
             }
-            return output;
-        });
+                return output;
+            });
     }
 
     function markdownFor(chat) {
@@ -855,8 +868,8 @@ CONVERSATION_MANAGEMENT_JS = r"""
             '',
             '> Exported from InferBridge. This conversation was stored locally in the browser profile that created the export.',
             '',
-            `- Created: ${new Date(Number(chat.created) || Date.now()).toISOString()}`,
-            `- Updated: ${new Date(Number(chat.updated) || Date.now()).toISOString()}`,
+            `- Created: ${new Date(safeTimestamp(chat.created)).toISOString()}`,
+            `- Updated: ${new Date(safeTimestamp(chat.updated)).toISOString()}`,
             '',
             '---',
             '',
@@ -882,8 +895,8 @@ CONVERSATION_MANAGEMENT_JS = r"""
             exported_at: new Date().toISOString(),
             conversation: {
                 title: String(chat.title || 'New chat').slice(0, 120),
-                created: Number(chat.created) || Date.now(),
-                updated: Number(chat.updated) || Date.now(),
+                created: safeTimestamp(chat.created),
+                updated: safeTimestamp(chat.updated),
                 pinned: chat.pinned === true,
                 archived: chat.archived === true,
                 model_id: typeof chat.modelId === 'string' ? chat.modelId.slice(0, 200) : null,
@@ -1029,11 +1042,11 @@ CONVERSATION_MANAGEMENT_JS = r"""
             if (textSize > MAX_IMPORT_TEXT) throw new Error('Conversation text is too large to import safely.');
             return safe;
         });
-        const created = Number(source.created);
+        const created = safeTimestamp(source.created);
         const chat = makeChat(messages);
         chat.title = (source.title || 'Imported conversation').trim().slice(0, 120) || 'Imported conversation';
         chat.manualTitle = true;
-        chat.created = Number.isFinite(created) && created > 0 ? created : Date.now();
+        chat.created = created;
         chat.updated = Date.now();
         chat.pinned = source.pinned === true;
         chat.archived = source.archived === true;
