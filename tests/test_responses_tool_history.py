@@ -1,5 +1,7 @@
 """Responses tool-history normalization tests."""
 
+import json
+
 from app import chat_format
 
 
@@ -24,8 +26,13 @@ def test_responses_function_call_and_output_continue_as_one_tool_turn():
 
     assert messages[0] == {"role": "user", "content": "What is the weather?"}
     assert messages[1]["role"] == "assistant"
-    assert "get_weather" in messages[1]["content"]
-    assert '"city":"London"' in messages[1]["content"]
+    calls = json.loads(messages[1]["content"])
+    assert calls == [
+        {
+            "name": "get_weather",
+            "arguments": '{"city":"London"}',
+        }
+    ]
     assert messages[2] == {
         "role": "user",
         "content": '[tool result (call call-1)]\n{"temperature_c":22}',
