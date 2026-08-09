@@ -101,6 +101,8 @@ def create_desktop_app(
         resolve_runtime_paths,
     )
     from app.release_routes import register_release_routes
+    from app.runtime_health import RuntimeHealthService, register_runtime_health_routes
+    from app.runtime_health_ui import install_runtime_health_ui_extension
     from app.storage_manager import StorageManagerService, register_storage_manager_routes
     from app.storage_manager_ui import install_storage_manager_ui_extension
     from app.storage_root_safety import install_storage_root_safety
@@ -109,8 +111,10 @@ def create_desktop_app(
     # browser extension happens to install first. The UI installer remains idempotent.
     install_storage_root_safety()
     # Install after the shared UI chain but before app.server binds the composed
-    # injection function. The installer also repairs late test imports safely.
+    # injection function. Runtime health then decorates the storage and model-library
+    # surfaces that were already installed by the shared configuration chain.
     install_storage_manager_ui_extension()
+    install_runtime_health_ui_extension()
 
     from app.server import create_app
 
@@ -161,10 +165,17 @@ def create_desktop_app(
         manager=app.state.manager,
         paths=paths,
     )
+    runtime_health = RuntimeHealthService(
+        settings=settings,
+        manager=app.state.manager,
+        paths=paths,
+        storage=storage,
+    )
     app.state.desktop_paths = paths
     app.state.onboarding_service = onboarding
     app.state.desktop_operations_service = operations
     app.state.storage_manager_service = storage
+    app.state.runtime_health_service = runtime_health
     app.state.shutting_down = False
 
     @app.middleware("http")
@@ -189,6 +200,7 @@ def create_desktop_app(
     )
     register_release_routes(app, paths=paths)
     register_storage_manager_routes(app, service=storage)
+    register_runtime_health_routes(app, service=runtime_health)
     return app
 
 
