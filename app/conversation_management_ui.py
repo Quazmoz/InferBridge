@@ -7,80 +7,1128 @@ from app import ui_extension
 _EXTENSION_ID = "ovllm-conversation-management-extension"
 
 CONVERSATION_MANAGEMENT_CSS = r"""
-#conversation-management-toolbar{display:grid;gap:8px;padding:10px 10px 8px;border-bottom:1px solid var(--border)}.cm-search-wrap{position:relative}#conversation-search{width:100%;min-height:36px;padding:8px 30px 8px 10px;border:1px solid var(--border);border-radius:9px;background:var(--surface-2);color:var(--text-1);font:inherit;font-size:11px;outline:none}#conversation-search:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-glow)}#conversation-search-clear{position:absolute;top:50%;right:5px;width:26px;height:26px;transform:translateY(-50%);border:0;border-radius:7px;background:transparent;color:var(--text-3);cursor:pointer;font-size:16px;line-height:1}#conversation-search-clear:hover,#conversation-search-clear:focus-visible{background:var(--surface-3);color:var(--text-1)}.cm-view-row{display:grid;grid-template-columns:1fr 1fr;gap:6px}.cm-view-btn{min-height:30px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);color:var(--text-3);font:inherit;font-size:9.5px;font-weight:700;cursor:pointer}.cm-view-btn.active{border-color:color-mix(in srgb,var(--primary) 45%,var(--border));background:color-mix(in srgb,var(--primary) 10%,var(--surface-2));color:var(--primary)}.cm-local-note{display:flex;align-items:flex-start;gap:6px;color:var(--text-3);font-size:9px;line-height:1.4}.cm-local-note svg{flex:0 0 auto;margin-top:1px}.chat-item.cm-pinned{border-color:color-mix(in srgb,var(--primary) 24%,var(--border))}.chat-item.cm-archived{opacity:.78}.cm-pin{display:inline-flex;flex:0 0 auto;color:var(--primary)}.cm-match{color:var(--text-2)}.chat-item-more{position:absolute;right:6px;top:50%;width:30px;height:30px;transform:translateY(-50%);border:0;border-radius:8px;background:transparent;color:var(--text-3);cursor:pointer;opacity:0;font-size:16px;line-height:1}.chat-item:hover .chat-item-more,.chat-item:focus-within .chat-item-more,.chat-item-more[aria-expanded="true"]{opacity:1}.chat-item-more:hover,.chat-item-more:focus-visible,.chat-item-more[aria-expanded="true"]{background:var(--surface-3);color:var(--text-1)}#conversation-action-menu{position:fixed;z-index:1300;width:min(210px,calc(100vw - 18px));padding:6px;border:1px solid var(--border-hover);border-radius:11px;background:var(--surface-1);box-shadow:var(--shadow-md)}#conversation-action-menu[hidden]{display:none!important}.cm-menu-btn{display:flex;align-items:center;width:100%;min-height:34px;padding:7px 9px;border:0;border-radius:7px;background:transparent;color:var(--text-2);font:inherit;font-size:10.5px;text-align:left;cursor:pointer}.cm-menu-btn:hover:not(:disabled),.cm-menu-btn:focus-visible{background:var(--surface-2);color:var(--text-1)}.cm-menu-btn.danger{color:#fca5a5}.cm-menu-btn:disabled{opacity:.45;cursor:not-allowed}.cm-menu-divider{height:1px;margin:5px 3px;background:var(--border)}#conversation-rename-modal .modal-card{width:min(430px,calc(100vw - 24px))}.cm-rename-body{display:grid;gap:12px;padding:18px 20px 20px}.cm-rename-body label{color:var(--text-2);font-size:10px;font-weight:700;letter-spacing:.45px;text-transform:uppercase}#conversation-rename-input{width:100%;min-height:40px;padding:9px 11px;border:1px solid var(--border);border-radius:9px;background:var(--surface-2);color:var(--text-1);font:inherit;font-size:12px;outline:none}#conversation-rename-input:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-glow)}.cm-rename-actions{display:flex;justify-content:flex-end;gap:8px}.cm-setting-group{gap:9px}.cm-setting-group select,.cm-setting-group button{width:100%;min-height:36px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-2);color:var(--text-1);font:inherit;font-size:11px}.cm-setting-group select{padding:7px 9px}.cm-setting-group button{cursor:pointer;font-weight:650}.cm-setting-group button:hover{border-color:var(--border-hover);background:var(--surface-3)}.cm-setting-group .cm-danger{color:#fca5a5;border-color:color-mix(in srgb,var(--red) 35%,var(--border))}.cm-settings-note{color:var(--text-3);font-size:9.5px;line-height:1.45}.cm-setting-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.cm-empty{padding:18px 12px;color:var(--text-3);font-size:10px;line-height:1.5;text-align:center}@media(hover:none),(pointer:coarse){.chat-item{padding-right:50px}.chat-item-more{width:44px;height:44px;opacity:1}.cm-view-btn,.cm-menu-btn,.cm-setting-group select,.cm-setting-group button{min-height:44px}}
+#conversation-management-toolbar {
+    display: grid;
+    gap: 8px;
+    padding: 10px 10px 8px;
+    border-bottom: 1px solid var(--border);
+}
+.cm-search-wrap { position: relative; }
+#conversation-search {
+    width: 100%;
+    min-height: 36px;
+    padding: 8px 30px 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: var(--surface-2);
+    color: var(--text-1);
+    font: inherit;
+    font-size: 11px;
+    outline: none;
+}
+#conversation-search:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-glow);
+}
+#conversation-search-clear {
+    position: absolute;
+    top: 50%;
+    right: 5px;
+    width: 26px;
+    height: 26px;
+    transform: translateY(-50%);
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--text-3);
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+}
+#conversation-search-clear:hover,
+#conversation-search-clear:focus-visible {
+    background: var(--surface-3);
+    color: var(--text-1);
+}
+.cm-view-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+.cm-view-btn {
+    min-height: 30px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-2);
+    color: var(--text-3);
+    font: inherit;
+    font-size: 9.5px;
+    font-weight: 700;
+    cursor: pointer;
+}
+.cm-view-btn.active {
+    border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+    background: color-mix(in srgb, var(--primary) 10%, var(--surface-2));
+    color: var(--primary);
+}
+.cm-local-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    color: var(--text-3);
+    font-size: 9px;
+    line-height: 1.4;
+}
+.cm-local-note svg { flex: 0 0 auto; margin-top: 1px; }
+.chat-item.cm-pinned { border-color: color-mix(in srgb, var(--primary) 24%, var(--border)); }
+.chat-item.cm-archived { opacity: .78; }
+.cm-pin { display: inline-flex; flex: 0 0 auto; color: var(--primary); }
+.cm-match { color: var(--text-2); }
+.chat-item-more {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    width: 30px;
+    height: 30px;
+    transform: translateY(-50%);
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-3);
+    cursor: pointer;
+    opacity: 0;
+    font-size: 16px;
+    line-height: 1;
+}
+.chat-item:hover .chat-item-more,
+.chat-item:focus-within .chat-item-more,
+.chat-item-more[aria-expanded="true"] { opacity: 1; }
+.chat-item-more:hover,
+.chat-item-more:focus-visible,
+.chat-item-more[aria-expanded="true"] {
+    background: var(--surface-3);
+    color: var(--text-1);
+}
+#conversation-action-menu {
+    position: fixed;
+    z-index: 1300;
+    width: min(210px, calc(100vw - 18px));
+    padding: 6px;
+    border: 1px solid var(--border-hover);
+    border-radius: 11px;
+    background: var(--surface-1);
+    box-shadow: var(--shadow-md);
+}
+#conversation-action-menu[hidden] { display: none !important; }
+.cm-menu-btn {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: 34px;
+    padding: 7px 9px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--text-2);
+    font: inherit;
+    font-size: 10.5px;
+    text-align: left;
+    cursor: pointer;
+}
+.cm-menu-btn:hover:not(:disabled),
+.cm-menu-btn:focus-visible { background: var(--surface-2); color: var(--text-1); }
+.cm-menu-btn.danger { color: #fca5a5; }
+.cm-menu-btn:disabled { opacity: .45; cursor: not-allowed; }
+.cm-menu-divider { height: 1px; margin: 5px 3px; background: var(--border); }
+#conversation-rename-modal .modal-card { width: min(430px, calc(100vw - 24px)); }
+.cm-rename-body { display: grid; gap: 12px; padding: 18px 20px 20px; }
+.cm-rename-body label {
+    color: var(--text-2);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .45px;
+    text-transform: uppercase;
+}
+#conversation-rename-input {
+    width: 100%;
+    min-height: 40px;
+    padding: 9px 11px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: var(--surface-2);
+    color: var(--text-1);
+    font: inherit;
+    font-size: 12px;
+    outline: none;
+}
+#conversation-rename-input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-glow);
+}
+.cm-rename-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.cm-setting-group { gap: 9px; }
+.cm-setting-group select,
+.cm-setting-group button {
+    width: 100%;
+    min-height: 36px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    color: var(--text-1);
+    font: inherit;
+    font-size: 11px;
+}
+.cm-setting-group select { padding: 7px 9px; }
+.cm-setting-group button { cursor: pointer; font-weight: 650; }
+.cm-setting-group button:hover { border-color: var(--border-hover); background: var(--surface-3); }
+.cm-setting-group .cm-danger {
+    color: #fca5a5;
+    border-color: color-mix(in srgb, var(--red) 35%, var(--border));
+}
+.cm-settings-note { color: var(--text-3); font-size: 9.5px; line-height: 1.45; }
+.cm-setting-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.cm-empty { padding: 18px 12px; color: var(--text-3); font-size: 10px; line-height: 1.5; text-align: center; }
+@media (hover: none), (pointer: coarse) {
+    .chat-item { padding-right: 50px; }
+    .chat-item-more { width: 44px; height: 44px; opacity: 1; }
+    .cm-view-btn,
+    .cm-menu-btn,
+    .cm-setting-group select,
+    .cm-setting-group button { min-height: 44px; }
+}
 """
 
 CONVERSATION_MANAGEMENT_JS = r"""
 (() => {
-'use strict';
-if (window.__ovllmConversationManagementInstalled) return;
-if (typeof chats === 'undefined' || typeof activeChatId === 'undefined' || typeof makeChat !== 'function' || typeof switchChat !== 'function' || typeof renderChatList !== 'function' || typeof saveConversation !== 'function') return;
-window.__ovllmConversationManagementInstalled = true;
+    'use strict';
+    if (window.__ovllmConversationManagementInstalled) return;
+    if (
+        typeof chats === 'undefined' || typeof activeChatId === 'undefined' ||
+        typeof makeChat !== 'function' || typeof switchChat !== 'function' ||
+        typeof renderChatList !== 'function' || typeof saveConversation !== 'function'
+    ) return;
+    window.__ovllmConversationManagementInstalled = true;
 
-const RETENTION_KEY = 'ovllm.chatRetention.v1';
-const EXPORT_FORMAT = 'inferbridge-conversation';
-const EXPORT_SCHEMA_VERSION = 1;
-const MAX_IMPORT_BYTES = 4 * 1024 * 1024;
-const MAX_IMPORT_MESSAGES = 2000;
-const MAX_IMPORT_TEXT = 3 * 1024 * 1024;
-const RETENTION_DAYS = new Map([['forever',0],['30',30],['90',90],['180',180],['365',365]]);
-const sidebar = document.getElementById('chats-sidebar');
-const chatsListElement = document.getElementById('chats-list');
-const chatsFooterElement = document.getElementById('chats-footer');
-const settingsSidebarElement = document.getElementById('settings-sidebar');
-if (!sidebar || !chatsListElement || !chatsFooterElement || !settingsSidebarElement) return;
-let chatView = 'active';
-let searchQuery = '';
-let menuChatId = null;
-let menuReturnFocus = null;
-let renameChatId = null;
-let renameReturnFocus = null;
-function notify(message){if(typeof showToast==='function')showToast(message)}
-function normalizeChat(chat){if(!chat||typeof chat!=='object')return chat;chat.pinned=chat.pinned===true;chat.archived=chat.archived===true;chat.manualTitle=chat.manualTitle===true;if(!Number.isFinite(Number(chat.created)))chat.created=Date.now();if(!Number.isFinite(Number(chat.updated)))chat.updated=Number(chat.created)||Date.now();if(typeof chat.title!=='string'||!chat.title.trim())chat.title='New chat';chat.title=chat.title.trim().slice(0,120);return chat}
-chats.forEach(normalizeChat);const baseMakeChat=makeChat;makeChat=function managedMakeChat(messages=[]){return normalizeChat(baseMakeChat(messages))};
-function retentionSetting(){let value='forever';try{value=localStorage.getItem(RETENTION_KEY)||'forever'}catch{}return RETENTION_DAYS.has(value)?value:'forever'}
-function retentionCandidates(value=retentionSetting()){const days=RETENTION_DAYS.get(value)||0;if(!days)return[];const cutoff=Date.now()-days*86400000;return chats.filter(chat=>chat.id!==activeChatId&&chat.pinned!==true&&!chat.pendingModelId&&!(typeof chat.draft==='string'&&chat.draft.trim())&&Number(chat.updated||chat.created||0)<cutoff)}
-function writeChats(){chats.forEach(normalizeChat);const candidates=retentionCandidates();const removeIds=new Set(candidates.map(chat=>chat.id));const nextChats=removeIds.size?chats.filter(chat=>!removeIds.has(chat.id)):chats;try{localStorage.setItem(CHATS_KEY,JSON.stringify(nextChats));localStorage.setItem(ACTIVE_CHAT_KEY,activeChatId||'')}catch(error){notify('Could not save chats. Browser local storage may be full.');console.warn('InferBridge conversation storage failed:',error);return false}if(removeIds.size){chats=nextChats;notify(`Retention removed ${removeIds.size} old local chat${removeIds.size===1?'':'s'}.`)}return true}
-saveChats=function managedSaveChats(){return writeChats()};
-function messageText(message){const content=message?.content;if(typeof content==='string')return content;if(Array.isArray(content))return content.filter(part=>part&&part.type==='text'&&typeof part.text==='string').map(part=>part.text).join('\n');return''}
-saveConversation=function managedSaveConversation(chat=activeChat()){if(chat){normalizeChat(chat);chat.updated=Date.now();if(!chat.manualTitle&&(!chat.title||chat.title==='New chat')){const firstUser=chat.messages.find(message=>message.role==='user'&&message.content);if(firstUser)chat.title=messageText(firstUser).slice(0,60)}}writeChats();renderChatList();updateExportButton()};
-function searchText(chat){const parts=[chat.title||''];for(const message of chat.messages||[]){const text=messageText(message);if(text)parts.push(text)}return parts.join('\n').toLocaleLowerCase()}
-function matchSnippet(chat,query){if(!query)return'';const needle=query.toLocaleLowerCase();for(const message of chat.messages||[]){const text=messageText(message).replace(/\s+/g,' ').trim();const index=text.toLocaleLowerCase().indexOf(needle);if(index<0)continue;const start=Math.max(0,index-34);const end=Math.min(text.length,index+query.length+54);return`${start?'…':''}${text.slice(start,end)}${end<text.length?'…':''}`}return''}
-function visibleChats(){const query=searchQuery.trim().toLocaleLowerCase();const items=chats.filter(chat=>query?searchText(chat).includes(query):chat.archived===(chatView==='archived'));items.sort((a,b)=>a.pinned!==b.pinned?(a.pinned?-1:1):Number(b.updated||0)-Number(a.updated||0));return items}
-function activeCount(){return chats.filter(chat=>!chat.archived).length}function archivedCount(){return chats.filter(chat=>chat.archived).length}
-function pinIcon(){return'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"/><path d="M5 17h14"/><path d="M7 3h10l-1 7 3 3H5l3-3-1-7Z"/></svg>'}
-function rowSubtitle(chat){const snippet=matchSnippet(chat,searchQuery.trim());return snippet||chatSubtitle(chat)}
-function managedRenderChatList(){const items=visibleChats();chatsListElement.replaceChildren();if(!items.length){const empty=document.createElement('div');empty.className='cm-empty';empty.textContent=searchQuery.trim()?'No local conversations match this search.':chatView==='archived'?'No archived conversations.':'No active conversations.';chatsListElement.appendChild(empty)}items.forEach(chat=>{const item=document.createElement('div');item.className=`chat-item${chat.id===activeChatId?' active':''}${chat.pinned?' cm-pinned':''}${chat.archived?' cm-archived':''}`;item.dataset.chatId=chat.id;const main=document.createElement('button');main.type='button';main.className='chat-item-main';main.setAttribute('aria-current',chat.id===activeChatId?'true':'false');main.setAttribute('aria-label',`${chat.title||'New chat'}${chat.archived?', archived':''}${chat.pinned?', pinned':''}`);const title=document.createElement('span');title.className='chat-item-title';title.textContent=chat.title||'New chat';if(chat.pinned){const pin=document.createElement('span');pin.className='cm-pin';pin.title='Pinned';pin.innerHTML=pinIcon();title.prepend(pin)}const sub=document.createElement('span');sub.className=`chat-item-sub${searchQuery.trim()?' cm-match':''}`;sub.textContent=rowSubtitle(chat);main.append(title,sub);main.addEventListener('click',()=>switchChat(chat.id));const more=document.createElement('button');more.type='button';more.className='chat-item-more';more.title='Conversation actions';more.setAttribute('aria-label',`Conversation actions: ${chat.title||'New chat'}`);more.setAttribute('aria-haspopup','menu');more.setAttribute('aria-expanded',String(menuChatId===chat.id));more.textContent='⋯';more.addEventListener('click',event=>{event.stopPropagation();menuChatId===chat.id?closeActionMenu(true):openActionMenu(chat.id,more)});item.append(main,more);chatsListElement.appendChild(item)});const queryNote=searchQuery.trim()?` · ${items.length} match${items.length===1?'':'es'}`:'';chatsFooterElement.textContent=`${chats.length} chat${chats.length===1?'':'s'} · local to this browser profile${queryNote}`;updateToolbarCounts()}
-renderChatList=managedRenderChatList;updateChatListTimes=function managedChatListTimes(){document.querySelectorAll('#chats-list .chat-item').forEach(item=>{const chat=chats.find(candidate=>candidate.id===item.dataset.chatId);const sub=item.querySelector('.chat-item-sub');if(chat&&sub)sub.textContent=rowSubtitle(chat)})};
-const toolbar=document.createElement('div');toolbar.id='conversation-management-toolbar';toolbar.innerHTML=`<div class="cm-search-wrap"><input id="conversation-search" type="search" maxlength="160" autocomplete="off" placeholder="Search local chats" aria-label="Search conversation titles and messages"><button id="conversation-search-clear" type="button" aria-label="Clear conversation search" hidden>&times;</button></div><div class="cm-view-row" role="group" aria-label="Conversation view"><button type="button" class="cm-view-btn active" data-cm-view="active">Active</button><button type="button" class="cm-view-btn" data-cm-view="archived">Archived</button></div><div class="cm-local-note"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><span>Chats stay in this browser profile. They are not synced to an InferBridge account or server.</span></div>`;sidebar.insertBefore(toolbar,chatsListElement);const searchInput=toolbar.querySelector('#conversation-search');const searchClear=toolbar.querySelector('#conversation-search-clear');const viewButtons=Array.from(toolbar.querySelectorAll('[data-cm-view]'));
-function updateToolbarCounts(){const active=toolbar.querySelector('[data-cm-view="active"]');const archived=toolbar.querySelector('[data-cm-view="archived"]');if(active)active.textContent=`Active ${activeCount()}`;if(archived)archived.textContent=`Archived ${archivedCount()}`;viewButtons.forEach(button=>button.classList.toggle('active',button.dataset.cmView===chatView))}
-searchInput.addEventListener('input',()=>{searchQuery=searchInput.value;searchClear.hidden=!searchQuery;closeActionMenu();renderChatList()});searchInput.addEventListener('keydown',event=>{if(event.key==='Escape'&&searchInput.value){event.preventDefault();searchInput.value='';searchQuery='';searchClear.hidden=true;renderChatList()}});searchClear.addEventListener('click',()=>{searchInput.value='';searchQuery='';searchClear.hidden=true;renderChatList();searchInput.focus()});viewButtons.forEach(button=>button.addEventListener('click',()=>{chatView=button.dataset.cmView==='archived'?'archived':'active';closeActionMenu();renderChatList()}));
-const actionMenu=document.createElement('div');actionMenu.id='conversation-action-menu';actionMenu.setAttribute('role','menu');actionMenu.setAttribute('aria-label','Conversation actions');actionMenu.hidden=true;document.body.appendChild(actionMenu);
-function actionButton(action,label,options={}){return`<button type="button" class="cm-menu-btn${options.danger?' danger':''}" role="menuitem" data-cm-action="${action}" ${options.disabled?'disabled':''}>${label}</button>`}
-function closeActionMenu(restoreFocus=false){if(actionMenu.hidden)return;actionMenu.hidden=true;document.querySelectorAll('.chat-item-more[aria-expanded="true"]').forEach(button=>button.setAttribute('aria-expanded','false'));menuChatId=null;if(restoreFocus&&menuReturnFocus?.isConnected)menuReturnFocus.focus();menuReturnFocus=null}
-function openActionMenu(chatId,button){const chat=chats.find(candidate=>candidate.id===chatId);if(!chat)return;closeActionMenu();menuChatId=chatId;menuReturnFocus=button;const pending=!!chat.pendingModelId;actionMenu.innerHTML=[actionButton('rename','Rename'),actionButton('pin',chat.pinned?'Unpin':'Pin'),actionButton('duplicate','Duplicate'),actionButton('archive',chat.archived?'Restore from archive':'Archive',{disabled:pending}),'<div class="cm-menu-divider" role="separator"></div>',actionButton('export-markdown','Export Markdown'),actionButton('export-json','Export JSON'),'<div class="cm-menu-divider" role="separator"></div>',actionButton('delete','Delete',{danger:true})].join('');actionMenu.hidden=false;button.setAttribute('aria-expanded','true');const rect=button.getBoundingClientRect();const menuWidth=210;actionMenu.style.left=`${Math.max(9,Math.min(window.innerWidth-menuWidth-9,rect.right-menuWidth))}px`;actionMenu.style.top='0px';const height=actionMenu.getBoundingClientRect().height||310;actionMenu.style.top=`${Math.max(9,Math.min(window.innerHeight-height-9,rect.bottom+4))}px`;actionMenu.querySelector('.cm-menu-btn:not(:disabled)')?.focus()}
-actionMenu.addEventListener('click',event=>{const button=event.target.closest('[data-cm-action]');if(!button||button.disabled||!menuChatId)return;const id=menuChatId;const action=button.dataset.cmAction;const returnButton=menuReturnFocus;closeActionMenu();handleAction(action,id,returnButton)});actionMenu.addEventListener('keydown',event=>{const buttons=Array.from(actionMenu.querySelectorAll('.cm-menu-btn:not(:disabled)'));if(!buttons.length)return;const current=buttons.indexOf(document.activeElement);if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();buttons[(current+(event.key==='ArrowDown'?1:-1)+buttons.length)%buttons.length].focus()}else if(event.key==='Home'){event.preventDefault();buttons[0].focus()}else if(event.key==='End'){event.preventDefault();buttons.at(-1).focus()}else if(event.key==='Escape'){event.preventDefault();closeActionMenu(true)}});document.addEventListener('pointerdown',event=>{if(!actionMenu.hidden&&!actionMenu.contains(event.target)&&!event.target.closest('.chat-item-more'))closeActionMenu()});window.addEventListener('resize',()=>closeActionMenu());
-const renameModal=document.createElement('div');renameModal.id='conversation-rename-modal';renameModal.className='modal-overlay hidden';renameModal.setAttribute('aria-hidden','true');renameModal.innerHTML=`<div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="conversation-rename-title"><div class="modal-header"><h3 id="conversation-rename-title">Rename conversation</h3><button type="button" class="close-btn" id="conversation-rename-close" aria-label="Close rename dialog">&times;</button></div><form class="cm-rename-body" id="conversation-rename-form"><label for="conversation-rename-input">Conversation title</label><input id="conversation-rename-input" maxlength="120" autocomplete="off" required><div class="cm-rename-actions"><button type="button" class="btn-cancel" id="conversation-rename-cancel">Cancel</button><button type="submit" class="btn-submit">Save name</button></div></form></div>`;document.body.appendChild(renameModal);const renameInput=renameModal.querySelector('#conversation-rename-input');
-function openRename(chatId,returnFocus=null){const chat=chats.find(candidate=>candidate.id===chatId);if(!chat)return;renameChatId=chatId;renameReturnFocus=returnFocus||document.activeElement;renameInput.value=chat.title||'New chat';renameModal.classList.remove('hidden');renameModal.setAttribute('aria-hidden','false');requestAnimationFrame(()=>{renameInput.focus();renameInput.select()})}
-function closeRename(restore=true){renameModal.classList.add('hidden');renameModal.setAttribute('aria-hidden','true');renameChatId=null;if(restore&&renameReturnFocus?.isConnected)renameReturnFocus.focus();renameReturnFocus=null}
-renameModal.querySelector('#conversation-rename-close').addEventListener('click',()=>closeRename());renameModal.querySelector('#conversation-rename-cancel').addEventListener('click',()=>closeRename());renameModal.addEventListener('click',event=>{if(event.target===renameModal)closeRename()});renameModal.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();closeRename()}});renameModal.querySelector('#conversation-rename-form').addEventListener('submit',event=>{event.preventDefault();const chat=chats.find(candidate=>candidate.id===renameChatId);const title=renameInput.value.trim().slice(0,120);if(!chat||!title)return;chat.title=title;chat.manualTitle=true;writeChats();renderChatList();if(typeof renderChat==='function'&&chat.id===activeChatId)renderChat();closeRename(false);notify('Conversation renamed')});
-function cloneMessages(messages){try{if(typeof structuredClone==='function')return structuredClone(messages)}catch{}return JSON.parse(JSON.stringify(messages||[]))}
-function duplicateChat(chat){if(!chat)return;const copy=makeChat(cloneMessages(chat.messages));copy.title=`${chat.title||'New chat'} copy`.slice(0,120);copy.manualTitle=true;copy.pinned=false;copy.archived=false;if(chat.modelId)copy.modelId=chat.modelId;if(typeof chat.systemPrompt==='string')copy.systemPrompt=chat.systemPrompt;chats.unshift(copy);if(!writeChats())return;chatView='active';searchQuery='';searchInput.value='';searchClear.hidden=true;switchChat(copy.id);renderChatList();notify('Conversation duplicated')}
-function toggleArchive(chat){if(!chat)return;if(chat.pendingModelId){notify('Wait for the pending model operation before archiving this chat.');return}const archiving=!chat.archived;if(archiving&&chat.id===activeChatId&&typeof isGenerating!=='undefined'&&isGenerating)stopGeneration();chat.archived=archiving;if(archiving&&chat.id===activeChatId){let next=chats.find(candidate=>!candidate.archived&&candidate.id!==chat.id);if(!next){next=makeChat([]);chats.unshift(next)}writeChats();switchChat(next.id)}else writeChats();renderChatList();notify(archiving?'Conversation archived':'Conversation restored')}
-function safeFilename(title,extension){const cleaned=String(title||'inferbridge-chat').replace(/[<>:"/\\|?*\x00-\x1f]/g,'-').replace(/[. ]+$/g,'').trim().slice(0,80)||'inferbridge-chat';return`${cleaned}.${extension}`}
-function downloadText(filename,text,type){const blob=new Blob([text],{type});const url=URL.createObjectURL(blob);const anchor=document.createElement('a');anchor.href=url;anchor.download=filename;document.body.appendChild(anchor);anchor.click();anchor.remove();setTimeout(()=>URL.revokeObjectURL(url),0)}
-function exportableMessages(chat){return(chat.messages||[]).map(message=>{const output={role:message.role==='user'?'user':'assistant',content:messageText(message)};if(message.meta&&typeof message.meta==='object'){const meta={};if(typeof message.meta.model==='string')meta.model=message.meta.model.slice(0,200);if(Number.isFinite(Number(message.meta.tokens)))meta.tokens=Number(message.meta.tokens);if(Number.isFinite(Number(message.meta.tps)))meta.tps=Number(message.meta.tps);if(Object.keys(meta).length)output.meta=meta}return output})}
-function markdownFor(chat){const lines=[`# ${chat.title||'InferBridge conversation'}`,'','> Exported from InferBridge. This conversation was stored locally in the browser profile that created the export.','',`- Created: ${new Date(Number(chat.created)||Date.now()).toISOString()}`,`- Updated: ${new Date(Number(chat.updated)||Date.now()).toISOString()}`,'','---',''];exportableMessages(chat).forEach(message=>{lines.push(`## ${message.role==='user'?'You':'Assistant'}`,'',message.content||'','');if(message.meta){const meta=[];if(message.meta.model)meta.push(`Model: ${message.meta.model}`);if(message.meta.tokens)meta.push(`${message.meta.tokens} tokens`);if(message.meta.tps)meta.push(`${message.meta.tps} tok/s`);if(meta.length)lines.push(`_${meta.join(' · ')}_`,'')}});return`${lines.join('\n').trimEnd()}\n`}
-function jsonFor(chat){return JSON.stringify({format:EXPORT_FORMAT,schema_version:EXPORT_SCHEMA_VERSION,application:'InferBridge',exported_at:new Date().toISOString(),conversation:{title:String(chat.title||'New chat').slice(0,120),created:Number(chat.created)||Date.now(),updated:Number(chat.updated)||Date.now(),pinned:chat.pinned===true,archived:chat.archived===true,model_id:typeof chat.modelId==='string'?chat.modelId.slice(0,200):null,system_prompt:typeof chat.systemPrompt==='string'?chat.systemPrompt.slice(0,32768):'',messages:exportableMessages(chat)}},null,2)+'\n'}
-function exportMarkdown(chat){downloadText(safeFilename(chat.title,'md'),markdownFor(chat),'text/markdown;charset=utf-8');notify('Markdown export created')}function exportJson(chat){downloadText(safeFilename(chat.title,'json'),jsonFor(chat),'application/json;charset=utf-8');notify('JSON export created')}
-function handleAction(action,chatId,returnFocus=null){const chat=chats.find(candidate=>candidate.id===chatId);if(!chat)return;if(action==='rename')openRename(chatId,returnFocus);else if(action==='pin'){chat.pinned=!chat.pinned;writeChats();renderChatList();notify(chat.pinned?'Conversation pinned':'Conversation unpinned')}else if(action==='duplicate')duplicateChat(chat);else if(action==='archive')toggleArchive(chat);else if(action==='export-markdown')exportMarkdown(chat);else if(action==='export-json')exportJson(chat);else if(action==='delete'){deleteChat(chatId);renderChatList()}}
-const settingsDivider=document.createElement('div');settingsDivider.className='sidebar-divider';const settingsGroup=document.createElement('div');settingsGroup.className='setting-group stats-section cm-setting-group';settingsGroup.innerHTML=`<h4>Conversation storage</h4><p class="cm-settings-note">Chats are stored only in this browser profile. Pinned chats, chats with drafts, and chats with pending model work are never removed by retention.</p><label for="conversation-retention">Retention</label><select id="conversation-retention" aria-label="Conversation retention"><option value="forever">Keep until I delete them</option><option value="30">Delete inactive chats after 30 days</option><option value="90">Delete inactive chats after 90 days</option><option value="180">Delete inactive chats after 180 days</option><option value="365">Delete inactive chats after 1 year</option></select><div class="cm-setting-actions"><button type="button" id="conversation-import-json">Import JSON</button><button type="button" id="conversation-export-json">Export current JSON</button></div><button type="button" class="cm-danger" id="conversation-clear-all">Clear all local chats</button><input type="file" id="conversation-import-file" accept="application/json,.json" hidden>`;const firstSettingsDivider=settingsSidebarElement.querySelector('.sidebar-divider');settingsSidebarElement.insertBefore(settingsDivider,firstSettingsDivider||null);settingsSidebarElement.insertBefore(settingsGroup,firstSettingsDivider||null);const retentionSelect=settingsGroup.querySelector('#conversation-retention');const importButton=settingsGroup.querySelector('#conversation-import-json');const exportCurrentButton=settingsGroup.querySelector('#conversation-export-json');const clearAllButton=settingsGroup.querySelector('#conversation-clear-all');const importFile=settingsGroup.querySelector('#conversation-import-file');retentionSelect.value=retentionSetting();
-retentionSelect.addEventListener('change',()=>{const next=RETENTION_DAYS.has(retentionSelect.value)?retentionSelect.value:'forever';const previous=retentionSetting();const candidates=retentionCandidates(next);if(candidates.length){const confirmed=window.confirm(`This retention setting will remove ${candidates.length} inactive local chat${candidates.length===1?'':'s'} now.\n\nPinned chats, the active chat, chats with drafts, and chats with pending model work will be kept.`);if(!confirmed){retentionSelect.value=previous;return}}try{localStorage.setItem(RETENTION_KEY,next)}catch{}const removed=candidates.length;const saved=writeChats();if(!saved){try{localStorage.setItem(RETENTION_KEY,previous)}catch{}retentionSelect.value=previous;return}renderChatList();if(!removed)notify('Conversation retention updated')});
-function sanitizeImportedMessage(message){if(!message||typeof message!=='object')throw new Error('Each imported message must be an object.');if(!['user','assistant'].includes(message.role))throw new Error('Imported messages may only use user or assistant roles.');if(typeof message.content!=='string')throw new Error('Imported message content must be text.');const output={role:message.role,content:message.content};if(message.meta&&typeof message.meta==='object'){const meta={};if(typeof message.meta.model==='string')meta.model=message.meta.model.slice(0,200);if(Number.isFinite(Number(message.meta.tokens)))meta.tokens=Number(message.meta.tokens);if(Number.isFinite(Number(message.meta.tps)))meta.tps=Number(message.meta.tps);if(Object.keys(meta).length)output.meta=meta}return output}
-function validateImport(payload){if(!payload||typeof payload!=='object'||Array.isArray(payload))throw new Error('Import must contain a JSON object.');if(payload.format!==EXPORT_FORMAT||payload.schema_version!==EXPORT_SCHEMA_VERSION||payload.application!=='InferBridge')throw new Error('This is not a supported InferBridge conversation export.');const source=payload.conversation;if(!source||typeof source!=='object'||!Array.isArray(source.messages))throw new Error('Conversation data is missing or invalid.');if(source.messages.length>MAX_IMPORT_MESSAGES)throw new Error(`Conversation exports may contain at most ${MAX_IMPORT_MESSAGES} messages.`);let textSize=0;const messages=source.messages.map(message=>{const safe=sanitizeImportedMessage(message);textSize+=safe.content.length;if(textSize>MAX_IMPORT_TEXT)throw new Error('Conversation text is too large to import safely.');return safe});const created=Number(source.created);const chat=makeChat(messages);chat.title=String(source.title||'Imported conversation').trim().slice(0,120)||'Imported conversation';chat.manualTitle=true;chat.created=Number.isFinite(created)&&created>0?created:Date.now();chat.updated=Date.now();chat.pinned=source.pinned===true;chat.archived=source.archived===true;if(typeof source.model_id==='string'&&source.model_id.trim())chat.modelId=source.model_id.trim().slice(0,200);if(typeof source.system_prompt==='string')chat.systemPrompt=source.system_prompt.slice(0,32768);chat.draft='';return chat}
-async function importJsonFile(file){if(!file)return;if(file.size>MAX_IMPORT_BYTES)throw new Error('JSON import is larger than the 4 MiB safety limit.');const text=await file.text();let payload;try{payload=JSON.parse(text)}catch{throw new Error('The selected file is not valid JSON.')}const chat=validateImport(payload);const previousActiveId=activeChatId;chats.unshift(chat);chatView=chat.archived?'archived':'active';searchQuery='';searchInput.value='';searchClear.hidden=true;if(!writeChats()){chats=chats.filter(candidate=>candidate.id!==chat.id);activeChatId=previousActiveId;conversation=activeChat()?.messages||[];throw new Error('Browser local storage could not save the imported conversation.')}switchChat(chat.id);renderChatList();notify('InferBridge conversation imported')}
-importButton.addEventListener('click',()=>{importFile.value='';importFile.click()});importFile.addEventListener('change',async()=>{const file=importFile.files?.[0];try{await importJsonFile(file)}catch(error){notify(error instanceof Error?error.message:String(error))}finally{importFile.value=''}});exportCurrentButton.addEventListener('click',()=>{const chat=activeChat();if(!chat){notify('No active conversation to export');return}exportJson(chat)});clearAllButton.addEventListener('click',()=>{const count=chats.length;const confirmed=window.confirm(`Clear all ${count} local chat${count===1?'':'s'} from this browser profile?\n\nThis includes pinned and archived chats and cannot be undone unless you exported them first.`);if(!confirmed)return;if(typeof isGenerating!=='undefined'&&isGenerating)stopGeneration();window.__ovllmVisionGuard?.clearForNavigation?.('Image attachments were cleared with local chat history.');try{localStorage.removeItem(CHATS_KEY);localStorage.removeItem(ACTIVE_CHAT_KEY);localStorage.removeItem(LEGACY_STORAGE_KEY)}catch{}const blank=makeChat([]);chats=[blank];activeChatId=blank.id;conversation=blank.messages;chatView='active';searchQuery='';searchInput.value='';searchClear.hidden=true;writeChats();renderChatList();renderChat();notify('All local chats cleared')});
-writeChats();renderChatList();
+    const RETENTION_KEY = 'ovllm.chatRetention.v1';
+    const EXPORT_FORMAT = 'inferbridge-conversation';
+    const EXPORT_SCHEMA_VERSION = 1;
+    const MAX_IMPORT_BYTES = 4 * 1024 * 1024;
+    const MAX_IMPORT_MESSAGES = 2000;
+    const MAX_IMPORT_TEXT = 3 * 1024 * 1024;
+    const RETENTION_DAYS = new Map([
+        ['forever', 0], ['30', 30], ['90', 90], ['180', 180], ['365', 365],
+    ]);
+
+    const sidebar = document.getElementById('chats-sidebar');
+    const chatsListElement = document.getElementById('chats-list');
+    const chatsFooterElement = document.getElementById('chats-footer');
+    const settingsSidebarElement = document.getElementById('settings-sidebar');
+    const appElement = document.getElementById('app');
+    if (!sidebar || !chatsListElement || !chatsFooterElement || !settingsSidebarElement) return;
+
+    let chatView = 'active';
+    let searchQuery = '';
+    let menuChatId = null;
+    let menuReturnFocus = null;
+    let renameChatId = null;
+    let renameReturnFocus = null;
+
+    function notify(message) {
+        if (typeof showToast === 'function') showToast(message);
+    }
+
+    function normalizeChat(chat) {
+        if (!chat || typeof chat !== 'object') return chat;
+        chat.pinned = chat.pinned === true;
+        chat.archived = chat.archived === true;
+        chat.manualTitle = chat.manualTitle === true;
+        if (!Number.isFinite(Number(chat.created))) chat.created = Date.now();
+        if (!Number.isFinite(Number(chat.updated))) chat.updated = Number(chat.created) || Date.now();
+        if (typeof chat.title !== 'string' || !chat.title.trim()) chat.title = 'New chat';
+        chat.title = chat.title.trim().slice(0, 120);
+        return chat;
+    }
+
+    chats.forEach(normalizeChat);
+    const baseMakeChat = makeChat;
+    makeChat = function managedMakeChat(messages = []) {
+        return normalizeChat(baseMakeChat(messages));
+    };
+
+    function retentionSetting() {
+        let value = 'forever';
+        try { value = localStorage.getItem(RETENTION_KEY) || 'forever'; } catch { }
+        return RETENTION_DAYS.has(value) ? value : 'forever';
+    }
+
+    function retentionCandidates(value = retentionSetting()) {
+        const days = RETENTION_DAYS.get(value) || 0;
+        if (!days) return [];
+        const cutoff = Date.now() - days * 86400000;
+        return chats.filter(chat =>
+            chat.id !== activeChatId &&
+            chat.pinned !== true &&
+            !chat.pendingModelId &&
+            !(typeof chat.draft === 'string' && chat.draft.trim()) &&
+            Number(chat.updated || chat.created || 0) < cutoff
+        );
+    }
+
+    function restoreStorageValue(key, value) {
+        try {
+            if (value === null) localStorage.removeItem(key);
+            else localStorage.setItem(key, value);
+        } catch { }
+    }
+
+    function persistChats() {
+        chats.forEach(normalizeChat);
+        const removeIds = new Set(retentionCandidates().map(chat => chat.id));
+        const nextChats = removeIds.size
+            ? chats.filter(chat => !removeIds.has(chat.id))
+            : chats;
+        let previousChats = null;
+        let previousActive = null;
+        try {
+            previousChats = localStorage.getItem(CHATS_KEY);
+            previousActive = localStorage.getItem(ACTIVE_CHAT_KEY);
+            localStorage.setItem(CHATS_KEY, JSON.stringify(nextChats));
+            localStorage.setItem(ACTIVE_CHAT_KEY, activeChatId || '');
+        } catch (error) {
+            restoreStorageValue(CHATS_KEY, previousChats);
+            restoreStorageValue(ACTIVE_CHAT_KEY, previousActive);
+            notify('Could not save chats. Browser local storage may be full.');
+            console.warn('InferBridge conversation storage failed:', error);
+            return false;
+        }
+        if (removeIds.size) {
+            chats = nextChats;
+            notify(`Retention removed ${removeIds.size} old local chat${removeIds.size === 1 ? '' : 's'}.`);
+        }
+        return true;
+    }
+
+    saveChats = function managedSaveChats() {
+        return persistChats();
+    };
+
+    function messageText(message) {
+        const content = message?.content;
+        if (typeof content === 'string') return content;
+        if (Array.isArray(content)) {
+            return content
+                .filter(part => part && part.type === 'text' && typeof part.text === 'string')
+                .map(part => part.text)
+                .join('\n');
+        }
+        return '';
+    }
+
+    saveConversation = function managedSaveConversation(chat = activeChat()) {
+        let previous = null;
+        if (chat) {
+            normalizeChat(chat);
+            previous = {
+                updated: chat.updated,
+                title: chat.title,
+                manualTitle: chat.manualTitle,
+            };
+            chat.updated = Date.now();
+            if (!chat.manualTitle && (!chat.title || chat.title === 'New chat')) {
+                const firstUser = chat.messages.find(message => message.role === 'user' && message.content);
+                if (firstUser) chat.title = messageText(firstUser).slice(0, 60) || 'New chat';
+            }
+        }
+        if (!persistChats() && chat && previous) {
+            chat.updated = previous.updated;
+            chat.title = previous.title;
+            chat.manualTitle = previous.manualTitle;
+        }
+        renderChatList();
+        updateExportButton();
+    };
+
+    function searchText(chat) {
+        const parts = [chat.title || ''];
+        for (const message of chat.messages || []) {
+            const text = messageText(message);
+            if (text) parts.push(text);
+        }
+        return parts.join('\n').toLocaleLowerCase();
+    }
+
+    function matchSnippet(chat, query) {
+        if (!query) return '';
+        const needle = query.toLocaleLowerCase();
+        for (const message of chat.messages || []) {
+            const text = messageText(message).replace(/\s+/g, ' ').trim();
+            const index = text.toLocaleLowerCase().indexOf(needle);
+            if (index < 0) continue;
+            const start = Math.max(0, index - 34);
+            const end = Math.min(text.length, index + query.length + 54);
+            return `${start ? '…' : ''}${text.slice(start, end)}${end < text.length ? '…' : ''}`;
+        }
+        return '';
+    }
+
+    function visibleChats() {
+        const query = searchQuery.trim().toLocaleLowerCase();
+        const archived = chatView === 'archived';
+        const items = chats.filter(chat =>
+            chat.archived === archived && (!query || searchText(chat).includes(query))
+        );
+        items.sort((a, b) =>
+            a.pinned !== b.pinned
+                ? (a.pinned ? -1 : 1)
+                : Number(b.updated || 0) - Number(a.updated || 0)
+        );
+        return items;
+    }
+
+    function activeCount() { return chats.filter(chat => !chat.archived).length; }
+    function archivedCount() { return chats.filter(chat => chat.archived).length; }
+    function pinIcon() {
+        return '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"/><path d="M5 17h14"/><path d="M7 3h10l-1 7 3 3H5l3-3-1-7Z"/></svg>';
+    }
+    function rowSubtitle(chat) {
+        return matchSnippet(chat, searchQuery.trim()) || chatSubtitle(chat);
+    }
+
+    function updateToolbarCounts() {
+        const active = toolbar.querySelector('[data-cm-view="active"]');
+        const archived = toolbar.querySelector('[data-cm-view="archived"]');
+        if (active) active.textContent = `Active ${activeCount()}`;
+        if (archived) archived.textContent = `Archived ${archivedCount()}`;
+        viewButtons.forEach(button => {
+            const selected = button.dataset.cmView === chatView;
+            button.classList.toggle('active', selected);
+            button.setAttribute('aria-pressed', String(selected));
+        });
+    }
+
+    function managedRenderChatList() {
+        const items = visibleChats();
+        chatsListElement.replaceChildren();
+        if (!items.length) {
+            const empty = document.createElement('div');
+            empty.className = 'cm-empty';
+            empty.textContent = searchQuery.trim()
+                ? `No ${chatView} conversations match this search.`
+                : chatView === 'archived'
+                    ? 'No archived conversations.'
+                    : 'No active conversations.';
+            chatsListElement.appendChild(empty);
+        }
+        items.forEach(chat => {
+            const item = document.createElement('div');
+            item.className = `chat-item${chat.id === activeChatId ? ' active' : ''}${chat.pinned ? ' cm-pinned' : ''}${chat.archived ? ' cm-archived' : ''}`;
+            item.dataset.chatId = chat.id;
+
+            const main = document.createElement('button');
+            main.type = 'button';
+            main.className = 'chat-item-main';
+            main.setAttribute('aria-current', chat.id === activeChatId ? 'true' : 'false');
+            main.setAttribute('aria-label', `${chat.title || 'New chat'}${chat.archived ? ', archived' : ''}${chat.pinned ? ', pinned' : ''}`);
+
+            const title = document.createElement('span');
+            title.className = 'chat-item-title';
+            title.textContent = chat.title || 'New chat';
+            if (chat.pinned) {
+                const pin = document.createElement('span');
+                pin.className = 'cm-pin';
+                pin.title = 'Pinned';
+                pin.innerHTML = pinIcon();
+                title.prepend(pin);
+            }
+
+            const sub = document.createElement('span');
+            sub.className = `chat-item-sub${searchQuery.trim() ? ' cm-match' : ''}`;
+            sub.textContent = rowSubtitle(chat);
+            main.append(title, sub);
+            main.addEventListener('click', () => switchChat(chat.id));
+
+            const more = document.createElement('button');
+            more.type = 'button';
+            more.className = 'chat-item-more';
+            more.title = 'Conversation actions';
+            more.setAttribute('aria-label', `Conversation actions: ${chat.title || 'New chat'}`);
+            more.setAttribute('aria-haspopup', 'menu');
+            more.setAttribute('aria-expanded', String(menuChatId === chat.id));
+            more.textContent = '⋯';
+            more.addEventListener('click', event => {
+                event.stopPropagation();
+                if (menuChatId === chat.id) closeActionMenu(true);
+                else openActionMenu(chat.id, more);
+            });
+            item.append(main, more);
+            chatsListElement.appendChild(item);
+        });
+        const queryNote = searchQuery.trim()
+            ? ` · ${items.length} match${items.length === 1 ? '' : 'es'}`
+            : '';
+        chatsFooterElement.textContent = `${chats.length} chat${chats.length === 1 ? '' : 's'} · local to this browser profile${queryNote}`;
+        updateToolbarCounts();
+    }
+
+    renderChatList = managedRenderChatList;
+    updateChatListTimes = function managedChatListTimes() {
+        document.querySelectorAll('#chats-list .chat-item').forEach(item => {
+            const chat = chats.find(candidate => candidate.id === item.dataset.chatId);
+            const sub = item.querySelector('.chat-item-sub');
+            if (chat && sub) sub.textContent = rowSubtitle(chat);
+        });
+    };
+
+    const toolbar = document.createElement('div');
+    toolbar.id = 'conversation-management-toolbar';
+    toolbar.innerHTML = `
+        <div class="cm-search-wrap">
+            <input id="conversation-search" type="search" maxlength="160" autocomplete="off"
+                placeholder="Search local chats" aria-label="Search conversation titles and messages">
+            <button id="conversation-search-clear" type="button" aria-label="Clear conversation search" hidden>&times;</button>
+        </div>
+        <div class="cm-view-row" role="group" aria-label="Conversation view">
+            <button type="button" class="cm-view-btn active" data-cm-view="active" aria-pressed="true">Active</button>
+            <button type="button" class="cm-view-btn" data-cm-view="archived" aria-pressed="false">Archived</button>
+        </div>
+        <div class="cm-local-note">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+            <span>Chats stay in this browser profile. They are not synced to an InferBridge account or server.</span>
+        </div>`;
+    sidebar.insertBefore(toolbar, chatsListElement);
+    const searchInput = toolbar.querySelector('#conversation-search');
+    const searchClear = toolbar.querySelector('#conversation-search-clear');
+    const viewButtons = Array.from(toolbar.querySelectorAll('[data-cm-view]'));
+
+    searchInput.addEventListener('input', () => {
+        searchQuery = searchInput.value;
+        searchClear.hidden = !searchQuery;
+        closeActionMenu();
+        renderChatList();
+    });
+    searchInput.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && searchInput.value) {
+            event.preventDefault();
+            searchInput.value = '';
+            searchQuery = '';
+            searchClear.hidden = true;
+            renderChatList();
+        }
+    });
+    searchClear.addEventListener('click', () => {
+        searchInput.value = '';
+        searchQuery = '';
+        searchClear.hidden = true;
+        renderChatList();
+        searchInput.focus();
+    });
+    viewButtons.forEach(button => button.addEventListener('click', () => {
+        chatView = button.dataset.cmView === 'archived' ? 'archived' : 'active';
+        closeActionMenu();
+        renderChatList();
+    }));
+
+    const actionMenu = document.createElement('div');
+    actionMenu.id = 'conversation-action-menu';
+    actionMenu.setAttribute('role', 'menu');
+    actionMenu.setAttribute('aria-label', 'Conversation actions');
+    actionMenu.hidden = true;
+    document.body.appendChild(actionMenu);
+
+    function actionButton(action, label, options = {}) {
+        return `<button type="button" class="cm-menu-btn${options.danger ? ' danger' : ''}" role="menuitem" data-cm-action="${action}" ${options.disabled ? 'disabled' : ''}>${label}</button>`;
+    }
+
+    function closeActionMenu(restoreFocus = false) {
+        if (actionMenu.hidden) return;
+        actionMenu.hidden = true;
+        document.querySelectorAll('.chat-item-more[aria-expanded="true"]').forEach(button => {
+            button.setAttribute('aria-expanded', 'false');
+        });
+        const returnFocus = menuReturnFocus;
+        menuChatId = null;
+        menuReturnFocus = null;
+        if (restoreFocus && returnFocus?.isConnected) returnFocus.focus();
+    }
+
+    function openActionMenu(chatId, button) {
+        const chat = chats.find(candidate => candidate.id === chatId);
+        if (!chat) return;
+        closeActionMenu();
+        menuChatId = chatId;
+        menuReturnFocus = button;
+        const pending = !!chat.pendingModelId;
+        actionMenu.innerHTML = [
+            actionButton('rename', 'Rename'),
+            actionButton('pin', chat.pinned ? 'Unpin' : 'Pin'),
+            actionButton('duplicate', 'Duplicate'),
+            actionButton('archive', chat.archived ? 'Restore from archive' : 'Archive', { disabled: pending }),
+            '<div class="cm-menu-divider" role="separator"></div>',
+            actionButton('export-markdown', 'Export Markdown'),
+            actionButton('export-json', 'Export JSON'),
+            '<div class="cm-menu-divider" role="separator"></div>',
+            actionButton('delete', 'Delete', { danger: true }),
+        ].join('');
+        actionMenu.hidden = false;
+        button.setAttribute('aria-expanded', 'true');
+        const rect = button.getBoundingClientRect();
+        const menuWidth = 210;
+        actionMenu.style.left = `${Math.max(9, Math.min(window.innerWidth - menuWidth - 9, rect.right - menuWidth))}px`;
+        actionMenu.style.top = '0px';
+        const height = actionMenu.getBoundingClientRect().height || 310;
+        actionMenu.style.top = `${Math.max(9, Math.min(window.innerHeight - height - 9, rect.bottom + 4))}px`;
+        actionMenu.querySelector('.cm-menu-btn:not(:disabled)')?.focus();
+    }
+
+    function focusActionForChat(chatId) {
+        const selector = `.chat-item[data-chat-id="${CSS.escape(chatId)}"] .chat-item-more`;
+        document.querySelector(selector)?.focus();
+    }
+
+    actionMenu.addEventListener('click', event => {
+        const button = event.target.closest('[data-cm-action]');
+        if (!button || button.disabled || !menuChatId) return;
+        const id = menuChatId;
+        const action = button.dataset.cmAction;
+        const returnButton = menuReturnFocus;
+        closeActionMenu();
+        handleAction(action, id, returnButton);
+    });
+    actionMenu.addEventListener('keydown', event => {
+        const buttons = Array.from(actionMenu.querySelectorAll('.cm-menu-btn:not(:disabled)'));
+        if (!buttons.length) return;
+        const current = buttons.indexOf(document.activeElement);
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            buttons[(current + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length].focus();
+        } else if (event.key === 'Home') {
+            event.preventDefault();
+            buttons[0].focus();
+        } else if (event.key === 'End') {
+            event.preventDefault();
+            buttons.at(-1).focus();
+        } else if (event.key === 'Escape') {
+            event.preventDefault();
+            closeActionMenu(true);
+        }
+    });
+    actionMenu.addEventListener('focusout', () => {
+        window.setTimeout(() => {
+            if (!actionMenu.hidden && !actionMenu.contains(document.activeElement)) closeActionMenu();
+        }, 0);
+    });
+    document.addEventListener('pointerdown', event => {
+        if (!actionMenu.hidden && !actionMenu.contains(event.target) && !event.target.closest('.chat-item-more')) {
+            closeActionMenu();
+        }
+    });
+    window.addEventListener('resize', () => closeActionMenu());
+
+    const renameModal = document.createElement('div');
+    renameModal.id = 'conversation-rename-modal';
+    renameModal.className = 'modal-overlay hidden';
+    renameModal.setAttribute('aria-hidden', 'true');
+    renameModal.innerHTML = `
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="conversation-rename-title">
+            <div class="modal-header">
+                <h3 id="conversation-rename-title">Rename conversation</h3>
+                <button type="button" class="close-btn" id="conversation-rename-close" aria-label="Close rename dialog">&times;</button>
+            </div>
+            <form class="cm-rename-body" id="conversation-rename-form">
+                <label for="conversation-rename-input">Conversation title</label>
+                <input id="conversation-rename-input" maxlength="120" autocomplete="off" required>
+                <div class="cm-rename-actions">
+                    <button type="button" class="btn-cancel" id="conversation-rename-cancel">Cancel</button>
+                    <button type="submit" class="btn-submit">Save name</button>
+                </div>
+            </form>
+        </div>`;
+    document.body.appendChild(renameModal);
+    const renameInput = renameModal.querySelector('#conversation-rename-input');
+
+    function openRename(chatId, returnFocus = null) {
+        const chat = chats.find(candidate => candidate.id === chatId);
+        if (!chat) return;
+        renameChatId = chatId;
+        renameReturnFocus = returnFocus || document.activeElement;
+        renameInput.value = chat.title || 'New chat';
+        renameModal.classList.remove('hidden');
+        renameModal.setAttribute('aria-hidden', 'false');
+        if (appElement) appElement.inert = true;
+        requestAnimationFrame(() => {
+            renameInput.focus();
+            renameInput.select();
+        });
+    }
+
+    function closeRename({ restoreFocus = true, replacementChatId = null } = {}) {
+        renameModal.classList.add('hidden');
+        renameModal.setAttribute('aria-hidden', 'true');
+        if (appElement) appElement.inert = false;
+        const returnFocus = renameReturnFocus;
+        renameChatId = null;
+        renameReturnFocus = null;
+        if (replacementChatId) focusActionForChat(replacementChatId);
+        else if (restoreFocus && returnFocus?.isConnected) returnFocus.focus();
+    }
+
+    function renameFocusableElements() {
+        return Array.from(renameModal.querySelectorAll('button:not(:disabled), input:not(:disabled)'));
+    }
+
+    renameModal.querySelector('#conversation-rename-close').addEventListener('click', () => closeRename());
+    renameModal.querySelector('#conversation-rename-cancel').addEventListener('click', () => closeRename());
+    renameModal.addEventListener('click', event => {
+        if (event.target === renameModal) closeRename();
+    });
+    renameModal.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            closeRename();
+            return;
+        }
+        if (event.key !== 'Tab') return;
+        const focusable = renameFocusableElements();
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable.at(-1);
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+        }
+    });
+    renameModal.querySelector('#conversation-rename-form').addEventListener('submit', event => {
+        event.preventDefault();
+        const chat = chats.find(candidate => candidate.id === renameChatId);
+        const title = renameInput.value.trim().slice(0, 120);
+        if (!chat || !title) return;
+        const previous = { title: chat.title, manualTitle: chat.manualTitle, updated: chat.updated };
+        chat.title = title;
+        chat.manualTitle = true;
+        chat.updated = Date.now();
+        if (!persistChats()) {
+            chat.title = previous.title;
+            chat.manualTitle = previous.manualTitle;
+            chat.updated = previous.updated;
+            return;
+        }
+        const chatId = chat.id;
+        renderChatList();
+        closeRename({ restoreFocus: false, replacementChatId: chatId });
+        notify('Conversation renamed');
+    });
+
+    function cloneMessages(messages) {
+        try {
+            if (typeof structuredClone === 'function') return structuredClone(messages);
+        } catch { }
+        return JSON.parse(JSON.stringify(messages || []));
+    }
+
+    function duplicateChat(chat) {
+        if (!chat) return;
+        const copy = makeChat(cloneMessages(chat.messages));
+        copy.title = `${chat.title || 'New chat'} copy`.slice(0, 120);
+        copy.manualTitle = true;
+        copy.pinned = false;
+        copy.archived = false;
+        if (chat.modelId) copy.modelId = chat.modelId;
+        if (typeof chat.systemPrompt === 'string') copy.systemPrompt = chat.systemPrompt;
+        chats.unshift(copy);
+        if (!persistChats()) {
+            chats = chats.filter(candidate => candidate !== copy);
+            return;
+        }
+        chatView = 'active';
+        searchQuery = '';
+        searchInput.value = '';
+        searchClear.hidden = true;
+        switchChat(copy.id);
+        renderChatList();
+        notify('Conversation duplicated');
+    }
+
+    function togglePin(chat) {
+        const previous = { pinned: chat.pinned, updated: chat.updated };
+        chat.pinned = !chat.pinned;
+        chat.updated = Date.now();
+        if (!persistChats()) {
+            chat.pinned = previous.pinned;
+            chat.updated = previous.updated;
+            renderChatList();
+            return;
+        }
+        const chatId = chat.id;
+        renderChatList();
+        focusActionForChat(chatId);
+        notify(chat.pinned ? 'Conversation pinned' : 'Conversation unpinned');
+    }
+
+    function toggleArchive(chat) {
+        if (!chat) return;
+        if (chat.pendingModelId) {
+            notify('Wait for the pending model operation before archiving this chat.');
+            return;
+        }
+        const archiving = !chat.archived;
+        const wasActive = chat.id === activeChatId;
+        const previous = { archived: chat.archived, updated: chat.updated };
+        if (archiving && wasActive && typeof isGenerating !== 'undefined' && isGenerating) stopGeneration();
+        chat.archived = archiving;
+        chat.updated = Date.now();
+        if (!persistChats()) {
+            chat.archived = previous.archived;
+            chat.updated = previous.updated;
+            renderChatList();
+            return;
+        }
+
+        if (archiving && wasActive) {
+            let next = chats.find(candidate => !candidate.archived && candidate.id !== chat.id);
+            if (!next) {
+                next = makeChat([]);
+                chats.unshift(next);
+                if (!persistChats()) {
+                    chats = chats.filter(candidate => candidate !== next);
+                    chat.archived = previous.archived;
+                    chat.updated = previous.updated;
+                    persistChats();
+                    renderChatList();
+                    return;
+                }
+            }
+            switchChat(next.id);
+        } else {
+            renderChatList();
+            if (chat.archived === (chatView === 'archived')) focusActionForChat(chat.id);
+            else toolbar.querySelector(`[data-cm-view="${chatView}"]`)?.focus();
+        }
+        notify(archiving ? 'Conversation archived' : 'Conversation restored');
+    }
+
+    function safeFilename(title, extension) {
+        const cleaned = String(title || 'inferbridge-chat')
+            .replace(/[<>:"/\\|?*\x00-\x1f]/g, '-')
+            .replace(/[. ]+$/g, '')
+            .trim()
+            .slice(0, 80) || 'inferbridge-chat';
+        return `${cleaned}.${extension}`;
+    }
+
+    function downloadText(filename, text, type) {
+        const blob = new Blob([text], { type });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+    }
+
+    function exportableMessages(chat) {
+        return (chat.messages || []).map(message => {
+            const output = {
+                role: message.role === 'user' ? 'user' : 'assistant',
+                content: messageText(message),
+            };
+            if (message.meta && typeof message.meta === 'object') {
+                const meta = {};
+                if (typeof message.meta.model === 'string') meta.model = message.meta.model.slice(0, 200);
+                if (Number.isFinite(Number(message.meta.tokens))) meta.tokens = Number(message.meta.tokens);
+                if (Number.isFinite(Number(message.meta.tps))) meta.tps = Number(message.meta.tps);
+                if (Object.keys(meta).length) output.meta = meta;
+            }
+            return output;
+        });
+    }
+
+    function markdownFor(chat) {
+        const lines = [
+            `# ${chat.title || 'InferBridge conversation'}`,
+            '',
+            '> Exported from InferBridge. This conversation was stored locally in the browser profile that created the export.',
+            '',
+            `- Created: ${new Date(Number(chat.created) || Date.now()).toISOString()}`,
+            `- Updated: ${new Date(Number(chat.updated) || Date.now()).toISOString()}`,
+            '',
+            '---',
+            '',
+        ];
+        exportableMessages(chat).forEach(message => {
+            lines.push(`## ${message.role === 'user' ? 'You' : 'Assistant'}`, '', message.content || '', '');
+            if (message.meta) {
+                const meta = [];
+                if (message.meta.model) meta.push(`Model: ${message.meta.model}`);
+                if (message.meta.tokens) meta.push(`${message.meta.tokens} tokens`);
+                if (message.meta.tps) meta.push(`${message.meta.tps} tok/s`);
+                if (meta.length) lines.push(`_${meta.join(' · ')}_`, '');
+            }
+        });
+        return `${lines.join('\n').trimEnd()}\n`;
+    }
+
+    function jsonFor(chat) {
+        return JSON.stringify({
+            format: EXPORT_FORMAT,
+            schema_version: EXPORT_SCHEMA_VERSION,
+            application: 'InferBridge',
+            exported_at: new Date().toISOString(),
+            conversation: {
+                title: String(chat.title || 'New chat').slice(0, 120),
+                created: Number(chat.created) || Date.now(),
+                updated: Number(chat.updated) || Date.now(),
+                pinned: chat.pinned === true,
+                archived: chat.archived === true,
+                model_id: typeof chat.modelId === 'string' ? chat.modelId.slice(0, 200) : null,
+                system_prompt: typeof chat.systemPrompt === 'string' ? chat.systemPrompt.slice(0, 32768) : '',
+                messages: exportableMessages(chat),
+            },
+        }, null, 2) + '\n';
+    }
+
+    function exportMarkdown(chat) {
+        downloadText(safeFilename(chat.title, 'md'), markdownFor(chat), 'text/markdown;charset=utf-8');
+        notify('Markdown export created');
+    }
+    function exportJson(chat) {
+        downloadText(safeFilename(chat.title, 'json'), jsonFor(chat), 'application/json;charset=utf-8');
+        notify('JSON export created');
+    }
+
+    function handleAction(action, chatId, returnFocus = null) {
+        const chat = chats.find(candidate => candidate.id === chatId);
+        if (!chat) return;
+        if (action === 'rename') openRename(chatId, returnFocus);
+        else if (action === 'pin') togglePin(chat);
+        else if (action === 'duplicate') duplicateChat(chat);
+        else if (action === 'archive') toggleArchive(chat);
+        else if (action === 'export-markdown') exportMarkdown(chat);
+        else if (action === 'export-json') exportJson(chat);
+        else if (action === 'delete') {
+            deleteChat(chatId);
+            renderChatList();
+        }
+    }
+
+    const settingsDivider = document.createElement('div');
+    settingsDivider.className = 'sidebar-divider';
+    const settingsGroup = document.createElement('div');
+    settingsGroup.className = 'setting-group stats-section cm-setting-group';
+    settingsGroup.innerHTML = `
+        <h4>Conversation storage</h4>
+        <p class="cm-settings-note">Chats are stored only in this browser profile. Pinned chats, chats with drafts, and chats with pending model work are never removed by retention.</p>
+        <label for="conversation-retention">Retention</label>
+        <select id="conversation-retention" aria-label="Conversation retention">
+            <option value="forever">Keep until I delete them</option>
+            <option value="30">Delete inactive chats after 30 days</option>
+            <option value="90">Delete inactive chats after 90 days</option>
+            <option value="180">Delete inactive chats after 180 days</option>
+            <option value="365">Delete inactive chats after 1 year</option>
+        </select>
+        <div class="cm-setting-actions">
+            <button type="button" id="conversation-import-json">Import JSON</button>
+            <button type="button" id="conversation-export-json">Export current JSON</button>
+        </div>
+        <button type="button" class="cm-danger" id="conversation-clear-all">Clear all local chats</button>
+        <input type="file" id="conversation-import-file" accept="application/json,.json" hidden>`;
+    const firstSettingsDivider = settingsSidebarElement.querySelector('.sidebar-divider');
+    settingsSidebarElement.insertBefore(settingsDivider, firstSettingsDivider || null);
+    settingsSidebarElement.insertBefore(settingsGroup, firstSettingsDivider || null);
+
+    const retentionSelect = settingsGroup.querySelector('#conversation-retention');
+    const importButton = settingsGroup.querySelector('#conversation-import-json');
+    const exportCurrentButton = settingsGroup.querySelector('#conversation-export-json');
+    const clearAllButton = settingsGroup.querySelector('#conversation-clear-all');
+    const importFile = settingsGroup.querySelector('#conversation-import-file');
+    retentionSelect.value = retentionSetting();
+
+    retentionSelect.addEventListener('change', () => {
+        const next = RETENTION_DAYS.has(retentionSelect.value) ? retentionSelect.value : 'forever';
+        const previous = retentionSetting();
+        const candidates = retentionCandidates(next);
+        if (candidates.length) {
+            const confirmed = window.confirm(
+                `This retention setting will remove ${candidates.length} inactive local chat${candidates.length === 1 ? '' : 's'} now.\n\n` +
+                'Pinned chats, the active chat, chats with drafts, and chats with pending model work will be kept.'
+            );
+            if (!confirmed) {
+                retentionSelect.value = previous;
+                return;
+            }
+        }
+        try {
+            localStorage.setItem(RETENTION_KEY, next);
+        } catch {
+            retentionSelect.value = previous;
+            notify('Could not save the retention setting.');
+            return;
+        }
+        const removed = candidates.length;
+        if (!persistChats()) {
+            restoreStorageValue(RETENTION_KEY, previous === 'forever' ? null : previous);
+            retentionSelect.value = previous;
+            return;
+        }
+        renderChatList();
+        if (!removed) notify('Conversation retention updated');
+    });
+
+    function sanitizeImportedMessage(message) {
+        if (!message || typeof message !== 'object') throw new Error('Each imported message must be an object.');
+        if (!['user', 'assistant'].includes(message.role)) throw new Error('Imported messages may only use user or assistant roles.');
+        if (typeof message.content !== 'string') throw new Error('Imported message content must be text.');
+        const output = { role: message.role, content: message.content };
+        if (message.meta && typeof message.meta === 'object') {
+            const meta = {};
+            if (typeof message.meta.model === 'string') meta.model = message.meta.model.slice(0, 200);
+            if (Number.isFinite(Number(message.meta.tokens))) meta.tokens = Number(message.meta.tokens);
+            if (Number.isFinite(Number(message.meta.tps))) meta.tps = Number(message.meta.tps);
+            if (Object.keys(meta).length) output.meta = meta;
+        }
+        return output;
+    }
+
+    function validateImport(payload) {
+        if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+            throw new Error('Import must contain a JSON object.');
+        }
+        if (
+            payload.format !== EXPORT_FORMAT ||
+            payload.schema_version !== EXPORT_SCHEMA_VERSION ||
+            payload.application !== 'InferBridge'
+        ) {
+            throw new Error('This is not a supported InferBridge conversation export.');
+        }
+        const source = payload.conversation;
+        if (!source || typeof source !== 'object' || Array.isArray(source) || !Array.isArray(source.messages)) {
+            throw new Error('Conversation data is missing or invalid.');
+        }
+        if (source.messages.length > MAX_IMPORT_MESSAGES) {
+            throw new Error(`Conversation exports may contain at most ${MAX_IMPORT_MESSAGES} messages.`);
+        }
+        if (source.title !== undefined && typeof source.title !== 'string') {
+            throw new Error('Conversation title must be text.');
+        }
+        if (source.model_id !== null && source.model_id !== undefined && typeof source.model_id !== 'string') {
+            throw new Error('Conversation model ID must be text or null.');
+        }
+        if (source.system_prompt !== undefined && typeof source.system_prompt !== 'string') {
+            throw new Error('Conversation system prompt must be text.');
+        }
+        let textSize = 0;
+        const messages = source.messages.map(message => {
+            const safe = sanitizeImportedMessage(message);
+            textSize += safe.content.length;
+            if (textSize > MAX_IMPORT_TEXT) throw new Error('Conversation text is too large to import safely.');
+            return safe;
+        });
+        const created = Number(source.created);
+        const chat = makeChat(messages);
+        chat.title = (source.title || 'Imported conversation').trim().slice(0, 120) || 'Imported conversation';
+        chat.manualTitle = true;
+        chat.created = Number.isFinite(created) && created > 0 ? created : Date.now();
+        chat.updated = Date.now();
+        chat.pinned = source.pinned === true;
+        chat.archived = source.archived === true;
+        if (typeof source.model_id === 'string' && source.model_id.trim()) {
+            chat.modelId = source.model_id.trim().slice(0, 200);
+        }
+        if (typeof source.system_prompt === 'string') chat.systemPrompt = source.system_prompt.slice(0, 32768);
+        chat.draft = '';
+        return chat;
+    }
+
+    async function importJsonFile(file) {
+        if (!file) return;
+        if (file.size > MAX_IMPORT_BYTES) throw new Error('JSON import is larger than the 4 MiB safety limit.');
+        const text = await file.text();
+        let payload;
+        try { payload = JSON.parse(text); }
+        catch { throw new Error('The selected file is not valid JSON.'); }
+        const chat = validateImport(payload);
+        const previousActiveId = activeChatId;
+        const previousView = chatView;
+        chats.unshift(chat);
+        chatView = chat.archived ? 'archived' : 'active';
+        searchQuery = '';
+        searchInput.value = '';
+        searchClear.hidden = true;
+        if (!persistChats()) {
+            chats = chats.filter(candidate => candidate !== chat);
+            activeChatId = previousActiveId;
+            conversation = activeChat()?.messages || [];
+            chatView = previousView;
+            throw new Error('Browser local storage could not save the imported conversation.');
+        }
+        switchChat(chat.id);
+        renderChatList();
+        notify('InferBridge conversation imported');
+    }
+
+    importButton.addEventListener('click', () => {
+        importFile.value = '';
+        importFile.click();
+    });
+    importFile.addEventListener('change', async () => {
+        const file = importFile.files?.[0];
+        try { await importJsonFile(file); }
+        catch (error) { notify(error instanceof Error ? error.message : String(error)); }
+        finally { importFile.value = ''; }
+    });
+    exportCurrentButton.addEventListener('click', () => {
+        const chat = activeChat();
+        if (!chat) {
+            notify('No active conversation to export');
+            return;
+        }
+        exportJson(chat);
+    });
+    clearAllButton.addEventListener('click', () => {
+        const count = chats.length;
+        const confirmed = window.confirm(
+            `Clear all ${count} local chat${count === 1 ? '' : 's'} from this browser profile?\n\n` +
+            'This includes pinned and archived chats and cannot be undone unless you exported them first.'
+        );
+        if (!confirmed) return;
+        if (typeof isGenerating !== 'undefined' && isGenerating) stopGeneration();
+        window.__ovllmVisionGuard?.clearForNavigation?.('Image attachments were cleared with local chat history.');
+        try {
+            localStorage.removeItem(CHATS_KEY);
+            localStorage.removeItem(ACTIVE_CHAT_KEY);
+            localStorage.removeItem(LEGACY_STORAGE_KEY);
+        } catch {
+            notify('Could not clear local chat storage.');
+            return;
+        }
+        queuedPrompt = null;
+        queuedChat = null;
+        activeLoaderBubble = null;
+        waitingForModelId = null;
+        const blank = makeChat([]);
+        chats = [blank];
+        activeChatId = blank.id;
+        conversation = blank.messages;
+        chatView = 'active';
+        searchQuery = '';
+        searchInput.value = '';
+        searchClear.hidden = true;
+        userInput.value = '';
+        autoResize();
+        persistChats();
+        renderChatList();
+        renderChat();
+        notify('All local chats cleared');
+    });
+
+    persistChats();
+    renderChatList();
 })();
 """
 
