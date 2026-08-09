@@ -51,6 +51,8 @@ def test_conversation_management_guards_failed_local_storage_mutations() -> None
     assert "chat.pinned = previous.pinned" in script
     assert "chat.archived = previous.archived" in script
     assert "chat.title = previous.title" in script
+    assert "storageWritableForDeletion" in script
+    assert "The conversation was not deleted" in script
 
 
 def test_conversation_management_clears_transient_chat_state_and_traps_rename_focus() -> None:
