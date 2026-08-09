@@ -8,15 +8,14 @@ from playwright.sync_api import Page, expect
 
 
 def _seed_chats(page: Page, chats: list[dict], active_id: str) -> None:
+    payload = json.dumps({"chats": chats, "activeId": active_id})
     page.add_init_script(
+        f"""
+        const payload = {payload};
+        localStorage.setItem('inferbridge.onboarding.auto-opened.v1', '1');
+        localStorage.setItem('ovllm.chats.v2', JSON.stringify(payload.chats));
+        localStorage.setItem('ovllm.activeChat.v2', payload.activeId);
         """
-        payload => {
-            localStorage.setItem('inferbridge.onboarding.auto-opened.v1', '1');
-            localStorage.setItem('ovllm.chats.v2', JSON.stringify(payload.chats));
-            localStorage.setItem('ovllm.activeChat.v2', payload.activeId);
-        }
-        """,
-        {"chats": chats, "activeId": active_id},
     )
 
 
