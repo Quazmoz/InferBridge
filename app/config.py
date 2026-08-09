@@ -15,6 +15,7 @@ from app.chat_guard_ui import install_chat_guard_extension
 from app.chat_queue_ui import install_chat_queue_extension
 from app.context_budget import install_context_budget_routes_extension
 from app.context_budget_ui import install_context_budget_ui_extension
+from app.conversation_management_ui import install_conversation_management_extension
 from app.desktop_operations_ui import install_desktop_operations_ui_extension
 from app.doctor_ui import install_system_doctor_extension
 from app.engine_handoff_routes import install_engine_handoff_routes_extension
@@ -55,6 +56,9 @@ install_chat_context_extension()
 install_context_budget_ui_extension()
 install_chat_queue_extension()
 install_chat_guard_extension()
+# Conversation management wraps the completed chat safety stack. Visual polish then
+# decorates its replacement list renderer without owning persistence behavior.
+install_conversation_management_extension()
 install_ui_polish_extension()
 install_ui_quality_extension()
 install_system_doctor_extension()
