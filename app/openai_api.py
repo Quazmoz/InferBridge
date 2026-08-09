@@ -226,8 +226,12 @@ class ResponseRequest(BaseModel):
     @field_validator("tool_choice")
     @classmethod
     def validate_tool_choice(cls, value: Any) -> Any:
-        if value is None or value in {"auto", "none", "required"}:
+        if value is None:
             return value
+        if isinstance(value, str):
+            if value in {"auto", "none", "required"}:
+                return value
+            raise ValueError("Responses tool_choice must be auto, none, required, or a function.")
         if not isinstance(value, dict) or value.get("type") != "function":
             raise ValueError(
                 "InferBridge Responses tool_choice supports auto, none, required, or a function."
@@ -241,7 +245,11 @@ class ResponseRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_output_format_aliases(self):
-        if self.response_format is not None and self.text is not None and self.text.format is not None:
+        if (
+            self.response_format is not None
+            and self.text is not None
+            and self.text.format is not None
+        ):
             raise ValueError("Use either Responses text.format or response_format, not both.")
         return self
 
@@ -292,14 +300,14 @@ class ResponseRequest(BaseModel):
         format_type = self.response_format.get("type", "text")
         if format_type == "json_schema":
             schema = self.response_format.get("json_schema") or {}
-            return {
-                "format": {
-                    "type": "json_schema",
-                    "name": schema.get("name") or "response",
-                    "schema": schema.get("schema") or {},
-                    "strict": schema.get("strict"),
-                }
+            format_payload = {
+                "type": "json_schema",
+                "name": schema.get("name") or "response",
+                "schema": schema.get("schema") or {},
             }
+            if schema.get("strict") is not None:
+                format_payload["strict"] = schema["strict"]
+            return {"format": format_payload}
         if format_type == "json_object":
             return {"format": {"type": "json_object"}}
         return {"format": {"type": "text"}}
