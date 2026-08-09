@@ -28,12 +28,12 @@ from app.model_library_schema import package_version
 from app.storage_manager import StorageCleanupRequest, StorageManagerService
 from app.storage_safety import StorageConflict, _all_lifecycle_idle, _model_activity
 from runtime import device_check
-from runtime.model_artifacts import validate_openvino_model_dir
 
 logger = logging.getLogger("ov-llm.runtime-health")
 
 _RUNTIME_HEALTH_SCHEMA_VERSION = 1
 _MODEL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+_HARD_RECONVERT_STATES = frozenset({"incomplete", "invalid_metadata", "incompatible_definition"})
 MaintenanceAction = Literal[
     "revalidate",
     "rebuild_compiled_cache",
@@ -61,7 +61,9 @@ class RuntimeHealthBatchRequest(BaseModel):
         seen: set[str] = set()
         for value in values:
             if not isinstance(value, str) or not _MODEL_ID_RE.fullmatch(value):
-                raise ValueError("Every model_id must be filesystem-safe and at most 128 characters.")
+                raise ValueError(
+                    "Every model_id must be filesystem-safe and at most 128 characters."
+                )
             if value not in seen:
                 unique.append(value)
                 seen.add(value)
@@ -101,6 +103,18 @@ def maintenance_recommendation(
 ) -> dict[str, Any]:
     """Map conversion provenance to one conservative maintenance recommendation."""
 
+    # Hard artifact/definition failures always win over historical validation evidence.
+    # A previously valid model may have been edited, truncated, or redefined afterward.
+    if health_status in _HARD_RECONVERT_STATES:
+        return {
+            "action": "reconvert",
+            "label": _reconvert_label(source_cache_reusable),
+            "reason": _reconvert_reason(
+                "The converted artifact or its definition cannot be trusted as current.",
+                source_cache_reusable,
+            ),
+            "safe_batch": False,
+        }
     if acknowledged_current and health_status in {"legacy_untracked", "stale_runtime"}:
         return {
             "action": "leave_unchanged",
@@ -112,16 +126,8 @@ def maintenance_recommendation(
         return {
             "action": "leave_unchanged",
             "label": "Validated for current runtime",
-            "reason": "A local load validation succeeded for this exact conversion and OpenVINO runtime.",
-            "safe_batch": False,
-        }
-    if health_status in {"incomplete", "invalid_metadata", "incompatible_definition"}:
-        return {
-            "action": "reconvert",
-            "label": _reconvert_label(source_cache_reusable),
-            "reason": _reconvert_reason(
-                "The converted artifact or its definition cannot be trusted as current.",
-                source_cache_reusable,
+            "reason": (
+                "A local load validation succeeded for this exact conversion and OpenVINO runtime."
             ),
             "safe_batch": False,
         }
@@ -139,7 +145,9 @@ def maintenance_recommendation(
         return {
             "action": "revalidate",
             "label": "Revalidate",
-            "reason": "This conversion predates provenance metadata. Validate it without rewriting it.",
+            "reason": (
+                "This conversion predates provenance metadata. Validate it without rewriting it."
+            ),
             "safe_batch": True,
         }
     if health_status == "stale_runtime":
@@ -217,38 +225,48 @@ class RuntimeHealthService:
         return cfg
 
     def _conversion_fingerprint(self, cfg: Any) -> str:
-        """Fingerprint provenance, or stable artifact metadata for legacy conversions."""
+        """Fingerprint provenance plus bounded artifact metadata.
+
+        Large BIN weights are never hashed. File names, sizes, and nanosecond mtimes are
+        enough to invalidate local maintenance evidence after normal file replacement,
+        while keeping snapshots inexpensive even for multi-gigabyte models.
+        """
 
         digest = hashlib.sha256()
         digest.update(cfg.id.encode("utf-8"))
         for value in (cfg.source_model, cfg.backend, cfg.weight_format):
             digest.update(b"\0")
             digest.update(str(value or "").encode("utf-8"))
+
         marker = conversion_marker_path(cfg)
         try:
             digest.update(b"\0marker\0")
             digest.update(marker.read_bytes())
-            return digest.hexdigest()
         except OSError:
-            pass
+            digest.update(b"\0marker-missing")
 
         model_dir = cfg.abs_path(model_recovery._base_dir())
-        artifact = validate_openvino_model_dir(model_dir)
-        candidates = [artifact.ir_xml, artifact.ir_bin, model_dir / "config.json"]
         found = False
-        for candidate in candidates:
-            if candidate is None:
-                continue
+        for filename in (
+            "openvino_model.xml",
+            "openvino_model.bin",
+            "openvino_language_model.xml",
+            "openvino_language_model.bin",
+            "config.json",
+        ):
+            candidate = model_dir / filename
             try:
                 stat = candidate.stat()
             except OSError:
                 continue
+            if not candidate.is_file():
+                continue
             found = True
             digest.update(b"\0artifact\0")
-            digest.update(candidate.name.encode("utf-8"))
+            digest.update(filename.encode("utf-8"))
             digest.update(f"\0{stat.st_size}\0{stat.st_mtime_ns}".encode("ascii"))
         if not found:
-            digest.update(b"\0missing")
+            digest.update(b"\0artifacts-missing")
         return digest.hexdigest()
 
     def _recorded_runtime(self, cfg: Any) -> dict[str, Any]:
@@ -277,8 +295,7 @@ class RuntimeHealthService:
 
         recorded = record.get("runtime")
         return isinstance(recorded, dict) and all(
-            recorded.get(key) == runtime.get(key)
-            for key in ("openvino", "openvino_genai")
+            recorded.get(key) == runtime.get(key) for key in ("openvino", "openvino_genai")
         )
 
     def _record_matches(
@@ -450,7 +467,9 @@ class RuntimeHealthService:
         return await asyncio.to_thread(self._snapshot_sync)
 
     def _select_device(self, cfg: Any, requested: str | None) -> str:
-        target = device_check.normalize_device(requested or cfg.recommended_device or self.settings.device)
+        target = device_check.normalize_device(
+            requested or cfg.recommended_device or self.settings.device
+        )
         if self.manager.force_mock:
             return target
         available = device_check.available_devices()
@@ -470,15 +489,11 @@ class RuntimeHealthService:
         record[key] = value
         self._write_state(state)
 
-    async def _validate_one(self, model_id: str, device: str | None) -> dict[str, Any]:
-        cfg = self._require_model(model_id)
-        if not _all_lifecycle_idle(self.manager):
-            raise StorageConflict(
-                "models_active",
-                "Unload all models and wait for active operations before runtime validation.",
-            )
+    def _ensure_revalidation_candidate(self, cfg: Any) -> dict[str, Any]:
+        """Reject states that require file replacement before any cache mutation."""
+
         health = conversion_health(cfg)
-        health_status = health.get("status")
+        health_status = str(health.get("status") or "not_converted")
         if health_status in {"not_converted", "incomplete"}:
             raise StorageConflict(
                 "model_incomplete",
@@ -489,15 +504,31 @@ class RuntimeHealthService:
                 "reconversion_required",
                 "This model requires reconversion because its conversion metadata cannot be trusted.",
             )
-        target = self._select_device(cfg, device)
+        return health
+
+    async def _validate_one(self, model_id: str, device: str | None) -> dict[str, Any]:
+        cfg = self._require_model(model_id)
+        if not _all_lifecycle_idle(self.manager):
+            raise StorageConflict(
+                "models_active",
+                "Unload all models and wait for active operations before runtime validation.",
+            )
+        self._ensure_revalidation_candidate(cfg)
+        requested_device = self._select_device(cfg, device)
         runtime = current_runtime_versions()
         fingerprint = self._conversion_fingerprint(cfg)
         started = time.perf_counter()
         engine = None
+        actual_device = requested_device
         try:
-            engine, load_seconds = await self.manager.build_temporary_engine(model_id, target)
+            engine, load_seconds = await self.manager.build_temporary_engine(
+                model_id, requested_device
+            )
+            actual_device = str(getattr(engine, "device", requested_device) or requested_device)
         except Exception as exc:  # noqa: BLE001 - native details stay in server logs
-            logger.exception("Runtime validation failed for '%s' on %s", model_id, target)
+            logger.exception(
+                "Runtime validation failed for '%s' on %s", model_id, requested_device
+            )
             self._write_model_record(
                 model_id,
                 "validation",
@@ -505,7 +536,8 @@ class RuntimeHealthService:
                     "status": "failed",
                     "runtime": runtime,
                     "conversion_fingerprint": fingerprint,
-                    "device": target,
+                    "requested_device": requested_device,
+                    "device": actual_device,
                     "validated_at": int(time.time()),
                     "error_code": "load_validation_failed",
                 },
@@ -525,16 +557,20 @@ class RuntimeHealthService:
             "status": "passed",
             "runtime": runtime,
             "conversion_fingerprint": fingerprint,
-            "device": target,
+            "requested_device": requested_device,
+            "device": actual_device,
             "validated_at": int(time.time()),
             "load_time_ms": round(elapsed * 1000.0, 1),
         }
         self._write_model_record(model_id, "validation", record)
-        self.manager.emit_event("info", f"Validated {cfg.name} with the current OpenVINO runtime")
+        self.manager.emit_event(
+            "info", f"Validated {cfg.name} with the current OpenVINO runtime on {actual_device}"
+        )
         return {
             "model_id": model_id,
             "status": "validated",
-            "device": target,
+            "device": actual_device,
+            "requested_device": requested_device,
             "load_time_ms": record["load_time_ms"],
         }
 
@@ -548,8 +584,13 @@ class RuntimeHealthService:
                 "models_active",
                 "Unload all models and wait for active operations before rebuilding compiled cache.",
             )
+
+        # Preflight every selected model before the destructive shared-cache cleanup.
+        # If any target requires reconversion, nothing is deleted.
         for model_id in model_ids:
-            self._require_model(model_id)
+            cfg = self._require_model(model_id)
+            self._ensure_revalidation_candidate(cfg)
+
         cleanup = await self.storage.cleanup(StorageCleanupRequest(action="clear_compiled_cache"))
         results: list[dict[str, Any]] = []
         failures: list[dict[str, str]] = []
@@ -599,7 +640,10 @@ class RuntimeHealthService:
         except ValueError as exc:
             raise StorageConflict(
                 "conversion_conflict",
-                "The reconversion conflicts with the current model lifecycle. Retry after active operations finish.",
+                (
+                    "The reconversion conflicts with the current model lifecycle. "
+                    "Retry after active operations finish."
+                ),
             ) from exc
         if task is None:
             raise StorageConflict(
