@@ -120,7 +120,71 @@ class ChatCompletionResponse(BaseModel):
     usage: UsageInfo | None = None
 
 
-# --- Responses API (n8n compatibility) ------------------------------------
+# --- Responses API (n8n / OpenAI-compatible clients) ---------------------
+
+
+class ResponseFunctionTool(BaseModel):
+    """Responses-style flat function tool with Chat Completions compatibility."""
+
+    type: str = Field(default="function", pattern=r"^function$")
+    name: str = Field(min_length=1, max_length=128)
+    description: str | None = Field(default=None, max_length=16_384)
+    parameters: dict[str, Any] | None = None
+    strict: bool | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_chat_completions_shape(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        function = value.get("function")
+        if not isinstance(function, dict):
+            return value
+        return {
+            "type": value.get("type", "function"),
+            "name": function.get("name"),
+            "description": function.get("description"),
+            "parameters": function.get("parameters"),
+            "strict": function.get("strict"),
+        }
+
+    def as_chat_tool(self) -> ToolDefinition:
+        return ToolDefinition(
+            type="function",
+            function=FunctionDefinition(
+                name=self.name,
+                description=self.description,
+                parameters=self.parameters,
+            ),
+        )
+
+
+class ResponseTextConfig(BaseModel):
+    format: dict[str, Any] | None = None
+
+    @field_validator("format")
+    @classmethod
+    def validate_format(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        if value is None:
+            return value
+        format_type = value.get("type", "text")
+        if format_type not in {"text", "json_object", "json_schema"}:
+            raise ValueError(
+                "Responses text.format.type must be text, json_object, or json_schema."
+            )
+        if format_type == "json_schema":
+            schema = value.get("schema")
+            name = value.get("name")
+            if not isinstance(schema, dict):
+                raise ValueError("Responses json_schema format requires a schema object.")
+            if not isinstance(name, str) or not name or len(name) > 64:
+                raise ValueError("Responses json_schema format requires a 1-64 character name.")
+            normalized = name.replace("_", "").replace("-", "")
+            if not normalized.isalnum():
+                raise ValueError(
+                    "Responses json_schema format name may contain only letters, numbers, _ and -."
+                )
+        return value
 
 
 class ResponseRequest(BaseModel):
@@ -129,7 +193,15 @@ class ResponseRequest(BaseModel):
     instructions: str | None = Field(default=None, max_length=multimodal.MAX_REQUEST_TEXT_CHARS)
     max_output_tokens: int | None = Field(default=512, ge=1)
     temperature: float | None = Field(default=0.7, ge=0.0, le=2.0)
+    top_p: float | None = Field(default=1.0, ge=0.0, le=1.0)
     stream: bool | None = False
+    tools: list[ResponseFunctionTool] | None = Field(default=None, max_length=128)
+    tool_choice: Any | None = None
+    parallel_tool_calls: bool | None = True
+    text: ResponseTextConfig | None = None
+    response_format: dict[str, Any] | None = None
+    stop: str | list[str] | None = None
+    seed: int | None = None
     lora_path: str | None = None
     lora_alpha: float | None = Field(default=1.0, gt=0.0)
 
@@ -151,6 +223,87 @@ class ResponseRequest(BaseModel):
         )
         return value
 
+    @field_validator("tool_choice")
+    @classmethod
+    def validate_tool_choice(cls, value: Any) -> Any:
+        if value is None or value in {"auto", "none", "required"}:
+            return value
+        if not isinstance(value, dict) or value.get("type") != "function":
+            raise ValueError(
+                "InferBridge Responses tool_choice supports auto, none, required, or a function."
+            )
+        name = value.get("name")
+        if name is None and isinstance(value.get("function"), dict):
+            name = value["function"].get("name")
+        if not isinstance(name, str) or not name:
+            raise ValueError("Responses function tool_choice requires a function name.")
+        return value
+
+    @model_validator(mode="after")
+    def validate_output_format_aliases(self):
+        if self.response_format is not None and self.text is not None and self.text.format is not None:
+            raise ValueError("Use either Responses text.format or response_format, not both.")
+        return self
+
+    def chat_tools(self) -> list[ToolDefinition] | None:
+        if not self.tools:
+            return None
+        return [tool.as_chat_tool() for tool in self.tools]
+
+    def chat_tool_choice(self) -> Any:
+        choice = self.tool_choice
+        if not isinstance(choice, dict):
+            return choice
+        name = choice.get("name")
+        if name is None and isinstance(choice.get("function"), dict):
+            name = choice["function"].get("name")
+        return {"type": "function", "function": {"name": name}}
+
+    def generation_response_format(self) -> dict[str, Any] | None:
+        """Translate Responses text.format to the shared OpenVINO generation shape."""
+
+        if self.response_format is not None:
+            return self.response_format
+        if self.text is None or self.text.format is None:
+            return None
+        response_format = self.text.format
+        format_type = response_format.get("type", "text")
+        if format_type == "text":
+            return None
+        if format_type == "json_object":
+            return {"type": "json_object"}
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": response_format.get("name"),
+                "schema": response_format.get("schema"),
+                "strict": response_format.get("strict"),
+            },
+        }
+
+    def response_text_payload(self) -> dict[str, Any]:
+        """Return the OpenAI-style text configuration echoed in Response objects."""
+
+        if self.text is not None:
+            return self.text.model_dump(exclude_none=True)
+        if self.response_format is None:
+            return {"format": {"type": "text"}}
+
+        format_type = self.response_format.get("type", "text")
+        if format_type == "json_schema":
+            schema = self.response_format.get("json_schema") or {}
+            return {
+                "format": {
+                    "type": "json_schema",
+                    "name": schema.get("name") or "response",
+                    "schema": schema.get("schema") or {},
+                    "strict": schema.get("strict"),
+                }
+            }
+        if format_type == "json_object":
+            return {"format": {"type": "json_object"}}
+        return {"format": {"type": "text"}}
+
 
 class ResponseOutputMessage(BaseModel):
     type: str = "message"
@@ -160,13 +313,44 @@ class ResponseOutputMessage(BaseModel):
     content: list[dict[str, Any]]
 
 
+class ResponseFunctionCall(BaseModel):
+    type: str = "function_call"
+    id: str
+    call_id: str
+    name: str
+    arguments: str
+    status: str = "completed"
+
+
+class ResponseUsage(BaseModel):
+    input_tokens: int
+    input_tokens_details: dict[str, int] = Field(default_factory=lambda: {"cached_tokens": 0})
+    output_tokens: int
+    output_tokens_details: dict[str, int] = Field(
+        default_factory=lambda: {"reasoning_tokens": 0}
+    )
+    total_tokens: int
+
+
 class ResponseObject(BaseModel):
     id: str
     object: str = "response"
     created_at: int
+    completed_at: int | None = None
     model: str
-    output: list[ResponseOutputMessage]
+    output: list[ResponseOutputMessage | ResponseFunctionCall]
     status: str = "completed"
+    error: dict[str, Any] | None = None
+    incomplete_details: dict[str, Any] | None = None
+    instructions: str | None = None
+    max_output_tokens: int | None = None
+    temperature: float | None = None
+    top_p: float | None = None
+    tool_choice: Any | None = None
+    tools: list[dict[str, Any]] = Field(default_factory=list)
+    parallel_tool_calls: bool | None = None
+    text: dict[str, Any] | None = None
+    usage: ResponseUsage | None = None
 
 
 # --- Model lifecycle requests ---------------------------------------------
