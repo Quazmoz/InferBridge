@@ -65,3 +65,6 @@ def test_conversation_management_clears_transient_chat_state_and_traps_rename_fo
     assert "waitingForModelId = null" in script
     assert "userInput.value = ''" in script
     assert "aria-pressed" in script
+    assert "safeTimestamp" in script
+    assert "MAX_DATE_MS" in script
+    assert "['user', 'assistant'].includes(message?.role)" in script
