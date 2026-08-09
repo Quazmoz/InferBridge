@@ -264,6 +264,7 @@ jobs:
           tests/test_request_logging.py
           tests/test_responses_api_parity.py
           tests/test_runtime_health.py
+          tests/test_runtime_health_hardening.py
           tests/test_runtime_health_summary.py
           tests/test_runtime_health_ui.py
           tests/test_status_split.py
