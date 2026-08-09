@@ -232,6 +232,12 @@ def test_conversation_mutations_roll_back_when_chat_storage_fails(
     page.get_by_role("menuitem", name="Duplicate", exact=True).click()
     assert page.evaluate("chats.length") == before
 
+    page.get_by_label("Conversation actions: Current").click()
+    page.get_by_role("menuitem", name="Delete", exact=True).click()
+    assert page.evaluate("chats.length") == before
+    assert page.evaluate("activeChat().id") == "chat-current"
+    expect(page.locator("#toast")).to_contain_text("was not deleted")
+
     page.evaluate("window.__inferbridgeFailChatWrites = false")
 
 
