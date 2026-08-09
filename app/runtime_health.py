@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import re
 import secrets
 import time
@@ -27,6 +28,9 @@ from app.model_library_schema import package_version
 from app.storage_manager import StorageCleanupRequest, StorageManagerService
 from app.storage_safety import StorageConflict, _all_lifecycle_idle, _model_activity
 from runtime import device_check
+from runtime.model_artifacts import validate_openvino_model_dir
+
+logger = logging.getLogger("ov-llm.runtime-health")
 
 _RUNTIME_HEALTH_SCHEMA_VERSION = 1
 _MODEL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
@@ -74,6 +78,19 @@ def current_runtime_versions() -> dict[str, str | None]:
     }
 
 
+def _reconvert_label(source_cache_reusable: bool) -> str:
+    return "Reconvert from existing HF cache" if source_cache_reusable else "Reconvert"
+
+
+def _reconvert_reason(prefix: str, source_cache_reusable: bool) -> str:
+    cache = (
+        "The reusable Hugging Face source cache is already available."
+        if source_cache_reusable
+        else "The source may need to be downloaded again."
+    )
+    return f"{prefix} {cache}"
+
+
 def maintenance_recommendation(
     health_status: str,
     *,
@@ -88,55 +105,62 @@ def maintenance_recommendation(
         return {
             "action": "leave_unchanged",
             "label": "Leave unchanged",
-            "reason": "This warning was explicitly acknowledged for the current runtime.",
+            "reason": "This warning was explicitly acknowledged for the current OpenVINO runtime.",
             "safe_batch": False,
         }
     if validation_current:
         return {
             "action": "leave_unchanged",
             "label": "Validated for current runtime",
-            "reason": "A local load validation succeeded for this exact conversion and runtime.",
+            "reason": "A local load validation succeeded for this exact conversion and OpenVINO runtime.",
             "safe_batch": False,
         }
     if health_status in {"incomplete", "invalid_metadata", "incompatible_definition"}:
-        cache_phrase = " from existing HF cache" if source_cache_reusable else ""
         return {
             "action": "reconvert",
-            "label": f"Reconvert{cache_phrase}",
-            "reason": (
-                "The converted artifact or its definition cannot be trusted as current. "
-                + (
-                    "The reusable Hugging Face source cache is already available."
-                    if source_cache_reusable
-                    else "The source may need to be downloaded again."
-                )
+            "label": _reconvert_label(source_cache_reusable),
+            "reason": _reconvert_reason(
+                "The converted artifact or its definition cannot be trusted as current.",
+                source_cache_reusable,
             ),
             "safe_batch": False,
         }
     if health_status == "legacy_untracked":
+        if validation_failed:
+            return {
+                "action": "reconvert",
+                "label": _reconvert_label(source_cache_reusable),
+                "reason": _reconvert_reason(
+                    "The legacy artifact failed validation under the current runtime.",
+                    source_cache_reusable,
+                ),
+                "safe_batch": False,
+            }
         return {
-            "action": "reconvert" if validation_failed else "revalidate",
-            "label": "Reconvert" if validation_failed else "Revalidate",
-            "reason": (
-                "The legacy artifact failed validation under the current runtime."
-                if validation_failed
-                else "This conversion predates provenance metadata. Validate it without rewriting it."
-            ),
-            "safe_batch": not validation_failed,
+            "action": "revalidate",
+            "label": "Revalidate",
+            "reason": "This conversion predates provenance metadata. Validate it without rewriting it.",
+            "safe_batch": True,
         }
     if health_status == "stale_runtime":
+        if validation_failed:
+            return {
+                "action": "reconvert",
+                "label": _reconvert_label(source_cache_reusable),
+                "reason": _reconvert_reason(
+                    "The artifact still failed after a current-runtime maintenance attempt.",
+                    source_cache_reusable,
+                ),
+                "safe_batch": False,
+            }
         return {
-            "action": "reconvert" if validation_failed else "rebuild_compiled_cache",
-            "label": "Reconvert" if validation_failed else "Rebuild compiled cache",
+            "action": "rebuild_compiled_cache",
+            "label": "Rebuild compiled cache",
             "reason": (
-                "The artifact still failed after a current-runtime maintenance attempt."
-                if validation_failed
-                else (
-                    "OpenVINO changed since conversion. Rebuild the shared compiled cache, then "
-                    "load-validate this model with the current runtime."
-                )
+                "OpenVINO changed since conversion. Rebuild the shared compiled cache, then "
+                "load-validate this model with the current runtime."
             ),
-            "safe_batch": not validation_failed,
+            "safe_batch": True,
         }
     return {
         "action": "leave_unchanged",
@@ -193,6 +217,8 @@ class RuntimeHealthService:
         return cfg
 
     def _conversion_fingerprint(self, cfg: Any) -> str:
+        """Fingerprint provenance, or stable artifact metadata for legacy conversions."""
+
         digest = hashlib.sha256()
         digest.update(cfg.id.encode("utf-8"))
         for value in (cfg.source_model, cfg.backend, cfg.weight_format):
@@ -205,11 +231,23 @@ class RuntimeHealthService:
             return digest.hexdigest()
         except OSError:
             pass
+
         model_dir = cfg.abs_path(model_recovery._base_dir())
-        try:
-            stat = model_dir.stat()
-            digest.update(f"\0dir\0{stat.st_mtime_ns}\0{stat.st_size}".encode("ascii"))
-        except OSError:
+        artifact = validate_openvino_model_dir(model_dir)
+        candidates = [artifact.ir_xml, artifact.ir_bin, model_dir / "config.json"]
+        found = False
+        for candidate in candidates:
+            if candidate is None:
+                continue
+            try:
+                stat = candidate.stat()
+            except OSError:
+                continue
+            found = True
+            digest.update(b"\0artifact\0")
+            digest.update(candidate.name.encode("utf-8"))
+            digest.update(f"\0{stat.st_size}\0{stat.st_mtime_ns}".encode("ascii"))
+        if not found:
             digest.update(b"\0missing")
         return digest.hexdigest()
 
@@ -235,10 +273,12 @@ class RuntimeHealthService:
 
     @staticmethod
     def _runtime_matches(record: dict[str, Any], runtime: dict[str, Any]) -> bool:
+        """Tie maintenance evidence to the inference runtime, not app patch releases."""
+
         recorded = record.get("runtime")
         return isinstance(recorded, dict) and all(
             recorded.get(key) == runtime.get(key)
-            for key in ("application", "openvino", "openvino_genai")
+            for key in ("openvino", "openvino_genai")
         )
 
     def _record_matches(
@@ -264,7 +304,6 @@ class RuntimeHealthService:
         *,
         model_id: str,
         health_status: str,
-        source_cache_state: str,
         all_idle: bool,
     ) -> tuple[bool, str]:
         activity = _model_activity(self.manager, model_id)
@@ -283,8 +322,6 @@ class RuntimeHealthService:
             return False, "A complete converted model is required before runtime validation."
         if action == "reconvert" and not self.manager.catalog[model_id].source_model:
             return False, "No Hugging Face source model is configured."
-        if action == "reconvert" and source_cache_state == "unknown":
-            return False, "The source cache location cannot be identified safely."
         return True, ""
 
     def _snapshot_sync(self) -> dict[str, Any]:
@@ -337,7 +374,6 @@ class RuntimeHealthService:
                 recommendation["action"],
                 model_id=model_id,
                 health_status=health_status,
-                source_cache_state=source_cache_state,
                 all_idle=all_idle,
             )
             recommendation = {
@@ -366,6 +402,12 @@ class RuntimeHealthService:
             )
 
         attention = counts["revalidate"] + counts["rebuild_compiled_cache"] + counts["reconvert"]
+        unresolved_runtime_changes = sum(
+            1
+            for row in rows
+            if row["conversion_health"].get("status") == "stale_runtime"
+            and row["recommendation"]["action"] != "leave_unchanged"
+        )
         return {
             "schema_version": _RUNTIME_HEALTH_SCHEMA_VERSION,
             "generated_at": int(time.time()),
@@ -377,6 +419,7 @@ class RuntimeHealthService:
                 "runtime_change_detected": any(
                     row["conversion_health"].get("status") == "stale_runtime" for row in rows
                 ),
+                "unresolved_runtime_changes": unresolved_runtime_changes,
                 "all_models_idle": all_idle,
             },
             "models": sorted(
@@ -435,10 +478,16 @@ class RuntimeHealthService:
                 "Unload all models and wait for active operations before runtime validation.",
             )
         health = conversion_health(cfg)
-        if health.get("status") in {"not_converted", "incomplete"}:
+        health_status = health.get("status")
+        if health_status in {"not_converted", "incomplete"}:
             raise StorageConflict(
                 "model_incomplete",
                 "A complete converted model is required before runtime validation.",
+            )
+        if health_status in {"invalid_metadata", "incompatible_definition"}:
+            raise StorageConflict(
+                "reconversion_required",
+                "This model requires reconversion because its conversion metadata cannot be trusted.",
             )
         target = self._select_device(cfg, device)
         runtime = current_runtime_versions()
@@ -448,6 +497,7 @@ class RuntimeHealthService:
         try:
             engine, load_seconds = await self.manager.build_temporary_engine(model_id, target)
         except Exception as exc:  # noqa: BLE001 - native details stay in server logs
+            logger.exception("Runtime validation failed for '%s' on %s", model_id, target)
             self._write_model_record(
                 model_id,
                 "validation",
@@ -468,8 +518,8 @@ class RuntimeHealthService:
             if engine is not None:
                 try:
                     await asyncio.to_thread(engine.close)
-                except Exception:
-                    pass
+                except Exception:  # noqa: BLE001 - validation result is already known
+                    logger.warning("Could not close temporary validation engine for '%s'", model_id)
         elapsed = max(load_seconds, time.perf_counter() - started)
         record = {
             "status": "passed",
@@ -547,7 +597,10 @@ class RuntimeHealthService:
                 sym=profile.get("symmetric"),
             )
         except ValueError as exc:
-            raise StorageConflict("conversion_conflict", str(exc)) from exc
+            raise StorageConflict(
+                "conversion_conflict",
+                "The reconversion conflicts with the current model lifecycle. Retry after active operations finish.",
+            ) from exc
         if task is None:
             raise StorageConflict(
                 "conversion_not_scheduled",
@@ -667,20 +720,28 @@ def register_runtime_health_routes(app: FastAPI, *, service: RuntimeHealthServic
 
     @app.get("/v1/runtime-health", dependencies=auth)
     async def runtime_health_snapshot():
-        return await service.snapshot()
+        try:
+            return await service.snapshot()
+        except Exception as exc:  # noqa: BLE001 - sanitize local runtime/filesystem details
+            logger.exception("Runtime health snapshot failed")
+            raise _http_error(exc) from exc
 
     @app.post("/v1/runtime-health/action", dependencies=auth)
     async def runtime_health_action(request: RuntimeHealthActionRequest):
         try:
             return await service.perform(request)
-        except (KeyError, StorageConflict) as exc:
+        except Exception as exc:  # noqa: BLE001 - sanitize local runtime/filesystem details
+            if not isinstance(exc, (KeyError, StorageConflict)):
+                logger.exception("Runtime health action failed")
             raise _http_error(exc) from exc
 
     @app.post("/v1/runtime-health/batch", dependencies=auth)
     async def runtime_health_batch(request: RuntimeHealthBatchRequest):
         try:
             return await service.perform_batch(request)
-        except (KeyError, StorageConflict) as exc:
+        except Exception as exc:  # noqa: BLE001 - sanitize local runtime/filesystem details
+            if not isinstance(exc, (KeyError, StorageConflict)):
+                logger.exception("Runtime health batch failed")
             raise _http_error(exc) from exc
 
 
