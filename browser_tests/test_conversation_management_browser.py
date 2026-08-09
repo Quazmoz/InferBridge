@@ -26,6 +26,7 @@ def _chat(
     text: str,
     *,
     pinned: bool = False,
+    archived: bool = False,
 ) -> dict:
     return {
         "id": chat_id,
@@ -33,6 +34,7 @@ def _chat(
         "created": updated - 1000,
         "updated": updated,
         "pinned": pinned,
+        "archived": archived,
         "messages": [
             {"role": "user", "content": text},
             {"role": "assistant", "content": f"Reply to {title}"},
@@ -52,6 +54,13 @@ def test_conversation_search_and_management_actions(page: Page, inferbridge_url:
                 "The searchable needle is in this message.",
             ),
             _chat("chat-beta", "Beta notes", now - 5000, "Different content."),
+            _chat(
+                "chat-archived",
+                "Archived needle",
+                now - 6000,
+                "needle inside archived content",
+                archived=True,
+            ),
         ],
         "chat-alpha",
     )
@@ -63,6 +72,12 @@ def test_conversation_search_and_management_actions(page: Page, inferbridge_url:
     expect(page.locator("#chats-list .chat-item-title")).to_contain_text("Alpha plan")
     expect(page.locator("#chats-list .chat-item-sub")).to_contain_text("needle")
 
+    page.locator('[data-cm-view="archived"]').click()
+    expect(page.locator("#chats-list .chat-item")).to_have_count(1)
+    expect(page.locator("#chats-list .chat-item-title")).to_contain_text("Archived needle")
+    expect(page.locator('[data-cm-view="archived"]')).to_have_attribute("aria-pressed", "true")
+
+    page.locator('[data-cm-view="active"]').click()
     page.locator("#conversation-search-clear").click()
     page.get_by_label("Conversation actions: Alpha plan").click()
     page.get_by_role("menuitem", name="Pin", exact=True).click()
@@ -72,11 +87,14 @@ def test_conversation_search_and_management_actions(page: Page, inferbridge_url:
 
     page.get_by_label("Conversation actions: Alpha plan").click()
     page.get_by_role("menuitem", name="Rename", exact=True).click()
+    expect(page.locator("#app")).to_have_js_property("inert", True)
     page.locator("#conversation-rename-input").fill("Renamed Alpha")
     page.locator("#conversation-rename-form").evaluate("form => form.requestSubmit()")
+    expect(page.locator("#app")).to_have_js_property("inert", False)
     expect(
         page.locator('#chats-list [data-chat-id="chat-alpha"] .chat-item-title')
     ).to_contain_text("Renamed Alpha")
+    assert page.evaluate("document.activeElement?.classList.contains('chat-item-more')") is True
 
     page.get_by_label("Conversation actions: Renamed Alpha").click()
     page.get_by_role("menuitem", name="Duplicate", exact=True).click()
@@ -160,10 +178,99 @@ def test_json_import_export_retention_and_clear_all(
     assert "chat-old" not in remaining_ids
     assert "chat-pinned" in remaining_ids
 
+    page.locator("#user-input").fill("draft that must be cleared")
     page.once("dialog", lambda dialog: dialog.accept())
     page.locator("#conversation-clear-all").click()
     expect(page.locator('[data-cm-view="active"]')).to_contain_text("Active 1")
     assert page.evaluate("chats.length") == 1
     assert page.evaluate("activeChat().messages.length") == 0
+    assert page.locator("#user-input").input_value() == ""
     assert page.evaluate("localStorage.getItem('ovllm.chatRetention.v1')") == "30"
     expect(page.locator(".cm-local-note")).to_contain_text("not synced")
+
+
+def test_conversation_mutations_roll_back_when_chat_storage_fails(
+    page: Page,
+    inferbridge_url: str,
+) -> None:
+    now = int(time.time() * 1000)
+    _seed_chats(
+        page,
+        [_chat("chat-current", "Current", now, "Current text")],
+        "chat-current",
+    )
+    page.goto(inferbridge_url, wait_until="networkidle")
+
+    page.evaluate(
+        """
+        window.__inferbridgeRealSetItem = Storage.prototype.setItem;
+        window.__inferbridgeFailChatWrites = true;
+        Storage.prototype.setItem = function(key, value) {
+            if (window.__inferbridgeFailChatWrites && key === 'ovllm.chats.v2') {
+                throw new DOMException('quota', 'QuotaExceededError');
+            }
+            return window.__inferbridgeRealSetItem.call(this, key, value);
+        };
+        """
+    )
+
+    page.get_by_label("Conversation actions: Current").click()
+    page.get_by_role("menuitem", name="Pin", exact=True).click()
+    assert page.evaluate("activeChat().pinned") is False
+    expect(page.locator("#toast")).to_contain_text("Could not save chats")
+
+    page.get_by_label("Conversation actions: Current").click()
+    page.get_by_role("menuitem", name="Rename", exact=True).click()
+    page.locator("#conversation-rename-input").fill("Unsaved rename")
+    page.locator("#conversation-rename-form").evaluate("form => form.requestSubmit()")
+    assert page.evaluate("activeChat().title") == "Current"
+    expect(page.locator("#conversation-rename-modal")).to_have_attribute("aria-hidden", "false")
+    page.locator("#conversation-rename-cancel").click()
+
+    before = page.evaluate("chats.length")
+    page.get_by_label("Conversation actions: Current").click()
+    page.get_by_role("menuitem", name="Duplicate", exact=True).click()
+    assert page.evaluate("chats.length") == before
+
+    page.evaluate("window.__inferbridgeFailChatWrites = false")
+
+
+def test_archiving_active_chat_survives_retention_pruning_of_fallback(
+    page: Page,
+    inferbridge_url: str,
+) -> None:
+    now = int(time.time() * 1000)
+    _seed_chats(
+        page,
+        [_chat("chat-current", "Current", now, "Current text")],
+        "chat-current",
+    )
+    page.goto(inferbridge_url, wait_until="networkidle")
+
+    old = now - 45 * 86_400_000
+    page.evaluate(
+        """
+        ({ old }) => {
+            localStorage.setItem('ovllm.chatRetention.v1', '30');
+            chats.push({
+                id: 'chat-old-fallback',
+                title: 'Old fallback',
+                created: old,
+                updated: old,
+                messages: [],
+            });
+            renderChatList();
+        }
+        """,
+        {"old": old},
+    )
+
+    page.get_by_label("Conversation actions: Current").click()
+    page.get_by_role("menuitem", name="Archive", exact=True).click()
+
+    assert page.evaluate("activeChat().archived === true") is False
+    assert page.evaluate("activeChat().messages.length") == 0
+    assert page.evaluate(
+        "chats.some(chat => chat.title === 'Current' && chat.archived === true)"
+    ) is True
+    assert page.evaluate("chats.some(chat => chat.id === 'chat-old-fallback')") is False
