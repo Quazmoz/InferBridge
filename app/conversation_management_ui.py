@@ -323,6 +323,43 @@ CONVERSATION_MANAGEMENT_JS = r"""
         return persistChats();
     };
 
+    function storageWritableForDeletion() {
+        let previousChats = null;
+        let previousActive = null;
+        let previousChatsRead = false;
+        let previousActiveRead = false;
+        try {
+            previousChats = localStorage.getItem(CHATS_KEY);
+            previousChatsRead = true;
+            previousActive = localStorage.getItem(ACTIVE_CHAT_KEY);
+            previousActiveRead = true;
+            localStorage.setItem(
+                CHATS_KEY,
+                previousChats === null ? JSON.stringify(chats) : previousChats
+            );
+            localStorage.setItem(
+                ACTIVE_CHAT_KEY,
+                previousActive === null ? (activeChatId || '') : previousActive
+            );
+            if (previousChats === null) localStorage.removeItem(CHATS_KEY);
+            if (previousActive === null) localStorage.removeItem(ACTIVE_CHAT_KEY);
+            return true;
+        } catch (error) {
+            if (previousChatsRead) restoreStorageValue(CHATS_KEY, previousChats);
+            if (previousActiveRead) restoreStorageValue(ACTIVE_CHAT_KEY, previousActive);
+            notify('Could not update local chat storage. The conversation was not deleted.');
+            console.warn('InferBridge conversation delete preflight failed:', error);
+            return false;
+        }
+    }
+
+    const previousDeleteChat = deleteChat;
+    deleteChat = function storageSafeDeleteChat(id) {
+        if (!chats.some(chat => chat.id === id)) return;
+        if (!storageWritableForDeletion()) return;
+        return previousDeleteChat(id);
+    };
+
     function messageText(message) {
         const content = message?.content;
         if (typeof content === 'string') return content;
