@@ -35,6 +35,22 @@ def test_runtime_health_ui_links_from_storage_and_model_library_surfaces():
     assert "Model health" in javascript
 
 
+def test_runtime_health_ui_preserves_result_feedback_after_refresh():
+    javascript = runtime_health_ui._RUNTIME_HEALTH_JS
+    assert "async function load(preserveMessage=false)" in javascript
+    assert "if(!preserveMessage)setMessage()" in javascript
+    assert javascript.count("await load(true)") == 2
+    assert "Maintenance completed." in javascript
+    assert "Batch completed successfully." in javascript
+
+
+def test_runtime_health_ui_routes_shared_cache_rebuild_to_affected_batch():
+    javascript = runtime_health_ui._RUNTIME_HEALTH_JS
+    assert "const batchButton=$('#rh-batch-cache')" in javascript
+    assert "batchButton.click();return" in javascript
+    assert "Clear the shared compiled cache and warm ${models.length} affected model(s)?" in javascript
+
+
 def test_runtime_health_ui_wraps_model_library_and_storage_manager(monkeypatch):
     monkeypatch.setattr(ui_extension, "inject_multimodal_ui", lambda html: html)
     monkeypatch.delattr(ui_extension, "_MODEL_LIBRARY_UI_EXTENSION_INSTALLED", raising=False)
