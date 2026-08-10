@@ -69,7 +69,7 @@ def _listener_port(scope: dict[str, Any], settings: Any) -> int:
     """Use the socket-bound ASGI port, falling back to validated settings."""
 
     server = scope.get("server")
-    if isinstance(server, (tuple, list)) and len(server) >= 2:
+    if isinstance(server, tuple | list) and len(server) >= 2:
         try:
             port = int(server[1])
         except (TypeError, ValueError):
