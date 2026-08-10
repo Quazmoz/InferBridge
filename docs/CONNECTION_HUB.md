@@ -49,7 +49,7 @@ When API authentication is enabled, the protected self-test coordinator requires
 
 After the browser proves access, authentication verification runs server-side. InferBridge verifies both a valid configured credential and rejection of an intentionally invalid credential without returning the configured key to browser JavaScript. This prevents an unrelated localhost process from using the Connection Hub as an authenticated inference proxy merely by spoofing the UI marker header.
 
-The Hub also pins its internal callback port to the configured InferBridge listener. A caller-supplied `Host` port cannot redirect the server-side credential to a different localhost service. Literal loopback hostnames such as `127.0.0.1`, `localhost`, and `::1` remain supported.
+The Hub also pins its internal callback port to the actual ASGI listener socket, falling back to the configured port only when socket metadata is unavailable. A caller-supplied `Host` port cannot redirect the server-side credential to a different localhost service. Literal loopback hostnames such as `127.0.0.1`, `localhost`, and `::1` remain supported.
 
 Cancellation uses the existing streaming disconnect contract. The self-test opens its own identifiable synthetic stream, receives a valid event, closes only that stream, waits for the generation worker and model lock to release, and then verifies that a small follow-up request succeeds. It does not use the model-preparation cancellation endpoint.
 
