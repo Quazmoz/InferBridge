@@ -3,7 +3,7 @@
 The Connection Hub metadata endpoint is intentionally secret-free, but the self-test
 can make authenticated requests with InferBridge's configured server credential. This
 middleware prevents that endpoint from becoming a localhost confused deputy and pins
-its callback port to the configured listener instead of trusting the request Host
+its callback port to the actual ASGI listener instead of trusting the request Host
 header.
 """
 
@@ -65,8 +65,26 @@ def _loopback_host_from_header(value: str) -> str | None:
     return candidate if candidate in _LOOPBACK_HOSTS else None
 
 
+def _listener_port(scope: dict[str, Any], settings: Any) -> int:
+    """Use the socket-bound ASGI port, falling back to validated settings."""
+
+    server = scope.get("server")
+    if isinstance(server, (tuple, list)) and len(server) >= 2:
+        try:
+            port = int(server[1])
+        except (TypeError, ValueError):
+            port = 0
+        if 1 <= port <= 65535:
+            return port
+    try:
+        configured = int(getattr(settings, "port", 8000))
+    except (TypeError, ValueError):
+        configured = 8000
+    return configured if 1 <= configured <= 65535 else 8000
+
+
 def _trusted_listener(scope: dict[str, Any], settings: Any) -> tuple[str, int]:
-    """Return a callback target using only a verified loopback host and configured port."""
+    """Return a callback target using only verified loopback host and socket port."""
 
     requested = _loopback_host_from_header(_header_value(scope, b"host"))
     configured = str(getattr(settings, "host", "127.0.0.1") or "127.0.0.1").strip()
@@ -83,8 +101,7 @@ def _trusted_listener(scope: dict[str, Any], settings: Any) -> tuple[str, int]:
         # reachable locally. Never copy an arbitrary request hostname into callbacks.
         host = "127.0.0.1"
 
-    port = int(getattr(settings, "port", 8000))
-    return host, port
+    return host, _listener_port(scope, settings)
 
 
 def _trusted_host_header(host: str, port: int) -> bytes:
@@ -93,7 +110,7 @@ def _trusted_host_header(host: str, port: int) -> bytes:
 
 
 def _pin_request_origin(scope: dict[str, Any], settings: Any) -> dict[str, Any]:
-    """Return a shallow scope copy whose callback port cannot be Host-spoofed."""
+    """Return a shallow scope copy whose callback origin cannot be Host-spoofed."""
 
     host, port = _trusted_listener(scope, settings)
     trusted_host = _trusted_host_header(host, port)
