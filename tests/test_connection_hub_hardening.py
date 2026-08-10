@@ -8,13 +8,18 @@ from fastapi.testclient import TestClient
 from app.connection_hub_hardening import ConnectionHubHardeningMiddleware
 
 
-def _settings(*, api_key: str | None = None, host: str = "127.0.0.1", port: int = 8123):
+def _settings(*, api_key: str | None = None, host: str = "127.0.0.1", port: int = 8000):
     return SimpleNamespace(api_key=api_key, host=host, port=port)
 
 
-def _app(*, api_key: str | None = None, host: str = "127.0.0.1") -> FastAPI:
+def _app(
+    *,
+    api_key: str | None = None,
+    host: str = "127.0.0.1",
+    configured_port: int = 8000,
+) -> FastAPI:
     app = FastAPI()
-    app.state.settings = _settings(api_key=api_key, host=host)
+    app.state.settings = _settings(api_key=api_key, host=host, port=configured_port)
     app.add_middleware(ConnectionHubHardeningMiddleware, owner=app)
 
     @app.get("/internal/connection-hub")
@@ -41,7 +46,7 @@ def _app(*, api_key: str | None = None, host: str = "127.0.0.1") -> FastAPI:
 def test_self_test_requires_normal_api_credential_when_authentication_is_enabled():
     app = _app(api_key="configured-secret")
 
-    with TestClient(app) as client:
+    with TestClient(app, base_url="http://127.0.0.1:8123") as client:
         missing = client.post(
             "/internal/connection-hub/self-test",
             headers={"Host": "127.0.0.1:9999"},
@@ -71,10 +76,10 @@ def test_self_test_requires_normal_api_credential_when_authentication_is_enabled
     assert "configured-secret" not in accepted.text
 
 
-def test_hub_host_header_is_pinned_to_configured_listener_port():
-    app = _app()
+def test_hub_host_header_uses_actual_listener_port_not_spoofed_or_configured_port():
+    app = _app(configured_port=8000)
 
-    with TestClient(app) as client:
+    with TestClient(app, base_url="http://127.0.0.1:9444") as client:
         response = client.get(
             "/internal/connection-hub",
             headers={"Host": "127.0.0.1:54321"},
@@ -86,8 +91,8 @@ def test_hub_host_header_is_pinned_to_configured_listener_port():
 
     assert response.status_code == 200
     assert response.json() == {
-        "host": "127.0.0.1:8123",
-        "server": ["127.0.0.1", 8123],
+        "host": "127.0.0.1:9444",
+        "server": ["127.0.0.1", 9444],
     }
     assert unrelated.json()["host"] == "127.0.0.1:54321"
 
@@ -95,7 +100,7 @@ def test_hub_host_header_is_pinned_to_configured_listener_port():
 def test_legitimate_localhost_origin_is_preserved_while_spoofed_port_is_removed():
     app = _app(host="127.0.0.1")
 
-    with TestClient(app) as client:
+    with TestClient(app, base_url="http://localhost:8123") as client:
         response = client.get(
             "/internal/connection-hub",
             headers={"Host": "localhost:54321"},
@@ -111,7 +116,7 @@ def test_legitimate_localhost_origin_is_preserved_while_spoofed_port_is_removed(
 def test_untrusted_hostname_is_never_copied_into_hub_callback_origin():
     app = _app(host="0.0.0.0")
 
-    with TestClient(app) as client:
+    with TestClient(app, base_url="http://127.0.0.1:8123") as client:
         response = client.get(
             "/internal/connection-hub",
             headers={"Host": "attacker.invalid:54321"},
@@ -127,7 +132,7 @@ def test_untrusted_hostname_is_never_copied_into_hub_callback_origin():
 def test_authentication_disabled_keeps_local_self_test_available():
     app = _app(api_key=None)
 
-    with TestClient(app) as client:
+    with TestClient(app, base_url="http://127.0.0.1:8123") as client:
         response = client.post("/internal/connection-hub/self-test")
 
     assert response.status_code == 200
@@ -137,7 +142,7 @@ def test_authentication_disabled_keeps_local_self_test_available():
 def test_ipv6_loopback_listener_is_preserved_without_trusting_request_port():
     app = _app(host="::1")
 
-    with TestClient(app) as client:
+    with TestClient(app, base_url="http://[::1]:8123") as client:
         response = client.get(
             "/internal/connection-hub",
             headers={"Host": "[::1]:9999"},
