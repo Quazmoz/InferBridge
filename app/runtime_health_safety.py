@@ -153,6 +153,17 @@ class HardenedRuntimeHealthService(RuntimeHealthService):
                 or getattr(state, "_temporary_models", {})
             )
 
+    def _try_catalog_lock(self):
+        lock = getattr(self.manager, "_catalog_lock", None)
+        if lock is None:
+            return None
+        if not lock.acquire(blocking=False):
+            raise StorageConflict(
+                "maintenance_conflict",
+                "Wait for the active model catalog update to finish.",
+            )
+        return lock
+
     @asynccontextmanager
     async def _exclusive_maintenance(self):
         """Exclude storage and lifecycle mutations for an entire validation sequence."""
@@ -161,16 +172,7 @@ class HardenedRuntimeHealthService(RuntimeHealthService):
         # the whole maintenance sequence prevents a second cleanup from interleaving
         # between cache deletion and temporary load validation.
         async with self.storage._cleanup_lock:
-            catalog_lock = getattr(self.manager, "_catalog_lock", None)
-            catalog_acquired = False
-            if catalog_lock is not None:
-                catalog_acquired = bool(catalog_lock.acquire(blocking=False))
-                if not catalog_acquired:
-                    raise StorageConflict(
-                        "maintenance_conflict",
-                        "Wait for the active model catalog update to finish.",
-                    )
-
+            catalog_lock = self._try_catalog_lock()
             try:
                 active_lifecycle = not _all_lifecycle_idle(self.manager)
                 active_storage = self._storage_temporary_or_mutation_active()
@@ -191,7 +193,7 @@ class HardenedRuntimeHealthService(RuntimeHealthService):
                     self._maintenance_active = False
                     self._maintenance_owner = None
             finally:
-                if catalog_acquired:
+                if catalog_lock is not None:
                     catalog_lock.release()
 
     def _read_state(self) -> dict[str, Any]:
@@ -385,7 +387,7 @@ class HardenedRuntimeHealthService(RuntimeHealthService):
             status="failed",
         )
 
-    def _snapshot_sync(self) -> dict[str, Any]:
+    def _snapshot_sync_locked(self) -> dict[str, Any]:
         """Keep a known current-runtime load failure visible until reconversion succeeds."""
 
         snapshot = super()._snapshot_sync()
@@ -458,7 +460,14 @@ class HardenedRuntimeHealthService(RuntimeHealthService):
 
         return snapshot
 
-    def _acknowledge(self, model_id: str) -> dict[str, Any]:
+    def _snapshot_sync(self) -> dict[str, Any]:
+        catalog_lock = getattr(self.manager, "_catalog_lock", None)
+        if catalog_lock is None:
+            return self._snapshot_sync_locked()
+        with catalog_lock:
+            return self._snapshot_sync_locked()
+
+    def _acknowledge_locked(self, model_id: str) -> dict[str, Any]:
         cfg = self._require_model(model_id)
         state = self._read_state()
         model_state = state.get("models", {}).get(model_id, {})
@@ -471,6 +480,25 @@ class HardenedRuntimeHealthService(RuntimeHealthService):
                 "A model that failed current-runtime validation must be reconverted or repaired.",
             )
         return super()._acknowledge(model_id)
+
+    def _acknowledge(self, model_id: str) -> dict[str, Any]:
+        catalog_lock = getattr(self.manager, "_catalog_lock", None)
+        if catalog_lock is None:
+            return self._acknowledge_locked(model_id)
+        with catalog_lock:
+            return self._acknowledge_locked(model_id)
+
+    async def _schedule_reconvert(self, model_id: str, device: str | None) -> dict[str, Any]:
+        catalog_lock = self._try_catalog_lock()
+        try:
+            # The base implementation currently contains no suspension point: the async
+            # shape mirrors the surrounding service API while scheduling one background
+            # conversion task. Holding the lock prevents definition refresh from racing
+            # that scheduling decision.
+            return await super()._schedule_reconvert(model_id, device)
+        finally:
+            if catalog_lock is not None:
+                catalog_lock.release()
 
     async def _rebuild_compiled_cache(
         self,
