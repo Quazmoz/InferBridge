@@ -14,6 +14,7 @@ from app.chat_context_ui import install_chat_context_extension
 from app.chat_guard_ui import install_chat_guard_extension
 from app.chat_queue_ui import install_chat_queue_extension
 from app.connection_hub import install_connection_hub_routes_extension
+from app.connection_hub_hardening import install_connection_hub_hardening
 from app.connection_hub_ui import install_connection_hub_ui_extension
 from app.context_budget import install_context_budget_routes_extension
 from app.context_budget_ui import install_context_budget_ui_extension
@@ -51,6 +52,7 @@ install_model_cancellation_routes_extension()
 install_model_recovery_routes_extension()
 install_context_budget_routes_extension()
 install_connection_hub_routes_extension()
+install_connection_hub_hardening()
 install_status_split_routes_extension()
 install_engine_handoff_routes_extension()
 install_huggingface_access_routes_extension()
