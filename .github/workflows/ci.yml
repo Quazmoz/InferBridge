@@ -180,6 +180,9 @@ jobs:
           python -m py_compile
           packaging/runtime_hook.py
           app/cancellation_ui.py
+          app/connection_hub.py
+          app/connection_hub_hardening.py
+          app/connection_hub_ui.py
           app/context_budget.py
           app/context_budget_ui.py
           app/conversation_management_ui.py
@@ -239,6 +242,9 @@ jobs:
           tests/test_installer_upgrade_contract.py
           tests/test_runtime_hook_upgrade.py
           tests/test_cancellation_ui.py
+          tests/test_connection_hub.py
+          tests/test_connection_hub_hardening.py
+          tests/test_connection_hub_ui.py
           tests/test_context_budget.py
           tests/test_context_budget_ui.py
           tests/test_conversation_management_ui.py
