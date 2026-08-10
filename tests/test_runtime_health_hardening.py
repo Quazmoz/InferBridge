@@ -60,6 +60,15 @@ class HardeningStorage:
         return {"status": "completed", "freed_bytes": 0}
 
 
+class TrackedEngine:
+    def __init__(self) -> None:
+        self.device = "CPU"
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
+
+
 class GuardManager(HardeningManager):
     def __init__(self, catalog) -> None:
         super().__init__(catalog)
@@ -70,6 +79,7 @@ class GuardManager(HardeningManager):
         self.reload_calls = 0
         self.validation_started: asyncio.Event | None = None
         self.validation_release: asyncio.Event | None = None
+        self.last_engine: TrackedEngine | None = None
 
     def schedule_load(self, _model_id: str, *args, **kwargs):
         self.load_calls += 1
@@ -96,7 +106,8 @@ class GuardManager(HardeningManager):
             self.validation_started.set()
         if self.validation_release is not None:
             await self.validation_release.wait()
-        engine = SimpleNamespace(device="CPU", close=lambda: None)
+        engine = TrackedEngine()
+        self.last_engine = engine
         return engine, 0.01
 
 
@@ -256,6 +267,47 @@ def test_hardened_revalidation_blocks_new_lifecycle_work(tmp_path, monkeypatch):
         assert manager.load_calls == 0
         assert manager.convert_calls == 0
         assert manager.delete_calls == 0
+
+    asyncio.run(exercise())
+
+
+def test_cancelled_validation_keeps_gate_until_native_engine_is_closed(tmp_path, monkeypatch):
+    async def exercise() -> None:
+        cfg = HardeningConfig("model-a", tmp_path)
+        manager = GuardManager({"model-a": cfg})
+        storage = GuardStorage()
+        manager.validation_started = asyncio.Event()
+        manager.validation_release = asyncio.Event()
+        service = HardenedRuntimeHealthService(
+            settings=SimpleNamespace(device="CPU"),
+            manager=manager,
+            paths=SimpleNamespace(config_dir=tmp_path / "config"),
+            storage=storage,
+        )
+        service._conversion_fingerprint = lambda _cfg: "fingerprint"
+        _patch_validation_runtime(monkeypatch, "legacy_untracked")
+
+        task = asyncio.create_task(
+            service.perform(RuntimeHealthActionRequest(action="revalidate", model_id="model-a"))
+        )
+        await asyncio.wait_for(manager.validation_started.wait(), timeout=1)
+        task.cancel()
+        await asyncio.sleep(0)
+
+        assert task.done() is False
+        assert service._maintenance_active is True
+        with pytest.raises(ValueError, match="Runtime model maintenance is active"):
+            manager.schedule_load("model-a", "CPU")
+
+        manager.validation_release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert manager.last_engine is not None
+        assert manager.last_engine.closed is True
+        assert service._maintenance_active is False
+        manager.schedule_load("model-a", "CPU")
+        assert manager.load_calls == 1
 
     asyncio.run(exercise())
 
