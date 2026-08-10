@@ -45,9 +45,15 @@ Each check reports `Passed`, `Failed`, or `Skipped` with its own duration and sa
 
 Generation checks use a small synthetic prompt. They do not use conversation history, browser state, files, or other user content. The self-test does not load, unload, convert, delete, or modify models.
 
-Authentication verification runs server-side. If authentication is enabled, InferBridge verifies both a valid server-side credential and rejection of an intentionally invalid credential without sending the configured key to browser JavaScript.
+When API authentication is enabled, the protected self-test coordinator requires the same API credential already entered in the built-in browser UI. The browser sends that credential only as an `Authorization` header for the self-test request. The Hub never replaces the displayed placeholder with that credential and never returns the server-configured secret in metadata or self-test results.
+
+After the browser proves access, authentication verification runs server-side. InferBridge verifies both a valid configured credential and rejection of an intentionally invalid credential without returning the configured key to browser JavaScript. This prevents an unrelated localhost process from using the Connection Hub as an authenticated inference proxy merely by spoofing the UI marker header.
+
+The Hub also pins its internal callback port to the configured InferBridge listener. A caller-supplied `Host` port cannot redirect the server-side credential to a different localhost service. Literal loopback hostnames such as `127.0.0.1`, `localhost`, and `::1` remain supported.
 
 Cancellation uses the existing streaming disconnect contract. The self-test opens its own identifiable synthetic stream, receives a valid event, closes only that stream, waits for the generation worker and model lock to release, and then verifies that a small follow-up request succeeds. It does not use the model-preparation cancellation endpoint.
+
+The Connection Hub dialog can be closed while a self-test is running. Closing the dialog does not repurpose the model-preparation cancellation endpoint or attempt to terminate unrelated inference. The small self-test request is allowed to finish, and later checks still skip if normal generation becomes active.
 
 ## LAN access
 
