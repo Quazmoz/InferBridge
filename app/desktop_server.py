@@ -101,7 +101,8 @@ def create_desktop_app(
         resolve_runtime_paths,
     )
     from app.release_routes import register_release_routes
-    from app.runtime_health import RuntimeHealthService, register_runtime_health_routes
+    from app.runtime_health import register_runtime_health_routes
+    from app.runtime_health_safety import HardenedRuntimeHealthService
     from app.runtime_health_ui import install_runtime_health_ui_extension
     from app.storage_manager import StorageManagerService, register_storage_manager_routes
     from app.storage_manager_ui import install_storage_manager_ui_extension
@@ -165,7 +166,7 @@ def create_desktop_app(
         manager=app.state.manager,
         paths=paths,
     )
-    runtime_health = RuntimeHealthService(
+    runtime_health = HardenedRuntimeHealthService(
         settings=settings,
         manager=app.state.manager,
         paths=paths,
