@@ -92,6 +92,38 @@ def test_hub_host_header_is_pinned_to_configured_listener_port():
     assert unrelated.json()["host"] == "127.0.0.1:54321"
 
 
+def test_legitimate_localhost_origin_is_preserved_while_spoofed_port_is_removed():
+    app = _app(host="127.0.0.1")
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/internal/connection-hub",
+            headers={"Host": "localhost:54321"},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "host": "localhost:8123",
+        "server": ["localhost", 8123],
+    }
+
+
+def test_untrusted_hostname_is_never_copied_into_hub_callback_origin():
+    app = _app(host="0.0.0.0")
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/internal/connection-hub",
+            headers={"Host": "attacker.invalid:54321"},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "host": "127.0.0.1:8123",
+        "server": ["127.0.0.1", 8123],
+    }
+
+
 def test_authentication_disabled_keeps_local_self_test_available():
     app = _app(api_key=None)
 
@@ -102,13 +134,13 @@ def test_authentication_disabled_keeps_local_self_test_available():
     assert response.json()["host"] == "127.0.0.1:8123"
 
 
-def test_ipv6_loopback_listener_is_preserved_without_using_request_host():
+def test_ipv6_loopback_listener_is_preserved_without_trusting_request_port():
     app = _app(host="::1")
 
     with TestClient(app) as client:
         response = client.get(
             "/internal/connection-hub",
-            headers={"Host": "127.0.0.1:9999"},
+            headers={"Host": "[::1]:9999"},
         )
 
     assert response.status_code == 200
