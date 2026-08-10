@@ -160,7 +160,9 @@ class HardenedRuntimeHealthService(RuntimeHealthService):
         # the whole maintenance sequence prevents a second cleanup from interleaving
         # between cache deletion and temporary load validation.
         async with self.storage._cleanup_lock:
-            if not _all_lifecycle_idle(self.manager) or self._storage_temporary_or_mutation_active():
+            active_lifecycle = not _all_lifecycle_idle(self.manager)
+            active_storage = self._storage_temporary_or_mutation_active()
+            if active_lifecycle or active_storage:
                 raise StorageConflict(
                     "maintenance_conflict",
                     "Unload all models and wait for active model or storage operations to finish.",
@@ -232,7 +234,8 @@ class HardenedRuntimeHealthService(RuntimeHealthService):
                     if not candidate.is_file():
                         digest.update(f"\0non-file\0{relative}".encode("utf-8"))
                         continue
-                    digest.update(f"\0file\0{relative}\0{stat.st_size}\0{stat.st_mtime_ns}".encode("utf-8"))
+                    metadata = f"\0file\0{relative}\0{stat.st_size}\0{stat.st_mtime_ns}"
+                    digest.update(metadata.encode("utf-8"))
         except OSError:
             digest.update(b"\0walk-failed")
         return digest.hexdigest()
