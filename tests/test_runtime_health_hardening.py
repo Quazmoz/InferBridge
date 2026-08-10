@@ -130,6 +130,23 @@ def _patch_validation_runtime(monkeypatch, status: str) -> None:
     )
 
 
+def _runtime_record(status: str, *, acknowledgment: bool = False) -> dict:
+    record = {
+        "status": status,
+        "runtime": {
+            "application": "1.0.0",
+            "openvino": "2026.2.0",
+            "openvino_genai": "2026.2.0",
+        },
+        "conversion_fingerprint": "fingerprint",
+    }
+    if acknowledgment:
+        record["acknowledged_at"] = 1
+    else:
+        record["validated_at"] = 1
+    return record
+
+
 def test_hard_artifact_failure_overrides_old_successful_validation():
     recommendation = maintenance_recommendation(
         "incomplete",
@@ -336,3 +353,68 @@ def test_hardened_fingerprint_tracks_support_file_changes(tmp_path):
     after = service._conversion_fingerprint(cfg)
 
     assert before != after
+
+
+def test_failed_validation_cannot_be_hidden_by_acknowledgment(tmp_path, monkeypatch):
+    cfg = HardeningConfig("model-a", tmp_path)
+    manager = GuardManager({"model-a": cfg})
+    storage = GuardStorage()
+    service = HardenedRuntimeHealthService(
+        settings=SimpleNamespace(device="CPU"),
+        manager=manager,
+        paths=SimpleNamespace(config_dir=tmp_path / "config"),
+        storage=storage,
+    )
+    service._conversion_fingerprint = lambda _cfg: "fingerprint"
+    service._source_cache_state = lambda _cfg: "reusable"
+    _patch_validation_runtime(monkeypatch, "stale_runtime")
+    service._write_state(
+        {
+            "schema_version": 1,
+            "models": {
+                "model-a": {
+                    "validation": _runtime_record("failed"),
+                    "acknowledgment": _runtime_record("acknowledged", acknowledgment=True),
+                }
+            },
+        }
+    )
+
+    snapshot = service._snapshot_sync()
+    row = snapshot["models"][0]
+
+    assert row["recommendation"]["action"] == "reconvert"
+    assert row["recommendation"]["label"] == "Reconvert from existing HF cache"
+    assert row["can_leave_unchanged"] is False
+    assert row["acknowledged_current_runtime"] is False
+    with pytest.raises(StorageConflict) as exc_info:
+        service._acknowledge("model-a")
+    assert exc_info.value.code == "acknowledgment_unavailable"
+
+
+def test_failed_validation_overrides_compatible_metadata(tmp_path, monkeypatch):
+    cfg = HardeningConfig("model-a", tmp_path)
+    manager = GuardManager({"model-a": cfg})
+    storage = GuardStorage()
+    service = HardenedRuntimeHealthService(
+        settings=SimpleNamespace(device="CPU"),
+        manager=manager,
+        paths=SimpleNamespace(config_dir=tmp_path / "config"),
+        storage=storage,
+    )
+    service._conversion_fingerprint = lambda _cfg: "fingerprint"
+    service._source_cache_state = lambda _cfg: "not_found"
+    _patch_validation_runtime(monkeypatch, "compatible")
+    service._write_state(
+        {
+            "schema_version": 1,
+            "models": {"model-a": {"validation": _runtime_record("failed")}},
+        }
+    )
+
+    snapshot = service._snapshot_sync()
+    row = snapshot["models"][0]
+
+    assert row["recommendation"]["action"] == "reconvert"
+    assert snapshot["summary"]["reconvert"] == 1
+    assert snapshot["summary"]["needs_attention"] == 1
