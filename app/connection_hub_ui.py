@@ -37,8 +37,18 @@ let returnFocus = null;
 let activeController = null;
 let running = false;
 
-function uiHeaders(json = false) {
-    return {'X-OV-LLM-UI': '1', ...(json ? {'Content-Type': 'application/json'} : {})};
+function browserApiKey() {
+    const fieldValue = String(document.getElementById('settings-api-key')?.value || '').trim();
+    if (fieldValue) return fieldValue;
+    try { return String(localStorage.getItem('ovllm.apikey.v1') || '').trim(); } catch { return ''; }
+}
+function uiHeaders(json = false, includeAuth = false) {
+    const key = includeAuth ? browserApiKey() : '';
+    return {
+        'X-OV-LLM-UI': '1',
+        ...(key ? {Authorization: `Bearer ${key}`} : {}),
+        ...(json ? {'Content-Type': 'application/json'} : {}),
+    };
 }
 function safeText(value) { return String(value ?? ''); }
 function apiError(body, status) {
@@ -48,7 +58,13 @@ function apiError(body, status) {
     return `Connection Hub request failed (HTTP ${status}).`;
 }
 async function api(path, options = {}) {
-    const response = await fetch(path, {...options, headers: {...uiHeaders(Boolean(options.body)), ...(options.headers || {})}});
+    const response = await fetch(path, {
+        ...options,
+        headers: {
+            ...uiHeaders(Boolean(options.body), path === TEST_PATH),
+            ...(options.headers || {}),
+        },
+    });
     let body = null;
     try { body = await response.json(); } catch {}
     if (!response.ok) throw new Error(apiError(body, response.status));
@@ -104,7 +120,7 @@ modal.innerHTML = `
 
     <details class="ch-lan"><summary>Advanced LAN access</summary><div class="ch-lan-body" id="ch-lan-body"><div class="ch-lan-title" id="ch-lan-title">Checking listener...</div><div class="ch-lan-detail" id="ch-lan-detail"></div></div></details>
   </div>
-  <div class="ch-footer"><div><div class="ch-footer-note">The self-test uses synthetic input and the same HTTP API external clients use. Configured API keys remain server-side.</div><div class="ch-copy-feedback" id="ch-copy-feedback" role="status" aria-live="polite"></div></div><button type="button" class="ch-btn primary" id="ch-done">Done</button></div>
+  <div class="ch-footer"><div><div class="ch-footer-note">The Hub never returns the configured server secret. When authentication is enabled, the self-test proves access with the API key already entered in this browser.</div><div class="ch-copy-feedback" id="ch-copy-feedback" role="status" aria-live="polite"></div></div><button type="button" class="ch-btn primary" id="ch-done">Done</button></div>
 </div>`;
 document.body.appendChild(modal);
 
@@ -141,6 +157,12 @@ function setMessage(text = '', isError = false) {
     message.textContent = safeText(text);
     message.className = `ch-message${isError ? ' error' : ''}`;
 }
+function setRunning(value) {
+    running = Boolean(value);
+    runButton.disabled = running;
+    runButton.setAttribute('aria-busy', running ? 'true' : 'false');
+    modelSelect.disabled = running || !usableModels().length;
+}
 function usableModels() {
     return Array.isArray(metadata?.models) ? metadata.models.filter(item => item.loaded && item.generation_capable) : [];
 }
@@ -160,7 +182,7 @@ function renderModelOptions() {
         modelSelect.disabled = true;
         $('#ch-model-hint').textContent = 'Load a chat model before running generation checks.';
     } else {
-        modelSelect.disabled = false;
+        modelSelect.disabled = running;
         if (usable.length > 1) modelSelect.add(new Option('Select a loaded model...', ''));
         usable.forEach(item => modelSelect.add(new Option(`${item.name} (${item.id})${item.busy ? ' · busy' : ''}`, item.id)));
         modelSelect.value = selectedModel;
@@ -253,7 +275,11 @@ async function loadMetadata(preserveMessage = false) {
 }
 async function runSelfTest() {
     if (running) return;
-    running = true; runButton.disabled = true; modelSelect.disabled = true; setAllRunning(); setMessage('Testing the local API with synthetic input...');
+    if (metadata?.authentication?.required && !browserApiKey()) {
+        setMessage('Authentication is enabled. Close the Hub, enter the InferBridge API key in Generation Settings, then run the self-test again.', true);
+        return;
+    }
+    setRunning(true); setAllRunning(); setMessage('Testing the local API with synthetic input...');
     try {
         const payload = await api(TEST_PATH, {method:'POST', body:JSON.stringify({model_id:selectedModel || null})});
         renderTestRows(payload?.tests || []);
@@ -263,7 +289,7 @@ async function runSelfTest() {
         renderTestRows(TESTS.map(([id,label]) => ({id,label,status:'failed',duration_ms:null,detail:'The self-test coordinator did not return a result.'})));
         setMessage(error instanceof Error ? error.message : 'The self-test could not run.', true);
     } finally {
-        running = false; runButton.disabled = false; modelSelect.disabled = !usableModels().length;
+        setRunning(false);
     }
 }
 function focusables() {
@@ -277,7 +303,6 @@ async function openHub(source) {
     await loadMetadata();
 }
 function closeHub() {
-    if (running) return;
     modal.classList.add('hidden'); modal.setAttribute('aria-hidden','true');
     activeController?.abort();
     document.getElementById('app')?.removeAttribute('inert');
