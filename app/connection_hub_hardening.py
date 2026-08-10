@@ -3,7 +3,7 @@
 The Connection Hub metadata endpoint is intentionally secret-free, but the self-test
 can make authenticated requests with InferBridge's configured server credential. This
 middleware prevents that endpoint from becoming a localhost confused deputy and pins
-its callback origin to the configured listener instead of trusting the request Host
+its callback port to the configured listener instead of trusting the request Host
 header.
 """
 
@@ -21,6 +21,7 @@ from app.brand import DISPLAY_NAME, LEGACY_DISPLAY_NAME
 _INSTALL_FLAG = "_ovllm_connection_hub_hardening_installed"
 _HUB_PATHS = frozenset({"/internal/connection-hub", "/internal/connection-hub/self-test"})
 _SELF_TEST_PATH = "/internal/connection-hub/self-test"
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 
 
 def _configured_keys(settings: Any) -> list[str]:
@@ -49,19 +50,39 @@ def _authorized(settings: Any, scope: dict[str, Any]) -> bool:
     return any(secrets.compare_digest(supplied, key) for key in keys)
 
 
-def _trusted_listener(settings: Any) -> tuple[str, int]:
-    """Return a callback target derived only from server configuration."""
+def _loopback_host_from_header(value: str) -> str | None:
+    """Return a literal loopback hostname from Host, ignoring its untrusted port."""
 
-    configured = str(getattr(settings, "host", "127.0.0.1") or "127.0.0.1").strip()
-    clean = configured.strip("[]").lower()
-    if clean in {"::1", "::"}:
-        host = "::1"
-    elif clean in {"127.0.0.1", "localhost"}:
-        host = clean
+    raw = value.strip().lower()
+    if raw.startswith("["):
+        end = raw.find("]")
+        candidate = raw[1:end] if end > 0 else ""
+    elif raw.count(":") == 1:
+        candidate = raw.rsplit(":", 1)[0]
     else:
-        # Wildcard and LAN listeners can accept a local callback through loopback when
-        # the Hub itself is reachable locally. Never copy an untrusted request Host.
+        candidate = raw
+    candidate = candidate.strip("[]")
+    return candidate if candidate in _LOOPBACK_HOSTS else None
+
+
+def _trusted_listener(scope: dict[str, Any], settings: Any) -> tuple[str, int]:
+    """Return a callback target using only a verified loopback host and configured port."""
+
+    requested = _loopback_host_from_header(_header_value(scope, b"host"))
+    configured = str(getattr(settings, "host", "127.0.0.1") or "127.0.0.1").strip()
+    configured_clean = configured.strip("[]").lower()
+
+    if requested is not None:
+        host = requested
+    elif configured_clean in _LOOPBACK_HOSTS:
+        host = configured_clean
+    elif configured_clean == "::":
+        host = "::1"
+    else:
+        # Wildcard IPv4 and LAN listeners can use loopback when the Hub itself is
+        # reachable locally. Never copy an arbitrary request hostname into callbacks.
         host = "127.0.0.1"
+
     port = int(getattr(settings, "port", 8000))
     return host, port
 
@@ -72,9 +93,9 @@ def _trusted_host_header(host: str, port: int) -> bytes:
 
 
 def _pin_request_origin(scope: dict[str, Any], settings: Any) -> dict[str, Any]:
-    """Return a shallow scope copy whose Host/server values cannot be spoofed."""
+    """Return a shallow scope copy whose callback port cannot be Host-spoofed."""
 
-    host, port = _trusted_listener(settings)
+    host, port = _trusted_listener(scope, settings)
     trusted_host = _trusted_host_header(host, port)
     headers: list[tuple[bytes, bytes]] = []
     host_replaced = False
