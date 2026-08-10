@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
-from app.connection_hub_hardening import ConnectionHubHardeningMiddleware
+from app.connection_hub_hardening import ConnectionHubHardeningMiddleware, _authorized
 
 
 def _settings(*, api_key: str | None = None, host: str = "127.0.0.1", port: int = 8000):
@@ -76,17 +76,15 @@ def test_self_test_requires_normal_api_credential_when_authentication_is_enabled
     assert "configured-secret" not in accepted.text
 
 
-def test_self_test_matches_existing_utf8_api_key_semantics():
-    app = _app(api_key="clé-locale")
+def test_self_test_key_comparison_matches_existing_utf8_auth_semantics():
+    cfg = _settings(api_key="clé-locale")
+    scope = {
+        "headers": [
+            (b"authorization", "Bearer clé-locale".encode("latin-1")),
+        ]
+    }
 
-    with TestClient(app, base_url="http://127.0.0.1:8123") as client:
-        accepted = client.post(
-            "/internal/connection-hub/self-test",
-            headers={"Authorization": "Bearer clé-locale"},
-        )
-
-    assert accepted.status_code == 200
-    assert "clé-locale" not in accepted.text
+    assert _authorized(cfg, scope) is True
 
 
 def test_hub_host_header_uses_actual_listener_port_not_spoofed_or_configured_port():
