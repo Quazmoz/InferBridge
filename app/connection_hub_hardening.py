@@ -46,8 +46,8 @@ def _authorized(settings: Any, scope: dict[str, Any]) -> bool:
     authorization = _header_value(scope, b"authorization")
     if not authorization.startswith("Bearer "):
         return False
-    supplied = authorization.removeprefix("Bearer ")
-    return any(secrets.compare_digest(supplied, key) for key in keys)
+    supplied = authorization.removeprefix("Bearer ").encode("utf-8")
+    return any(secrets.compare_digest(supplied, key.encode("utf-8")) for key in keys)
 
 
 def _loopback_host_from_header(value: str) -> str | None:
