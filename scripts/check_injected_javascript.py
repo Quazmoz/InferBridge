@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Syntax-check every inline script the composed browser UI actually serves.
+"""Syntax-check every inline script in the normal and packaged desktop UI compositions.
 
 The browser client is assembled by injecting JavaScript that lives inside Python
 string literals across many ``*_ui`` modules. Nothing compiles that JavaScript, so a
 single unbalanced parenthesis silently kills one whole ``<script>`` element and the
 feature it implements, while the Python test suite stays green.
 
-Checking the rendered page instead of a hand-maintained module list means a newly
-injected surface is covered the moment it reaches the page.
+The packaged desktop adds storage and runtime-health injectors after the ordinary
+server composition. Validate both surfaces so desktop-only JavaScript receives the
+same syntax gate as the normal browser UI.
 """
 
 from __future__ import annotations
@@ -29,11 +30,36 @@ _SCRIPT_RE = re.compile(
 _MINIMUM_EXPECTED_BLOCKS = 5
 
 
+def _repository_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
 def rendered_page() -> str:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    """Return the ordinary source/server browser composition."""
+
+    sys.path.insert(0, str(_repository_root()))
     from app.server import _index_html
 
     return _index_html()
+
+
+def rendered_desktop_page() -> str:
+    """Return the packaged desktop composition without starting a desktop server."""
+
+    root = _repository_root()
+    sys.path.insert(0, str(root))
+
+    # Importing app.config installs the shared UI chain used by app.server. The desktop
+    # launcher then appends storage and runtime-health surfaces before serving index.html.
+    from app import config as _config  # noqa: F401 - import performs UI composition
+    from app import ui_extension
+    from app.runtime_health_ui import install_runtime_health_ui_extension
+    from app.storage_manager_ui import install_storage_manager_ui_extension
+
+    install_storage_manager_ui_extension()
+    install_runtime_health_ui_extension()
+    source = (root / "web" / "index.html").read_text(encoding="utf-8")
+    return ui_extension.inject_multimodal_ui(source)
 
 
 def inline_scripts(html: str) -> list[str]:
@@ -71,14 +97,19 @@ def main(argv: list[str] | None = None) -> int:
         print("Node.js is required to syntax-check the injected browser JavaScript.")
         return 2
 
-    blocks = inline_scripts(rendered_page())
-    if len(blocks) < _MINIMUM_EXPECTED_BLOCKS:
-        print(
-            f"Only {len(blocks)} inline script block(s) were found in the composed UI. "
-            "The page or the extraction contract changed; refusing to report success."
-        )
-        return 2
+    page_blocks = {
+        "server": inline_scripts(rendered_page()),
+        "desktop": inline_scripts(rendered_desktop_page()),
+    }
+    for surface, blocks in page_blocks.items():
+        if len(blocks) < _MINIMUM_EXPECTED_BLOCKS:
+            print(
+                f"Only {len(blocks)} inline script block(s) were found in the {surface} UI. "
+                "The page or the extraction contract changed; refusing to report success."
+            )
+            return 2
 
+    blocks = [block for surface in page_blocks.values() for block in surface]
     failures = check(node, blocks)
     for index, detail in failures:
         print(f"--- inline script block {index} failed to parse ---")
@@ -87,7 +118,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{len(failures)} of {len(blocks)} inline script block(s) failed to parse.")
         return 1
 
-    print(f"All {len(blocks)} inline script block(s) in the composed UI parse cleanly.")
+    counts = ", ".join(f"{name}={len(items)}" for name, items in page_blocks.items())
+    print(f"All {len(blocks)} inline script block(s) parse cleanly ({counts}).")
     return 0
 
 
