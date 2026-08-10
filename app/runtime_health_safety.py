@@ -17,13 +17,12 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from app import model_recovery
+from app import model_recovery, runtime_health as runtime_health_module
 from app.model_library_conversion import is_reparse_point
 from app.runtime_health import (
     RuntimeHealthActionRequest,
     RuntimeHealthBatchRequest,
     RuntimeHealthService,
-    current_runtime_versions,
 )
 from app.storage_safety import StorageConflict, _all_lifecycle_idle
 from runtime import device_check
@@ -161,21 +160,38 @@ class HardenedRuntimeHealthService(RuntimeHealthService):
         # the whole maintenance sequence prevents a second cleanup from interleaving
         # between cache deletion and temporary load validation.
         async with self.storage._cleanup_lock:
-            active_lifecycle = not _all_lifecycle_idle(self.manager)
-            active_storage = self._storage_temporary_or_mutation_active()
-            if active_lifecycle or active_storage:
-                raise StorageConflict(
-                    "maintenance_conflict",
-                    "Unload all models and wait for active model or storage operations to finish.",
-                )
+            catalog_lock = getattr(self.manager, "_catalog_lock", None)
+            catalog_acquired = False
+            if catalog_lock is not None:
+                catalog_acquired = bool(catalog_lock.acquire(blocking=False))
+                if not catalog_acquired:
+                    raise StorageConflict(
+                        "maintenance_conflict",
+                        "Wait for the active model catalog update to finish.",
+                    )
 
-            self._maintenance_owner = asyncio.current_task()
-            self._maintenance_active = True
             try:
-                yield
+                active_lifecycle = not _all_lifecycle_idle(self.manager)
+                active_storage = self._storage_temporary_or_mutation_active()
+                if active_lifecycle or active_storage:
+                    raise StorageConflict(
+                        "maintenance_conflict",
+                        (
+                            "Unload all models and wait for active model or storage operations "
+                            "to finish."
+                        ),
+                    )
+
+                self._maintenance_owner = asyncio.current_task()
+                self._maintenance_active = True
+                try:
+                    yield
+                finally:
+                    self._maintenance_active = False
+                    self._maintenance_owner = None
             finally:
-                self._maintenance_active = False
-                self._maintenance_owner = None
+                if catalog_acquired:
+                    catalog_lock.release()
 
     def _read_state(self) -> dict[str, Any]:
         """Ignore unsafe or unexpectedly large local maintenance-state files."""
@@ -268,7 +284,9 @@ class HardenedRuntimeHealthService(RuntimeHealthService):
 
         snapshot = super()._snapshot_sync()
         runtime = snapshot.get("runtime")
-        runtime = runtime if isinstance(runtime, dict) else current_runtime_versions()
+        runtime = (
+            runtime if isinstance(runtime, dict) else runtime_health_module.current_runtime_versions()
+        )
         all_idle = bool(snapshot.get("summary", {}).get("all_models_idle"))
         changed = False
 
@@ -338,7 +356,7 @@ class HardenedRuntimeHealthService(RuntimeHealthService):
         cfg = self._require_model(model_id)
         state = self._read_state()
         model_state = state.get("models", {}).get(model_id, {})
-        runtime = current_runtime_versions()
+        runtime = runtime_health_module.current_runtime_versions()
         if isinstance(model_state, dict) and self._current_validation_failed(
             cfg, model_state.get("validation"), runtime
         ):
