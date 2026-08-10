@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -470,3 +471,29 @@ def test_failed_validation_overrides_compatible_metadata(tmp_path, monkeypatch):
     assert row["recommendation"]["action"] == "reconvert"
     assert snapshot["summary"]["reconvert"] == 1
     assert snapshot["summary"]["needs_attention"] == 1
+
+
+def test_reconvert_refuses_to_race_catalog_update(tmp_path):
+    cfg = HardeningConfig("model-a", tmp_path)
+    manager = GuardManager({"model-a": cfg})
+    manager._catalog_lock = threading.Lock()
+    storage = GuardStorage()
+    service = HardenedRuntimeHealthService(
+        settings=SimpleNamespace(device="CPU"),
+        manager=manager,
+        paths=SimpleNamespace(config_dir=tmp_path / "config"),
+        storage=storage,
+    )
+    manager._catalog_lock.acquire()
+    try:
+        with pytest.raises(StorageConflict) as exc_info:
+            asyncio.run(
+                service.perform(
+                    RuntimeHealthActionRequest(action="reconvert", model_id="model-a")
+                )
+            )
+    finally:
+        manager._catalog_lock.release()
+
+    assert exc_info.value.code == "maintenance_conflict"
+    assert manager.convert_calls == 0
