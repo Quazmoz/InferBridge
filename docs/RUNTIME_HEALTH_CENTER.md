@@ -16,7 +16,7 @@ It is designed to answer a specific question: **what, if anything, should happen
 | `incomplete` | Reconvert | Required converted-model files are missing or incomplete. |
 | `not_converted` | Leave unchanged | There is no converted artifact to maintain yet. |
 
-A failed current-runtime revalidation promotes a legacy or stale-runtime model to a reconversion recommendation.
+A failed current-runtime load validation always promotes the model to a reconversion recommendation, even if its conversion metadata otherwise says `compatible`. A current failed validation also takes precedence over any older **Leave unchanged** acknowledgment and cannot be newly acknowledged away.
 
 When the Hugging Face source cache is still available, the UI explicitly says **Reconvert from existing HF cache**. InferBridge reuses the normal conversion pipeline, so resumable downloads, transactional staging, recovery metadata, cancellation, and reparse-point protections remain in effect.
 
@@ -24,28 +24,35 @@ When the Hugging Face source cache is still available, the UI explicitly says **
 
 ### Revalidate
 
-Revalidation builds a temporary engine through the same model manager and device-safety path used by normal loads. The engine is closed immediately after a successful load.
+Revalidation builds a temporary engine through the same model manager and device-safety path used by normal loads. The engine is closed immediately after the load check finishes. The validation record keeps both the requested device expression and the actual device selected after InferBridge's safety routing.
 
 A successful validation is stored separately in `runtime-health.json`. InferBridge does **not** rewrite `.ovllm-conversion.json`, so the original conversion provenance remains truthful.
 
 Validation evidence is tied to:
 
-- the exact converted artifact fingerprint
+- the converted model file-tree fingerprint, including tokenizer and other support files
 - the current OpenVINO version
 - the current OpenVINO GenAI version
 
-An InferBridge application-only patch does not invalidate a successful validation when those inference-runtime versions are unchanged.
+The fingerprint uses managed file names, sizes, and modification metadata rather than reading multi-gigabyte model contents on every health refresh. A changed converted support file therefore invalidates earlier validation evidence without making the health screen expensive to open.
+
+An InferBridge application-only patch does not invalidate a successful validation when those inference-runtime versions and converted files are unchanged.
+
+The local `runtime-health.json` state is treated as advisory evidence. Unsafe reparse-point state files and unexpectedly large state files are ignored rather than trusted.
 
 ### Rebuild compiled cache
 
 InferBridge currently uses one shared OpenVINO compiled-cache root. A rebuild therefore:
 
 1. requires every model and lifecycle operation to be idle
-2. clears the shared compiled cache through the existing storage manager safety path
-3. load-validates the selected affected models sequentially, warming their cache under the current runtime
-4. leaves unselected models to compile again on their next normal load
+2. preflights every selected model before deleting any cache data
+3. clears the shared compiled cache through the existing storage manager safety path
+4. load-validates the selected affected models sequentially, warming their cache under the current runtime
+5. leaves unselected models to compile again on their next normal load
 
-The UI states this consequence before the action runs. InferBridge does not pretend the current cache is model-isolated when it is not.
+The UI states this consequence before the action runs. Because the cache is shared, a per-model recompile recommendation routes to the affected-model batch whenever that batch is available. This avoids repeatedly clearing a global cache while maintaining several stale models.
+
+InferBridge does not pretend the current cache is model-isolated when it is not.
 
 ### Reconvert
 
@@ -59,13 +66,35 @@ A compatible or successfully validated model needs no action.
 
 For `legacy_untracked` and `stale_runtime` warnings, the user may also explicitly acknowledge **Leave unchanged** for the current OpenVINO runtime. That acknowledgment is scoped to the conversion fingerprint and runtime. A later OpenVINO change or converted-artifact change makes it no longer current.
 
+A model with a current failed load validation cannot be acknowledged as unchanged. It remains visible as requiring reconversion or repair until its evidence changes.
+
+## Exclusive maintenance window
+
+Revalidation and compiled-cache rebuilding run inside one exclusive maintenance window. InferBridge acquires the existing storage cleanup lock, coordinates with the model catalog lock, verifies that lifecycle and temporary model work are idle, and then keeps normal model mutation blocked until the maintenance operation finishes.
+
+While that window is active, InferBridge rejects new:
+
+- model loads
+- model conversions
+- model deletion
+- recovery actions
+- temporary benchmark engines
+- model registration and catalog reloads
+- competing storage cleanup
+
+The health center's own temporary validation engine is the only temporary engine admitted inside the maintenance window. If a catalog refresh or another model/storage operation is already active, maintenance refuses to start instead of waiting while model state changes underneath it.
+
+This prevents a race where the shared compiled cache could be cleared and an unrelated load or conversion could start before the selected models are warmed and validated.
+
 ## Batch operations
 
 Only operations with existing recovery guarantees and no model-file replacement are batchable:
 
-- **Revalidate eligible** runs sequential load validations while all models are unloaded.
-- **Rebuild affected caches** clears the shared compiled cache once, then validates the selected models sequentially.
+- **Revalidate eligible** runs sequential load validations while the exclusive maintenance window is held.
+- **Rebuild affected caches** clears the shared compiled cache once, then validates the selected models sequentially under the same maintenance window.
 - **Reconvert** is never offered as a batch operation.
+
+A cache-rebuild batch preflights every selected model before clearing anything. If one selected model actually requires reconversion, the shared cache is left untouched.
 
 A batch can finish with individual validation failures. Failed models remain visible as needing attention instead of making successful validations disappear.
 
@@ -85,6 +114,8 @@ The summary separates:
 
 Each model retains its existing conversion-health label, source-cache state, current recommendation, blocking reason, and last local validation result.
 
+Maintenance completion and failure feedback remains visible while the UI refreshes its model-health snapshot, so a completed action does not appear to silently disappear.
+
 ## Safety and privacy
 
 The maintenance workflow preserves existing InferBridge guarantees:
@@ -93,10 +124,13 @@ The maintenance workflow preserves existing InferBridge guarantees:
 - browser responses do not expose local filesystem paths
 - write routes use the same local-browser-origin and API-key checks as storage management
 - compiled-cache deletion reuses the storage manager's reparse-point and Windows lock protections
-- revalidation requires all model lifecycle operations to be idle
+- revalidation and cache rebuild hold an exclusive model/storage maintenance window
+- catalog updates cannot interleave with validation or cache rebuilding
 - reconversion requires the selected model to be unloaded and idle
 - native validation failures are logged locally and returned to the browser as sanitized errors
+- malformed device targets are rejected as controlled maintenance conflicts
 - conversion provenance is never rewritten by validation or acknowledgment
+- persisted maintenance evidence is bounded and treated as local advisory state
 
 ## What this does not prove
 
