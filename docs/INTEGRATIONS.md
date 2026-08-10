@@ -5,6 +5,12 @@ streaming contracts against the mock engine. Real client and hardware validation
 be recorded separately because client versions, Windows drivers, and OpenVINO packages
 can change behavior.
 
+For the values from the server that is running now, open **Generation Settings > Local
+API > Connection Hub** in the built-in UI. The Hub shows the active Base URL, loaded
+model IDs, authentication state, generic copyable examples, and an independent API
+self-test. See [Local Connection Hub](CONNECTION_HUB.md). The examples below remain
+reference configuration; packaged desktop launches may use a different loopback port.
+
 ## Open WebUI
 
 ### Server setup
@@ -30,7 +36,8 @@ Do not expose this server directly to the internet.
 
 ### Open WebUI connection
 
-Use an OpenAI-compatible connection:
+Use an OpenAI-compatible connection. Prefer the actual Base URL shown by Connection Hub;
+the default source-server shape is:
 
 ```text
 Base URL: http://127.0.0.1:8000/v1
@@ -73,7 +80,8 @@ Record the Open WebUI version in any published compatibility note.
 
 ### Recommended endpoint
 
-Use the OpenAI-compatible base URL:
+Use the Base URL shown by Connection Hub. For a source server on the default port, that
+is:
 
 ```text
 http://127.0.0.1:8000/v1
@@ -109,7 +117,8 @@ Record the n8n version and node type in any published compatibility note.
 
 ## Direct SDK and agent clients
 
-Any client that allows a custom OpenAI base URL can start with:
+Any client that allows a custom OpenAI base URL can start with the active values from
+Connection Hub. A default source-server example is:
 
 ```python
 from openai import OpenAI
