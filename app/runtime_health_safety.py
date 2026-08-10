@@ -23,6 +23,7 @@ from app.runtime_health import (
     RuntimeHealthActionRequest,
     RuntimeHealthBatchRequest,
     RuntimeHealthService,
+    current_runtime_versions,
 )
 from app.storage_safety import StorageConflict, _all_lifecycle_idle
 from runtime import device_check
@@ -248,6 +249,104 @@ class HardenedRuntimeHealthService(RuntimeHealthService):
                 "invalid_device",
                 "Choose a valid OpenVINO device target before running model maintenance.",
             ) from exc
+
+    def _current_validation_failed(
+        self,
+        cfg: Any,
+        validation: Any,
+        runtime: dict[str, Any],
+    ) -> bool:
+        return self._record_matches(
+            validation if isinstance(validation, dict) else None,
+            runtime=runtime,
+            conversion_fingerprint=self._conversion_fingerprint(cfg),
+            status="failed",
+        )
+
+    def _snapshot_sync(self) -> dict[str, Any]:
+        """Keep a known current-runtime load failure visible until reconversion succeeds."""
+
+        snapshot = super()._snapshot_sync()
+        runtime = snapshot.get("runtime")
+        runtime = runtime if isinstance(runtime, dict) else current_runtime_versions()
+        all_idle = bool(snapshot.get("summary", {}).get("all_models_idle"))
+        changed = False
+
+        for row in snapshot.get("models", []):
+            model_id = str(row.get("model_id") or "")
+            cfg = self.manager.catalog.get(model_id)
+            if cfg is None or not self._current_validation_failed(
+                cfg, row.get("last_validation"), runtime
+            ):
+                continue
+
+            source_cache_reusable = row.get("source_cache") == "reusable"
+            label = "Reconvert from existing HF cache" if source_cache_reusable else "Reconvert"
+            reason = (
+                "The model failed load validation with the current OpenVINO runtime. "
+                + (
+                    "The reusable Hugging Face source cache is already available."
+                    if source_cache_reusable
+                    else "The source may need to be downloaded again."
+                )
+            )
+            health_status = str(row.get("conversion_health", {}).get("status") or "")
+            available, blocked_reason = self._action_capability(
+                "reconvert",
+                model_id=model_id,
+                health_status=health_status,
+                all_idle=all_idle,
+            )
+            row["recommendation"] = {
+                "action": "reconvert",
+                "label": label,
+                "reason": reason,
+                "safe_batch": False,
+                "available": available,
+                "blocked_reason": blocked_reason,
+            }
+            row["acknowledged_current_runtime"] = False
+            row["can_leave_unchanged"] = False
+            changed = True
+
+        if changed:
+            counts = {
+                "revalidate": 0,
+                "rebuild_compiled_cache": 0,
+                "reconvert": 0,
+                "leave_unchanged": 0,
+            }
+            for row in snapshot.get("models", []):
+                action = str(row.get("recommendation", {}).get("action") or "leave_unchanged")
+                if action in counts:
+                    counts[action] += 1
+            summary = snapshot.setdefault("summary", {})
+            summary.update(counts)
+            summary["needs_attention"] = (
+                counts["revalidate"] + counts["rebuild_compiled_cache"] + counts["reconvert"]
+            )
+            summary["unresolved_runtime_changes"] = sum(
+                1
+                for row in snapshot.get("models", [])
+                if row.get("conversion_health", {}).get("status") == "stale_runtime"
+                and row.get("recommendation", {}).get("action") != "leave_unchanged"
+            )
+
+        return snapshot
+
+    def _acknowledge(self, model_id: str) -> dict[str, Any]:
+        cfg = self._require_model(model_id)
+        state = self._read_state()
+        model_state = state.get("models", {}).get(model_id, {})
+        runtime = current_runtime_versions()
+        if isinstance(model_state, dict) and self._current_validation_failed(
+            cfg, model_state.get("validation"), runtime
+        ):
+            raise StorageConflict(
+                "acknowledgment_unavailable",
+                "A model that failed current-runtime validation must be reconverted or repaired.",
+            )
+        return super()._acknowledge(model_id)
 
     async def _rebuild_compiled_cache(
         self,
