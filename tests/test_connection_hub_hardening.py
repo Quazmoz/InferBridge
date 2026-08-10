@@ -76,6 +76,19 @@ def test_self_test_requires_normal_api_credential_when_authentication_is_enabled
     assert "configured-secret" not in accepted.text
 
 
+def test_self_test_matches_existing_utf8_api_key_semantics():
+    app = _app(api_key="clé-locale")
+
+    with TestClient(app, base_url="http://127.0.0.1:8123") as client:
+        accepted = client.post(
+            "/internal/connection-hub/self-test",
+            headers={"Authorization": "Bearer clé-locale"},
+        )
+
+    assert accepted.status_code == 200
+    assert "clé-locale" not in accepted.text
+
+
 def test_hub_host_header_uses_actual_listener_port_not_spoofed_or_configured_port():
     app = _app(configured_port=8000)
 
