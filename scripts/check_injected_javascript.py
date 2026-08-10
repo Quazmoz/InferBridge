@@ -109,7 +109,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 2
 
-    blocks = [block for surface in page_blocks.values() for block in surface]
+    blocks = [block for surface_blocks in page_blocks.values() for block in surface_blocks]
     failures = check(node, blocks)
     for index, detail in failures:
         print(f"--- inline script block {index} failed to parse ---")
