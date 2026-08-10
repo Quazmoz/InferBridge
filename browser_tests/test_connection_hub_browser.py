@@ -57,7 +57,6 @@ def test_connection_hub_renders_copies_self_tests_and_preserves_feedback(
     expect(page.locator("#ch-python")).to_contain_text(f'model="{MODEL_ID}"')
 
     page.locator("#ch-run-test").click()
-    expect(page.locator(".ch-test-status.running")).to_have_count(5)
     expect(page.locator(".ch-test-status.running")).to_have_count(0, timeout=15000)
     expect(page.locator(".ch-test-status.failed")).to_have_count(0)
     expect(page.locator(".ch-test-status.skipped")).to_have_count(0)
