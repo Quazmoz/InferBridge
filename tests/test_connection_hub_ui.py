@@ -5,7 +5,7 @@ import sys
 from app import connection_hub_ui, ui_extension
 
 
-def test_connection_hub_ui_exposes_operational_connection_workflow_without_secrets():
+def test_connection_hub_ui_exposes_operational_connection_workflow_without_server_secrets():
     javascript = connection_hub_ui.CONNECTION_HUB_JS
 
     for token in (
@@ -20,15 +20,23 @@ def test_connection_hub_ui_exposes_operational_connection_workflow_without_secre
         "YOUR_INFERBRIDGE_API_KEY",
         "not-required",
         "X-OV-LLM-UI",
+        "browserApiKey",
+        "Authorization",
         "navigator.clipboard",
         "document.execCommand",
         "aria-live",
+        "aria-busy",
         "Escape",
     ):
         assert token in javascript
 
-    assert "localStorage.getItem('ovllm.apikey.v1')" not in javascript
-    assert 'localStorage.getItem("ovllm.apikey.v1")' not in javascript
+    # The Hub may use the API credential the user already entered into this browser to
+    # authorize its protected self-test coordinator. It still only displays/copies the
+    # generic placeholder and never receives the configured server-side secret.
+    assert "localStorage.getItem('ovllm.apikey.v1')" in javascript
+    assert "path === TEST_PATH" in javascript
+    assert "api_key_placeholder" in javascript
+    assert "configured server secret" in javascript
     assert "ngrok" not in javascript.lower()
     assert "cloudflare" not in javascript.lower()
     assert "tailscale" not in javascript.lower()
@@ -51,9 +59,10 @@ def test_connection_hub_ui_has_explicit_model_selection_and_independent_test_sta
     for status in ("Not run", "Running", "Passed", "Failed", "Skipped"):
         assert status in javascript
     assert "Review each check independently" in javascript
+    assert "Close the Hub, enter the InferBridge API key" in javascript
 
 
-def test_connection_hub_ui_is_responsive_and_accessible():
+def test_connection_hub_ui_is_responsive_accessible_and_not_modal_locked_while_testing():
     css = connection_hub_ui.CONNECTION_HUB_CSS
     javascript = connection_hub_ui.CONNECTION_HUB_JS
 
@@ -65,6 +74,8 @@ def test_connection_hub_ui_is_responsive_and_accessible():
     assert "focusables()" in javascript
     assert "document.getElementById('app')?.setAttribute('inert','')" in javascript
     assert "document.getElementById('app')?.removeAttribute('inert')" in javascript
+    assert "function setRunning(value)" in javascript
+    assert "if (running) return;\n    modal.classList.add" not in javascript
 
 
 def test_connection_hub_ui_composes_once_into_the_static_surface(monkeypatch):
