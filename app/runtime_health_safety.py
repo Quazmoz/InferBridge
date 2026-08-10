@@ -13,6 +13,7 @@ import asyncio
 import hashlib
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -265,6 +266,111 @@ class HardenedRuntimeHealthService(RuntimeHealthService):
                 "invalid_device",
                 "Choose a valid OpenVINO device target before running model maintenance.",
             ) from exc
+
+    async def _settle_without_abandoning(
+        self,
+        awaitable: Any,
+    ) -> tuple[Any | None, BaseException | None, asyncio.CancelledError | None]:
+        """Collect native-backed async work even if the requesting task is cancelled."""
+
+        task = asyncio.create_task(awaitable)
+        pending_cancellation: asyncio.CancelledError | None = None
+        while True:
+            try:
+                return await asyncio.shield(task), None, pending_cancellation
+            except asyncio.CancelledError as exc:
+                if task.cancelled():
+                    return None, exc, pending_cancellation
+                pending_cancellation = pending_cancellation or exc
+            except Exception as exc:  # noqa: BLE001 - caller classifies the native failure
+                return None, exc, pending_cancellation
+
+    async def _validate_one(self, model_id: str, device: str | None) -> dict[str, Any]:
+        """Load-validate without abandoning a native engine build on cancellation."""
+
+        cfg = self._require_model(model_id)
+        if not _all_lifecycle_idle(self.manager):
+            raise StorageConflict(
+                "models_active",
+                "Unload all models and wait for active operations before runtime validation.",
+            )
+        self._ensure_revalidation_candidate(cfg)
+        requested_device = self._select_device(cfg, device)
+        runtime = runtime_health_module.current_runtime_versions()
+        fingerprint = self._conversion_fingerprint(cfg)
+        started = time.perf_counter()
+
+        build_result, build_error, pending_cancellation = await self._settle_without_abandoning(
+            self.manager.build_temporary_engine(model_id, requested_device)
+        )
+        if build_error is not None:
+            if not isinstance(build_error, asyncio.CancelledError):
+                logger.exception(
+                    "Runtime validation failed for '%s' on %s",
+                    model_id,
+                    requested_device,
+                    exc_info=(type(build_error), build_error, build_error.__traceback__),
+                )
+                self._write_model_record(
+                    model_id,
+                    "validation",
+                    {
+                        "status": "failed",
+                        "runtime": runtime,
+                        "conversion_fingerprint": fingerprint,
+                        "requested_device": requested_device,
+                        "device": requested_device,
+                        "validated_at": int(time.time()),
+                        "error_code": "load_validation_failed",
+                    },
+                )
+            if pending_cancellation is not None:
+                raise pending_cancellation
+            if isinstance(build_error, asyncio.CancelledError):
+                raise build_error
+            raise StorageConflict(
+                "validation_failed",
+                (
+                    "The model did not load successfully with the current runtime. "
+                    "Review server logs for the request ID."
+                ),
+            ) from build_error
+
+        engine, load_seconds = build_result
+        actual_device = str(getattr(engine, "device", requested_device) or requested_device)
+        close_result, close_error, close_cancellation = await self._settle_without_abandoning(
+            asyncio.to_thread(engine.close)
+        )
+        del close_result
+        pending_cancellation = pending_cancellation or close_cancellation
+        if close_error is not None and not isinstance(close_error, asyncio.CancelledError):
+            logger.warning("Could not close temporary validation engine for '%s'", model_id)
+
+        elapsed = max(float(load_seconds), time.perf_counter() - started)
+        record = {
+            "status": "passed",
+            "runtime": runtime,
+            "conversion_fingerprint": fingerprint,
+            "requested_device": requested_device,
+            "device": actual_device,
+            "validated_at": int(time.time()),
+            "load_time_ms": round(elapsed * 1000.0, 1),
+        }
+        self._write_model_record(model_id, "validation", record)
+        self.manager.emit_event(
+            "info", f"Validated {cfg.name} with the current OpenVINO runtime on {actual_device}"
+        )
+        if pending_cancellation is not None:
+            raise pending_cancellation
+        if isinstance(close_error, asyncio.CancelledError):
+            raise close_error
+        return {
+            "model_id": model_id,
+            "status": "validated",
+            "device": actual_device,
+            "requested_device": requested_device,
+            "load_time_ms": record["load_time_ms"],
+        }
 
     def _current_validation_failed(
         self,
