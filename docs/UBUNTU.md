@@ -7,7 +7,7 @@ InferBridge remains Windows-first. Ubuntu support is an early CPU-first path for
 ## Expected baseline
 
 - Ubuntu 22.04 or 24.04 is expected.
-- Python 3.11, 3.12, or 3.13 is expected.
+- Python 3.11, 3.12, 3.13, or 3.14 is expected.
 - CPU inference is the recommended first path.
 - GPU or NPU execution requires compatible Intel hardware and Linux drivers.
 - Ubuntu GPU and NPU support is experimental and hardware-dependent.
@@ -24,7 +24,7 @@ chmod +x setup.sh start_server.sh setup/*.sh setup/linux/*.sh
 ./setup.sh --minimal
 ```
 
-If Ubuntu 22.04 only provides Python 3.10 through `python3`, install Python 3.11 through 3.13 and pass it explicitly:
+If Ubuntu 22.04 only provides Python 3.10 through `python3`, install Python 3.11 through 3.14 and pass it explicitly:
 
 ```bash
 ./setup.sh --minimal --python python3.11

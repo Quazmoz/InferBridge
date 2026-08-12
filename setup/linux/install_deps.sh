@@ -64,7 +64,7 @@ python_is_supported() {
 import sys
 
 major, minor = sys.version_info[:2]
-raise SystemExit(0 if major == 3 and 11 <= minor <= 13 else 1)
+raise SystemExit(0 if major == 3 and 11 <= minor <= 14 else 1)
 PY
 }
 
@@ -75,7 +75,7 @@ resolve_python() {
     if [ -n "$PYTHON_CMD" ]; then
         candidates+=("$PYTHON_CMD")
     fi
-    candidates+=(python3.11 python3.12 python3.13 python3)
+    candidates+=(python3.11 python3.12 python3.13 python3.14 python3)
 
     for candidate in "${candidates[@]}"; do
         [ -n "$candidate" ] || continue
@@ -91,7 +91,7 @@ resolve_python() {
         fi
     done
 
-    echo "ERROR: Python 3.11, 3.12, or 3.13 was not found." >&2
+    echo "ERROR: Python 3.11, 3.12, 3.13, or 3.14 was not found." >&2
     if command -v python3 >/dev/null 2>&1; then
         echo "Detected python3: $(python3 --version 2>&1)" >&2
     fi

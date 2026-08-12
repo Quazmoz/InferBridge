@@ -40,6 +40,9 @@ class HardenedRuntimeHealthService(RuntimeHealthService):
         super().__init__(**kwargs)
         self._maintenance_active = False
         self._maintenance_owner: asyncio.Task[Any] | None = None
+        # Helper tasks the owner spawns to keep native work alive across cancellation.
+        # They act on the owner's behalf, so the guard must let them through.
+        self._maintenance_delegates: set[asyncio.Task[Any]] = set()
         self._install_manager_guard()
 
     def _install_manager_guard(self) -> None:
@@ -131,8 +134,11 @@ class HardenedRuntimeHealthService(RuntimeHealthService):
             async def build_temporary_engine(model_id: str, *args: Any, **kwargs: Any):
                 current = service()
                 if current is not None and current._maintenance_active:
-                    owner = current._maintenance_owner
-                    if asyncio.current_task() is not owner:
+                    running = asyncio.current_task()
+                    if (
+                        running is not current._maintenance_owner
+                        and running not in current._maintenance_delegates
+                    ):
                         raise conflict()
                 return await upstream_temporary(model_id, *args, **kwargs)
 
@@ -276,6 +282,10 @@ class HardenedRuntimeHealthService(RuntimeHealthService):
         """Collect native-backed async work even if the requesting task is cancelled."""
 
         task = asyncio.create_task(awaitable)
+        # Registered before the first await so the guard already sees the delegate by
+        # the time the wrapped coroutine starts running inside it.
+        self._maintenance_delegates.add(task)
+        task.add_done_callback(self._maintenance_delegates.discard)
         pending_cancellation: asyncio.CancelledError | None = None
         while True:
             try:

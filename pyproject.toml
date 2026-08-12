@@ -4,7 +4,7 @@ name = "openvino-windows-llm"
 dynamic = ["version"]
 description = "InferBridge is a Windows-first local AI server with an OpenAI-compatible API, powered by OpenVINO GenAI for Intel CPU/GPU/NPU."
 readme = "README.md"
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.11,<3.15"
 license = { text = "MIT" }
 dependencies = [
     "openvino-genai>=2025.1.0",

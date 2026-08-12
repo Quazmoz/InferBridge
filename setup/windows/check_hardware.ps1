@@ -31,11 +31,11 @@ try {
 Write-Host ("OS:       {0} (build {1})" -f $osCaption, $osBuild)
 
 # --- Python ---
-$SupportedPythonVersions = @("3.11", "3.12", "3.13")
+$SupportedPythonVersions = @("3.11", "3.12", "3.13", "3.14")
 $pythonOk = $false
 $unsupportedPythonVersions = [Collections.Generic.List[string]]::new()
 # Match the versions accepted by install_deps.ps1 and pyproject.toml.
-$candidates = @("py -3.11", "py -3.12", "py -3.13", "py", "python")
+$candidates = @("py -3.11", "py -3.12", "py -3.13", "py -3.14", "py", "python")
 
 function Get-PythonVersion {
     param(
@@ -81,9 +81,9 @@ foreach ($candidate in $candidates) {
 }
 if (-not $pythonOk) {
     if ($unsupportedPythonVersions.Count -gt 0) {
-        Write-Host ("Python:   UNSUPPORTED version detected: {0}. Install Python 3.11, 3.12, or 3.13." -f ($unsupportedPythonVersions -join ", ")) -ForegroundColor Red
+        Write-Host ("Python:   UNSUPPORTED version detected: {0}. Install Python 3.11, 3.12, 3.13, or 3.14." -f ($unsupportedPythonVersions -join ", ")) -ForegroundColor Red
     } else {
-        Write-Host "Python:   NOT FOUND. Install Python 3.11, 3.12, or 3.13 from python.org." -ForegroundColor Red
+        Write-Host "Python:   NOT FOUND. Install Python 3.11, 3.12, 3.13, or 3.14 from python.org." -ForegroundColor Red
     }
 }
 

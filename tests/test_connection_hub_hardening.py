@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 
+import httpx
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
@@ -153,11 +155,20 @@ def test_authentication_disabled_keeps_local_self_test_available():
 def test_ipv6_loopback_listener_is_preserved_without_trusting_request_port():
     app = _app(host="::1")
 
-    with TestClient(app, base_url="http://[::1]:8123") as client:
-        response = client.get(
-            "/internal/connection-hub",
-            headers={"Host": "[::1]:9999"},
-        )
+    # Starlette's TestClient splits the netloc on the first ":", so an IPv6 base URL
+    # like "[::1]:8123" never yields a usable port. Drive the ASGI app through httpx
+    # directly, which parses bracketed IPv6 authorities correctly.
+    async def probe() -> httpx.Response:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://[::1]:8123",
+        ) as client:
+            return await client.get(
+                "/internal/connection-hub",
+                headers={"Host": "[::1]:9999"},
+            )
+
+    response = asyncio.run(probe())
 
     assert response.status_code == 200
     assert response.json() == {
