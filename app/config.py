@@ -34,6 +34,7 @@ from app.progress_operation_ui import install_progress_operation_ui_extension
 from app.progress_reliability import install_progress_ui_extension
 from app.status_split import install_status_split_routes_extension
 from app.status_split_ui import install_status_split_ui_extension
+from app.support_ui import install_support_ui_extension
 from app.ui_polish import install_ui_polish_extension
 from app.ui_quality import install_ui_quality_extension
 from runtime.device_check import normalize_device
@@ -58,6 +59,7 @@ install_chat_guard_extension()
 install_ui_polish_extension()
 install_ui_quality_extension()
 install_system_doctor_extension()
+install_support_ui_extension()
 install_header_overflow_extension()
 install_progress_ui_extension()
 install_progress_operation_ui_extension()
