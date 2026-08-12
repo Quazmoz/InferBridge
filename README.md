@@ -43,6 +43,16 @@ The desktop launcher binds to `127.0.0.1`, selects an available local port, wait
 
 The first model setup can take significant time. NPU support depends on the actual Intel platform, driver, model, precision, and OpenVINO release. A requested target is not proof of execution. InferBridge reports the actual device from successful measured generation when the runtime exposes that evidence.
 
+## Beta Testing & Feedback
+
+Found a bug? Have a feature request? Testing InferBridge and want to send general beta feedback? **No GitHub experience is required.**
+
+**Easy feedback:** [Send InferBridge feedback](https://consultant.quinnfavo.com/apps/inferbridge#feedback) using the user-friendly support form for bugs, feature requests, and beta feedback.
+
+**Developer / technical discussion:** [GitHub Issues](https://github.com/Quazmoz/InferBridge/issues) remain available for contributors, advanced technical reports, and public engineering discussion.
+
+For troubleshooting details, use **Tray → Copy → Diagnostics** or **System Doctor → Copy support report**, then paste the privacy-safe output into either destination. InferBridge does not automatically upload diagnostics.
+
 ## Installation options
 
 ### Windows installer
@@ -113,7 +123,7 @@ See [QUICKSTART.md](QUICKSTART.md) for the complete setup flow.
 
 ### Responsive layout
 
-![InferBridge responsive layout](screenshots/responsive_preview.png)
+![InferBridge responsive preview](screenshots/responsive_preview.png)
 
 ## Documentation
 
