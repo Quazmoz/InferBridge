@@ -1265,7 +1265,12 @@ def test_responses_stream_failure_is_sanitized_and_not_recorded_as_success(clien
         body = "".join(response.iter_text())
 
     assert response.status_code == 200
-    assert "Generation failed; see server logs for the request ID." in body
+    # The emitted message is "Response generation failed; ...". Matching it case-sensitively
+    # on a capitalised "Generation" could never succeed, so the sanitisation this test exists
+    # to guard was never actually being checked.
+    assert "Response generation failed; see server logs for the request ID." in body
+    assert "event: error" in body
+    assert "event: response.failed" in body
     assert "secret-runtime-detail" not in body
     assert "response.completed" not in body
     assert manager.metrics_summary()["totals"]["requests"] == before

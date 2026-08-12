@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from app import ui_extension
+from app import ui_registry
+from app.ui_registry import UiExtension
 
 _EXTENSION_ID = "ovllm-system-doctor-extension"
 
@@ -71,24 +72,15 @@ trigger.addEventListener('click',()=>open(true));closeBtn.addEventListener('clic
 # fmt: on
 
 
+EXTENSION = UiExtension(
+    extension_id=_EXTENSION_ID,
+    javascript=DOCTOR_JS,
+    css=DOCTOR_CSS,
+    description="System Doctor hardware, runtime, and routing diagnostics.",
+)
+
+
 def install_system_doctor_extension() -> None:
-    """Compose the System Doctor into the bundled single-file browser client."""
+    """Register the System Doctor diagnostics surface."""
 
-    if getattr(ui_extension, "_SYSTEM_DOCTOR_EXTENSION_INSTALLED", False):
-        return
-    previous_inject = ui_extension.inject_multimodal_ui
-
-    def inject_with_system_doctor(html: str) -> str:
-        html = previous_inject(html)
-        if f'id="{_EXTENSION_ID}"' in html:
-            return html
-        payload = (
-            f'\n<style id="{_EXTENSION_ID}-styles">\n{DOCTOR_CSS}\n</style>\n'
-            f'<script id="{_EXTENSION_ID}">\n{DOCTOR_JS}\n</script>\n'
-        )
-        if "</body>" in html:
-            return html.replace("</body>", f"{payload}</body>", 1)
-        return html + payload
-
-    ui_extension.inject_multimodal_ui = inject_with_system_doctor
-    ui_extension._SYSTEM_DOCTOR_EXTENSION_INSTALLED = True
+    ui_registry.register(EXTENSION)

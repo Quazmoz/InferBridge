@@ -239,9 +239,7 @@ def test_responses_streaming_emits_rich_text_lifecycle_and_usage(client):
         "response.output_item.done",
         "response.completed",
     }
-    observed_events = {
-        line[7:] for line in body.splitlines() if line.startswith("event: ")
-    }
+    observed_events = {line[7:] for line in body.splitlines() if line.startswith("event: ")}
     assert required_events <= observed_events
     assert "data: [DONE]" in body
 

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from app import ui_extension
+from app import ui_registry
+from app.ui_registry import UiExtension
 
 _EXTENSION_ID = "ovllm-chat-queue-extension"
 
@@ -293,15 +294,15 @@ CHAT_QUEUE_JS = r"""
         }
     }
 
-    const previousFetch = window.fetch.bind(window);
-    window.fetch = async function queuedChatFetch(input, init = {}) {
+    const previousFetch = InferBridge.chain();
+    InferBridge.use(async function queuedChatFetch(input, init = {}) {
         const response = await previousFetch(input, init);
         const target = endpoint(input);
         if (target.sameOrigin && target.path === '/v1/system/status' && response.ok) {
             response.clone().json().then(processStatus).catch(() => undefined);
         }
         return response;
-    };
+    });
 
     async function initialStatus() {
         const key = localStorage.getItem('ovllm.apikey.v1') || '';
@@ -317,21 +318,14 @@ CHAT_QUEUE_JS = r"""
 """
 
 
+EXTENSION = UiExtension(
+    extension_id=_EXTENSION_ID,
+    javascript=CHAT_QUEUE_JS,
+    description="Per-chat pending message queue.",
+)
+
+
 def install_chat_queue_extension() -> None:
-    """Compose the per-chat pending queue after context isolation."""
+    """Register the per-chat pending queue."""
 
-    if getattr(ui_extension, "_CHAT_QUEUE_EXTENSION_INSTALLED", False):
-        return
-    previous_inject = ui_extension.inject_multimodal_ui
-
-    def inject_with_chat_queue(html: str) -> str:
-        html = previous_inject(html)
-        if f'id="{_EXTENSION_ID}"' in html:
-            return html
-        script = f'\n<script id="{_EXTENSION_ID}">\n{CHAT_QUEUE_JS}\n</script>\n'
-        if "</body>" in html:
-            return html.replace("</body>", f"{script}</body>", 1)
-        return html + script
-
-    ui_extension.inject_multimodal_ui = inject_with_chat_queue
-    ui_extension._CHAT_QUEUE_EXTENSION_INSTALLED = True
+    ui_registry.register(EXTENSION)

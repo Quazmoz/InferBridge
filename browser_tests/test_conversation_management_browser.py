@@ -106,9 +106,7 @@ def test_conversation_search_and_management_actions(page: Page, inferbridge_url:
     page.get_by_label("Conversation actions: Renamed Alpha copy").click()
     page.get_by_role("menuitem", name="Archive", exact=True).click()
     page.locator('[data-cm-view="archived"]').click()
-    expect(page.locator("#chats-list .chat-item-title")).to_contain_text(
-        "Renamed Alpha copy"
-    )
+    expect(page.locator("#chats-list .chat-item-title")).to_contain_text("Renamed Alpha copy")
     expect(page.locator("#chats-footer")).to_contain_text("local to this browser profile")
 
 
@@ -276,7 +274,8 @@ def test_archiving_active_chat_survives_retention_pruning_of_fallback(
 
     assert page.evaluate("activeChat().archived === true") is False
     assert page.evaluate("activeChat().messages.length") == 0
-    assert page.evaluate(
-        "chats.some(chat => chat.title === 'Current' && chat.archived === true)"
-    ) is True
+    assert (
+        page.evaluate("chats.some(chat => chat.title === 'Current' && chat.archived === true)")
+        is True
+    )
     assert page.evaluate("chats.some(chat => chat.id === 'chat-old-fallback')") is False

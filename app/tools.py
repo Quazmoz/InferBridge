@@ -56,9 +56,7 @@ def format_tools_for_prompt(
                 tool for tool in tools_json if tool["function"]["name"] == forced_tool
             ]
             if not matching_tools:
-                raise ValueError(
-                    f"tool_choice references unknown function '{forced_tool}'."
-                )
+                raise ValueError(f"tool_choice references unknown function '{forced_tool}'.")
             tools_json = matching_tools
 
     if forced_tool:

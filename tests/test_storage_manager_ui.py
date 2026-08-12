@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-from app import storage_manager_ui, ui_extension
+from app import storage_manager_ui, ui_registry
+
+_STORAGE_MANAGER = ("ovllm-storage-manager-extension",)
 
 
-def test_storage_manager_ui_is_injected_once(monkeypatch) -> None:
-    monkeypatch.setattr(ui_extension, "inject_multimodal_ui", lambda html: html)
-    monkeypatch.delattr(ui_extension, "_STORAGE_MANAGER_UI_INSTALLED", raising=False)
-
+def test_storage_manager_ui_is_injected_once() -> None:
     storage_manager_ui.install_storage_manager_ui_extension()
-    first = ui_extension.inject_multimodal_ui("<html><body></body></html>")
-    second = ui_extension.inject_multimodal_ui(first)
+    first = ui_registry.render_only("<html><body></body></html>", _STORAGE_MANAGER)
+    second = ui_registry.render_only(first, _STORAGE_MANAGER)
 
     assert first.count('id="ovllm-storage-manager-extension"') == 1
     assert second.count('id="ovllm-storage-manager-extension"') == 1

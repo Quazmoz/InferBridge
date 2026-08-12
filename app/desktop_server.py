@@ -103,19 +103,18 @@ def create_desktop_app(
     from app.release_routes import register_release_routes
     from app.runtime_health import register_runtime_health_routes
     from app.runtime_health_safety import HardenedRuntimeHealthService
-    from app.runtime_health_ui import install_runtime_health_ui_extension
     from app.storage_manager import StorageManagerService, register_storage_manager_routes
-    from app.storage_manager_ui import install_storage_manager_ui_extension
     from app.storage_root_safety import install_storage_root_safety
+    from app.ui_composition import DESKTOP_CAPABILITY
+    from app.ui_registry import activate
 
-    # Filesystem safety is a backend contract and must not depend on whether the
-    # browser extension happens to install first. The UI installer remains idempotent.
+    # Filesystem safety is a backend contract, not a side effect of composing the UI.
     install_storage_root_safety()
-    # Install after the shared UI chain but before app.server binds the composed
-    # injection function. Runtime health then decorates the storage and model-library
-    # surfaces that were already installed by the shared configuration chain.
-    install_storage_manager_ui_extension()
-    install_runtime_health_ui_extension()
+    # The storage manager and runtime health center are always registered by
+    # app.ui_composition. Activating the capability is what makes them render, and this is
+    # the process that provides the routes they call. Import order no longer matters:
+    # app.server resolves the composition per request rather than binding it at import.
+    activate(DESKTOP_CAPABILITY)
 
     from app.server import create_app
 

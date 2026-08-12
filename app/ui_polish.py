@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from app import ui_extension
+from app import ui_registry
+from app.ui_registry import UiExtension
 
 _EXTENSION_ID = "ovllm-ui-polish-extension"
 
@@ -844,8 +845,8 @@ UI_POLISH_JS = r"""
         }
     }
 
-    const previousFetch = window.fetch.bind(window);
-    window.fetch = async function polishedFetch(input, init = {}) {
+    const previousFetch = InferBridge.chain();
+    InferBridge.use(async function polishedFetch(input, init = {}) {
         const response = await previousFetch(input, init);
         const target = endpoint(input);
         if (target.sameOrigin && target.path === '/v1/system/status' && response.ok) {
@@ -855,7 +856,7 @@ UI_POLISH_JS = r"""
             }, 90);
         }
         return response;
-    };
+    });
 
     updateComposerState();
     decorateChatList();
@@ -864,24 +865,15 @@ UI_POLISH_JS = r"""
 """
 
 
+EXTENSION = UiExtension(
+    extension_id=_EXTENSION_ID,
+    javascript=UI_POLISH_JS,
+    css=UI_POLISH_CSS,
+    description="Visual workspace polish applied after behavioral extensions.",
+)
+
+
 def install_ui_polish_extension() -> None:
-    """Compose the visual workspace polish after all behavioral extensions."""
+    """Register the visual workspace polish."""
 
-    if getattr(ui_extension, "_UI_POLISH_EXTENSION_INSTALLED", False):
-        return
-    previous_inject = ui_extension.inject_multimodal_ui
-
-    def inject_with_ui_polish(html: str) -> str:
-        html = previous_inject(html)
-        if f'id="{_EXTENSION_ID}"' in html:
-            return html
-        payload = (
-            f'\n<style id="{_EXTENSION_ID}-styles">\n{UI_POLISH_CSS}\n</style>\n'
-            f'<script id="{_EXTENSION_ID}">\n{UI_POLISH_JS}\n</script>\n'
-        )
-        if "</body>" in html:
-            return html.replace("</body>", f"{payload}</body>", 1)
-        return html + payload
-
-    ui_extension.inject_multimodal_ui = inject_with_ui_polish
-    ui_extension._UI_POLISH_EXTENSION_INSTALLED = True
+    ui_registry.register(EXTENSION)

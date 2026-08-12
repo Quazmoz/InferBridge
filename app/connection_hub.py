@@ -213,9 +213,7 @@ class ConnectionHubService:
                     backend=str(getattr(cfg, "backend", "unknown")),
                     status=str(entry.get("status") or "unknown"),
                     loaded=loaded,
-                    generation_capable=is_generation_capable_backend(
-                        getattr(cfg, "backend", "")
-                    ),
+                    generation_capable=is_generation_capable_backend(getattr(cfg, "backend", "")),
                     busy=bool(lock and lock.locked()),
                 )
             )
@@ -346,9 +344,7 @@ class ConnectionHubService:
                 start,
             )
 
-    def _generation_body(
-        self, model_id: str, *, stream: bool, max_tokens: int
-    ) -> dict[str, Any]:
+    def _generation_body(self, model_id: str, *, stream: bool, max_tokens: int) -> dict[str, Any]:
         return {
             "model": model_id,
             "messages": [{"role": "user", "content": _TEST_PROMPT}],
@@ -358,9 +354,7 @@ class ConnectionHubService:
             "stream": stream,
         }
 
-    async def _non_stream(
-        self, client: httpx.AsyncClient, model_id: str
-    ) -> ConnectionTestResult:
+    async def _non_stream(self, client: httpx.AsyncClient, model_id: str) -> ConnectionTestResult:
         start = time.perf_counter()
         try:
             response = await client.post(
@@ -403,9 +397,7 @@ class ConnectionHubService:
                 start,
             )
 
-    async def _stream(
-        self, client: httpx.AsyncClient, model_id: str
-    ) -> ConnectionTestResult:
+    async def _stream(self, client: httpx.AsyncClient, model_id: str) -> ConnectionTestResult:
         start = time.perf_counter()
         chunks = 0
         done = False
@@ -475,9 +467,7 @@ class ConnectionHubService:
             await asyncio.sleep(0.05)
         return False
 
-    async def _cancel(
-        self, client: httpx.AsyncClient, model_id: str
-    ) -> ConnectionTestResult:
+    async def _cancel(self, client: httpx.AsyncClient, model_id: str) -> ConnectionTestResult:
         start = time.perf_counter()
         began = False
         try:

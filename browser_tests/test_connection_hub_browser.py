@@ -5,7 +5,6 @@ import time
 
 from playwright.sync_api import Page, expect
 
-
 MODEL_ID = "tinyllama-1.1b-chat-fp16"
 
 
@@ -49,9 +48,7 @@ def test_connection_hub_renders_copies_self_tests_and_preserves_feedback(
     page: Page,
     inferbridge_url: str,
 ) -> None:
-    page.add_init_script(
-        "localStorage.setItem('inferbridge.onboarding.auto-opened.v1', '1')"
-    )
+    page.add_init_script("localStorage.setItem('inferbridge.onboarding.auto-opened.v1', '1')")
     page.goto(inferbridge_url, wait_until="networkidle")
     _load_mock_model(page, inferbridge_url)
 
@@ -63,9 +60,7 @@ def test_connection_hub_renders_copies_self_tests_and_preserves_feedback(
     expect(page.locator("#ch-loaded-models")).to_contain_text(MODEL_ID)
     expect(page.locator("#ch-model-select")).to_have_value(MODEL_ID)
 
-    page.context.grant_permissions(
-        ["clipboard-read", "clipboard-write"], origin=inferbridge_url
-    )
+    page.context.grant_permissions(["clipboard-read", "clipboard-write"], origin=inferbridge_url)
     page.get_by_label("Copy Base URL").first.click()
     expect(page.locator("#ch-copy-feedback")).to_have_text("Base URL copied.")
     assert page.evaluate("navigator.clipboard.readText()") == f"{inferbridge_url}/v1"
@@ -73,9 +68,7 @@ def test_connection_hub_renders_copies_self_tests_and_preserves_feedback(
     page.locator("#ch-copy-model").click()
     expect(page.locator("#ch-copy-feedback")).to_have_text("Model ID copied.")
     assert page.evaluate("navigator.clipboard.readText()") == MODEL_ID
-    expect(page.locator("#ch-python")).to_contain_text(
-        f'base_url="{inferbridge_url}/v1"'
-    )
+    expect(page.locator("#ch-python")).to_contain_text(f'base_url="{inferbridge_url}/v1"')
     expect(page.locator("#ch-python")).to_contain_text('api_key="not-required"')
     expect(page.locator("#ch-python")).to_contain_text(f'model="{MODEL_ID}"')
 
@@ -87,18 +80,14 @@ def test_connection_hub_renders_copies_self_tests_and_preserves_feedback(
     expect(page.locator('[data-test-id="cancellation"] .ch-test-detail')).to_contain_text(
         "follow-up request"
     )
-    expect(page.locator("#ch-message")).to_contain_text(
-        "Review each check independently"
-    )
+    expect(page.locator("#ch-message")).to_contain_text("Review each check independently")
 
     page.locator("#ch-done").click()
     expect(page.locator("#connection-hub-modal")).to_have_class("modal-overlay hidden")
     expect(page.locator("#connection-hub-open")).to_be_focused()
     page.locator("#connection-hub-open").click()
     expect(page.locator("#ch-base-url")).to_have_text(f"{inferbridge_url}/v1")
-    expect(page.locator('[data-test-id="cancellation"] .ch-test-status')).to_have_text(
-        "Passed"
-    )
+    expect(page.locator('[data-test-id="cancellation"] .ch-test-status')).to_have_text("Passed")
 
     def fail_self_test(route):
         route.fulfill(
@@ -150,9 +139,7 @@ def test_connection_hub_renders_copies_self_tests_and_preserves_feedback(
 
     page.route("**/internal/connection-hub/self-test", fail_self_test)
     page.locator("#ch-run-test").click()
-    expect(page.locator('[data-test-id="non_streaming"] .ch-test-status')).to_have_text(
-        "Failed"
-    )
+    expect(page.locator('[data-test-id="non_streaming"] .ch-test-status')).to_have_text("Failed")
     expect(page.locator('[data-test-id="non_streaming"] .ch-test-detail')).to_have_text(
         "Synthetic failure remains visible."
     )
@@ -163,9 +150,7 @@ def test_connection_hub_requires_and_sends_existing_browser_api_credential(
     page: Page,
     inferbridge_url: str,
 ) -> None:
-    page.add_init_script(
-        "localStorage.setItem('inferbridge.onboarding.auto-opened.v1', '1')"
-    )
+    page.add_init_script("localStorage.setItem('inferbridge.onboarding.auto-opened.v1', '1')")
     metadata = {
         "runtime_state": "available",
         "base_url": f"{inferbridge_url}/v1",

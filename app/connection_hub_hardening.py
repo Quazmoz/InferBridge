@@ -169,9 +169,7 @@ def install_connection_hub_hardening() -> None:
     original_init = FastAPI.__init__
 
     @functools.wraps(original_init)
-    def init_with_connection_hub_hardening(
-        self: FastAPI, *args: Any, **kwargs: Any
-    ) -> None:
+    def init_with_connection_hub_hardening(self: FastAPI, *args: Any, **kwargs: Any) -> None:
         original_init(self, *args, **kwargs)
         if getattr(self, "title", "") in {DISPLAY_NAME, LEGACY_DISPLAY_NAME}:
             self.add_middleware(ConnectionHubHardeningMiddleware, owner=self)

@@ -2,19 +2,17 @@
 
 from __future__ import annotations
 
-import contextlib
-import sys
-
-from app import ui_extension
+from app import ui_registry
 from app.storage_root_safety import install_storage_root_safety
+from app.ui_registry import UiExtension
 
 _EXTENSION_ID = "ovllm-storage-manager-extension"
 
-_STORAGE_UI = r"""
-<style id="ovllm-storage-manager-style">
+_STORAGE_MANAGER_CSS = r"""
 #storage-manager-modal .modal-card{width:min(1040px,calc(100vw - 24px));max-height:min(900px,calc(100dvh - 24px));overflow:hidden}.sm-head p{margin-top:3px;color:var(--text-3);font-size:10px}.sm-body{min-height:0;overflow:auto;padding:16px 18px 22px;overscroll-behavior:contain}.sm-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}.sm-stat{min-width:0;padding:11px;border:1px solid var(--border);border-radius:11px;background:var(--surface-2)}.sm-stat span,.sm-stat strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sm-stat span{color:var(--text-3);font-size:8px;text-transform:uppercase;letter-spacing:.55px}.sm-stat strong{margin-top:5px;color:var(--text-1);font-size:13px}.sm-stat.reclaim strong{color:var(--green)}.sm-section{margin-top:18px}.sm-section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:8px}.sm-section h4{font-size:12px}.sm-section-note{color:var(--text-3);font-size:9px}.sm-list{display:grid;gap:8px}.sm-row{display:grid;grid-template-columns:minmax(180px,1.4fr) repeat(3,minmax(100px,.7fr)) minmax(120px,auto);gap:10px;align-items:center;padding:11px 12px;border:1px solid var(--border);border-radius:11px;background:color-mix(in srgb,var(--surface-2) 82%,transparent)}.sm-primary{min-width:0}.sm-primary strong,.sm-primary span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sm-primary strong{color:var(--text-1);font-size:10.5px}.sm-primary span{margin-top:3px;color:var(--text-3);font-size:8.5px}.sm-cell span,.sm-cell strong{display:block}.sm-cell span{color:var(--text-3);font-size:8px;text-transform:uppercase;letter-spacing:.45px}.sm-cell strong{margin-top:3px;color:var(--text-2);font-size:9.5px}.sm-health{color:var(--green)!important}.sm-health.warn{color:var(--amber)!important}.sm-btn{min-height:36px;padding:7px 11px;border:1px solid var(--border);border-radius:9px;background:var(--surface-2);color:var(--text-1);font:inherit;font-size:9.5px;font-weight:700;cursor:pointer}.sm-btn:hover:not(:disabled){border-color:var(--primary);background:var(--surface-3)}.sm-btn.danger{color:var(--red);border-color:color-mix(in srgb,var(--red) 34%,var(--border))}.sm-btn:disabled{opacity:.5;cursor:not-allowed}.sm-empty,.sm-loading{display:grid;min-height:120px;place-items:center;padding:18px;border:1px dashed var(--border);border-radius:11px;color:var(--text-3);text-align:center;font-size:9.5px}.sm-message{margin-top:12px;padding:9px 10px;border-radius:9px;background:var(--surface-2);color:var(--text-2);font-size:9.5px}.sm-message.error{border:1px solid color-mix(in srgb,var(--red) 40%,var(--border));color:var(--red)}.sm-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 18px calc(11px + env(safe-area-inset-bottom));border-top:1px solid var(--border);background:var(--surface-1)}.sm-footer-note{max-width:720px;color:var(--text-3);font-size:9px;line-height:1.4}.sm-actions{display:flex;gap:7px}@media(max-width:900px){.sm-summary{grid-template-columns:repeat(3,minmax(0,1fr))}.sm-row{grid-template-columns:minmax(160px,1.4fr) repeat(2,minmax(90px,.7fr)) minmax(110px,auto)}.sm-row .sm-optional{display:none}}@media(max-width:620px){#storage-manager-modal .modal-card{width:calc(100vw - 12px);max-height:calc(100dvh - 12px)}.sm-body{padding:12px}.sm-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.sm-row{grid-template-columns:1fr auto}.sm-cell{display:none}.sm-footer{align-items:stretch;flex-direction:column;padding:10px 12px calc(10px + env(safe-area-inset-bottom))}.sm-actions{display:grid;grid-template-columns:1fr 1fr}.sm-btn{min-height:42px}}
-</style>
-<script id="ovllm-storage-manager-extension">
+"""
+
+_STORAGE_MANAGER_JS = r"""
 (() => {
 'use strict';
 if(window.__ovllmStorageManagerInstalled)return;
@@ -50,38 +48,25 @@ $('#sm-close').addEventListener('click',close);$('#sm-done').addEventListener('c
 modal.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();close()}});
 content.addEventListener('click',async event=>{const button=event.target.closest('[data-action]');if(!button||button.disabled)return;const action=button.dataset.action;const modelId=button.dataset.model||'';const reclaim=bytes(button.dataset.bytes);const consequence=action==='delete_converted_model'?'The model must be converted again before it can be loaded.':action==='remove_huggingface_cache'?'A future conversion will download the source files again.':action==='clear_compiled_cache'?'The next model load may take longer while OpenVINO recompiles.':'Only incomplete output, staging files, and recovery metadata will be removed. Protected transaction backups are not touched.';if(!window.confirm(`Reclaim approximately ${reclaim}?\n\n${consequence}`))return;button.disabled=true;setMessage('Cleaning managed storage…');try{const body={action,...(modelId?{model_id:modelId}:{})};const result=await api('/v1/storage/cleanup',{method:'POST',body:JSON.stringify(body)});await load();setMessage(`${result.message} Freed ${bytes(result.freed_bytes)}.`)}catch(error){setMessage(error.message||String(error),true);button.disabled=false}});
 })();
-</script>
 """
 
 
+EXTENSION = UiExtension(
+    extension_id=_EXTENSION_ID,
+    javascript=_STORAGE_MANAGER_JS,
+    css=_STORAGE_MANAGER_CSS,
+    style_id="ovllm-storage-manager-style",
+    capability="desktop",
+    description="Desktop storage and cache manager.",
+)
+
+
 def install_storage_manager_ui_extension() -> None:
-    """Append the storage manager after the existing composed UI extensions."""
+    """Register the storage manager and enable the desktop surfaces."""
 
     install_storage_root_safety()
-    if getattr(ui_extension, "_STORAGE_MANAGER_UI_INSTALLED", False):
-        return
-    previous = ui_extension.inject_multimodal_ui
-
-    def inject(html: str) -> str:
-        html = previous(html)
-        if f'id="{_EXTENSION_ID}"' in html:
-            return html
-        if "</body>" in html:
-            return html.replace("</body>", f"\n{_STORAGE_UI}\n</body>", 1)
-        return html + _STORAGE_UI
-
-    ui_extension.inject_multimodal_ui = inject
-    ui_extension._STORAGE_MANAGER_UI_INSTALLED = True
-
-    # Desktop tests can import app.server before app.desktop_server. Keep the server's
-    # bound injection function and cached page aligned when this extension is installed late.
-    server = sys.modules.get("app.server")
-    if server is not None:
-        server.inject_multimodal_ui = inject
-        cache = getattr(server, "_index_html", None)
-        if cache is not None:
-            with contextlib.suppress(AttributeError):
-                cache.cache_clear()
+    ui_registry.register(EXTENSION)
+    ui_registry.activate("desktop")
 
 
 __all__ = ["install_storage_manager_ui_extension"]

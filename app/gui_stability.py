@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from app import ui_extension
+from app import ui_registry
+from app.ui_registry import UiExtension
 
 _EXTENSION_ID = "ovllm-gui-stability-extension"
 
@@ -387,24 +388,15 @@ syncCustomFormUi();
 """
 
 
+EXTENSION = UiExtension(
+    extension_id=_EXTENSION_ID,
+    javascript=GUI_STABILITY_JS,
+    css=GUI_STABILITY_CSS,
+    description="Final GUI recovery, safety, and narrow-screen fixes.",
+)
+
+
 def install_gui_stability_extension() -> None:
-    """Compose final GUI recovery, safety, and narrow-screen fixes."""
+    """Register GUI recovery and narrow-screen fixes."""
 
-    if getattr(ui_extension, "_GUI_STABILITY_EXTENSION_INSTALLED", False):
-        return
-    previous_inject = ui_extension.inject_multimodal_ui
-
-    def inject_with_gui_stability(html: str) -> str:
-        html = previous_inject(html)
-        if f'id="{_EXTENSION_ID}"' in html:
-            return html
-        payload = (
-            f'\n<style id="{_EXTENSION_ID}-styles">\n{GUI_STABILITY_CSS}\n</style>\n'
-            f'<script id="{_EXTENSION_ID}">\n{GUI_STABILITY_JS}\n</script>\n'
-        )
-        if "</body>" in html:
-            return html.replace("</body>", f"{payload}</body>", 1)
-        return html + payload
-
-    ui_extension.inject_multimodal_ui = inject_with_gui_stability
-    ui_extension._GUI_STABILITY_EXTENSION_INSTALLED = True
+    ui_registry.register(EXTENSION)

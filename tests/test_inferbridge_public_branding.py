@@ -8,7 +8,7 @@ from app.brand import (
 )
 from app.branding_ui import _apply_static_branding
 from app.config import Settings
-from app.onboarding_ui import ONBOARDING_UI
+from app.onboarding_ui import ONBOARDING_JS
 from app.release_ui import RELEASE_EXTENSION_JS
 from app.server import create_app
 from app.version import __version__
@@ -31,10 +31,10 @@ def test_fastapi_and_static_browser_render_inferbridge():
 def test_embedded_public_surfaces_render_current_identity():
     assert DISPLAY_NAME in RELEASE_EXTENSION_JS
     assert LEGACY_DISPLAY_NAME not in RELEASE_EXTENSION_JS
-    assert DISPLAY_NAME in ONBOARDING_UI
-    assert LEGACY_DISPLAY_NAME not in ONBOARDING_UI
-    assert f"Version {__version__}" in ONBOARDING_UI
-    assert "Version 0.3.0" not in ONBOARDING_UI
+    assert DISPLAY_NAME in ONBOARDING_JS
+    assert LEGACY_DISPLAY_NAME not in ONBOARDING_JS
+    assert f"Version {__version__}" in ONBOARDING_JS
+    assert "Version 0.3.0" not in ONBOARDING_JS
 
 
 def test_diagnostics_use_inferbridge_identity():

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from app import ui_extension
+from app import ui_registry
+from app.ui_registry import UiExtension
 
 _EXTENSION_ID = "ovllm-ui-quality-extension"
 
@@ -349,8 +350,8 @@ return url.origin === window.location.origin ? url.pathname : '';
 return '';
 }
 }
-const qualityPreviousFetch = window.fetch.bind(window);
-window.fetch = async function qualityFetch(input, init = {}) {
+const qualityPreviousFetch = InferBridge.chain();
+InferBridge.use(async function qualityFetch(input, init = {}) {
 const response = await qualityPreviousFetch(input, init);
 if (requestPath(input) === '/v1/system/status' && response.ok) {
 response.clone().json().then(data => {
@@ -358,7 +359,7 @@ if (typeof renderActivityFeed === 'function') renderActivityFeed(data?.events ||
 }).catch(() => {});
 }
 return response;
-};
+});
 function syncModalAccessibility(open) {
 document.documentElement.classList.toggle('ovllm-modal-open', open);
 if (appRoot) appRoot.inert = open;
@@ -503,24 +504,15 @@ syncPanelBackdrop();
 """
 
 
+EXTENSION = UiExtension(
+    extension_id=_EXTENSION_ID,
+    javascript=UI_QUALITY_JS,
+    css=UI_QUALITY_CSS,
+    description="Reliability and accessibility hardening for the composed UI.",
+)
+
+
 def install_ui_quality_extension() -> None:
-    """Compose reliability and accessibility hardening into the browser UI."""
+    """Register reliability and accessibility hardening."""
 
-    if getattr(ui_extension, "_UI_QUALITY_EXTENSION_INSTALLED", False):
-        return
-    previous_inject = ui_extension.inject_multimodal_ui
-
-    def inject_with_ui_quality(html: str) -> str:
-        html = previous_inject(html)
-        if f'id="{_EXTENSION_ID}"' in html:
-            return html
-        payload = (
-            f'\n<style id="{_EXTENSION_ID}-styles">\n{UI_QUALITY_CSS}\n</style>\n'
-            f'<script id="{_EXTENSION_ID}">\n{UI_QUALITY_JS}\n</script>\n'
-        )
-        if "</body>" in html:
-            return html.replace("</body>", f"{payload}</body>", 1)
-        return html + payload
-
-    ui_extension.inject_multimodal_ui = inject_with_ui_quality
-    ui_extension._UI_QUALITY_EXTENSION_INSTALLED = True
+    ui_registry.register(EXTENSION)

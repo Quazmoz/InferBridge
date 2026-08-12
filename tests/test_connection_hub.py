@@ -72,9 +72,7 @@ def api_transport(
         if calls is not None:
             calls.append(f"{request.method} {request.url.path}")
         if fail:
-            raise httpx.ConnectError(
-                r"C:\Users\private\InferBridge\secret.txt", request=request
-            )
+            raise httpx.ConnectError(r"C:\Users\private\InferBridge\secret.txt", request=request)
         auth = request.headers.get("Authorization", "")
         if api_key and auth != f"Bearer {api_key}":
             return httpx.Response(401, json={"detail": "Invalid or missing API key"})
@@ -131,9 +129,7 @@ def api_transport(
     return httpx.MockTransport(handler)
 
 
-def service(
-    *, api_key: str | None = None, manager: DummyManager | None = None, transport=None
-):
+def service(*, api_key: str | None = None, manager: DummyManager | None = None, transport=None):
     app = FastAPI()
     app.state.shutting_down = False
     manager = manager or DummyManager()
@@ -174,9 +170,7 @@ def test_connection_hub_internal_route_is_loopback_ui_only_and_secret_free():
 
     with TestClient(app) as client:
         assert client.get("/internal/connection-hub").status_code == 403
-        response = client.get(
-            "/internal/connection-hub", headers={"X-OV-LLM-UI": "1"}
-        )
+        response = client.get("/internal/connection-hub", headers={"X-OV-LLM-UI": "1"})
 
     assert response.status_code == 200
     assert "route-secret" not in response.text
@@ -204,9 +198,7 @@ def test_lan_classification_keeps_loopback_safe_and_flags_unauthenticated_lan():
 def test_self_test_covers_models_generation_stream_cancellation_followup_and_open_auth():
     hub, app = service(transport=api_transport())
     response = asyncio.run(
-        hub.run_self_test(
-            request_for(app), ConnectionSelfTestRequest(model_id="chat-model")
-        )
+        hub.run_self_test(request_for(app), ConnectionSelfTestRequest(model_id="chat-model"))
     )
 
     assert statuses(response) == {
@@ -221,13 +213,9 @@ def test_self_test_covers_models_generation_stream_cancellation_followup_and_ope
 
 
 def test_authentication_self_test_uses_server_side_key_and_rejects_invalid_key():
-    hub, app = service(
-        api_key="configured-key", transport=api_transport(api_key="configured-key")
-    )
+    hub, app = service(api_key="configured-key", transport=api_transport(api_key="configured-key"))
     response = asyncio.run(
-        hub.run_self_test(
-            request_for(app), ConnectionSelfTestRequest(model_id="chat-model")
-        )
+        hub.run_self_test(request_for(app), ConnectionSelfTestRequest(model_id="chat-model"))
     )
 
     assert statuses(response)["authentication"] == "passed"
@@ -268,9 +256,7 @@ def test_no_model_and_busy_model_skip_generation_without_fighting_normal_work():
 def test_failures_are_sanitized_before_the_browser_receives_them():
     hub, app = service(transport=api_transport(fail=True))
     response = asyncio.run(
-        hub.run_self_test(
-            request_for(app), ConnectionSelfTestRequest(model_id="chat-model")
-        )
+        hub.run_self_test(request_for(app), ConnectionSelfTestRequest(model_id="chat-model"))
     )
     serialized = response.model_dump_json()
 

@@ -59,6 +59,14 @@ from app.openai_api import (
 from app.rate_limit import RateLimitMiddleware
 from app.telemetry import cpu_stats, disk_stats, gpu_stats, memory_stats
 from app.ui_extension import inject_multimodal_ui
+from app.ui_registry import (
+    ASSET_PREFIX,
+    UiAsset,
+    active_capabilities,
+    asset_manifest,
+    render_document as render_ui_document,
+    revision as ui_revision,
+)
 from runtime import device_check
 from runtime.benchmark_runner import (
     DEFAULT_BENCHMARK_PROMPT,
@@ -104,9 +112,72 @@ WEB_DIR = BASE_DIR / "web"
 
 @lru_cache(maxsize=1)
 def _index_html() -> str:
-    """Load and extend the bundled UI once per server process."""
+    """Return the fully inline composition of the bundled UI.
+
+    Kept as the source-level view of the page: tests and the injected-JavaScript syntax
+    gate read payload content out of it. The browser is served :func:`_index_document`
+    instead, which references the same payloads as cacheable assets.
+    """
 
     return inject_multimodal_ui((WEB_DIR / "index.html").read_text(encoding="utf-8"))
+
+
+# A high-entropy stand-in lets the composed document be built once and reused, with only
+# the per-response nonce substituted. Generated per process so it can never be predicted
+# or collide with page content.
+_NONCE_PLACEHOLDER = f"inferbridge-nonce-{secrets.token_hex(8)}"
+
+
+@lru_cache(maxsize=4)
+def _document_template(revision: int, capabilities: frozenset[str]) -> str:
+    """Compose the served document once per composition, with a placeholder nonce.
+
+    Keying on the registry revision means a late registration (the desktop launcher
+    activating its surfaces, a test installing one) produces a fresh document instead of a
+    stale cached one. The previous single-entry cache had to be cleared by hand.
+    """
+
+    base = (WEB_DIR / "index.html").read_text(encoding="utf-8")
+    return render_ui_document(base, _NONCE_PLACEHOLDER, capabilities)
+
+
+@lru_cache(maxsize=4)
+def _asset_index(revision: int, capabilities: frozenset[str]) -> dict[str, UiAsset]:
+    """Return the servable UI assets for a composition, keyed by URL path."""
+
+    return asset_manifest(capabilities)
+
+
+def _index_document(nonce: str) -> str:
+    """Return the served document with *nonce* applied to every inline block."""
+
+    template = _document_template(ui_revision(), active_capabilities())
+    return template.replace(_NONCE_PLACEHOLDER, nonce)
+
+
+def _content_security_policy(nonce: str) -> str:
+    """Return the page policy.
+
+    ``script-src`` carries a nonce instead of ``'unsafe-inline'``: the extension payloads
+    are served from ``'self'`` and the few remaining inline blocks are nonced, so no inline
+    script executes unless this response put it there. ``style-src`` keeps
+    ``'unsafe-inline'`` because the static shell uses ``style`` attributes, which a nonce
+    cannot cover; adding a nonce there would make browsers ignore ``'unsafe-inline'`` and
+    drop that styling.
+    """
+
+    return (
+        "default-src 'self'; "
+        "base-uri 'none'; "
+        "connect-src 'self'; "
+        "font-src 'self'; "
+        "form-action 'self'; "
+        "frame-ancestors 'none'; "
+        "img-src 'self' data:; "
+        "object-src 'none'; "
+        f"script-src 'self' 'nonce-{nonce}'; "
+        "style-src 'self' 'unsafe-inline'"
+    )
 
 
 def _load_dotenv() -> None:
@@ -444,28 +515,45 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     async def index():
+        nonce = secrets.token_urlsafe(16)
         return HTMLResponse(
-            _index_html(),
+            _index_document(nonce),
             headers={
+                # The document stays uncached because it carries a single-use nonce. Its
+                # payloads live in immutable /ui/ assets, so a reload re-fetches a small
+                # document rather than the whole application.
                 "Cache-Control": "no-store, must-revalidate",
                 "Pragma": "no-cache",
-                "Content-Security-Policy": (
-                    "default-src 'self'; "
-                    "base-uri 'none'; "
-                    "connect-src 'self'; "
-                    "font-src 'self'; "
-                    "form-action 'self'; "
-                    "frame-ancestors 'none'; "
-                    "img-src 'self' data:; "
-                    "object-src 'none'; "
-                    "script-src 'self' 'unsafe-inline'; "
-                    "style-src 'self' 'unsafe-inline'"
-                ),
+                "Content-Security-Policy": _content_security_policy(nonce),
                 "Referrer-Policy": "no-referrer",
                 "X-Content-Type-Options": "nosniff",
                 "X-Frame-Options": "DENY",
             },
         )
+
+    @app.get(ASSET_PREFIX + "{filename}", include_in_schema=False)
+    async def ui_asset(filename: str, accept_encoding: str = Header(default="")):
+        """Serve one content-addressed browser asset.
+
+        ``filename`` is only ever a lookup key in the composed manifest, never a path, so
+        no request can reach the filesystem through this route.
+        """
+
+        asset = _asset_index(ui_revision(), active_capabilities()).get(ASSET_PREFIX + filename)
+        if asset is None:
+            raise HTTPException(status_code=404, detail="Unknown UI asset.")
+        headers = {
+            # Safe because the URL contains a hash of the content: changed payload,
+            # changed URL. This is what makes a reload or app restart nearly free.
+            "Cache-Control": "public, max-age=31536000, immutable",
+            "Vary": "Accept-Encoding",
+            "Referrer-Policy": "no-referrer",
+            "X-Content-Type-Options": "nosniff",
+        }
+        if "gzip" in accept_encoding.lower():
+            headers["Content-Encoding"] = "gzip"
+            return Response(content=asset.gzip_body, media_type=asset.media_type, headers=headers)
+        return Response(content=asset.body, media_type=asset.media_type, headers=headers)
 
     @app.get("/favicon.ico", include_in_schema=False)
     async def favicon():

@@ -241,11 +241,7 @@ def install_responses_api(
 
                 text = result.text
                 completion_tokens = result.completion_tokens
-                if not (
-                    use_tools
-                    and tools.detect_incomplete_tool_call(text)
-                    and attempt < 2
-                ):
+                if not (use_tools and tools.detect_incomplete_tool_call(text) and attempt < 2):
                     break
 
                 logger.warning("Malformed Responses tool call; retry %d/2", attempt + 1)

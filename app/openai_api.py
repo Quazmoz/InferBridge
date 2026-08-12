@@ -334,9 +334,7 @@ class ResponseUsage(BaseModel):
     input_tokens: int
     input_tokens_details: dict[str, int] = Field(default_factory=lambda: {"cached_tokens": 0})
     output_tokens: int
-    output_tokens_details: dict[str, int] = Field(
-        default_factory=lambda: {"reasoning_tokens": 0}
-    )
+    output_tokens_details: dict[str, int] = Field(default_factory=lambda: {"reasoning_tokens": 0})
     total_tokens: int
 
 

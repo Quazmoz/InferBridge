@@ -1,19 +1,14 @@
 from __future__ import annotations
 
-from app import conversation_management_ui, ui_extension
+from app import conversation_management_ui, ui_registry
+
+_CONVERSATION_MANAGEMENT = ("ovllm-conversation-management-extension",)
 
 
-def test_conversation_management_ui_is_injected_once(monkeypatch) -> None:
-    monkeypatch.setattr(ui_extension, "inject_multimodal_ui", lambda html: html)
-    monkeypatch.delattr(
-        ui_extension,
-        "_CONVERSATION_MANAGEMENT_EXTENSION_INSTALLED",
-        raising=False,
-    )
-
+def test_conversation_management_ui_is_injected_once() -> None:
     conversation_management_ui.install_conversation_management_extension()
-    first = ui_extension.inject_multimodal_ui("<html><body></body></html>")
-    second = ui_extension.inject_multimodal_ui(first)
+    first = ui_registry.render_only("<html><body></body></html>", _CONVERSATION_MANAGEMENT)
+    second = ui_registry.render_only(first, _CONVERSATION_MANAGEMENT)
 
     assert first.count('id="ovllm-conversation-management-extension"') == 1
     assert second.count('id="ovllm-conversation-management-extension"') == 1

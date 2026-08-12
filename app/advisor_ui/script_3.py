@@ -14,7 +14,7 @@ SCRIPT_3 = r"""        return (model.warnings || [])
         }
     });
 
-    window.fetch = async function hardwareAdvisorFetch(input, init = {}) {
+    InferBridge.use(async function hardwareAdvisorFetch(input, init = {}) {
         const endpoint = endpointFor(input);
         const method = String(init?.method || (typeof input !== 'string' && input?.method) || 'GET').toUpperCase();
         if (
@@ -71,7 +71,7 @@ SCRIPT_3 = r"""        return (model.warnings || [])
             toast('Model load started. A short hardware benchmark will run automatically after it is ready.');
         }
         return response;
-    };
+    });
 
     button.addEventListener('click', open);
     closeButton?.addEventListener('click', close);

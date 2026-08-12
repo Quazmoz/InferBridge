@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from app import ui_extension
+from app import ui_registry
 from app.brand import DISPLAY_NAME
+from app.ui_registry import UiExtension
 from app.version import __version__
 
 _EXTENSION_ID = "ovllm-desktop-onboarding-extension"
 
-ONBOARDING_UI = r"""
-<style id="ovllm-desktop-onboarding-style">
+ONBOARDING_CSS = r"""
 #ovw-shell{position:fixed;inset:0;z-index:1200;display:none;place-items:center;padding:18px;background:#030812c7}
 #ovw-shell.visible{display:grid}#ovw-open{position:fixed;right:18px;bottom:18px;z-index:1190}
 .ovw-card{width:min(900px,100%);max-height:calc(100vh - 30px);overflow:auto;padding:22px;border:1px solid var(--border);border-radius:18px;background:var(--surface-1);color:var(--text-1);box-shadow:var(--shadow-md)}
@@ -22,8 +22,9 @@ ONBOARDING_UI = r"""
 .ovw-btn{padding:9px 13px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);color:var(--text-1);font:inherit;font-weight:700;cursor:pointer}.ovw-primary{border-color:var(--primary);background:var(--primary);color:white}.ovw-btn:focus-visible,#ovw-shell input:focus-visible,#ovw-shell select:focus-visible,#ovw-shell summary:focus-visible{outline:3px solid var(--primary);outline-offset:2px}.ovw-btn:disabled{opacity:.5}.ovw-actions{justify-content:flex-end;margin-top:16px}
 @media(max-width:680px){#ovw-shell{padding:6px}.ovw-card{max-height:calc(100vh - 12px)}.ovw-grid,.ovw-stats{grid-template-columns:1fr}.ovw-steps{grid-template-columns:repeat(4,1fr)}}
 @media(prefers-reduced-motion:reduce){.ovw-track.indeterminate:after{animation:none;transform:translateX(300%)}}
-</style>
-<script id="ovllm-desktop-onboarding-extension">
+"""
+
+ONBOARDING_JS = r"""
 (() => {
 'use strict';
 if (window.__ovllmDesktopOnboardingInstalled) return;
@@ -78,27 +79,27 @@ shell.querySelector('#ovw-close').addEventListener('click',hide);
 opener.addEventListener('click',async()=>{if(status?.completed&&!status?.restart_requested){try{connection=await api(`${API}/connection`);ready()}catch{welcome()}}else{welcome()}show()});
 (async()=>{try{const response=await fetch(`${API}/status`);if(response.status===404||!response.ok)return;status=await response.json();opener.hidden=false;if(status.completed&&!status.restart_requested){if(status.rerun_scan_recommended)opener.textContent='Rescan recommended';return}welcome();if(status.restart_requested||status.recovery_message)opener.textContent='Onboarding needs attention';if(hasAutoOpened())return;markAutoOpened();show()}catch{}})();
 })();
-</script>
 """
 
 
-def install_onboarding_ui_extension() -> None:
-    if getattr(ui_extension, "_DESKTOP_ONBOARDING_UI_INSTALLED", False):
-        return
-    previous = ui_extension.inject_multimodal_ui
-
-    def inject(html: str) -> str:
-        html = previous(html)
-        if f'id="{_EXTENSION_ID}"' in html:
-            return html
-        if "</body>" in html:
-            return html.replace("</body>", f"\n{ONBOARDING_UI}\n</body>", 1)
-        return html + ONBOARDING_UI
-
-    ui_extension.inject_multimodal_ui = inject
-    ui_extension._DESKTOP_ONBOARDING_UI_INSTALLED = True
-
-
-ONBOARDING_UI = ONBOARDING_UI.replace("OpenVINO Windows LLM", DISPLAY_NAME).replace(
+# Rebrand the template before anything captures it. This has to stay above EXTENSION:
+# the registry entry holds the payload by value, so a later rebinding of this name would
+# leave the shipped markup showing the legacy product name and a stale version.
+ONBOARDING_JS = ONBOARDING_JS.replace("OpenVINO Windows LLM", DISPLAY_NAME).replace(
     "Version 0.3.0", f"Version {__version__}"
 )
+
+
+EXTENSION = UiExtension(
+    extension_id=_EXTENSION_ID,
+    javascript=ONBOARDING_JS,
+    css=ONBOARDING_CSS,
+    style_id="ovllm-desktop-onboarding-style",
+    description="Desktop first-run onboarding flow.",
+)
+
+
+def install_onboarding_ui_extension() -> None:
+    """Register the desktop onboarding flow."""
+
+    ui_registry.register(EXTENSION)

@@ -131,6 +131,7 @@ See [QUICKSTART.md](QUICKSTART.md) for the complete setup flow.
 ### Architecture and APIs
 
 - [Desktop architecture](docs/DESKTOP_ARCHITECTURE.md)
+- [Browser UI architecture](docs/BROWSER_UI_ARCHITECTURE.md)
 - [Desktop onboarding API](docs/DESKTOP_API.md)
 - [API contract](docs/API_CONTRACT.md)
 - [Local vision chat](docs/VISION.md)
@@ -392,6 +393,7 @@ Linux GPU and NPU support remains driver-dependent and experimental. InferBridge
 - Loopback is the safe default.
 - State-changing routes can require an API key.
 - Cross-origin browser access is opt-in.
+- The browser page allows no inline script: `script-src` is `'self'` plus a per-response nonce, with UI payloads served as same-origin assets.
 - Request bodies and image inputs have explicit limits.
 - Progress, logs, diagnostics, and user-facing errors sanitize secrets and private paths.
 - Diagnostics exclude prompts, chat history, model weights, source images, keys, and certificates.

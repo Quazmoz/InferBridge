@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from app import ui_extension
+from app import ui_registry
+from app.ui_registry import UiExtension
 
 _EXTENSION_ID = "ovllm-context-budget-extension"
 
@@ -465,8 +466,8 @@ CONTEXT_BUDGET_JS = r"""
         }).catch(() => {});
     }
 
-    const previousFetch = window.fetch.bind(window);
-    window.fetch = async function contextBudgetAwareFetch(input, init = {}) {
+    const previousFetch = InferBridge.chain();
+    InferBridge.use(async function contextBudgetAwareFetch(input, init = {}) {
         const target = endpoint(input);
         const method = String(init?.method || input?.method || 'GET').toUpperCase();
         const response = await previousFetch(input, init);
@@ -474,7 +475,7 @@ CONTEXT_BUDGET_JS = r"""
             scheduleForModelStatus(response);
         }
         return response;
-    };
+    });
 
     function attachTrayObserver() {
         const tray = document.getElementById('vision-preview-tray');
@@ -496,24 +497,17 @@ CONTEXT_BUDGET_JS = r"""
 """
 
 
+EXTENSION = UiExtension(
+    extension_id=_EXTENSION_ID,
+    javascript=CONTEXT_BUDGET_JS,
+    description="Tokenizer-backed context-window preflight and omission visibility.",
+)
+
+
 def install_context_budget_ui_extension() -> None:
-    """Inject context-budget visibility after the per-chat context extension."""
+    """Register context-budget visibility."""
 
-    if getattr(ui_extension, "_CONTEXT_BUDGET_UI_INSTALLED", False):
-        return
-    previous_inject = ui_extension.inject_multimodal_ui
-
-    def inject_with_context_budget(html: str) -> str:
-        html = previous_inject(html)
-        if f'id="{_EXTENSION_ID}"' in html:
-            return html
-        script = f'\n<script id="{_EXTENSION_ID}">\n{CONTEXT_BUDGET_JS}\n</script>\n'
-        if "</body>" in html:
-            return html.replace("</body>", f"{script}</body>", 1)
-        return html + script
-
-    ui_extension.inject_multimodal_ui = inject_with_context_budget
-    ui_extension._CONTEXT_BUDGET_UI_INSTALLED = True
+    ui_registry.register(EXTENSION)
 
 
 __all__ = ["CONTEXT_BUDGET_JS", "install_context_budget_ui_extension"]

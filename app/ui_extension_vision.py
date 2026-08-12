@@ -431,8 +431,8 @@ VISION_EXTENSION_JS = r"""
         }
     }
 
-    const originalFetch = window.fetch.bind(window);
-    window.fetch = async function visionAwareFetch(input, init = {}) {
+    const originalFetch = InferBridge.chain();
+    InferBridge.use(async function visionAwareFetch(input, init = {}) {
         const endpoint = requestEndpoint(input);
         const path = endpoint.path;
         const isSameOrigin = endpoint.sameOrigin;
@@ -516,7 +516,7 @@ VISION_EXTENSION_JS = r"""
             response.clone().json().then(recordCapabilities).catch(() => {});
         }
         return response;
-    };
+    });
 
     async function refreshCapabilities() {
         const key = localStorage.getItem('ovllm.apikey.v1') || '';

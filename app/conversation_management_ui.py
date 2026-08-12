@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from app import ui_extension
+from app import ui_registry
+from app.ui_registry import UiExtension
 
 _EXTENSION_ID = "ovllm-conversation-management-extension"
 
@@ -1183,27 +1184,18 @@ CONVERSATION_MANAGEMENT_JS = r"""
 """
 
 
+EXTENSION = UiExtension(
+    extension_id=_EXTENSION_ID,
+    javascript=CONVERSATION_MANAGEMENT_JS,
+    css=CONVERSATION_MANAGEMENT_CSS,
+    description="Browser-local conversation history, rename, export, and deletion.",
+)
+
+
 def install_conversation_management_extension() -> None:
-    """Compose browser-local chat management without changing inference APIs."""
+    """Register browser-local chat management without changing inference APIs."""
 
-    if getattr(ui_extension, "_CONVERSATION_MANAGEMENT_EXTENSION_INSTALLED", False):
-        return
-    previous_inject = ui_extension.inject_multimodal_ui
-
-    def inject_with_conversation_management(html: str) -> str:
-        html = previous_inject(html)
-        if f'id="{_EXTENSION_ID}"' in html:
-            return html
-        payload = (
-            f'\n<style id="{_EXTENSION_ID}-styles">\n{CONVERSATION_MANAGEMENT_CSS}\n</style>\n'
-            f'<script id="{_EXTENSION_ID}">\n{CONVERSATION_MANAGEMENT_JS}\n</script>\n'
-        )
-        if "</body>" in html:
-            return html.replace("</body>", f"{payload}</body>", 1)
-        return html + payload
-
-    ui_extension.inject_multimodal_ui = inject_with_conversation_management
-    ui_extension._CONVERSATION_MANAGEMENT_EXTENSION_INSTALLED = True
+    ui_registry.register(EXTENSION)
 
 
 __all__ = [

@@ -202,8 +202,7 @@ class StorageRuntimeState:
         with self._guard_lock:
             if self._global_cleanup or model_id in self._cleaning_models:
                 raise ValueError(
-                    f"Storage cleanup is active for model '{model_id}'. "
-                    "Retry after it finishes."
+                    f"Storage cleanup is active for model '{model_id}'. Retry after it finishes."
                 )
             if model_id in self._mutating_models or model_id in self._temporary_models:
                 raise ValueError(
@@ -244,9 +243,7 @@ class StorageRuntimeState:
                     "Another storage or temporary model operation is active. Wait for it to finish.",
                 )
             if global_cleanup and (
-                self._cleaning_models
-                or self._mutating_models
-                or self._temporary_models
+                self._cleaning_models or self._mutating_models or self._temporary_models
             ):
                 raise StorageConflict(
                     "cleanup_active",

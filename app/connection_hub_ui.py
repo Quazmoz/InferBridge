@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from app import ui_extension
+from app import ui_registry
+from app.ui_registry import UiExtension
 
 _EXTENSION_ID = "ovllm-connection-hub-extension"
 
@@ -328,27 +329,18 @@ modal.addEventListener('keydown', event => {
 """
 
 
+EXTENSION = UiExtension(
+    extension_id=_EXTENSION_ID,
+    javascript=CONNECTION_HUB_JS,
+    css=CONNECTION_HUB_CSS,
+    description="Local Connection Hub client connection examples.",
+)
+
+
 def install_connection_hub_ui_extension() -> None:
-    """Compose the Local Connection Hub into the built-in static browser UI."""
+    """Register the Local Connection Hub."""
 
-    if getattr(ui_extension, "_CONNECTION_HUB_UI_EXTENSION_INSTALLED", False):
-        return
-    previous_inject = ui_extension.inject_multimodal_ui
-
-    def inject_with_connection_hub(html: str) -> str:
-        html = previous_inject(html)
-        if f'id="{_EXTENSION_ID}"' in html:
-            return html
-        payload = (
-            f'\n<style id="{_EXTENSION_ID}-styles">\n{CONNECTION_HUB_CSS}\n</style>\n'
-            f'<script id="{_EXTENSION_ID}">\n{CONNECTION_HUB_JS}\n</script>\n'
-        )
-        if "</body>" in html:
-            return html.replace("</body>", f"{payload}</body>", 1)
-        return html + payload
-
-    ui_extension.inject_multimodal_ui = inject_with_connection_hub
-    ui_extension._CONNECTION_HUB_UI_EXTENSION_INSTALLED = True
+    ui_registry.register(EXTENSION)
 
 
 __all__ = [

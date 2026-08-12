@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from app import ui_extension
+from app import ui_registry
+from app.ui_registry import UiExtension
 
 _EXTENSION_ID = "ovllm-model-library-extension"
 
@@ -365,22 +366,15 @@ $('#ml-import-submit').onclick = async event => {
 # fmt: on
 
 
+EXTENSION = UiExtension(
+    extension_id=_EXTENSION_ID,
+    javascript=MODEL_LIBRARY_JS,
+    css=MODEL_LIBRARY_CSS,
+    description="Verified Model Library browser and evidence view.",
+)
+
+
 def install_model_library_ui_extension() -> None:
-    if getattr(ui_extension, "_MODEL_LIBRARY_UI_EXTENSION_INSTALLED", False):
-        return
-    previous_inject = ui_extension.inject_multimodal_ui
+    """Register the Verified Model Library surface."""
 
-    def inject_with_model_library(html: str) -> str:
-        html = previous_inject(html)
-        if f'id="{_EXTENSION_ID}"' in html:
-            return html
-        payload = (
-            f'\n<style id="{_EXTENSION_ID}-styles">\n{MODEL_LIBRARY_CSS}\n</style>\n'
-            f'<script id="{_EXTENSION_ID}">\n{MODEL_LIBRARY_JS}\n</script>\n'
-        )
-        if "</body>" in html:
-            return html.replace("</body>", f"{payload}</body>", 1)
-        return html + payload
-
-    ui_extension.inject_multimodal_ui = inject_with_model_library
-    ui_extension._MODEL_LIBRARY_UI_EXTENSION_INSTALLED = True
+    ui_registry.register(EXTENSION)

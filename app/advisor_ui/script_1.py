@@ -16,7 +16,7 @@ SCRIPT_1 = r"""
         'lowest-memory': 'Lowest memory',
         'lowest-power': 'Lowest power',
     };
-    const upstreamFetch = window.fetch.bind(window);
+    const upstreamFetch = InferBridge.chain();
     const modelSelect = document.getElementById('model-select');
     const headerRight = document.querySelector('.header-right');
     if (!modelSelect || !headerRight) return;

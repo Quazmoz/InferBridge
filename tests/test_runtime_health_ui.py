@@ -1,9 +1,8 @@
 """Source-level contract checks for the runtime model health center."""
 
-import sys
 from pathlib import Path
 
-from app import model_library_ui, runtime_health_ui, storage_manager_ui, ui_extension
+from app import model_library_ui, runtime_health_ui, storage_manager_ui, ui_registry
 
 
 def test_runtime_health_ui_exposes_maintenance_workflow_without_remote_dependencies():
@@ -48,23 +47,24 @@ def test_runtime_health_ui_routes_shared_cache_rebuild_to_affected_batch():
     javascript = runtime_health_ui._RUNTIME_HEALTH_JS
     assert "const batchButton=$('#rh-batch-cache')" in javascript
     assert "batchButton.click();return" in javascript
-    assert "Clear the shared compiled cache and warm ${models.length} affected model(s)?" in javascript
+    assert (
+        "Clear the shared compiled cache and warm ${models.length} affected model(s)?" in javascript
+    )
 
 
-def test_runtime_health_ui_wraps_model_library_and_storage_manager(monkeypatch):
-    monkeypatch.setattr(ui_extension, "inject_multimodal_ui", lambda html: html)
-    monkeypatch.delattr(ui_extension, "_MODEL_LIBRARY_UI_EXTENSION_INSTALLED", raising=False)
-    monkeypatch.delattr(ui_extension, "_STORAGE_MANAGER_UI_INSTALLED", raising=False)
-    monkeypatch.delattr(ui_extension, "_RUNTIME_HEALTH_UI_EXTENSION_INSTALLED", raising=False)
-    server = sys.modules.get("app.server")
-    if server is not None:
-        monkeypatch.setattr(server, "inject_multimodal_ui", server.inject_multimodal_ui)
-
+def test_runtime_health_ui_wraps_model_library_and_storage_manager():
     model_library_ui.install_model_library_ui_extension()
     storage_manager_ui.install_storage_manager_ui_extension()
     runtime_health_ui.install_runtime_health_ui_extension()
 
-    page = ui_extension.inject_multimodal_ui("<html><body></body></html>")
+    page = ui_registry.render_only(
+        "<html><body></body></html>",
+        (
+            "ovllm-model-library-extension",
+            "ovllm-storage-manager-extension",
+            "ovllm-runtime-health-extension",
+        ),
+    )
 
     assert page.count('id="ovllm-model-library-extension"') == 1
     assert page.count('id="ovllm-storage-manager-extension"') == 1

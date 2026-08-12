@@ -1,8 +1,6 @@
 """Source-level contract checks for the Local Connection Hub."""
 
-import sys
-
-from app import connection_hub_ui, ui_extension
+from app import connection_hub_ui, ui_registry
 
 
 def test_connection_hub_ui_exposes_operational_connection_workflow_without_server_secrets():
@@ -78,17 +76,11 @@ def test_connection_hub_ui_is_responsive_accessible_and_not_modal_locked_while_t
     assert "if (running) return;\n    modal.classList.add" not in javascript
 
 
-def test_connection_hub_ui_composes_once_into_the_static_surface(monkeypatch):
-    monkeypatch.setattr(ui_extension, "inject_multimodal_ui", lambda html: html)
-    monkeypatch.delattr(
-        ui_extension, "_CONNECTION_HUB_UI_EXTENSION_INSTALLED", raising=False
-    )
-    server = sys.modules.get("app.server")
-    if server is not None:
-        monkeypatch.setattr(server, "inject_multimodal_ui", server.inject_multimodal_ui)
-
+def test_connection_hub_ui_composes_once_into_the_static_surface():
     connection_hub_ui.install_connection_hub_ui_extension()
-    page = ui_extension.inject_multimodal_ui("<html><body></body></html>")
+    page = ui_registry.render_only(
+        "<html><body></body></html>", ("ovllm-connection-hub-extension",)
+    )
 
     assert page.count('id="ovllm-connection-hub-extension"') == 1
     assert page.count('id="ovllm-connection-hub-extension-styles"') == 1

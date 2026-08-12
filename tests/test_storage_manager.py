@@ -77,9 +77,7 @@ class FakeManager:
     def delete(self, model_id: str) -> dict:
         config = self.catalog[model_id]
         size = sum(
-            path.stat().st_size
-            for path in config.abs_path(Path()).rglob("*")
-            if path.is_file()
+            path.stat().st_size for path in config.abs_path(Path()).rglob("*") if path.is_file()
         )
         shutil.rmtree(config.abs_path(Path()))
         return {"deleted": True, "freed_bytes": size}
@@ -269,9 +267,7 @@ def test_storage_delete_uses_guarded_upstream_delete(tmp_path: Path) -> None:
     service, _manager = make_service(tmp_path, [config])
 
     result = asyncio.run(
-        service.cleanup(
-            StorageCleanupRequest(action="delete_converted_model", model_id="first")
-        )
+        service.cleanup(StorageCleanupRequest(action="delete_converted_model", model_id="first"))
     )
 
     assert result["freed_bytes"] == 12
@@ -310,7 +306,6 @@ def test_unsafe_model_path_does_not_run_conversion_health(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    models_dir = tmp_path / "models"
     outside = tmp_path / "outside" / "first"
     write_bytes(outside / "model.bin", 4)
     config = FakeConfig("first", "First", outside)
@@ -331,7 +326,6 @@ def test_incomplete_cleanup_rejects_unsafe_model_before_health_check(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    models_dir = tmp_path / "models"
     outside = tmp_path / "outside" / "first"
     write_bytes(outside / "partial.bin", 4)
     config = FakeConfig("first", "First", outside)

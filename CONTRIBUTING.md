@@ -80,6 +80,25 @@ We use [pytest](https://docs.pytest.org/) for automated testing. Our test suite 
 
 All tests should be green before submitting a pull request.
 
+### Changing the browser UI
+The browser client has no Node toolchain: it is `web/index.html` plus CSS/JavaScript payloads
+declared in `app/*_ui.py` modules and composed by `app/ui_composition.py`. Read
+[docs/BROWSER_UI_ARCHITECTURE.md](docs/BROWSER_UI_ARCHITECTURE.md) before adding or reordering
+a surface — document order, request-pipeline order, and the page's Content-Security-Policy are
+all enforced by tests.
+
+Two extra gates apply to UI changes, because nothing else compiles the injected JavaScript:
+
+```powershell
+# Syntax-check every JavaScript payload the browser loads (requires Node.js)
+.\.venv\Scripts\python.exe scripts\check_injected_javascript.py
+
+# Drive the composed page in a real browser (requires playwright + chromium)
+.\.venv\Scripts\python.exe -m pip install -e .[browser]
+.\.venv\Scripts\python.exe -m playwright install chromium
+.\.venv\Scripts\python.exe -m pytest browser_tests
+```
+
 ### Code Style and Formatting
 We follow PEP 8 and enforce clean formatting.
 We use **ruff** for formatting and linting. Make sure to check and format your code before pushing:

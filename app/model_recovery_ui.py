@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from app import ui_extension
+from app import ui_registry
+from app.ui_registry import UiExtension
 
 _EXTENSION_ID = "ovllm-model-recovery-extension"
-_PROGRESS_MARKER = '<script id="ovllm-model-progress-extension">'
 
 MODEL_RECOVERY_UI_JS = r"""
 (() => {
@@ -501,8 +501,8 @@ MODEL_RECOVERY_UI_JS = r"""
         }
     }
 
-    const previousFetch = window.fetch.bind(window);
-    window.fetch = async function recoveryAwareFetch(input, init = {}) {
+    const previousFetch = InferBridge.chain();
+    InferBridge.use(async function recoveryAwareFetch(input, init = {}) {
         const target = endpoint(input);
         const method = methodOf(input, init);
         const response = await previousFetch(input, init);
@@ -515,7 +515,7 @@ MODEL_RECOVERY_UI_JS = r"""
             response.clone().json().then(applyStatusPayload).catch(() => {});
         }
         return response;
-    };
+    });
 
     document.getElementById('model-select')?.addEventListener('change', () => {
         if (latestPayload) applyStatusPayload(latestPayload);
@@ -529,26 +529,18 @@ MODEL_RECOVERY_UI_JS = r"""
 """
 
 
+EXTENSION = UiExtension(
+    extension_id=_EXTENSION_ID,
+    javascript=MODEL_RECOVERY_UI_JS,
+    before=("ovllm-model-progress-extension",),
+    description="Model preparation recovery actions and reusable-cache status.",
+)
+
+
 def install_model_recovery_ui_extension() -> None:
-    """Inject the recovery screen before the primary progress controller."""
+    """Register the model recovery screen."""
 
-    if getattr(ui_extension, "_MODEL_RECOVERY_UI_INSTALLED", False):
-        return
-    previous_inject = ui_extension.inject_multimodal_ui
-
-    def inject_with_model_recovery(html: str) -> str:
-        html = previous_inject(html)
-        if f'id="{_EXTENSION_ID}"' in html:
-            return html
-        script = f'\n<script id="{_EXTENSION_ID}">\n{MODEL_RECOVERY_UI_JS}\n</script>\n'
-        if _PROGRESS_MARKER in html:
-            return html.replace(_PROGRESS_MARKER, f"{script}{_PROGRESS_MARKER}", 1)
-        if "</body>" in html:
-            return html.replace("</body>", f"{script}</body>", 1)
-        return html + script
-
-    ui_extension.inject_multimodal_ui = inject_with_model_recovery
-    ui_extension._MODEL_RECOVERY_UI_INSTALLED = True
+    ui_registry.register(EXTENSION)
 
 
 __all__ = ["MODEL_RECOVERY_UI_JS", "install_model_recovery_ui_extension"]

@@ -90,9 +90,7 @@ def test_upgrade_summary_separates_revalidate_recompile_reconvert_and_unchanged(
     assert summary["unresolved_runtime_changes"] == 2
     assert summary["runtime_change_detected"] is True
 
-    actions = {
-        item["model_id"]: item["recommendation"]["action"] for item in snapshot["models"]
-    }
+    actions = {item["model_id"]: item["recommendation"]["action"] for item in snapshot["models"]}
     assert actions == {
         "legacy-model": "revalidate",
         "stale-a": "rebuild_compiled_cache",

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from app import ui_extension
+from app import ui_registry
+from app.ui_registry import UiExtension
 
 _EXTENSION_ID = "ovllm-header-overflow-extension"
 
@@ -242,24 +243,15 @@ syncLayout();
 """
 
 
+EXTENSION = UiExtension(
+    extension_id=_EXTENSION_ID,
+    javascript=HEADER_OVERFLOW_JS,
+    css=HEADER_OVERFLOW_CSS,
+    description="Compact secondary-action menu for narrow headers.",
+)
+
+
 def install_header_overflow_extension() -> None:
-    """Compose a compact secondary-action menu into the browser UI."""
+    """Register the compact secondary-action menu."""
 
-    if getattr(ui_extension, "_HEADER_OVERFLOW_EXTENSION_INSTALLED", False):
-        return
-    previous_inject = ui_extension.inject_multimodal_ui
-
-    def inject_with_header_overflow(html: str) -> str:
-        html = previous_inject(html)
-        if f'id="{_EXTENSION_ID}"' in html:
-            return html
-        payload = (
-            f'\n<style id="{_EXTENSION_ID}-styles">\n{HEADER_OVERFLOW_CSS}\n</style>\n'
-            f'<script id="{_EXTENSION_ID}">\n{HEADER_OVERFLOW_JS}\n</script>\n'
-        )
-        if "</body>" in html:
-            return html.replace("</body>", f"{payload}</body>", 1)
-        return html + payload
-
-    ui_extension.inject_multimodal_ui = inject_with_header_overflow
-    ui_extension._HEADER_OVERFLOW_EXTENSION_INSTALLED = True
+    ui_registry.register(EXTENSION)

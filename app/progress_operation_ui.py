@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from app import ui_extension
+from app import ui_registry
+from app.ui_registry import UiExtension
 
 _EXTENSION_ID = "ovllm-progress-operation-extension"
-_PROGRESS_MARKER = '<script id="ovllm-model-progress-extension">'
 
 PROGRESS_OPERATION_JS = r"""
 (() => {
@@ -197,8 +197,8 @@ PROGRESS_OPERATION_JS = r"""
         return true;
     }
 
-    const previousFetch = window.fetch.bind(window);
-    window.fetch = async function operationAwareFetch(input, init = {}) {
+    const previousFetch = InferBridge.chain();
+    InferBridge.use(async function operationAwareFetch(input, init = {}) {
         const target = endpoint(input);
         const method = requestMethod(input, init);
         const isStatus = target.sameOrigin && target.path === STATUS_PATH && method === 'GET';
@@ -221,7 +221,7 @@ PROGRESS_OPERATION_JS = r"""
         } catch {
             return response;
         }
-    };
+    });
 
     if (!attachDockObserver()) {
         rootObserver = new MutationObserver(() => attachDockObserver());
@@ -231,26 +231,18 @@ PROGRESS_OPERATION_JS = r"""
 """
 
 
+EXTENSION = UiExtension(
+    extension_id=_EXTENSION_ID,
+    javascript=PROGRESS_OPERATION_JS,
+    before=("ovllm-model-progress-extension",),
+    description="Reconciles server operation state before the progress controller runs.",
+)
+
+
 def install_progress_operation_ui_extension() -> None:
-    """Inject reconciliation before the main progress controller executes."""
+    """Register operation reconciliation."""
 
-    if getattr(ui_extension, "_PROGRESS_OPERATION_UI_INSTALLED", False):
-        return
-    previous_inject = ui_extension.inject_multimodal_ui
-
-    def inject_with_progress_operations(html: str) -> str:
-        html = previous_inject(html)
-        if f'id="{_EXTENSION_ID}"' in html:
-            return html
-        script = f'\n<script id="{_EXTENSION_ID}">\n{PROGRESS_OPERATION_JS}\n</script>\n'
-        if _PROGRESS_MARKER in html:
-            return html.replace(_PROGRESS_MARKER, f"{script}{_PROGRESS_MARKER}", 1)
-        if "</body>" in html:
-            return html.replace("</body>", f"{script}</body>", 1)
-        return html + script
-
-    ui_extension.inject_multimodal_ui = inject_with_progress_operations
-    ui_extension._PROGRESS_OPERATION_UI_INSTALLED = True
+    ui_registry.register(EXTENSION)
 
 
 __all__ = ["PROGRESS_OPERATION_JS", "install_progress_operation_ui_extension"]

@@ -205,7 +205,10 @@ class RuntimeHealthService:
             value = json.loads(self.state_file.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return {"schema_version": _RUNTIME_HEALTH_SCHEMA_VERSION, "models": {}}
-        if not isinstance(value, dict) or value.get("schema_version") != _RUNTIME_HEALTH_SCHEMA_VERSION:
+        if (
+            not isinstance(value, dict)
+            or value.get("schema_version") != _RUNTIME_HEALTH_SCHEMA_VERSION
+        ):
             return {"schema_version": _RUNTIME_HEALTH_SCHEMA_VERSION, "models": {}}
         models = value.get("models")
         if not isinstance(models, dict):
@@ -526,9 +529,7 @@ class RuntimeHealthService:
             )
             actual_device = str(getattr(engine, "device", requested_device) or requested_device)
         except Exception as exc:  # noqa: BLE001 - native details stay in server logs
-            logger.exception(
-                "Runtime validation failed for '%s' on %s", model_id, requested_device
-            )
+            logger.exception("Runtime validation failed for '%s' on %s", model_id, requested_device)
             self._write_model_record(
                 model_id,
                 "validation",
@@ -624,7 +625,9 @@ class RuntimeHealthService:
         if activity["loaded"]:
             raise StorageConflict("model_loaded", "Unload the model before reconverting it.")
         if not cfg.source_model:
-            raise StorageConflict("source_unavailable", "No Hugging Face source model is configured.")
+            raise StorageConflict(
+                "source_unavailable", "No Hugging Face source model is configured."
+            )
         target = self._select_device(cfg, device)
         profile = model_load_safety._read_profile(cfg, model_recovery._base_dir()) or {}
         try:

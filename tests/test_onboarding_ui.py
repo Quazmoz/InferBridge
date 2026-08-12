@@ -1,5 +1,5 @@
 from app.config import Settings  # noqa: F401 - installs composed UI extensions
-from app.onboarding_ui import ONBOARDING_UI
+from app.onboarding_ui import ONBOARDING_JS
 from app.ui_extension import inject_multimodal_ui
 
 
@@ -48,20 +48,20 @@ def test_wizard_has_accessible_stages_and_real_connection_configuration():
 
 
 def test_wizard_auto_opens_once_and_keeps_manual_onboarding_access():
-    assert "inferbridge.onboarding.auto-opened.v1" in ONBOARDING_UI
-    assert "function hasAutoOpened()" in ONBOARDING_UI
-    assert "function markAutoOpened()" in ONBOARDING_UI
-    assert "if(hasAutoOpened())return;markAutoOpened();show()" in ONBOARDING_UI
-    assert "Setup and onboarding" in ONBOARDING_UI
-    assert "Onboarding needs attention" in ONBOARDING_UI
-    assert "Restart onboarding" in ONBOARDING_UI
-    assert "opener.addEventListener('click'" in ONBOARDING_UI
+    assert "inferbridge.onboarding.auto-opened.v1" in ONBOARDING_JS
+    assert "function hasAutoOpened()" in ONBOARDING_JS
+    assert "function markAutoOpened()" in ONBOARDING_JS
+    assert "if(hasAutoOpened())return;markAutoOpened();show()" in ONBOARDING_JS
+    assert "Setup and onboarding" in ONBOARDING_JS
+    assert "Onboarding needs attention" in ONBOARDING_JS
+    assert "Restart onboarding" in ONBOARDING_JS
+    assert "opener.addEventListener('click'" in ONBOARDING_JS
 
 
 def test_wizard_omits_broken_exit_action_but_keeps_close():
-    assert "id:'exit'" not in ONBOARDING_UI
-    assert "action==='exit'" not in ONBOARDING_UI
-    assert "async function exitApp" not in ONBOARDING_UI
-    assert 'id="ovw-close"' in ONBOARDING_UI
-    assert "label:'Documentation'" in ONBOARDING_UI
-    assert "label:'Continue'" in ONBOARDING_UI
+    assert "id:'exit'" not in ONBOARDING_JS
+    assert "action==='exit'" not in ONBOARDING_JS
+    assert "async function exitApp" not in ONBOARDING_JS
+    assert 'id="ovw-close"' in ONBOARDING_JS
+    assert "label:'Documentation'" in ONBOARDING_JS
+    assert "label:'Continue'" in ONBOARDING_JS

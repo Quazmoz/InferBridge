@@ -235,7 +235,7 @@ class HardenedRuntimeHealthService(RuntimeHealthService):
                     candidate = current_path / name
                     if is_reparse_point(candidate):
                         relative = candidate.relative_to(root).as_posix()
-                        digest.update(f"\0reparse-dir\0{relative}".encode("utf-8"))
+                        digest.update(f"\0reparse-dir\0{relative}".encode())
                         continue
                     safe_directories.append(name)
                 directories[:] = safe_directories
@@ -244,15 +244,15 @@ class HardenedRuntimeHealthService(RuntimeHealthService):
                     candidate = current_path / name
                     relative = candidate.relative_to(root).as_posix()
                     if is_reparse_point(candidate):
-                        digest.update(f"\0reparse-file\0{relative}".encode("utf-8"))
+                        digest.update(f"\0reparse-file\0{relative}".encode())
                         continue
                     try:
                         stat = candidate.stat()
                     except OSError:
-                        digest.update(f"\0unreadable\0{relative}".encode("utf-8"))
+                        digest.update(f"\0unreadable\0{relative}".encode())
                         continue
                     if not candidate.is_file():
-                        digest.update(f"\0non-file\0{relative}".encode("utf-8"))
+                        digest.update(f"\0non-file\0{relative}".encode())
                         continue
                     metadata = f"\0file\0{relative}\0{stat.st_size}\0{stat.st_mtime_ns}"
                     digest.update(metadata.encode("utf-8"))
@@ -393,7 +393,9 @@ class HardenedRuntimeHealthService(RuntimeHealthService):
         snapshot = super()._snapshot_sync()
         runtime = snapshot.get("runtime")
         runtime = (
-            runtime if isinstance(runtime, dict) else runtime_health_module.current_runtime_versions()
+            runtime
+            if isinstance(runtime, dict)
+            else runtime_health_module.current_runtime_versions()
         )
         all_idle = bool(snapshot.get("summary", {}).get("all_models_idle"))
         changed = False
@@ -408,13 +410,10 @@ class HardenedRuntimeHealthService(RuntimeHealthService):
 
             source_cache_reusable = row.get("source_cache") == "reusable"
             label = "Reconvert from existing HF cache" if source_cache_reusable else "Reconvert"
-            reason = (
-                "The model failed load validation with the current OpenVINO runtime. "
-                + (
-                    "The reusable Hugging Face source cache is already available."
-                    if source_cache_reusable
-                    else "The source may need to be downloaded again."
-                )
+            reason = "The model failed load validation with the current OpenVINO runtime. " + (
+                "The reusable Hugging Face source cache is already available."
+                if source_cache_reusable
+                else "The source may need to be downloaded again."
             )
             health_status = str(row.get("conversion_health", {}).get("status") or "")
             available, blocked_reason = self._action_capability(

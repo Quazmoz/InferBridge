@@ -5,8 +5,9 @@ from __future__ import annotations
 from base64 import b64encode
 from pathlib import Path
 
-from app import ui_extension
+from app import ui_registry
 from app.brand import APPLICATION_DESCRIPTION, APPLICATION_TAGLINE, DISPLAY_NAME
+from app.ui_registry import UiExtension
 
 _EXTENSION_ID = "ovllm-branding-extension"
 _FAVICON_ID = "ovllm-brand-favicon"
@@ -82,33 +83,23 @@ def _apply_static_branding(html: str) -> str:
     return html
 
 
+_FAVICON_LINK = (
+    f'\n<link id="{_FAVICON_ID}" rel="icon" type="image/svg+xml" href="{BRAND_ICON_DATA_URI}">\n'
+)
+
+
+EXTENSION = UiExtension(
+    extension_id=_EXTENSION_ID,
+    javascript=BRANDING_JS,
+    css=BRANDING_CSS,
+    head_html=_FAVICON_LINK,
+    head_id=_FAVICON_ID,
+    transform=_apply_static_branding,
+    description="InferBridge product identity: title, description, logo, and favicon.",
+)
+
+
 def install_branding_extension() -> None:
-    """Inject InferBridge metadata, favicon, and header branding exactly once."""
+    """Register InferBridge metadata, favicon, and header branding."""
 
-    if getattr(ui_extension, "_BRANDING_EXTENSION_INSTALLED", False):
-        return
-    previous_inject = ui_extension.inject_multimodal_ui
-
-    def inject_with_branding(html: str) -> str:
-        html = _apply_static_branding(previous_inject(html))
-        if f'id="{_FAVICON_ID}"' not in html:
-            favicon = (
-                f'\n<link id="{_FAVICON_ID}" rel="icon" type="image/svg+xml" '
-                f'href="{BRAND_ICON_DATA_URI}">\n'
-            )
-            if "</head>" in html:
-                html = html.replace("</head>", f"{favicon}</head>", 1)
-            else:
-                html = favicon + html
-        if f'id="{_EXTENSION_ID}"' in html:
-            return html
-        payload = (
-            f'\n<style id="{_EXTENSION_ID}-styles">\n{BRANDING_CSS}\n</style>\n'
-            f'<script id="{_EXTENSION_ID}">\n{BRANDING_JS}\n</script>\n'
-        )
-        if "</body>" in html:
-            return html.replace("</body>", f"{payload}</body>", 1)
-        return html + payload
-
-    ui_extension.inject_multimodal_ui = inject_with_branding
-    ui_extension._BRANDING_EXTENSION_INSTALLED = True
+    ui_registry.register(EXTENSION)

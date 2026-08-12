@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from app import ui_extension
+from app import ui_registry
+from app.ui_registry import UiExtension
 
 _EXTENSION_ID = "inferbridge-huggingface-access-extension"
 
@@ -474,8 +475,8 @@ function decorateGatedModels(payload) {
   }, 0);
 }
 
-const upstreamFetch = window.fetch.bind(window);
-window.fetch = async function huggingFaceAwareFetch(input, init = {}) {
+const upstreamFetch = InferBridge.chain();
+InferBridge.use(async function huggingFaceAwareFetch(input, init = {}) {
   const target = endpoint(input);
   const method = String(init?.method || input?.method || 'GET').toUpperCase();
   const response = await upstreamFetch(input, init);
@@ -521,7 +522,7 @@ window.fetch = async function huggingFaceAwareFetch(input, init = {}) {
     } catch {}
   }
   return response;
-};
+});
 
 document.addEventListener('keydown', event => {
   if (event.key !== 'Escape') return;
@@ -539,25 +540,19 @@ void loadStatus();
 """
 
 
+EXTENSION = UiExtension(
+    extension_id=_EXTENSION_ID,
+    javascript=HUGGINGFACE_ACCESS_JS,
+    css=HUGGINGFACE_ACCESS_CSS,
+    style_id=f"{_EXTENSION_ID}-style",
+    description="Secure Hugging Face token settings and gated-model preflight.",
+)
+
+
 def install_huggingface_access_ui_extension() -> None:
-    if getattr(ui_extension, "_HUGGINGFACE_ACCESS_UI_INSTALLED", False):
-        return
-    previous_inject = ui_extension.inject_multimodal_ui
+    """Register secure Hugging Face access settings."""
 
-    def inject_with_huggingface_access(html: str) -> str:
-        html = previous_inject(html)
-        if f'id="{_EXTENSION_ID}"' in html:
-            return html
-        payload = (
-            f'\n<style id="{_EXTENSION_ID}-style">\n{HUGGINGFACE_ACCESS_CSS}\n</style>\n'
-            f'<script id="{_EXTENSION_ID}">\n{HUGGINGFACE_ACCESS_JS}\n</script>\n'
-        )
-        if "</body>" in html:
-            return html.replace("</body>", f"{payload}</body>", 1)
-        return html + payload
-
-    ui_extension.inject_multimodal_ui = inject_with_huggingface_access
-    ui_extension._HUGGINGFACE_ACCESS_UI_INSTALLED = True
+    ui_registry.register(EXTENSION)
 
 
 __all__ = [

@@ -171,9 +171,7 @@ class StorageManagerService:
             root=recovery_root,
             allow_file=True,
         )
-        incomplete = (
-            model_measurement if health_status == "incomplete" else TreeMeasurement(False)
-        )
+        incomplete = model_measurement if health_status == "incomplete" else TreeMeasurement(False)
         reclaimable_size = incomplete.size_bytes + staging.size_bytes + record.size_bytes
         protected_size = backup.size_bytes
         inspected = (incomplete, staging, backup, record)
@@ -329,10 +327,7 @@ class StorageManagerService:
         )
         compiled_reclaimable = compiled.size_bytes if compiled_cleanup["available"] else 0
         reclaimable = (
-            converted_reclaimable
-            + hf_reclaimable
-            + recovery_reclaimable
-            + compiled_reclaimable
+            converted_reclaimable + hf_reclaimable + recovery_reclaimable + compiled_reclaimable
         )
         total_managed = (
             converted_total
@@ -491,9 +486,7 @@ class StorageManagerService:
         record_path = models_root / ".inferbridge-recovery" / f"{model_id}.json"
         health = conversion_health(cfg)
         measurements = (
-            model_measurement
-            if health.get("status") == "incomplete"
-            else TreeMeasurement(False),
+            model_measurement if health.get("status") == "incomplete" else TreeMeasurement(False),
             _measure_tree(staging_dir, root=models_root),
             _measure_tree(record_path, root=record_path.parent, allow_file=True),
         )
@@ -574,8 +567,7 @@ class StorageManagerService:
                 related_ids = tuple(
                     related_id
                     for related_id, related_cfg in self.manager.catalog.items()
-                    if related_cfg.source_model
-                    and related_cfg.source_model == cfg.source_model
+                    if related_cfg.source_model and related_cfg.source_model == cfg.source_model
                 )
             elif request.action == "clear_compiled_cache":
                 related_ids = ()

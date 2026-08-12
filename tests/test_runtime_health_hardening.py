@@ -170,9 +170,7 @@ def test_hard_artifact_failure_overrides_old_successful_validation():
     assert recommendation["label"] == "Reconvert from existing HF cache"
 
 
-def test_cache_rebuild_preflights_all_targets_before_clearing_shared_cache(
-    tmp_path, monkeypatch
-):
+def test_cache_rebuild_preflights_all_targets_before_clearing_shared_cache(tmp_path, monkeypatch):
     catalog = {
         "healthy": HardeningConfig("healthy", tmp_path),
         "damaged": HardeningConfig("damaged", tmp_path),
@@ -488,9 +486,7 @@ def test_reconvert_refuses_to_race_catalog_update(tmp_path):
     try:
         with pytest.raises(StorageConflict) as exc_info:
             asyncio.run(
-                service.perform(
-                    RuntimeHealthActionRequest(action="reconvert", model_id="model-a")
-                )
+                service.perform(RuntimeHealthActionRequest(action="reconvert", model_id="model-a"))
             )
     finally:
         manager._catalog_lock.release()

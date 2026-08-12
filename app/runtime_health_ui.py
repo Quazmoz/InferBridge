@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import contextlib
-import sys
-
-from app import ui_extension
+from app import ui_registry
+from app.ui_registry import UiExtension
 
 _EXTENSION_ID = "ovllm-runtime-health-extension"
 
@@ -45,35 +43,20 @@ $('#rh-batch-validate').addEventListener('click',event=>batch('revalidate',event
 # fmt: on
 
 
+EXTENSION = UiExtension(
+    extension_id=_EXTENSION_ID,
+    javascript=_RUNTIME_HEALTH_JS,
+    css=_RUNTIME_HEALTH_CSS,
+    capability="desktop",
+    description="Runtime model health center and maintenance actions.",
+)
+
+
 def install_runtime_health_ui_extension() -> None:
-    if getattr(ui_extension, "_RUNTIME_HEALTH_UI_EXTENSION_INSTALLED", False):
-        return
-    previous_inject = ui_extension.inject_multimodal_ui
+    """Register the runtime health center and enable the desktop surfaces."""
 
-    def inject_with_runtime_health(html: str) -> str:
-        html = previous_inject(html)
-        if f'id="{_EXTENSION_ID}"' in html:
-            return html
-        payload = (
-            f'\n<style id="{_EXTENSION_ID}-styles">\n{_RUNTIME_HEALTH_CSS}\n</style>\n'
-            f'<script id="{_EXTENSION_ID}">\n{_RUNTIME_HEALTH_JS}\n</script>\n'
-        )
-        if "</body>" in html:
-            return html.replace("</body>", f"{payload}</body>", 1)
-        return html + payload
-
-    ui_extension.inject_multimodal_ui = inject_with_runtime_health
-    ui_extension._RUNTIME_HEALTH_UI_EXTENSION_INSTALLED = True
-
-    # Match the storage manager's late-install behavior for source-mode tests and
-    # unusual import orders where app.server was bound before desktop extensions.
-    server = sys.modules.get("app.server")
-    if server is not None:
-        server.inject_multimodal_ui = inject_with_runtime_health
-        cache = getattr(server, "_index_html", None)
-        if cache is not None:
-            with contextlib.suppress(AttributeError):
-                cache.cache_clear()
+    ui_registry.register(EXTENSION)
+    ui_registry.activate("desktop")
 
 
 __all__ = ["install_runtime_health_ui_extension"]

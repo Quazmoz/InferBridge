@@ -8,44 +8,22 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from app.branding_ui import install_branding_extension
-from app.cancellation_ui import install_cancellation_ui_extension
-from app.chat_context_ui import install_chat_context_extension
-from app.chat_guard_ui import install_chat_guard_extension
-from app.chat_queue_ui import install_chat_queue_extension
 from app.connection_hub import install_connection_hub_routes_extension
 from app.connection_hub_hardening import install_connection_hub_hardening
-from app.connection_hub_ui import install_connection_hub_ui_extension
 from app.context_budget import install_context_budget_routes_extension
-from app.context_budget_ui import install_context_budget_ui_extension
-from app.conversation_management_ui import install_conversation_management_extension
-from app.desktop_operations_ui import install_desktop_operations_ui_extension
-from app.doctor_ui import install_system_doctor_extension
 from app.engine_handoff_routes import install_engine_handoff_routes_extension
-from app.gui_stability import install_gui_stability_extension
-from app.header_overflow_ui import install_header_overflow_extension
 from app.huggingface_access import install_huggingface_access_routes_extension
-from app.huggingface_access_ui import install_huggingface_access_ui_extension
 from app.model_cancellation import install_model_cancellation_routes_extension
 from app.model_library_routes import install_model_library_routes_extension
-from app.model_library_ui import install_model_library_ui_extension
 from app.model_recovery import install_model_recovery_routes_extension
-from app.model_recovery_ui import install_model_recovery_ui_extension
-from app.onboarding_ui import install_onboarding_ui_extension
-from app.operation_queue_ui import install_operation_queue_ui_extension
 from app.paths import resolve_runtime_paths
-from app.progress_operation_ui import install_progress_operation_ui_extension
-from app.progress_reliability import install_progress_ui_extension
 from app.status_split import install_status_split_routes_extension
-from app.status_split_ui import install_status_split_ui_extension
-from app.ui_polish import install_ui_polish_extension
-from app.ui_quality import install_ui_quality_extension
+from app.ui_composition import compose as compose_browser_ui
 from runtime.device_check import normalize_device
 from runtime.npu_compat import install_openvino_genai_compat
 
-# Install compatibility and UI composition before app.model_manager/app.server bind
-# their imported engine and browser-injection functions. Desktop-only surfaces probe
-# for their APIs and remain dormant in ordinary development-server mode.
+# Install runtime compatibility and route extensions before app.model_manager/app.server
+# bind their imported engine functions.
 install_openvino_genai_compat()
 install_model_library_routes_extension()
 install_model_cancellation_routes_extension()
@@ -56,32 +34,9 @@ install_connection_hub_hardening()
 install_status_split_routes_extension()
 install_engine_handoff_routes_extension()
 install_huggingface_access_routes_extension()
-install_branding_extension()
-install_chat_context_extension()
-install_context_budget_ui_extension()
-install_chat_queue_extension()
-install_chat_guard_extension()
-# Conversation management wraps the completed chat safety stack. Visual polish then
-# decorates its replacement list renderer without owning persistence behavior.
-install_conversation_management_extension()
-install_ui_polish_extension()
-install_ui_quality_extension()
-install_system_doctor_extension()
-install_header_overflow_extension()
-install_progress_ui_extension()
-install_progress_operation_ui_extension()
-install_cancellation_ui_extension()
-install_model_recovery_ui_extension()
-# The split-status script must execute before operation/cancellation wrappers, while
-# the queue executes after them and before the primary progress controller.
-install_status_split_ui_extension()
-install_operation_queue_ui_extension()
-install_onboarding_ui_extension()
-install_model_library_ui_extension()
-install_huggingface_access_ui_extension()
-install_desktop_operations_ui_extension()
-install_connection_hub_ui_extension()
-install_gui_stability_extension()
+# Register the browser composition. Order, and every "must run before" requirement, is
+# declared in app.ui_composition rather than implied by the order of the calls here.
+compose_browser_ui()
 
 logger = logging.getLogger("ov-llm.config")
 _RUNTIME_PATHS = resolve_runtime_paths()
