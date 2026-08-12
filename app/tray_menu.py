@@ -10,6 +10,7 @@ from collections.abc import Callable
 
 from app import __version__
 from app.desktop_shell import copy_to_clipboard, open_path, show_dialog
+from app.support import GITHUB_ISSUES_URL, SUPPORT_URL, validate_support_url
 from app.tray_state import (
     TrayPhase,
     TraySnapshot,
@@ -78,6 +79,10 @@ class TrayMenuMixin:
                         self._action(self.copy_openai_configuration),
                         enabled=self._enabled("copy_connection"),
                     ),
+                    Item(
+                        "Diagnostics",
+                        self._action(self.copy_diagnostics),
+                    ),
                 ),
             ),
             Item(
@@ -137,7 +142,14 @@ class TrayMenuMixin:
                 enabled=self._enabled("start_with_windows"),
             ),
             Item("Check for Updates", self._action(self.open_updates)),
-            Item("About", self._action(self.show_about)),
+            Item(
+                "Help",
+                Menu(
+                    Item("Send Feedback", self._action(self.open_feedback)),
+                    Item("GitHub Issues", self._action(self.open_github_issues)),
+                    Item("About", self._action(self.show_about)),
+                ),
+            ),
             Item("Quit", self._action(self.quit)),
         )
 
@@ -235,6 +247,17 @@ class TrayMenuMixin:
                 f"The browser could not be opened. Visit {self.controller.origin}/?updates=1"
             )
 
+    def _open_external_support(self, url: str, label: str) -> None:
+        target = validate_support_url(url)
+        if not webbrowser.open(target, new=2):
+            raise RuntimeError(f"The browser could not open {label}. Visit {target}")
+
+    def open_feedback(self) -> None:
+        self._open_external_support(SUPPORT_URL, "the InferBridge feedback page")
+
+    def open_github_issues(self) -> None:
+        self._open_external_support(GITHUB_ISSUES_URL, "GitHub Issues")
+
     def _connection(self) -> dict[str, str]:
         snapshot = self._snapshot()
         if not snapshot.port:
@@ -294,7 +317,8 @@ class TrayMenuMixin:
             f"{APP_TITLE} {__version__}\n\n"
             "A local-first OpenVINO GenAI server for Windows. The tray controls only the "
             "server process it started. Prompts and chat history are not included in diagnostics. "
-            "Use Check for Updates to review optional stable or beta releases.",
+            "Use Help > Send Feedback for the simple support form, or Help > GitHub Issues for "
+            "technical discussion. Use Check for Updates to review optional stable or beta releases.",
         )
 
     def quit(self) -> None:
