@@ -119,7 +119,9 @@ class DiagnosticsCollector(DiagnosticsSectionsMixin):
         model_name = None
         model_format = None
         if isinstance(active_model, Mapping):
-            model_name = active_model.get("name") or active_model.get("id") or active_model.get("model_id")
+            model_name = (
+                active_model.get("name") or active_model.get("id") or active_model.get("model_id")
+            )
             model_format = active_model.get("weight_format") or active_model.get("precision")
         elif active_model:
             model_name = active_model
@@ -147,9 +149,13 @@ class DiagnosticsCollector(DiagnosticsSectionsMixin):
             or "unavailable"
         )
         ram_total = memory.get("total_gb")
-        ram_label = f"{ram_total} GB" if isinstance(ram_total, int | float) and ram_total > 0 else "unavailable"
+        ram_label = (
+            f"{ram_total} GB"
+            if isinstance(ram_total, int | float) and ram_total > 0
+            else "unavailable"
+        )
 
-        artifact_kind = (application.get("build_metadata") or {})
+        artifact_kind = application.get("build_metadata") or {}
         artifact_kind = artifact_kind if isinstance(artifact_kind, Mapping) else {}
         environment_label = (
             str(artifact_kind.get("artifact_kind") or "packaged")
