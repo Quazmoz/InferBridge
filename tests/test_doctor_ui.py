@@ -29,6 +29,16 @@ def test_system_doctor_covers_requested_support_diagnostics() -> None:
     assert "Copy support report" in rendered
 
 
+def test_system_doctor_exposes_low_friction_feedback_without_uploading() -> None:
+    rendered = inject_multimodal_ui("<html><body></body></html>")
+
+    assert 'id="inferbridge-support-extension"' in rendered
+    assert "https://consultant.quinnfavo.com/apps/inferbridge#feedback" in rendered
+    assert "Send Feedback" in rendered
+    assert "Nothing is uploaded automatically" in rendered
+    assert "fetch(supportUrl" not in rendered
+
+
 def test_system_doctor_distinguishes_fact_from_driver_inference() -> None:
     rendered = inject_multimodal_ui("<html><body></body></html>")
 
@@ -72,6 +82,7 @@ def test_support_report_omits_sensitive_browser_state() -> None:
     assert "status.disk?.models_dir" not in extension
     assert "conversation" not in extension
     assert "; error=${m.error}" not in extension
+    assert "Copy failed:" in extension
 
 
 def test_system_doctor_has_no_remote_runtime_dependencies() -> None:
