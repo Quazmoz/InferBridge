@@ -51,9 +51,10 @@ def register_release_routes(app, *, paths) -> None:
     @app.put("/desktop/release/settings", include_in_schema=False)
     async def update_release_settings(request: Request):
         _require_local_ui(request)
-        payload = await request.json()
         try:
-            preferences = UpdatePreferences.model_validate(payload)
+            # Decoding belongs inside the guard: a malformed body raises JSONDecodeError,
+            # which is a client mistake and must not surface as a server fault.
+            preferences = UpdatePreferences.model_validate(await request.json())
             for version in preferences.skipped_versions:
                 SemanticVersion.parse(version)
         except (ValueError, TypeError) as exc:
