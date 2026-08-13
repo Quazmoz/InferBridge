@@ -19,6 +19,18 @@ def _seed_chats(page: Page, chats: list[dict], active_id: str) -> None:
     )
 
 
+def _open_settings(page: Page) -> None:
+    """Reveal the settings sidebar that holds the conversation-storage controls.
+
+    Retention, import, export, and clear-all live inside the slide-out settings panel.
+    While it is closed the panel sits outside the viewport, so its buttons report as
+    visible yet every click lands on the main body behind them.
+    """
+
+    page.locator("#settings-toggle-btn").click()
+    expect(page.locator("#conversation-export-json")).to_be_in_viewport()
+
+
 def _chat(
     chat_id: str,
     title: str,
@@ -106,7 +118,11 @@ def test_conversation_search_and_management_actions(page: Page, inferbridge_url:
     page.get_by_label("Conversation actions: Renamed Alpha copy").click()
     page.get_by_role("menuitem", name="Archive", exact=True).click()
     page.locator('[data-cm-view="archived"]').click()
-    expect(page.locator("#chats-list .chat-item-title")).to_contain_text("Renamed Alpha copy")
+    # The archived view also holds the seeded "Archived needle" chat, so the assertion is
+    # scoped to the duplicate's own row rather than to every title in the list.
+    expect(
+        page.locator(f'#chats-list [data-chat-id="{copy["id"]}"] .chat-item-title')
+    ).to_contain_text("Renamed Alpha copy")
     expect(page.locator("#chats-footer")).to_contain_text("local to this browser profile")
 
 
@@ -127,6 +143,7 @@ def test_json_import_export_retention_and_clear_all(
         "chat-current",
     )
     page.goto(inferbridge_url, wait_until="networkidle")
+    _open_settings(page)
 
     with page.expect_download() as download_info:
         page.locator("#conversation-export-json").click()
@@ -199,8 +216,12 @@ def test_conversation_mutations_roll_back_when_chat_storage_fails(
     )
     page.goto(inferbridge_url, wait_until="networkidle")
 
+    # The patch is wrapped in a function so the script's completion value is a string
+    # rather than the replacement setItem. Returning the function itself makes Playwright
+    # serialize — and invoke — it with a receiver that is not a Storage, which fails as
+    # "Illegal invocation" before the test ever reaches its assertions.
     page.evaluate(
-        """
+        """() => {
         window.__inferbridgeRealSetItem = Storage.prototype.setItem;
         window.__inferbridgeFailChatWrites = true;
         Storage.prototype.setItem = function(key, value) {
@@ -209,7 +230,8 @@ def test_conversation_mutations_roll_back_when_chat_storage_fails(
             }
             return window.__inferbridgeRealSetItem.call(this, key, value);
         };
-        """
+        return 'chat writes now fail';
+        }"""
     )
 
     page.get_by_label("Conversation actions: Current").click()

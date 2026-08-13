@@ -89,9 +89,11 @@ def test_context_budget_chip_previews_omissions_and_reduces_output(
     inferbridge_url: str,
 ) -> None:
     page.add_init_script("localStorage.setItem('inferbridge.onboarding.auto-opened.v1', '1')")
-    page.goto(inferbridge_url, wait_until="networkidle")
 
     submitted = []
+    # Both routes are installed before the first navigation. The model picker keeps the
+    # selection it was built with, so a later status override cannot dislodge whichever
+    # model the live server happened to offer first.
     page.route(
         "**/v1/models/status",
         lambda route: route.fulfill(
@@ -110,6 +112,7 @@ def test_context_budget_chip_previews_omissions_and_reduces_output(
         )
 
     page.route("**/v1/chat/context-budget", context_budget)
+    page.goto(inferbridge_url, wait_until="networkidle")
     page.evaluate("fetch('/v1/models/status').then(response => response.json())")
 
     model_select = page.locator("#model-select")

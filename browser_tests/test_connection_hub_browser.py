@@ -3,9 +3,37 @@ from __future__ import annotations
 import json
 import time
 
+import pytest
 from playwright.sync_api import Page, expect
 
 MODEL_ID = "tinyllama-1.1b-chat-fp16"
+
+
+@pytest.fixture
+def loaded_mock_model(page: Page, inferbridge_url: str):
+    """Load the mock model, then unload it however the test ends.
+
+    The InferBridge server is session scoped and shared by every browser test, so a model
+    left loaded here changes the catalog that later tests read — enough to reorder the
+    models a progress test indexes into.
+    """
+
+    _load_mock_model(page, inferbridge_url)
+    try:
+        yield MODEL_ID
+    finally:
+        _unload_mock_model(page, inferbridge_url)
+
+
+def _unload_mock_model(page: Page, inferbridge_url: str) -> None:
+    page.request.post(f"{inferbridge_url}/v1/models/unload", data={"model": MODEL_ID})
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        status = page.request.get(f"{inferbridge_url}/v1/system/status")
+        if status.ok and MODEL_ID not in status.json()["models"]["loaded"]:
+            return
+        time.sleep(0.05)
+    raise AssertionError(f"Mock model {MODEL_ID} did not unload in time")
 
 
 def _load_mock_model(page: Page, inferbridge_url: str) -> None:
@@ -47,10 +75,10 @@ def _passed_self_test() -> dict:
 def test_connection_hub_renders_copies_self_tests_and_preserves_feedback(
     page: Page,
     inferbridge_url: str,
+    loaded_mock_model: str,
 ) -> None:
     page.add_init_script("localStorage.setItem('inferbridge.onboarding.auto-opened.v1', '1')")
     page.goto(inferbridge_url, wait_until="networkidle")
-    _load_mock_model(page, inferbridge_url)
 
     page.get_by_label("Toggle settings").click()
     page.locator("#connection-hub-open").click()
