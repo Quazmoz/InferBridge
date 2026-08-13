@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import copy
 import functools
-import secrets
 from typing import Any
 
 import httpx
@@ -18,7 +17,10 @@ from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, R
 from fastapi.responses import JSONResponse
 
 from app.brand import DISPLAY_NAME, LEGACY_DISPLAY_NAME
-from app.local_request_security import require_safe_browser_origin
+from app.local_request_security import (
+    matches_any_secret,
+    require_safe_browser_origin,
+)
 from app.model_library import (
     ConvertedModelImportRequest,
     ManifestValidationError,
@@ -67,7 +69,7 @@ async def _require_access(
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
     supplied = authorization.removeprefix("Bearer ")
-    if not any(secrets.compare_digest(supplied, key) for key in configured):
+    if not matches_any_secret(supplied, configured):
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 

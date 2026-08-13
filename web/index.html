@@ -2759,7 +2759,7 @@
                         </svg>
                         Latest
                     </button>
-                    <form id="chat-form" class="input-row" onsubmit="return false;">
+                    <form id="chat-form" class="input-row" data-inferbridge-no-submit>
                         <textarea id="user-input" placeholder="Message the model… (Enter to send, Shift+Enter for newline)"
                             rows="1" autocomplete="off" aria-label="Message the selected model"></textarea>
                         <button type="submit" id="send-btn" title="Send (Enter)" aria-label="Send message">
@@ -2796,7 +2796,7 @@
 
                 <div class="setting-group">
                     <label for="settings-api-key">API Key</label>
-                    <form onsubmit="return false;" style="display: contents;">
+                    <form data-inferbridge-no-submit style="display: contents;">
                         <input type="password" id="settings-api-key" autocomplete="new-password"
                             placeholder="Only if the server sets OV_LLM_API_KEY">
                     </form>
@@ -2947,7 +2947,7 @@
 
             <!-- Panel 2: Manual Registration & Quantization -->
             <div id="modal-panel-manual" class="modal-panel hidden" role="tabpanel" aria-labelledby="tab-btn-manual">
-                <form id="custom-model-form" class="modal-form" onsubmit="return false;" style="padding: 0; gap: 14px;">
+                <form id="custom-model-form" class="modal-form" data-inferbridge-no-submit style="padding: 0; gap: 14px;">
                     <div class="form-group">
                         <label for="custom-source-model">Hugging Face Repo ID</label>
                         <input type="text" id="custom-source-model" required

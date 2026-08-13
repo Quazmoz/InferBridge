@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from app import ui_extension
+from app import ui_registry
+from app.ui_registry import UiExtension
 
 _EXTENSION_ID = "ovllm-chat-guard-extension"
 
@@ -157,8 +158,8 @@ CHAT_GUARD_JS = r"""
         });
     }
 
-    const previousFetch = window.fetch.bind(window);
-    window.fetch = async function attachmentOwnershipFetch(input, init = {}) {
+    const previousFetch = InferBridge.chain();
+    InferBridge.use(async function attachmentOwnershipFetch(input, init = {}) {
         const target = endpoint(input);
         const method = String(init?.method || (typeof input !== 'string' && input?.method) || 'GET').toUpperCase();
         if (
@@ -172,7 +173,7 @@ CHAT_GUARD_JS = r"""
             }
         }
         return previousFetch(input, init);
-    };
+    });
 
     window.__ovllmVisionGuard = Object.freeze({
         hasPendingForChat,
@@ -190,21 +191,14 @@ CHAT_GUARD_JS = r"""
 """
 
 
+EXTENSION = UiExtension(
+    extension_id=_EXTENSION_ID,
+    javascript=CHAT_GUARD_JS,
+    description="Chat and attachment safety checks before a request is sent.",
+)
+
+
 def install_chat_guard_extension() -> None:
-    """Install chat/attachment safety checks after all other UI extensions."""
+    """Register chat and attachment safety checks."""
 
-    if getattr(ui_extension, "_CHAT_GUARD_EXTENSION_INSTALLED", False):
-        return
-    previous_inject = ui_extension.inject_multimodal_ui
-
-    def inject_with_chat_guard(html: str) -> str:
-        html = previous_inject(html)
-        if f'id="{_EXTENSION_ID}"' in html:
-            return html
-        script = f'\n<script id="{_EXTENSION_ID}">\n{CHAT_GUARD_JS}\n</script>\n'
-        if "</body>" in html:
-            return html.replace("</body>", f"{script}</body>", 1)
-        return html + script
-
-    ui_extension.inject_multimodal_ui = inject_with_chat_guard
-    ui_extension._CHAT_GUARD_EXTENSION_INSTALLED = True
+    ui_registry.register(EXTENSION)

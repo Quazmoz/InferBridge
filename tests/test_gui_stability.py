@@ -1,5 +1,6 @@
 from app.config import Settings  # noqa: F401 - installs composed UI extensions
 from app.gui_stability import GUI_STABILITY_CSS, GUI_STABILITY_JS
+from app.header_overflow_ui import HEADER_OVERFLOW_JS
 from app.ui_extension import inject_multimodal_ui
 
 
@@ -40,9 +41,26 @@ def test_modal_reset_focus_and_overflow_keyboard_behavior_are_repaired() -> None
     assert "syncCustomFormUi" in GUI_STABILITY_JS
     assert "returnFocusToMore" in GUI_STABILITY_JS
     assert "moreTrigger?.focus()" in GUI_STABILITY_JS
-    assert "ArrowDown" in GUI_STABILITY_JS
-    assert "ArrowUp" in GUI_STABILITY_JS
     assert "moreWrap?.addEventListener('focusout'" in GUI_STABILITY_JS
+
+
+def test_only_the_overflow_extension_moves_focus_within_the_header_menu() -> None:
+    """Two handlers on one keypress advanced focus twice, skipping every other item.
+
+    The header overflow extension creates the menu and owns its roving tabindex, so this
+    module must not also bind arrow, Home, or End navigation to the same element.
+    """
+
+    assert "moreMenu?.addEventListener('keydown'" not in GUI_STABILITY_JS
+    assert "moreTrigger?.addEventListener('keydown'" not in GUI_STABILITY_JS
+    assert "buttons[next]?.focus()" not in GUI_STABILITY_JS
+    assert "enabledMenuButtons" not in GUI_STABILITY_JS
+    # Closing the menu when focus leaves it stays here, and restores the trigger label
+    # that the overflow extension swaps while the menu is open.
+    assert "function hideMoreMenu()" in GUI_STABILITY_JS
+    assert "'aria-label', 'Open more actions'" in GUI_STABILITY_JS
+    assert "ArrowDown: 'next'" in HEADER_OVERFLOW_JS
+    assert "ArrowUp: 'previous'" in HEADER_OVERFLOW_JS
 
 
 def test_narrow_modal_and_search_layout_use_dynamic_viewport_units() -> None:

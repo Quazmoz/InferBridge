@@ -57,7 +57,7 @@ EOF
             ;;
         *)
             cat >&2 <<'EOF'
-Install Python 3.11, 3.12, or 3.13 plus venv/pip support with your distro package manager.
+Install Python 3.11, 3.12, 3.13, or 3.14 plus venv/pip support with your distro package manager.
 EOF
             ;;
     esac
@@ -72,12 +72,12 @@ EOF
             ;;
         fedora)
             cat >&2 <<'EOF'
-On Fedora, use the distro python3 when it is 3.11-3.13, or install a supported python3.x package and pass --python.
+On Fedora, use the distro python3 when it is 3.11-3.14, or install a supported python3.x package and pass --python.
 EOF
             ;;
         *)
             cat >&2 <<'EOF'
-Install Python 3.11, 3.12, or 3.13, then pass it with --python if python3 points elsewhere.
+Install Python 3.11, 3.12, 3.13, or 3.14, then pass it with --python if python3 points elsewhere.
 EOF
             ;;
     esac

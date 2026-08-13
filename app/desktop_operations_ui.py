@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-from app import ui_extension
+from app import ui_registry
+from app.ui_registry import UiExtension
 
 _EXTENSION_ID = "ovllm-desktop-operations-extension"
 
-_DESKTOP_OPERATIONS_UI = r"""
-<style id="ovllm-desktop-operations-style">
+_DESKTOP_OPERATIONS_CSS = r"""
 #ovw-operations{margin-left:auto}.ovops-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.ovops-card{padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2)}.ovops-card strong{display:block;margin-top:4px}.ovops-note{padding:10px;border-left:4px solid var(--primary);background:var(--surface-2)}@media(max-width:680px){.ovops-grid{grid-template-columns:1fr}}
-</style>
-<script id="ovllm-desktop-operations-extension">
+"""
+
+_DESKTOP_OPERATIONS_JS = r"""
 (() => {
 'use strict';
 if(window.__ovllmDesktopOperationsInstalled)return;
@@ -30,22 +31,19 @@ async function render(){priorContent=content.innerHTML;const steps=shell.querySe
 button.addEventListener('click',render);
 content.addEventListener('click',async event=>{const action=event.target.closest('[data-ovops]')?.dataset.ovops;if(!action)return;const result=content.querySelector('#ovops-result');try{if(action==='back'){content.innerHTML=priorContent;const steps=shell.querySelector('.ovw-steps');if(steps)steps.innerHTML=priorSteps;return}if(action==='export'){const confirmed=window.confirm('Create a local sanitized diagnostics ZIP?\n\nIncluded: application, Windows, hardware, OpenVINO, model state, benchmark summaries, configuration, and sanitized operational logs.\n\nExcluded: prompts, chat history, API keys, tokens, images, model files, caches, certificates, and browser localStorage.');if(!confirmed)return;const response=await api('/v1/desktop/operations/diagnostics/export',{method:'POST'});if(result)result.textContent=`Created ${response.filename}. Review the ZIP before attaching it to a GitHub issue.`}else if(action==='onboarding'){await api('/v1/onboarding/restart',{method:'POST'});location.reload()}else if(action==='restart'){await api('/v1/desktop/operations/restart-server',{method:'POST'});if(result)result.textContent='Restart requested. The tray controller will restore the server.'}}catch(error){if(result){result.className='ovw-error';result.textContent=error.message||String(error)}}});
 })();
-</script>
 """
 
 
+EXTENSION = UiExtension(
+    extension_id=_EXTENSION_ID,
+    javascript=_DESKTOP_OPERATIONS_JS,
+    css=_DESKTOP_OPERATIONS_CSS,
+    style_id="ovllm-desktop-operations-style",
+    description="Desktop operation progress surface.",
+)
+
+
 def install_desktop_operations_ui_extension() -> None:
-    if getattr(ui_extension, "_DESKTOP_OPERATIONS_UI_INSTALLED", False):
-        return
-    previous = ui_extension.inject_multimodal_ui
+    """Register the desktop operation surface."""
 
-    def inject(html: str) -> str:
-        html = previous(html)
-        if f'id="{_EXTENSION_ID}"' in html:
-            return html
-        if "</body>" in html:
-            return html.replace("</body>", f"\n{_DESKTOP_OPERATIONS_UI}\n</body>", 1)
-        return html + _DESKTOP_OPERATIONS_UI
-
-    ui_extension.inject_multimodal_ui = inject
-    ui_extension._DESKTOP_OPERATIONS_UI_INSTALLED = True
+    ui_registry.register(EXTENSION)

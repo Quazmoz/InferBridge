@@ -25,7 +25,7 @@ $ProjectFile = Join-Path $RepoRoot "pyproject.toml"
 $ProjectMarker = Join-Path $RepoRoot ".source_package_installed"
 $ConversionRequirementsPath = Join-Path $RepoRoot "requirements-convert.txt"
 $ConversionDependencyMarker = Join-Path $RepoRoot ".convert_deps_installed"
-$SupportedPythonVersions = @("3.11", "3.12", "3.13")
+$SupportedPythonVersions = @("3.11", "3.12", "3.13", "3.14")
 
 function Invoke-Checked {
     param(
@@ -65,9 +65,11 @@ function Resolve-Python {
         "py -3.11",
         "py -3.12",
         "py -3.13",
+        "py -3.14",
         "$env:LOCALAPPDATA\Python\pythoncore-3.11-64\python.exe",
         "$env:LOCALAPPDATA\Python\pythoncore-3.12-64\python.exe",
-        "$env:LOCALAPPDATA\Python\pythoncore-3.13-64\python.exe"
+        "$env:LOCALAPPDATA\Python\pythoncore-3.13-64\python.exe",
+        "$env:LOCALAPPDATA\Python\pythoncore-3.14-64\python.exe"
     )
     $installRoots = @(
         "$env:LOCALAPPDATA\Python",
@@ -99,7 +101,7 @@ function Resolve-Python {
             }
         }
     }
-    throw "No suitable Python found. Install Python 3.11, 3.12, or 3.13 from python.org, or pass -Python with the full python.exe path."
+    throw "No suitable Python found. Install Python 3.11, 3.12, 3.13, or 3.14 from python.org, or pass -Python with the full python.exe path."
 }
 
 
@@ -128,7 +130,7 @@ if (-not (Test-Path $venvPython)) {
 }
 $venvVersion = Get-PythonVersion -FilePath $venvPython
 if ($venvVersion -notin $SupportedPythonVersions) {
-    throw "The existing .venv uses unsupported Python $venvVersion. Remove $VenvDir and rerun setup with Python 3.11, 3.12, or 3.13."
+    throw "The existing .venv uses unsupported Python $venvVersion. Remove $VenvDir and rerun setup with Python 3.11, 3.12, 3.13, or 3.14."
 }
 
 try {

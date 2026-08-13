@@ -25,8 +25,15 @@ def format_tools_for_prompt(
     """Render a system-prompt section instructing the model how to call tools.
 
     Returns an empty string when tools are disabled (``tool_choice == "none"``).
+    Raises ``ValueError`` when the requested tool policy cannot be satisfied by the
+    supplied definitions instead of silently constructing an impossible prompt.
     """
-    if not tools or tool_choice == "none":
+
+    if tool_choice == "none":
+        return ""
+    if not tools:
+        if tool_choice == "required" or isinstance(tool_choice, dict):
+            raise ValueError("tool_choice requires at least one matching function tool.")
         return ""
 
     tools_json = [
@@ -45,14 +52,22 @@ def format_tools_for_prompt(
     if isinstance(tool_choice, dict) and tool_choice.get("type") == "function":
         forced_tool = tool_choice.get("function", {}).get("name")
         if forced_tool:
-            tools_json = [t for t in tools_json if t["function"]["name"] == forced_tool]
+            matching_tools = [
+                tool for tool in tools_json if tool["function"]["name"] == forced_tool
+            ]
+            if not matching_tools:
+                raise ValueError(f"tool_choice references unknown function '{forced_tool}'.")
+            tools_json = matching_tools
 
     if forced_tool:
         instruction = (
             f"You MUST call the '{forced_tool}' function. Do not respond with anything else."
         )
     elif tool_choice == "required":
-        instruction = "You MUST call at least one of the available tools. Do not respond without calling a tool."
+        instruction = (
+            "You MUST call at least one of the available tools. "
+            "Do not respond without calling a tool."
+        )
     else:
         instruction = "Use the tools when needed. If you don't need a tool, respond normally."
 
@@ -76,6 +91,7 @@ IMPORTANT: Output ONLY the JSON when calling tools, no other text."""
 
 def _arguments_to_json_string(arguments: Any) -> str:
     """Return OpenAI-compatible JSON text for a tool call's arguments field."""
+
     if arguments is None:
         return "{}"
     if isinstance(arguments, str):
@@ -92,6 +108,7 @@ def _arguments_to_json_string(arguments: Any) -> str:
 
 def _tool_items_from_json(value: Any) -> list[tuple[str, str]]:
     """Extract ``(name, arguments_json)`` pairs from parsed JSON values."""
+
     if isinstance(value, list):
         items: list[tuple[str, str]] = []
         for item in value:
@@ -115,6 +132,7 @@ def _tool_items_from_json(value: Any) -> list[tuple[str, str]]:
 
 def _json_candidates(text: str) -> list[tuple[int, int, Any]]:
     """Return parsed JSON candidates with their spans in the original text."""
+
     candidates: list[tuple[int, int, Any]] = []
 
     for match in _JSON_FENCE_RE.finditer(text):
@@ -176,6 +194,7 @@ def parse_tool_calls(
     code blocks. Parsing uses ``json.JSONDecoder`` instead of regex so nested
     argument objects/arrays remain valid.
     """
+
     tool_calls: list[ToolCall] = []
     seen: set[str] = set()
     accepted_spans: list[tuple[int, int]] = []
@@ -216,6 +235,7 @@ def parse_tool_calls(
 
 def detect_incomplete_tool_call(text: str) -> bool:
     """Heuristic: True if the output looks like a truncated tool-call JSON."""
+
     if '{"name"' in text or "[{" in text:
         if (text.count("{") - text.count("}")) > 0 or (text.count("[") - text.count("]")) > 0:
             return True

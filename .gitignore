@@ -30,10 +30,13 @@ env/
 
 # --- Tooling caches ---
 .pytest_cache/
+.pytest-tmp/
 .ruff_cache/
 .mypy_cache/
 .coverage
 htmlcov/
+# Screenshots and page dumps written by browser_tests on failure.
+browser-artifacts/
 
 # --- Logs / scratch ---
 *.log

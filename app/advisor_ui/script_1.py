@@ -16,7 +16,7 @@ SCRIPT_1 = r"""
         'lowest-memory': 'Lowest memory',
         'lowest-power': 'Lowest power',
     };
-    const upstreamFetch = window.fetch.bind(window);
+    const upstreamFetch = InferBridge.chain();
     const modelSelect = document.getElementById('model-select');
     const headerRight = document.querySelector('.header-right');
     if (!modelSelect || !headerRight) return;
@@ -35,6 +35,11 @@ SCRIPT_1 = r"""
     const button = document.createElement('button');
     button.type = 'button';
     button.id = 'advisor-open-btn';
+    // The compact header overflow menu collects its keyboard-navigable items by the
+    // `icon-btn` class. Without it this button is still announced as a menu item but
+    // arrow keys skip straight past it. Its own `#advisor-open-btn` rules win on
+    // specificity, so the class changes behaviour without changing appearance.
+    button.className = 'icon-btn';
     button.title = 'Best model for this PC';
     button.setAttribute('aria-label', 'Open hardware model advisor');
     button.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 9h6v6H9zM9 1v3m6-3v3M9 20v3m6-3v3M20 9h3m-3 6h3M1 9h3m-3 6h3"/></svg>';

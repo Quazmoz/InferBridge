@@ -138,8 +138,6 @@ def _split_leading_system_and_turns(
         elif current:
             current.append(message)
         elif message.get("role") == "user":
-            # A tool result without its preceding exchange is still more useful than
-            # dropping the only non-system message supplied by a nonstandard client.
             current = [message]
 
     if current and current[0].get("role") == "user":
@@ -148,8 +146,6 @@ def _split_leading_system_and_turns(
     if not turns:
         remainder = dict_messages[cursor:]
         if remainder:
-            # Preserve a useful final message for nonstandard API clients that send
-            # assistant-only prefills instead of a normal user-led conversation.
             turns = [[remainder[-1]]]
 
     return prefix, turns
@@ -294,7 +290,14 @@ def responses_input_to_messages(
     request_input: object,
     instructions: str | None = None,
 ) -> list[dict]:
-    """Convert a Responses-API ``input`` into normalized message dictionaries."""
+    """Convert Responses input items into local prompt messages.
+
+    Besides normal message objects, accept the function-call history and
+    ``function_call_output`` items used by Responses clients to continue a tool loop.
+    They are mapped onto the same conservative text representation used by Chat
+    Completions tool messages so model-specific chat templates never need to understand
+    provider-specific tool item types.
+    """
 
     out: list[dict] = []
     if instructions:
@@ -302,15 +305,50 @@ def responses_input_to_messages(
 
     if isinstance(request_input, str):
         out.append({"role": "user", "content": request_input})
-    elif isinstance(request_input, list):
-        for message in request_input:
-            if isinstance(message, dict):
-                out.append(
-                    {
-                        "role": str(message.get("role", "user")),
-                        "content": _content_to_text(message.get("content", "")),
-                    }
-                )
-    else:
+        return out
+    if not isinstance(request_input, list):
         raise ValueError("Responses 'input' must be a string or a list of messages")
+
+    for item in request_input:
+        if not isinstance(item, dict):
+            continue
+
+        item_type = str(item.get("type") or "")
+        if item_type == "function_call_output":
+            call_id = str(item.get("call_id") or item.get("id") or "").strip()
+            label = f" (call {call_id})" if call_id else ""
+            content = _content_to_text(item.get("output", ""))
+            out.append(
+                {
+                    "role": "user",
+                    "content": f"[tool result{label}]\n{content}",
+                }
+            )
+            continue
+
+        if item_type == "function_call":
+            name = str(item.get("name") or "")
+            arguments = item.get("arguments", "{}")
+            if not isinstance(arguments, str):
+                arguments = json.dumps(arguments)
+            out.append(
+                {
+                    "role": "assistant",
+                    "content": json.dumps(
+                        [{"name": name, "arguments": arguments}],
+                        separators=(",", ":"),
+                    ),
+                }
+            )
+            continue
+
+        role = str(item.get("role", "user"))
+        if role == "developer":
+            role = "system"
+        out.append(
+            {
+                "role": role,
+                "content": _content_to_text(item.get("content", "")),
+            }
+        )
     return out

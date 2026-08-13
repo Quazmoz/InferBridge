@@ -1,0 +1,589 @@
+"""Second-pass safety layer for runtime-health maintenance operations.
+
+The base runtime-health service owns classification and maintenance policy. This
+subclass strengthens execution guarantees for the packaged desktop application:
+maintenance batches exclude concurrent lifecycle/catalog mutations for their full
+duration, device parse failures are returned as controlled conflicts, and persisted
+validation evidence is bounded and tied to the complete managed model file tree.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import logging
+import os
+import time
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Any
+
+from app import model_recovery, runtime_health as runtime_health_module
+from app.model_library_conversion import is_reparse_point
+from app.runtime_health import (
+    RuntimeHealthActionRequest,
+    RuntimeHealthBatchRequest,
+    RuntimeHealthService,
+)
+from app.storage_safety import StorageConflict, _all_lifecycle_idle
+from runtime import device_check
+
+logger = logging.getLogger("ov-llm.runtime-health-safety")
+
+_MAX_STATE_BYTES = 1_000_000
+
+
+class HardenedRuntimeHealthService(RuntimeHealthService):
+    """Runtime-health service with an exclusive lifecycle gate around validation."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._maintenance_active = False
+        self._maintenance_owner: asyncio.Task[Any] | None = None
+        # Helper tasks the owner spawns to keep native work alive across cancellation.
+        # They act on the owner's behalf, so the guard must let them through.
+        self._maintenance_delegates: set[asyncio.Task[Any]] = set()
+        self._install_manager_guard()
+
+    def _install_manager_guard(self) -> None:
+        """Block new model/catalog work while one health maintenance batch is active.
+
+        Storage cleanup already prevents lifecycle work while files are being deleted,
+        but a runtime-health batch also performs temporary engine loads after deletion.
+        Keeping one guard around the whole sequence closes the gap where a normal load,
+        conversion, recovery, benchmark, or catalog refresh could otherwise start.
+        """
+
+        manager = self.manager
+        manager._runtime_health_guard_service = self
+        if getattr(manager, "_runtime_health_lifecycle_guard_installed", False):
+            return
+
+        upstream_load = manager.schedule_load
+        upstream_convert = manager.schedule_convert
+        upstream_delete = manager.delete
+        upstream_register = getattr(manager, "register_model", None)
+        upstream_reload = getattr(manager, "reload_catalog", None)
+        upstream_recover = getattr(manager, "recover_model", None)
+        upstream_temporary = getattr(manager, "build_temporary_engine", None)
+
+        def service() -> HardenedRuntimeHealthService | None:
+            current = getattr(manager, "_runtime_health_guard_service", None)
+            return current if isinstance(current, HardenedRuntimeHealthService) else None
+
+        def blocked() -> bool:
+            current = service()
+            return bool(current is not None and current._maintenance_active)
+
+        def conflict() -> ValueError:
+            return ValueError(
+                "Runtime model maintenance is active. Retry after revalidation finishes."
+            )
+
+        def schedule_load(model_id: str, *args: Any, **kwargs: Any):
+            if blocked():
+                raise conflict()
+            return upstream_load(model_id, *args, **kwargs)
+
+        def schedule_convert(model_id: str, *args: Any, **kwargs: Any):
+            if blocked():
+                raise conflict()
+            return upstream_convert(model_id, *args, **kwargs)
+
+        def delete(model_id: str, *args: Any, **kwargs: Any):
+            if blocked():
+                raise conflict()
+            return upstream_delete(model_id, *args, **kwargs)
+
+        manager.schedule_load = schedule_load
+        manager.schedule_convert = schedule_convert
+        manager.delete = delete
+
+        if callable(upstream_register):
+
+            def register_model(*args: Any, **kwargs: Any):
+                if blocked():
+                    raise conflict()
+                return upstream_register(*args, **kwargs)
+
+            manager.register_model = register_model
+
+        if callable(upstream_reload):
+
+            def reload_catalog(*args: Any, **kwargs: Any):
+                if blocked():
+                    raise conflict()
+                return upstream_reload(*args, **kwargs)
+
+            manager.reload_catalog = reload_catalog
+
+        if callable(upstream_recover):
+
+            async def recover_model(model_id: str, *args: Any, **kwargs: Any):
+                if blocked():
+                    raise model_recovery.RecoveryConflict(
+                        "maintenance_active",
+                        "Runtime model maintenance is active. Retry recovery afterward.",
+                    )
+                return await upstream_recover(model_id, *args, **kwargs)
+
+            manager.recover_model = recover_model
+
+        if callable(upstream_temporary):
+
+            async def build_temporary_engine(model_id: str, *args: Any, **kwargs: Any):
+                current = service()
+                if current is not None and current._maintenance_active:
+                    running = asyncio.current_task()
+                    if (
+                        running is not current._maintenance_owner
+                        and running not in current._maintenance_delegates
+                    ):
+                        raise conflict()
+                return await upstream_temporary(model_id, *args, **kwargs)
+
+            manager.build_temporary_engine = build_temporary_engine
+
+        manager._runtime_health_lifecycle_guard_installed = True
+
+    def _storage_temporary_or_mutation_active(self) -> bool:
+        state = getattr(self.manager, "_storage_runtime_state", None)
+        guard = getattr(state, "_guard_lock", None)
+        if state is None or guard is None:
+            return False
+        with guard:
+            return bool(
+                getattr(state, "_global_cleanup", False)
+                or getattr(state, "_cleaning_models", set())
+                or getattr(state, "_mutating_models", set())
+                or getattr(state, "_temporary_models", {})
+            )
+
+    def _try_catalog_lock(self):
+        lock = getattr(self.manager, "_catalog_lock", None)
+        if lock is None:
+            return None
+        if not lock.acquire(blocking=False):
+            raise StorageConflict(
+                "maintenance_conflict",
+                "Wait for the active model catalog update to finish.",
+            )
+        return lock
+
+    @asynccontextmanager
+    async def _exclusive_maintenance(self):
+        """Exclude storage and lifecycle mutations for an entire validation sequence."""
+
+        # Storage cleanup uses this lock for every destructive action. Holding it for
+        # the whole maintenance sequence prevents a second cleanup from interleaving
+        # between cache deletion and temporary load validation.
+        async with self.storage._cleanup_lock:
+            catalog_lock = self._try_catalog_lock()
+            try:
+                active_lifecycle = not _all_lifecycle_idle(self.manager)
+                active_storage = self._storage_temporary_or_mutation_active()
+                if active_lifecycle or active_storage:
+                    raise StorageConflict(
+                        "maintenance_conflict",
+                        (
+                            "Unload all models and wait for active model or storage operations "
+                            "to finish."
+                        ),
+                    )
+
+                self._maintenance_owner = asyncio.current_task()
+                self._maintenance_active = True
+                try:
+                    yield
+                finally:
+                    self._maintenance_active = False
+                    self._maintenance_owner = None
+            finally:
+                if catalog_lock is not None:
+                    catalog_lock.release()
+
+    def _read_state(self) -> dict[str, Any]:
+        """Ignore unsafe or unexpectedly large local maintenance-state files."""
+
+        try:
+            if is_reparse_point(self.state_file):
+                logger.warning("Ignoring reparse-point runtime health state file")
+                return {"schema_version": 1, "models": {}}
+            if self.state_file.stat().st_size > _MAX_STATE_BYTES:
+                logger.warning("Ignoring oversized runtime health state file")
+                return {"schema_version": 1, "models": {}}
+        except FileNotFoundError:
+            pass
+        except OSError:
+            return {"schema_version": 1, "models": {}}
+        return super()._read_state()
+
+    def _conversion_fingerprint(self, cfg: Any) -> str:
+        """Extend provenance evidence across every ordinary file in the model tree.
+
+        The base fingerprint covers the primary OpenVINO IR and configuration. The
+        complete metadata walk also invalidates prior validation after tokenizer,
+        detokenizer, generation-config, or other converted support files change. File
+        contents are not read, so multi-gigabyte weights remain cheap to fingerprint.
+        """
+
+        digest = hashlib.sha256(super()._conversion_fingerprint(cfg).encode("ascii"))
+        root = Path(cfg.abs_path(model_recovery._base_dir()))
+        if not root.is_dir() or is_reparse_point(root):
+            digest.update(b"\0unsafe-or-missing-root")
+            return digest.hexdigest()
+
+        try:
+            for current, directories, files in os.walk(root, topdown=True, followlinks=False):
+                current_path = Path(current)
+                safe_directories: list[str] = []
+                for name in sorted(directories):
+                    candidate = current_path / name
+                    if is_reparse_point(candidate):
+                        relative = candidate.relative_to(root).as_posix()
+                        digest.update(f"\0reparse-dir\0{relative}".encode())
+                        continue
+                    safe_directories.append(name)
+                directories[:] = safe_directories
+
+                for name in sorted(files):
+                    candidate = current_path / name
+                    relative = candidate.relative_to(root).as_posix()
+                    if is_reparse_point(candidate):
+                        digest.update(f"\0reparse-file\0{relative}".encode())
+                        continue
+                    try:
+                        stat = candidate.stat()
+                    except OSError:
+                        digest.update(f"\0unreadable\0{relative}".encode())
+                        continue
+                    if not candidate.is_file():
+                        digest.update(f"\0non-file\0{relative}".encode())
+                        continue
+                    metadata = f"\0file\0{relative}\0{stat.st_size}\0{stat.st_mtime_ns}"
+                    digest.update(metadata.encode("utf-8"))
+        except OSError:
+            digest.update(b"\0walk-failed")
+        return digest.hexdigest()
+
+    def _select_device(self, cfg: Any, requested: str | None) -> str:
+        try:
+            return super()._select_device(cfg, requested)
+        except device_check.DeviceValidationError as exc:
+            raise StorageConflict(
+                "invalid_device",
+                "Choose a valid OpenVINO device target before running model maintenance.",
+            ) from exc
+
+    async def _settle_without_abandoning(
+        self,
+        awaitable: Any,
+    ) -> tuple[Any | None, BaseException | None, asyncio.CancelledError | None]:
+        """Collect native-backed async work even if the requesting task is cancelled."""
+
+        task = asyncio.create_task(awaitable)
+        # Registered before the first await so the guard already sees the delegate by
+        # the time the wrapped coroutine starts running inside it.
+        self._maintenance_delegates.add(task)
+        task.add_done_callback(self._maintenance_delegates.discard)
+        pending_cancellation: asyncio.CancelledError | None = None
+        while True:
+            try:
+                return await asyncio.shield(task), None, pending_cancellation
+            except asyncio.CancelledError as exc:
+                if task.cancelled():
+                    return None, exc, pending_cancellation
+                pending_cancellation = pending_cancellation or exc
+            except Exception as exc:  # noqa: BLE001 - caller classifies the native failure
+                return None, exc, pending_cancellation
+
+    async def _validate_one(self, model_id: str, device: str | None) -> dict[str, Any]:
+        """Load-validate without abandoning a native engine build on cancellation."""
+
+        cfg = self._require_model(model_id)
+        if not _all_lifecycle_idle(self.manager):
+            raise StorageConflict(
+                "models_active",
+                "Unload all models and wait for active operations before runtime validation.",
+            )
+        self._ensure_revalidation_candidate(cfg)
+        requested_device = self._select_device(cfg, device)
+        runtime = runtime_health_module.current_runtime_versions()
+        fingerprint = self._conversion_fingerprint(cfg)
+        started = time.perf_counter()
+
+        build_result, build_error, pending_cancellation = await self._settle_without_abandoning(
+            self.manager.build_temporary_engine(model_id, requested_device)
+        )
+        if build_error is not None:
+            if not isinstance(build_error, asyncio.CancelledError):
+                logger.exception(
+                    "Runtime validation failed for '%s' on %s",
+                    model_id,
+                    requested_device,
+                    exc_info=(type(build_error), build_error, build_error.__traceback__),
+                )
+                self._write_model_record(
+                    model_id,
+                    "validation",
+                    {
+                        "status": "failed",
+                        "runtime": runtime,
+                        "conversion_fingerprint": fingerprint,
+                        "requested_device": requested_device,
+                        "device": requested_device,
+                        "validated_at": int(time.time()),
+                        "error_code": "load_validation_failed",
+                    },
+                )
+            if pending_cancellation is not None:
+                raise pending_cancellation
+            if isinstance(build_error, asyncio.CancelledError):
+                raise build_error
+            raise StorageConflict(
+                "validation_failed",
+                (
+                    "The model did not load successfully with the current runtime. "
+                    "Review server logs for the request ID."
+                ),
+            ) from build_error
+
+        engine, load_seconds = build_result
+        actual_device = str(getattr(engine, "device", requested_device) or requested_device)
+        close_result, close_error, close_cancellation = await self._settle_without_abandoning(
+            asyncio.to_thread(engine.close)
+        )
+        del close_result
+        pending_cancellation = pending_cancellation or close_cancellation
+        if close_error is not None and not isinstance(close_error, asyncio.CancelledError):
+            logger.warning("Could not close temporary validation engine for '%s'", model_id)
+
+        elapsed = max(float(load_seconds), time.perf_counter() - started)
+        record = {
+            "status": "passed",
+            "runtime": runtime,
+            "conversion_fingerprint": fingerprint,
+            "requested_device": requested_device,
+            "device": actual_device,
+            "validated_at": int(time.time()),
+            "load_time_ms": round(elapsed * 1000.0, 1),
+        }
+        self._write_model_record(model_id, "validation", record)
+        self.manager.emit_event(
+            "info", f"Validated {cfg.name} with the current OpenVINO runtime on {actual_device}"
+        )
+        if pending_cancellation is not None:
+            raise pending_cancellation
+        if isinstance(close_error, asyncio.CancelledError):
+            raise close_error
+        return {
+            "model_id": model_id,
+            "status": "validated",
+            "device": actual_device,
+            "requested_device": requested_device,
+            "load_time_ms": record["load_time_ms"],
+        }
+
+    def _current_validation_failed(
+        self,
+        cfg: Any,
+        validation: Any,
+        runtime: dict[str, Any],
+    ) -> bool:
+        return self._record_matches(
+            validation if isinstance(validation, dict) else None,
+            runtime=runtime,
+            conversion_fingerprint=self._conversion_fingerprint(cfg),
+            status="failed",
+        )
+
+    def _snapshot_sync_locked(self) -> dict[str, Any]:
+        """Keep a known current-runtime load failure visible until reconversion succeeds."""
+
+        snapshot = super()._snapshot_sync()
+        runtime = snapshot.get("runtime")
+        runtime = (
+            runtime
+            if isinstance(runtime, dict)
+            else runtime_health_module.current_runtime_versions()
+        )
+        all_idle = bool(snapshot.get("summary", {}).get("all_models_idle"))
+        changed = False
+
+        for row in snapshot.get("models", []):
+            model_id = str(row.get("model_id") or "")
+            cfg = self.manager.catalog.get(model_id)
+            if cfg is None or not self._current_validation_failed(
+                cfg, row.get("last_validation"), runtime
+            ):
+                continue
+
+            source_cache_reusable = row.get("source_cache") == "reusable"
+            label = "Reconvert from existing HF cache" if source_cache_reusable else "Reconvert"
+            reason = "The model failed load validation with the current OpenVINO runtime. " + (
+                "The reusable Hugging Face source cache is already available."
+                if source_cache_reusable
+                else "The source may need to be downloaded again."
+            )
+            health_status = str(row.get("conversion_health", {}).get("status") or "")
+            available, blocked_reason = self._action_capability(
+                "reconvert",
+                model_id=model_id,
+                health_status=health_status,
+                all_idle=all_idle,
+            )
+            row["recommendation"] = {
+                "action": "reconvert",
+                "label": label,
+                "reason": reason,
+                "safe_batch": False,
+                "available": available,
+                "blocked_reason": blocked_reason,
+            }
+            row["acknowledged_current_runtime"] = False
+            row["can_leave_unchanged"] = False
+            changed = True
+
+        if changed:
+            counts = {
+                "revalidate": 0,
+                "rebuild_compiled_cache": 0,
+                "reconvert": 0,
+                "leave_unchanged": 0,
+            }
+            for row in snapshot.get("models", []):
+                action = str(row.get("recommendation", {}).get("action") or "leave_unchanged")
+                if action in counts:
+                    counts[action] += 1
+            summary = snapshot.setdefault("summary", {})
+            summary.update(counts)
+            summary["needs_attention"] = (
+                counts["revalidate"] + counts["rebuild_compiled_cache"] + counts["reconvert"]
+            )
+            summary["unresolved_runtime_changes"] = sum(
+                1
+                for row in snapshot.get("models", [])
+                if row.get("conversion_health", {}).get("status") == "stale_runtime"
+                and row.get("recommendation", {}).get("action") != "leave_unchanged"
+            )
+
+        return snapshot
+
+    def _snapshot_sync(self) -> dict[str, Any]:
+        catalog_lock = getattr(self.manager, "_catalog_lock", None)
+        if catalog_lock is None:
+            return self._snapshot_sync_locked()
+        with catalog_lock:
+            return self._snapshot_sync_locked()
+
+    def _acknowledge_locked(self, model_id: str) -> dict[str, Any]:
+        cfg = self._require_model(model_id)
+        state = self._read_state()
+        model_state = state.get("models", {}).get(model_id, {})
+        runtime = runtime_health_module.current_runtime_versions()
+        if isinstance(model_state, dict) and self._current_validation_failed(
+            cfg, model_state.get("validation"), runtime
+        ):
+            raise StorageConflict(
+                "acknowledgment_unavailable",
+                "A model that failed current-runtime validation must be reconverted or repaired.",
+            )
+        return super()._acknowledge(model_id)
+
+    def _acknowledge(self, model_id: str) -> dict[str, Any]:
+        catalog_lock = getattr(self.manager, "_catalog_lock", None)
+        if catalog_lock is None:
+            return self._acknowledge_locked(model_id)
+        with catalog_lock:
+            return self._acknowledge_locked(model_id)
+
+    async def _schedule_reconvert(self, model_id: str, device: str | None) -> dict[str, Any]:
+        catalog_lock = self._try_catalog_lock()
+        try:
+            # The base implementation currently contains no suspension point: the async
+            # shape mirrors the surrounding service API while scheduling one background
+            # conversion task. Holding the lock prevents definition refresh from racing
+            # that scheduling decision.
+            return await super()._schedule_reconvert(model_id, device)
+        finally:
+            if catalog_lock is not None:
+                catalog_lock.release()
+
+    async def _rebuild_compiled_cache(
+        self,
+        model_ids: list[str],
+        device: str | None,
+    ) -> dict[str, Any]:
+        """Clear once and warm selected models under one uninterrupted maintenance gate."""
+
+        async with self._exclusive_maintenance():
+            # Preflight every target before deleting the shared cache. A single model
+            # that requires reconversion aborts the operation without changing files.
+            for model_id in model_ids:
+                cfg = self._require_model(model_id)
+                self._ensure_revalidation_candidate(cfg)
+
+            # The storage cleanup lock and lifecycle exclusion are already held here.
+            # Reuse the storage service's guarded removal implementation directly so
+            # the global gate remains active while selected models are warmed.
+            cleanup = await self.storage._clear_compiled_cache()
+            results: list[dict[str, Any]] = []
+            failures: list[dict[str, str]] = []
+            for model_id in model_ids:
+                try:
+                    results.append(await self._validate_one(model_id, device))
+                except (StorageConflict, KeyError) as exc:
+                    failures.append(
+                        {
+                            "model_id": model_id,
+                            "code": getattr(exc, "code", "validation_failed"),
+                            "message": str(exc),
+                        }
+                    )
+            return {
+                "status": "completed_with_errors" if failures else "completed",
+                "action": "rebuild_compiled_cache",
+                "freed_bytes": int(cleanup.get("freed_bytes") or 0),
+                "validated": results,
+                "failures": failures,
+            }
+
+    async def perform(self, request: RuntimeHealthActionRequest) -> dict[str, Any]:
+        async with self._operation_lock:
+            if request.action == "revalidate":
+                async with self._exclusive_maintenance():
+                    return await self._validate_one(request.model_id, request.device)
+            if request.action == "rebuild_compiled_cache":
+                return await self._rebuild_compiled_cache([request.model_id], request.device)
+            if request.action == "reconvert":
+                return await self._schedule_reconvert(request.model_id, request.device)
+            return await asyncio.to_thread(self._acknowledge, request.model_id)
+
+    async def perform_batch(self, request: RuntimeHealthBatchRequest) -> dict[str, Any]:
+        async with self._operation_lock:
+            if request.action == "rebuild_compiled_cache":
+                return await self._rebuild_compiled_cache(request.model_ids, request.device)
+
+            async with self._exclusive_maintenance():
+                results: list[dict[str, Any]] = []
+                failures: list[dict[str, str]] = []
+                for model_id in request.model_ids:
+                    try:
+                        results.append(await self._validate_one(model_id, request.device))
+                    except (StorageConflict, KeyError) as exc:
+                        failures.append(
+                            {
+                                "model_id": model_id,
+                                "code": getattr(exc, "code", "validation_failed"),
+                                "message": str(exc),
+                            }
+                        )
+                return {
+                    "status": "completed_with_errors" if failures else "completed",
+                    "action": "revalidate",
+                    "validated": results,
+                    "failures": failures,
+                }
+
+
+__all__ = ["HardenedRuntimeHealthService"]

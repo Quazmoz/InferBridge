@@ -29,7 +29,7 @@ jobs:
     timeout-minutes: 20
     strategy:
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
 
     steps:
       - name: Checkout repository
@@ -38,7 +38,7 @@ jobs:
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "${{ matrix.python-version }}"
           cache: pip
           cache-dependency-path: pyproject.toml
 
@@ -180,8 +180,13 @@ jobs:
           python -m py_compile
           packaging/runtime_hook.py
           app/cancellation_ui.py
+          app/connection_hub.py
+          app/connection_hub_hardening.py
+          app/connection_hub_ui.py
           app/context_budget.py
           app/context_budget_ui.py
+          app/conversation_management_ui.py
+          app/desktop_server.py
           app/header_overflow_ui.py
           app/hf_search_ui.py
           app/huggingface_access.py
@@ -197,8 +202,16 @@ jobs:
           app/progress_operation_ui.py
           app/request_logging.py
           app/responsive_ui.py
+          app/responses_api.py
+          app/runtime_health.py
+          app/runtime_health_ui.py
           app/status_split.py
           app/status_split_ui.py
+          app/storage_manager.py
+          app/storage_manager_ui.py
+          app/storage_root_safety.py
+          app/storage_safety.py
+          app/storage_state.py
           app/structured_progress.py
           runtime/model_artifacts.py
           runtime/model_converter.py
@@ -229,8 +242,12 @@ jobs:
           tests/test_installer_upgrade_contract.py
           tests/test_runtime_hook_upgrade.py
           tests/test_cancellation_ui.py
+          tests/test_connection_hub.py
+          tests/test_connection_hub_hardening.py
+          tests/test_connection_hub_ui.py
           tests/test_context_budget.py
           tests/test_context_budget_ui.py
+          tests/test_conversation_management_ui.py
           tests/test_errors.py
           tests/test_header_overflow_ui.py
           tests/test_hf_search_ui.py
@@ -251,8 +268,17 @@ jobs:
           tests/test_progress_operation_ui.py
           tests/test_progress_protocol.py
           tests/test_request_logging.py
+          tests/test_responses_api_parity.py
+          tests/test_runtime_health.py
+          tests/test_runtime_health_hardening.py
+          tests/test_runtime_health_summary.py
+          tests/test_runtime_health_ui.py
           tests/test_status_split.py
           tests/test_status_split_ui.py
+          tests/test_storage_manager.py
+          tests/test_storage_manager_second_pass.py
+          tests/test_storage_manager_ui.py
+          tests/test_storage_root_safety.py
           tests/test_structured_progress.py
           tests/test_structured_progress_tail.py
           tests/test_model_converter.py

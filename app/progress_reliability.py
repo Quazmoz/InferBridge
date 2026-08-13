@@ -8,7 +8,8 @@ interaction state.
 
 from __future__ import annotations
 
-from app import ui_extension
+from app import ui_registry
+from app.ui_registry import UiExtension
 
 _EXTENSION_ID = "ovllm-model-progress-extension"
 
@@ -668,7 +669,7 @@ PROGRESS_RELIABILITY_JS = r"""
         });
     }
 
-    const previousFetch = window.fetch.bind(window);
+    const previousFetch = InferBridge.chain();
 
     async function sharedStatusFetch(input, init) {
         const key = statusRequestKey(input, init);
@@ -689,7 +690,7 @@ PROGRESS_RELIABILITY_JS = r"""
         return { response: response.clone(), revision: holder.revision };
     }
 
-    window.fetch = async function reliableProgressFetch(input, init = {}) {
+    InferBridge.use(async function reliableProgressFetch(input, init = {}) {
         const target = endpoint(input);
         const method = requestMethod(input, init);
         const isStatus = target.sameOrigin && target.path === STATUS_PATH && method === 'GET';
@@ -733,7 +734,7 @@ PROGRESS_RELIABILITY_JS = r"""
             }
         }
         return response;
-    };
+    });
 
     document.getElementById('model-select')?.addEventListener('change', event => {
         const selected = latestStatus?.models?.available?.find(model => model.id === event.target.value);
@@ -755,21 +756,14 @@ PROGRESS_RELIABILITY_JS = r"""
 """
 
 
+EXTENSION = UiExtension(
+    extension_id=_EXTENSION_ID,
+    javascript=PROGRESS_RELIABILITY_JS,
+    description="The primary model-preparation progress controller.",
+)
+
+
 def install_progress_ui_extension() -> None:
-    """Install the progress controller after all other browser extensions."""
+    """Register the progress controller."""
 
-    if getattr(ui_extension, "_MODEL_PROGRESS_EXTENSION_INSTALLED", False):
-        return
-    previous_inject = ui_extension.inject_multimodal_ui
-
-    def inject_with_reliable_progress(html: str) -> str:
-        html = previous_inject(html)
-        if f'id="{_EXTENSION_ID}"' in html:
-            return html
-        script = f'\n<script id="{_EXTENSION_ID}">\n{PROGRESS_RELIABILITY_JS}\n</script>\n'
-        if "</body>" in html:
-            return html.replace("</body>", f"{script}</body>", 1)
-        return html + script
-
-    ui_extension.inject_multimodal_ui = inject_with_reliable_progress
-    ui_extension._MODEL_PROGRESS_EXTENSION_INSTALLED = True
+    ui_registry.register(EXTENSION)

@@ -33,7 +33,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from starlette.background import BackgroundTask
 
-from app import __version__, chat_format, model_manager, multimodal, tools
+from app import __version__, chat_format, model_manager, multimodal, responses_api, tools
 from app.body_limit import RequestBodyLimitMiddleware
 from app.brand import DISPLAY_NAME
 from app.config import BASE_DIR, Settings
@@ -54,14 +54,19 @@ from app.openai_api import (
     ModelLoadRequest,
     ModelRegisterRequest,
     ModelUnloadRequest,
-    ResponseObject,
-    ResponseOutputMessage,
-    ResponseRequest,
     UsageInfo,
 )
 from app.rate_limit import RateLimitMiddleware
 from app.telemetry import cpu_stats, disk_stats, gpu_stats, memory_stats
 from app.ui_extension import inject_multimodal_ui
+from app.ui_registry import (
+    ASSET_PREFIX,
+    UiAsset,
+    active_capabilities,
+    asset_manifest,
+    render_document as render_ui_document,
+    revision as ui_revision,
+)
 from runtime import device_check
 from runtime.benchmark_runner import (
     DEFAULT_BENCHMARK_PROMPT,
@@ -107,9 +112,72 @@ WEB_DIR = BASE_DIR / "web"
 
 @lru_cache(maxsize=1)
 def _index_html() -> str:
-    """Load and extend the bundled UI once per server process."""
+    """Return the fully inline composition of the bundled UI.
+
+    Kept as the source-level view of the page: tests and the injected-JavaScript syntax
+    gate read payload content out of it. The browser is served :func:`_index_document`
+    instead, which references the same payloads as cacheable assets.
+    """
 
     return inject_multimodal_ui((WEB_DIR / "index.html").read_text(encoding="utf-8"))
+
+
+# A high-entropy stand-in lets the composed document be built once and reused, with only
+# the per-response nonce substituted. Generated per process so it can never be predicted
+# or collide with page content.
+_NONCE_PLACEHOLDER = f"inferbridge-nonce-{secrets.token_hex(8)}"
+
+
+@lru_cache(maxsize=4)
+def _document_template(revision: int, capabilities: frozenset[str]) -> str:
+    """Compose the served document once per composition, with a placeholder nonce.
+
+    Keying on the registry revision means a late registration (the desktop launcher
+    activating its surfaces, a test installing one) produces a fresh document instead of a
+    stale cached one. The previous single-entry cache had to be cleared by hand.
+    """
+
+    base = (WEB_DIR / "index.html").read_text(encoding="utf-8")
+    return render_ui_document(base, _NONCE_PLACEHOLDER, capabilities)
+
+
+@lru_cache(maxsize=4)
+def _asset_index(revision: int, capabilities: frozenset[str]) -> dict[str, UiAsset]:
+    """Return the servable UI assets for a composition, keyed by URL path."""
+
+    return asset_manifest(capabilities)
+
+
+def _index_document(nonce: str) -> str:
+    """Return the served document with *nonce* applied to every inline block."""
+
+    template = _document_template(ui_revision(), active_capabilities())
+    return template.replace(_NONCE_PLACEHOLDER, nonce)
+
+
+def _content_security_policy(nonce: str) -> str:
+    """Return the page policy.
+
+    ``script-src`` carries a nonce instead of ``'unsafe-inline'``: the extension payloads
+    are served from ``'self'`` and the few remaining inline blocks are nonced, so no inline
+    script executes unless this response put it there. ``style-src`` keeps
+    ``'unsafe-inline'`` because the static shell uses ``style`` attributes, which a nonce
+    cannot cover; adding a nonce there would make browsers ignore ``'unsafe-inline'`` and
+    drop that styling.
+    """
+
+    return (
+        "default-src 'self'; "
+        "base-uri 'none'; "
+        "connect-src 'self'; "
+        "font-src 'self'; "
+        "form-action 'self'; "
+        "frame-ancestors 'none'; "
+        "img-src 'self' data:; "
+        "object-src 'none'; "
+        f"script-src 'self' 'nonce-{nonce}'; "
+        "style-src 'self' 'unsafe-inline'"
+    )
 
 
 def _load_dotenv() -> None:
@@ -191,16 +259,6 @@ def _build_normalized_chat_prompt(engine: BaseEngine, dict_messages, max_prompt_
     return chat_format.build_prompt_within_budget(
         dict_messages, engine.apply_chat_template, engine.count_tokens, max_prompt_len
     )
-
-
-def _normalize_and_build_response_prompt(
-    engine: BaseEngine, request_input, instructions: str | None, max_prompt_len: int
-):
-    dict_messages = chat_format.responses_input_to_messages(request_input, instructions)
-    prompt, prompt_tokens = chat_format.build_prompt_within_budget(
-        dict_messages, engine.apply_chat_template, engine.count_tokens, max_prompt_len
-    )
-    return prompt, prompt_tokens
 
 
 async def _build_prompt_off_thread(builder, *args):
@@ -457,28 +515,45 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     async def index():
+        nonce = secrets.token_urlsafe(16)
         return HTMLResponse(
-            _index_html(),
+            _index_document(nonce),
             headers={
+                # The document stays uncached because it carries a single-use nonce. Its
+                # payloads live in immutable /ui/ assets, so a reload re-fetches a small
+                # document rather than the whole application.
                 "Cache-Control": "no-store, must-revalidate",
                 "Pragma": "no-cache",
-                "Content-Security-Policy": (
-                    "default-src 'self'; "
-                    "base-uri 'none'; "
-                    "connect-src 'self'; "
-                    "font-src 'self'; "
-                    "form-action 'self'; "
-                    "frame-ancestors 'none'; "
-                    "img-src 'self' data:; "
-                    "object-src 'none'; "
-                    "script-src 'self' 'unsafe-inline'; "
-                    "style-src 'self' 'unsafe-inline'"
-                ),
+                "Content-Security-Policy": _content_security_policy(nonce),
                 "Referrer-Policy": "no-referrer",
                 "X-Content-Type-Options": "nosniff",
                 "X-Frame-Options": "DENY",
             },
         )
+
+    @app.get(ASSET_PREFIX + "{filename}", include_in_schema=False)
+    async def ui_asset(filename: str, accept_encoding: str = Header(default="")):
+        """Serve one content-addressed browser asset.
+
+        ``filename`` is only ever a lookup key in the composed manifest, never a path, so
+        no request can reach the filesystem through this route.
+        """
+
+        asset = _asset_index(ui_revision(), active_capabilities()).get(ASSET_PREFIX + filename)
+        if asset is None:
+            raise HTTPException(status_code=404, detail="Unknown UI asset.")
+        headers = {
+            # Safe because the URL contains a hash of the content: changed payload,
+            # changed URL. This is what makes a reload or app restart nearly free.
+            "Cache-Control": "public, max-age=31536000, immutable",
+            "Vary": "Accept-Encoding",
+            "Referrer-Policy": "no-referrer",
+            "X-Content-Type-Options": "nosniff",
+        }
+        if "gzip" in accept_encoding.lower():
+            headers["Content-Encoding"] = "gzip"
+            return Response(content=asset.gzip_body, media_type=asset.media_type, headers=headers)
+        return Response(content=asset.body, media_type=asset.media_type, headers=headers)
 
     @app.get("/favicon.ico", include_in_schema=False)
     async def favicon():
@@ -631,7 +706,6 @@ def create_app(settings: Settings) -> FastAPI:
             raise HTTPException(status_code=409, detail=f"Model '{req.model}' is still loading")
 
         try:
-            # Deleting a multi-GB IR directory can take a while; keep it off the event loop.
             result = await asyncio.to_thread(manager.delete, req.model)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -826,8 +900,6 @@ def create_app(settings: Settings) -> FastAPI:
     async def system_status():
         entries = manager.catalog_entries()
         available = device_check.available_devices()
-        # GPU property queries and the models-dir size walk both touch
-        # drivers/disk; run them off the event loop since the UI polls this.
         gpu, disk = await asyncio.gather(
             asyncio.to_thread(gpu_stats),
             asyncio.to_thread(disk_stats, settings.models_dir),
@@ -1107,7 +1179,6 @@ def create_app(settings: Settings) -> FastAPI:
                     finish_reason = "tool_calls"
                     content = remaining or None
             elif params.stop:
-                # Honor stop sequences (the runtime may not have applied them).
                 truncated, hit = chat_format.truncate_at_stop(text, params.stop)
                 if hit:
                     content = truncated
@@ -1165,7 +1236,6 @@ def create_app(settings: Settings) -> FastAPI:
             stream_gen = manager.stream(engine, prompt, params)
             try:
                 if use_tools:
-                    # Tool detection needs the full output, so buffer then decide.
                     async for piece in stream_gen:
                         full_text += piece
                     remaining, parsed = tools.parse_tool_calls(full_text, request.tools)
@@ -1191,7 +1261,6 @@ def create_app(settings: Settings) -> FastAPI:
                     else:
                         yield chunk({"role": "assistant", "content": remaining or full_text})
                 else:
-                    # Real-time token streaming for normal chat, honoring stop sequences.
                     stopper = chat_format.StopStreamer(params.stop or [])
                     first = True
                     async for piece in stream_gen:
@@ -1225,8 +1294,6 @@ def create_app(settings: Settings) -> FastAPI:
                     }
                 )
             finally:
-                # Promptly stop the worker + release the model lock if the client
-                # disconnected, instead of waiting for the generator to be GC'd.
                 await stream_gen.aclose()
 
             yield chunk({}, finish_reason=finish_reason)
@@ -1313,165 +1380,19 @@ def create_app(settings: Settings) -> FastAPI:
             ),
         )
 
-    # --- responses API (n8n) ----------------------------------------------
+    # --- Responses API -----------------------------------------------------
 
-    @app.post("/v1/responses", dependencies=auth)
-    async def create_response(request: ResponseRequest):
-        engine = _resolve_or_400(manager, request.model)
-        if "embedding" in getattr(engine, "backend", "").lower():
-            raise HTTPException(
-                status_code=400,
-                detail=f"Model '{request.model}' is an embedding model and cannot be used for response generation.",
-            )
-        response_contents = (
-            [message.get("content") for message in request.input if isinstance(message, dict)]
-            if isinstance(request.input, list)
-            else []
-        )
-        _validate_generation_request(engine, request.model, response_contents, request.lora_path)
-        cfg = manager.config_for(engine.model_id)
-        max_context_len = cfg.max_context_len if cfg else 2048
-        max_prompt_len = cfg.max_prompt_len if cfg else 1536
-
-        prompt, prompt_tokens = await _build_prompt_off_thread(
-            _normalize_and_build_response_prompt,
-            engine,
-            request.input,
-            request.instructions,
-            max_prompt_len,
-        )
-        try:
-            params = _params_for(
-                request.max_output_tokens,
-                request.temperature,
-                1.0,
-                prompt_tokens,
-                max_context_len,
-                lora_path=request.lora_path,
-                lora_alpha=request.lora_alpha,
-            )
-        except BaseException:
-            multimodal.discard_prompt_context(prompt)
-            raise
-
-        response_id = f"resp-{uuid.uuid4().hex}"
-        msg_id = f"msg-{uuid.uuid4().hex}"
-
-        if request.stream:
-            return StreamingResponse(
-                _stream_response(
-                    engine, request, prompt, prompt_tokens, params, response_id, msg_id
-                ),
-                media_type="text/event-stream",
-                background=BackgroundTask(multimodal.discard_prompt_context, prompt),
-            )
-
-        start = time.perf_counter()
-        try:
-            result = await manager.generate(engine, prompt, params)
-        finally:
-            multimodal.discard_prompt_context(prompt)
-        latency = time.perf_counter() - start
-        manager.record_request(engine.model_id, prompt_tokens, result.completion_tokens, latency)
-        record_key_metrics(prompt_tokens, result.completion_tokens, latency)
-        return ResponseObject(
-            id=response_id,
-            created_at=int(time.time()),
-            model=request.model,
-            output=[
-                ResponseOutputMessage(
-                    id=msg_id,
-                    content=[{"type": "output_text", "text": result.text}],
-                )
-            ],
-        )
-
-    async def _stream_response(engine, request, prompt, prompt_tokens, params, response_id, msg_id):
-        """SSE stream for the Responses API, using OpenAI Responses event names."""
-        created = int(time.time())
-        start = time.perf_counter()
-
-        def event(type_name: str, payload: dict) -> str:
-            return f"event: {type_name}\ndata: {json.dumps(payload)}\n\n"
-
-        def response_obj(text: str, status: str) -> dict:
-            return {
-                "id": response_id,
-                "object": "response",
-                "created_at": created,
-                "model": request.model,
-                "status": status,
-                "output": [
-                    {
-                        "type": "message",
-                        "id": msg_id,
-                        "status": status,
-                        "role": "assistant",
-                        "content": [{"type": "output_text", "text": text}],
-                    }
-                ],
-            }
-
-        yield event(
-            "response.created",
-            {"type": "response.created", "response": response_obj("", "in_progress")},
-        )
-
-        full_text = ""
-        generation_failed = False
-        stream_gen = manager.stream(engine, prompt, params)
-        try:
-            async for piece in stream_gen:
-                full_text += piece
-                yield event(
-                    "response.output_text.delta",
-                    {
-                        "type": "response.output_text.delta",
-                        "item_id": msg_id,
-                        "output_index": 0,
-                        "content_index": 0,
-                        "delta": piece,
-                    },
-                )
-        except Exception as exc:  # noqa: BLE001 - report inline to the SSE client
-            generation_failed = True
-            logger.exception("Responses generation failed: %s", exc)
-            yield event(
-                "response.error",
-                {
-                    "type": "response.error",
-                    "message": "Generation failed; see server logs for the request ID.",
-                },
-            )
-        finally:
-            await stream_gen.aclose()
-            multimodal.discard_prompt_context(prompt)
-
-        if generation_failed:
-            yield "data: [DONE]\n\n"
-            return
-
-        loop = asyncio.get_running_loop()
-        completion_tokens = await loop.run_in_executor(None, engine.count_tokens, full_text)
-        latency = time.perf_counter() - start
-        manager.record_request(engine.model_id, prompt_tokens, completion_tokens, latency)
-        record_key_metrics(prompt_tokens, completion_tokens, latency)
-
-        yield event(
-            "response.output_text.done",
-            {
-                "type": "response.output_text.done",
-                "item_id": msg_id,
-                "output_index": 0,
-                "content_index": 0,
-                "text": full_text,
-            },
-        )
-        yield event(
-            "response.completed",
-            {"type": "response.completed", "response": response_obj(full_text, "completed")},
-        )
-        yield "data: [DONE]\n\n"
+    responses_api.install_responses_api(
+        app,
+        manager=manager,
+        dependencies=auth,
+        resolve_engine=lambda model_id: _resolve_or_400(manager, model_id),
+        validate_generation_request=_validate_generation_request,
+        build_prompt_off_thread=_build_prompt_off_thread,
+        params_for=_params_for,
+        record_key_metrics=record_key_metrics,
+        request_id_var=request_id_var,
+    )
 
     return app
 

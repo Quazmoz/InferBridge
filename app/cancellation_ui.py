@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from app import ui_extension
+from app import ui_registry
+from app.ui_registry import UiExtension
 
 _EXTENSION_ID = "ovllm-model-cancellation-extension"
-_PROGRESS_MARKER = '<script id="ovllm-model-progress-extension">'
 
 CANCELLATION_UI_JS = r"""
 (() => {
@@ -268,8 +268,8 @@ CANCELLATION_UI_JS = r"""
         return true;
     }
 
-    const previousFetch = window.fetch.bind(window);
-    window.fetch = async function cancellationAwareFetch(input, init = {}) {
+    const previousFetch = InferBridge.chain();
+    InferBridge.use(async function cancellationAwareFetch(input, init = {}) {
         const target = endpoint(input);
         const method = requestMethod(input, init);
         const response = await previousFetch(input, init);
@@ -282,7 +282,7 @@ CANCELLATION_UI_JS = r"""
             response.clone().json().then(payload => scheduleRender(payload)).catch(() => {});
         }
         return response;
-    };
+    });
 
     document.getElementById('model-select')?.addEventListener('change', () => {
         feedback = null;
@@ -297,26 +297,18 @@ CANCELLATION_UI_JS = r"""
 """
 
 
+EXTENSION = UiExtension(
+    extension_id=_EXTENSION_ID,
+    javascript=CANCELLATION_UI_JS,
+    before=("ovllm-model-progress-extension",),
+    description="Operation-scoped cancellation controls.",
+)
+
+
 def install_cancellation_ui_extension() -> None:
-    """Inject cancellation controls before the main progress controller executes."""
+    """Register cancellation controls."""
 
-    if getattr(ui_extension, "_MODEL_CANCELLATION_UI_INSTALLED", False):
-        return
-    previous_inject = ui_extension.inject_multimodal_ui
-
-    def inject_with_cancellation(html: str) -> str:
-        html = previous_inject(html)
-        if f'id="{_EXTENSION_ID}"' in html:
-            return html
-        script = f'\n<script id="{_EXTENSION_ID}">\n{CANCELLATION_UI_JS}\n</script>\n'
-        if _PROGRESS_MARKER in html:
-            return html.replace(_PROGRESS_MARKER, f"{script}{_PROGRESS_MARKER}", 1)
-        if "</body>" in html:
-            return html.replace("</body>", f"{script}</body>", 1)
-        return html + script
-
-    ui_extension.inject_multimodal_ui = inject_with_cancellation
-    ui_extension._MODEL_CANCELLATION_UI_INSTALLED = True
+    ui_registry.register(EXTENSION)
 
 
 __all__ = ["CANCELLATION_UI_JS", "install_cancellation_ui_extension"]

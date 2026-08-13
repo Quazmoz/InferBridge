@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from app import ui_extension
+from app import ui_registry
+from app.ui_registry import UiExtension
 
 _EXTENSION_ID = "ovllm-chat-context-extension"
 
@@ -314,8 +315,8 @@ CHAT_CONTEXT_JS = r"""
         }
     }
 
-    const previousFetch = window.fetch.bind(window);
-    window.fetch = async function chatContextFetch(input, init = {}) {
+    const previousFetch = InferBridge.chain();
+    InferBridge.use(async function chatContextFetch(input, init = {}) {
         const target = endpoint(input);
         let registeredModelId = null;
         if (target.sameOrigin && target.path === '/v1/models/download-custom') {
@@ -337,26 +338,19 @@ CHAT_CONTEXT_JS = r"""
             window.setTimeout(() => applyChatContext(activeChat(), { restoreDraft: false }), 80);
         }
         return response;
-    };
+    });
 })();
 """
 
 
+EXTENSION = UiExtension(
+    extension_id=_EXTENSION_ID,
+    javascript=CHAT_CONTEXT_JS,
+    description="Per-chat context isolation for the browser conversation store.",
+)
+
+
 def install_chat_context_extension() -> None:
-    """Compose per-chat context isolation after existing browser extensions."""
+    """Register per-chat context isolation."""
 
-    if getattr(ui_extension, "_CHAT_CONTEXT_EXTENSION_INSTALLED", False):
-        return
-    previous_inject = ui_extension.inject_multimodal_ui
-
-    def inject_with_chat_context(html: str) -> str:
-        html = previous_inject(html)
-        if f'id="{_EXTENSION_ID}"' in html:
-            return html
-        script = f'\n<script id="{_EXTENSION_ID}">\n{CHAT_CONTEXT_JS}\n</script>\n'
-        if "</body>" in html:
-            return html.replace("</body>", f"{script}</body>", 1)
-        return html + script
-
-    ui_extension.inject_multimodal_ui = inject_with_chat_context
-    ui_extension._CHAT_CONTEXT_EXTENSION_INSTALLED = True
+    ui_registry.register(EXTENSION)

@@ -23,8 +23,14 @@ def _atomic_json(path: Path, payload: dict) -> None:
 def _read_schema(path: Path) -> int:
     if not path.exists():
         return MINIMUM_SUPPORTED_DATA_SCHEMA_VERSION
-    payload = json.loads(path.read_text(encoding="utf-8-sig"))
-    version = int(payload.get("schema_version", 0))
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+        version = int(payload["schema_version"])
+    except (LookupError, OSError, TypeError, ValueError) as exc:
+        # A truncated, empty, or hand-edited marker reaches the desktop launcher during
+        # startup. Every malformed shape must surface the same actionable failure rather
+        # than a raw decoding traceback.
+        raise RuntimeError("The persistent data schema marker is invalid.") from exc
     if version < 1:
         raise RuntimeError("The persistent data schema marker is invalid.")
     return version

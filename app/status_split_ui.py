@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from app import ui_extension
+from app import ui_registry
+from app.ui_registry import UiExtension
 
 _EXTENSION_ID = "ovllm-status-split-extension"
-_OPERATION_MARKER = '<script id="ovllm-progress-operation-extension">'
-_PROGRESS_MARKER = '<script id="ovllm-model-progress-extension">'
 
 STATUS_SPLIT_JS = r"""
 (() => {
@@ -112,7 +111,7 @@ STATUS_SPLIT_JS = r"""
         return response.json();
     }
 
-    const nativeFetch = window.fetch.bind(window);
+    const nativeFetch = InferBridge.chain();
 
     async function modelsSnapshot(state, headers, init) {
         const now = Date.now();
@@ -255,7 +254,7 @@ STATUS_SPLIT_JS = r"""
         });
     }
 
-    window.fetch = async function splitStatusFetch(input, init = {}) {
+    InferBridge.use(async function splitStatusFetch(input, init = {}) {
         const target = endpoint(input);
         const method = requestMethod(input, init);
         const headers = mergedHeaders(input, init);
@@ -288,33 +287,26 @@ STATUS_SPLIT_JS = r"""
             // behind stale model state.
             return nativeFetch(input, init);
         }
-    };
+    });
 })();
 """
 
 
+EXTENSION = UiExtension(
+    extension_id=_EXTENSION_ID,
+    javascript=STATUS_SPLIT_JS,
+    before=(
+        "ovllm-progress-operation-extension",
+        "ovllm-model-progress-extension",
+    ),
+    description="Split status polling that operation-aware layers build on.",
+)
+
+
 def install_status_split_ui_extension() -> None:
-    """Inject split polling before operation-aware fetch wrappers execute."""
+    """Register split status polling."""
 
-    if getattr(ui_extension, "_STATUS_SPLIT_UI_INSTALLED", False):
-        return
-    previous_inject = ui_extension.inject_multimodal_ui
-
-    def inject_with_split_status(html: str) -> str:
-        html = previous_inject(html)
-        if f'id="{_EXTENSION_ID}"' in html:
-            return html
-        script = f'\n<script id="{_EXTENSION_ID}">\n{STATUS_SPLIT_JS}\n</script>\n'
-        if _OPERATION_MARKER in html:
-            return html.replace(_OPERATION_MARKER, f"{script}{_OPERATION_MARKER}", 1)
-        if _PROGRESS_MARKER in html:
-            return html.replace(_PROGRESS_MARKER, f"{script}{_PROGRESS_MARKER}", 1)
-        if "</body>" in html:
-            return html.replace("</body>", f"{script}</body>", 1)
-        return html + script
-
-    ui_extension.inject_multimodal_ui = inject_with_split_status
-    ui_extension._STATUS_SPLIT_UI_INSTALLED = True
+    ui_registry.register(EXTENSION)
 
 
 __all__ = ["STATUS_SPLIT_JS", "install_status_split_ui_extension"]

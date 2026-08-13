@@ -7,7 +7,7 @@ InferBridge remains Windows-first. Fedora support is a CPU-first path for develo
 ## Expected baseline
 
 - Fedora 40 or newer is expected.
-- Python 3.11, 3.12, or 3.13 is expected.
+- Python 3.11, 3.12, 3.13, or 3.14 is expected.
 - CPU inference is the recommended first path.
 - GPU or NPU execution requires compatible Intel hardware and Linux drivers.
 - Fedora GPU and NPU support is experimental and hardware-dependent.
@@ -23,7 +23,7 @@ chmod +x setup.sh start_server.sh setup/*.sh setup/linux/*.sh
 ./setup.sh --minimal
 ```
 
-If `python3` is not Python 3.11 through 3.13, install a supported interpreter and pass it explicitly:
+If `python3` is not Python 3.11 through 3.14, install a supported interpreter and pass it explicitly:
 
 ```bash
 ./setup.sh --minimal --python python3.13

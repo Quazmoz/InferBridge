@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from app import ui_extension
+from app import ui_registry
+from app.ui_registry import UiExtension
 
 _EXTENSION_ID = "ovllm-gui-stability-extension"
 
@@ -312,45 +313,19 @@ if (typeof setCustomModelModalOpen === 'function') {
     };
 }
 
-/* Complete keyboard behavior for the ARIA menu and close it when keyboard
-   focus leaves the compact header control. */
+/* Close the compact header menu when keyboard focus leaves it.
+
+   Arrow, Home, and End navigation belongs to the header overflow extension, which
+   creates this menu and owns its roving tabindex. A second handler here moved focus a
+   further step on the same keypress, so every ArrowDown skipped an entry. */
 const moreWrap = document.getElementById('ov-header-more-wrap');
 const moreMenu = document.getElementById('ov-header-more-menu');
-function enabledMenuButtons() {
-    if (!moreMenu) return [];
-    return Array.from(moreMenu.querySelectorAll('button:not([disabled])'))
-        .filter(button => button.offsetParent !== null);
-}
 function hideMoreMenu() {
     if (!moreMenu || !moreTrigger) return;
     moreMenu.hidden = true;
     moreTrigger.setAttribute('aria-expanded', 'false');
+    moreTrigger.setAttribute('aria-label', 'Open more actions');
 }
-moreTrigger?.addEventListener('keydown', event => {
-    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-    event.preventDefault();
-    if (moreMenu?.hidden) moreTrigger.click();
-    defer(() => {
-        const buttons = enabledMenuButtons();
-        const target = event.key === 'ArrowUp' ? buttons.at(-1) : buttons[0];
-        target?.focus();
-    });
-});
-moreMenu?.addEventListener('keydown', event => {
-    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-    const buttons = enabledMenuButtons();
-    if (!buttons.length) return;
-    event.preventDefault();
-    const current = Math.max(0, buttons.indexOf(document.activeElement));
-    const next = event.key === 'Home'
-        ? 0
-        : event.key === 'End'
-        ? buttons.length - 1
-        : event.key === 'ArrowDown'
-        ? (current + 1) % buttons.length
-        : (current - 1 + buttons.length) % buttons.length;
-    buttons[next]?.focus();
-});
 moreWrap?.addEventListener('focusout', () => {
     window.setTimeout(() => {
         if (!moreWrap.contains(document.activeElement)) hideMoreMenu();
@@ -387,24 +362,15 @@ syncCustomFormUi();
 """
 
 
+EXTENSION = UiExtension(
+    extension_id=_EXTENSION_ID,
+    javascript=GUI_STABILITY_JS,
+    css=GUI_STABILITY_CSS,
+    description="Final GUI recovery, safety, and narrow-screen fixes.",
+)
+
+
 def install_gui_stability_extension() -> None:
-    """Compose final GUI recovery, safety, and narrow-screen fixes."""
+    """Register GUI recovery and narrow-screen fixes."""
 
-    if getattr(ui_extension, "_GUI_STABILITY_EXTENSION_INSTALLED", False):
-        return
-    previous_inject = ui_extension.inject_multimodal_ui
-
-    def inject_with_gui_stability(html: str) -> str:
-        html = previous_inject(html)
-        if f'id="{_EXTENSION_ID}"' in html:
-            return html
-        payload = (
-            f'\n<style id="{_EXTENSION_ID}-styles">\n{GUI_STABILITY_CSS}\n</style>\n'
-            f'<script id="{_EXTENSION_ID}">\n{GUI_STABILITY_JS}\n</script>\n'
-        )
-        if "</body>" in html:
-            return html.replace("</body>", f"{payload}</body>", 1)
-        return html + payload
-
-    ui_extension.inject_multimodal_ui = inject_with_gui_stability
-    ui_extension._GUI_STABILITY_EXTENSION_INSTALLED = True
+    ui_registry.register(EXTENSION)

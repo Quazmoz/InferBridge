@@ -1,3 +1,5 @@
+import pytest
+
 from app.openai_api import FunctionDefinition, ToolDefinition
 from app.tools import (
     detect_incomplete_tool_call,
@@ -31,6 +33,19 @@ def test_format_tools_forced_tool():
         [_weather_tool()], tool_choice={"type": "function", "function": {"name": "get_weather"}}
     )
     assert "MUST call the 'get_weather'" in prompt
+
+
+def test_format_tools_rejects_required_without_tools():
+    with pytest.raises(ValueError, match="requires at least one matching function tool"):
+        format_tools_for_prompt([], tool_choice="required")
+
+
+def test_format_tools_rejects_unknown_forced_tool():
+    with pytest.raises(ValueError, match="unknown function 'missing'"):
+        format_tools_for_prompt(
+            [_weather_tool()],
+            tool_choice={"type": "function", "function": {"name": "missing"}},
+        )
 
 
 def test_parse_single_object():

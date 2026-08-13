@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
-"""Syntax-check every inline script the composed browser UI actually serves.
+"""Syntax-check every piece of JavaScript the browser client loads.
 
-The browser client is assembled by injecting JavaScript that lives inside Python
-string literals across many ``*_ui`` modules. Nothing compiles that JavaScript, so a
-single unbalanced parenthesis silently kills one whole ``<script>`` element and the
-feature it implements, while the Python test suite stays green.
+The UI is a static document plus CSS/JavaScript payloads that live in Python string
+literals. Nothing compiles that JavaScript, so one unbalanced parenthesis silently kills a
+whole ``<script>`` element and the feature it implements while the Python suite stays green.
 
-Checking the rendered page instead of a hand-maintained module list means a newly
-injected surface is covered the moment it reaches the page.
+Payloads are read straight from ``app.ui_registry`` rather than scraped back out of the
+rendered page, so every block is checked under the name of the extension that owns it and a
+failure points at the module to fix. Both surfaces are covered: the ordinary server
+composition, and the desktop composition whose two extra surfaces are capability-gated.
+
+Assets served from ``/ui/`` carry byte-identical payloads to the ones checked here; that
+equivalence is asserted by ``tests/test_ui_registry.py::test_inline_and_asset_renderers_never_drift``.
 """
 
 from __future__ import annotations
@@ -20,40 +24,77 @@ import sys
 import tempfile
 from pathlib import Path
 
-# The browser ends a script element at the first `</script`, so extraction here matches
-# what actually executes rather than what the Python source intended to emit.
+# A browser ends a script element at the first `</script`, so extraction here matches what
+# actually executes rather than what the Python source intended to emit.
 _SCRIPT_RE = re.compile(
     r"<script(?![^>]*\bsrc\s*=)[^>]*>(.*?)</script\s*>",
     re.DOTALL | re.IGNORECASE,
 )
-_MINIMUM_EXPECTED_BLOCKS = 5
+_MINIMUM_EXPECTED_BLOCKS = 25
+
+
+def _repository_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def inline_scripts(html: str) -> list[str]:
+    """Return the body of every inline ``<script>`` in *html*, skipping empty ones."""
+
+    return [block for block in _SCRIPT_RE.findall(html) if block.strip()]
 
 
 def rendered_page() -> str:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    """Return the fully inline composition of the browser client."""
+
+    sys.path.insert(0, str(_repository_root()))
     from app.server import _index_html
 
     return _index_html()
 
 
-def inline_scripts(html: str) -> list[str]:
-    return [block for block in _SCRIPT_RE.findall(html) if block.strip()]
+def collect_blocks() -> list[tuple[str, str]]:
+    """Return every ``(label, javascript)`` block the browser executes."""
+
+    root = _repository_root()
+    sys.path.insert(0, str(root))
+
+    from app import (
+        config as _config,  # noqa: F401 - import registers the composition
+        ui_registry,
+    )
+    from app.ui_composition import DESKTOP_CAPABILITY, compose
+
+    compose()
+    blocks: list[tuple[str, str]] = []
+
+    index_html = (root / "web" / "index.html").read_text(encoding="utf-8")
+    for position, script in enumerate(_SCRIPT_RE.findall(index_html)):
+        if script.strip():
+            blocks.append((f"web/index.html inline block {position}", script))
+
+    # The desktop set is a superset of the server set, so iterating it once covers both.
+    for extension in ui_registry.extensions({DESKTOP_CAPABILITY}):
+        label = extension.extension_id
+        if extension.capability:
+            label = f"{label} [{extension.capability}]"
+        if extension.javascript.strip():
+            blocks.append((label, extension.javascript))
+    return blocks
 
 
-def check(node: str, blocks: list[str]) -> list[tuple[int, str]]:
-    failures: list[tuple[int, str]] = []
+def check(node: str, blocks: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    failures: list[tuple[str, str]] = []
     with tempfile.TemporaryDirectory(prefix="inferbridge-js-") as directory:
-        for index, block in enumerate(blocks):
-            path = Path(directory) / f"inline-script-{index:02d}.js"
-            path.write_text(block, encoding="utf-8")
+        for index, (label, script) in enumerate(blocks):
+            path = Path(directory) / f"block-{index:03d}.js"
+            path.write_text(script, encoding="utf-8")
             result = subprocess.run(  # noqa: S603 - fixed argv, no shell
                 [node, "--check", str(path)],
                 capture_output=True,
                 text=True,
             )
             if result.returncode != 0:
-                detail = (result.stderr or result.stdout).strip()
-                failures.append((index, detail))
+                failures.append((label, (result.stderr or result.stdout).strip()))
     return failures
 
 
@@ -71,23 +112,23 @@ def main(argv: list[str] | None = None) -> int:
         print("Node.js is required to syntax-check the injected browser JavaScript.")
         return 2
 
-    blocks = inline_scripts(rendered_page())
+    blocks = collect_blocks()
     if len(blocks) < _MINIMUM_EXPECTED_BLOCKS:
         print(
-            f"Only {len(blocks)} inline script block(s) were found in the composed UI. "
-            "The page or the extraction contract changed; refusing to report success."
+            f"Only {len(blocks)} JavaScript block(s) were collected. The composition or the "
+            "collection contract changed; refusing to report success."
         )
         return 2
 
     failures = check(node, blocks)
-    for index, detail in failures:
-        print(f"--- inline script block {index} failed to parse ---")
+    for label, detail in failures:
+        print(f"--- {label} failed to parse ---")
         print(detail)
     if failures:
-        print(f"{len(failures)} of {len(blocks)} inline script block(s) failed to parse.")
+        print(f"{len(failures)} of {len(blocks)} JavaScript block(s) failed to parse.")
         return 1
 
-    print(f"All {len(blocks)} inline script block(s) in the composed UI parse cleanly.")
+    print(f"All {len(blocks)} JavaScript block(s) parse cleanly.")
     return 0
 
 

@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-import secrets
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
 
 from app.config import Settings
-from app.local_request_security import require_safe_browser_origin
+from app.local_request_security import (
+    matches_any_secret,
+    require_safe_browser_origin,
+)
 from app.onboarding_models import (
     CancelPreparationResponse,
     CompleteOnboardingRequest,
@@ -37,7 +39,7 @@ def _state_change_auth(settings: Settings):
         if not authorization or not authorization.startswith("Bearer "):
             raise HTTPException(status_code=401, detail="Invalid or missing API key")
         supplied = authorization.removeprefix("Bearer ")
-        if not any(secrets.compare_digest(supplied, key) for key in configured):
+        if not matches_any_secret(supplied, configured):
             raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
     return require_key

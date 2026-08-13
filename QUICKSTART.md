@@ -7,7 +7,7 @@ Windows is the primary target. Ubuntu and Fedora support is experimental.
 ### Requirements
 
 - Windows 11
-- Python 3.11, 3.12, or 3.13
+- Python 3.11, 3.12, 3.13, or 3.14
 - Intel CPU
 - Intel GPU or NPU only when OpenVINO and the installed drivers expose the device
 

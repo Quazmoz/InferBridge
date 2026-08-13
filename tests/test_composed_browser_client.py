@@ -152,5 +152,8 @@ def test_composed_browser_javascript_parses():
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="Node.js is not installed")
 def test_checker_reports_a_syntax_error():
-    failures = check(shutil.which("node"), inline_scripts(_BROKEN_SCRIPT))
-    assert [index for index, _ in failures] == [0]
+    # Blocks are labeled with the extension that owns them, so a failure names the module
+    # to fix rather than an anonymous index.
+    blocks = [("probe", script) for script in inline_scripts(_BROKEN_SCRIPT)]
+    failures = check(shutil.which("node"), blocks)
+    assert [label for label, _ in failures] == ["probe"]

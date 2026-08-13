@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import secrets
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -19,7 +18,11 @@ from app.desktop_operations_models import (
     HardwareScanControlResponse,
 )
 from app.diagnostics import redact_path
-from app.local_request_security import require_safe_browser_origin
+from app.local_request_security import (
+    matches_any_secret,
+    require_safe_browser_origin,
+    secret_matches,
+)
 
 
 def _state_change_auth(settings: Settings):
@@ -34,7 +37,7 @@ def _state_change_auth(settings: Settings):
         if not authorization or not authorization.startswith("Bearer "):
             raise HTTPException(status_code=401, detail="Invalid or missing API key")
         supplied = authorization.removeprefix("Bearer ")
-        if not any(secrets.compare_digest(supplied, key) for key in configured):
+        if not matches_any_secret(supplied, configured):
             raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
     return require_key
@@ -52,7 +55,7 @@ def _control_dependency(control_token: str):
         x_desktop_control: str | None = Header(default=None),
     ) -> None:
         _require_loopback(request)
-        if not x_desktop_control or not secrets.compare_digest(x_desktop_control, control_token):
+        if not secret_matches(x_desktop_control, control_token):
             raise HTTPException(status_code=403, detail="Invalid desktop control token")
 
     return require_control

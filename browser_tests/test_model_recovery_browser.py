@@ -109,6 +109,10 @@ def test_recovery_screen_shows_state_details_and_starts_resume(
         )
 
     page.route("**/v1/models/recovery/action", handle_action)
+    # Resume submits whatever the header device selector holds, not the device reported by
+    # the status payload. Choose it explicitly so the assertion below pins that behaviour
+    # instead of depending on which accelerator happens to sort first on the host.
+    page.locator("#device-select").select_option("CPU")
     page.evaluate("fetch('/v1/models/status').then(response => response.json())")
 
     overlay = page.locator("#ov-model-recovery-overlay")

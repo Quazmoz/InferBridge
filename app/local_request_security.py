@@ -1,13 +1,46 @@
-"""Browser-origin safeguards for state-changing localhost routes."""
+"""Browser-origin safeguards and credential comparison for localhost routes."""
 
 from __future__ import annotations
 
+import secrets
+from collections.abc import Iterable
 from urllib.parse import urlsplit
 
 from fastapi import HTTPException, Request
 
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 _FORBIDDEN_DETAIL = "Cross-site browser requests are not allowed."
+
+
+def secret_matches(supplied: str | bytes | None, expected: str | bytes | None) -> bool:
+    """Constant-time credential comparison that tolerates non-ASCII input.
+
+    ``secrets.compare_digest`` raises TypeError when either ``str`` operand contains a
+    non-ASCII character. Request headers reach ASGI applications latin-1 decoded, so a
+    single high byte in a supplied credential — or a configured key with an accent —
+    would surface as a 500 instead of a clean rejection. Comparing UTF-8 bytes keeps the
+    timing guarantee while making every credential value representable.
+    """
+
+    if supplied is None or expected is None:
+        return False
+    left = supplied.encode("utf-8") if isinstance(supplied, str) else supplied
+    right = expected.encode("utf-8") if isinstance(expected, str) else expected
+    return secrets.compare_digest(left, right)
+
+
+def matches_any_secret(supplied: str | bytes | None, expected: Iterable[str | bytes]) -> bool:
+    """True when ``supplied`` equals any configured credential.
+
+    Every candidate is compared so a match late in the list cannot be distinguished from
+    a match early in it by response timing.
+    """
+
+    matched = False
+    for candidate in expected:
+        if secret_matches(supplied, candidate):
+            matched = True
+    return matched
 
 
 def _effective_port(scheme: str, port: int | None) -> int | None:

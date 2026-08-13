@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from app import ui_extension
+from app import ui_registry
+from app.ui_registry import UiExtension
 
 _EXTENSION_ID = "ovllm-operation-queue-extension"
-_PROGRESS_MARKER = '<script id="ovllm-model-progress-extension">'
 
 OPERATION_QUEUE_JS = r"""
 (() => {
@@ -332,8 +332,8 @@ OPERATION_QUEUE_JS = r"""
         return true;
     }
 
-    const previousFetch = window.fetch.bind(window);
-    window.fetch = async function operationQueueFetch(input, init = {}) {
+    const previousFetch = InferBridge.chain();
+    InferBridge.use(async function operationQueueFetch(input, init = {}) {
         const target = endpoint(input);
         const method = requestMethod(input, init);
         const response = await previousFetch(input, init);
@@ -341,7 +341,7 @@ OPERATION_QUEUE_JS = r"""
             response.clone().json().then(payload => scheduleRender(payload)).catch(() => {});
         }
         return response;
-    };
+    });
 
     document.getElementById('model-select')?.addEventListener('change', () => scheduleRender());
 
@@ -353,26 +353,18 @@ OPERATION_QUEUE_JS = r"""
 """
 
 
+EXTENSION = UiExtension(
+    extension_id=_EXTENSION_ID,
+    javascript=OPERATION_QUEUE_JS,
+    before=("ovllm-model-progress-extension",),
+    description="Queued lifecycle operation visibility.",
+)
+
+
 def install_operation_queue_ui_extension() -> None:
-    """Inject the queue before the primary progress controller executes."""
+    """Register queued-operation visibility."""
 
-    if getattr(ui_extension, "_OPERATION_QUEUE_UI_INSTALLED", False):
-        return
-    previous_inject = ui_extension.inject_multimodal_ui
-
-    def inject_with_operation_queue(html: str) -> str:
-        html = previous_inject(html)
-        if f'id="{_EXTENSION_ID}"' in html:
-            return html
-        script = f'\n<script id="{_EXTENSION_ID}">\n{OPERATION_QUEUE_JS}\n</script>\n'
-        if _PROGRESS_MARKER in html:
-            return html.replace(_PROGRESS_MARKER, f"{script}{_PROGRESS_MARKER}", 1)
-        if "</body>" in html:
-            return html.replace("</body>", f"{script}</body>", 1)
-        return html + script
-
-    ui_extension.inject_multimodal_ui = inject_with_operation_queue
-    ui_extension._OPERATION_QUEUE_UI_INSTALLED = True
+    ui_registry.register(EXTENSION)
 
 
 __all__ = ["OPERATION_QUEUE_JS", "install_operation_queue_ui_extension"]

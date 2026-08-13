@@ -2,7 +2,7 @@ import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SUPPORTED_PYTHON = ("3.11", "3.12", "3.13")
+SUPPORTED_PYTHON = ("3.11", "3.12", "3.13", "3.14")
 
 
 def test_supported_python_versions_are_consistent() -> None:
@@ -11,9 +11,9 @@ def test_supported_python_versions_are_consistent() -> None:
     installer = (ROOT / "setup" / "windows" / "install_deps.ps1").read_text(encoding="utf-8")
     preflight = (ROOT / "setup" / "windows" / "check_hardware.ps1").read_text(encoding="utf-8")
 
-    assert project["project"]["requires-python"] == ">=3.11,<3.14"
-    assert 'python-version: ["3.11", "3.12", "3.13"]' in ci
-    supported_versions = '$SupportedPythonVersions = @("3.11", "3.12", "3.13")'
+    assert project["project"]["requires-python"] == ">=3.11,<3.15"
+    assert 'python-version: ["3.11", "3.12", "3.13", "3.14"]' in ci
+    supported_versions = '$SupportedPythonVersions = @("3.11", "3.12", "3.13", "3.14")'
     assert supported_versions in installer
     assert supported_versions in preflight
     assert "Get-PythonVersion" in installer
@@ -27,8 +27,8 @@ def test_supported_python_versions_are_consistent() -> None:
         assert launcher in installer
         assert launcher in preflight
 
-    assert '"py -3.14"' not in installer
-    assert '"py -3.14"' not in preflight
+    assert '"py -3.15"' not in installer
+    assert '"py -3.15"' not in preflight
 
 
 def test_windows_ci_parses_source_setup_scripts() -> None:
