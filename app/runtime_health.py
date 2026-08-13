@@ -13,7 +13,6 @@ import hashlib
 import json
 import logging
 import re
-import secrets
 import time
 from pathlib import Path
 from typing import Any, Literal
@@ -22,7 +21,10 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
 from app import __version__, model_load_safety, model_recovery
-from app.local_request_security import require_safe_browser_origin
+from app.local_request_security import (
+    matches_any_secret,
+    require_safe_browser_origin,
+)
 from app.model_library_conversion import conversion_health, conversion_marker_path
 from app.model_library_schema import package_version
 from app.storage_manager import StorageCleanupRequest, StorageManagerService
@@ -736,7 +738,7 @@ async def _require_access(
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
     supplied = authorization.removeprefix("Bearer ")
-    if not any(secrets.compare_digest(supplied, key) for key in configured):
+    if not matches_any_secret(supplied, configured):
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 

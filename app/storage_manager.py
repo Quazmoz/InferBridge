@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import secrets
 import time
 from pathlib import Path
 from typing import Any, Literal
@@ -14,7 +13,10 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, model_validator
 
 from app import model_recovery
-from app.local_request_security import require_safe_browser_origin
+from app.local_request_security import (
+    matches_any_secret,
+    require_safe_browser_origin,
+)
 from app.model_library_conversion import conversion_health
 from app.storage_safety import (
     StorageConflict,
@@ -609,7 +611,7 @@ async def _require_access(
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
     supplied = authorization.removeprefix("Bearer ")
-    if not any(secrets.compare_digest(supplied, key) for key in configured):
+    if not matches_any_secret(supplied, configured):
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 

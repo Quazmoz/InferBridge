@@ -14,7 +14,6 @@ import functools
 import json
 import os
 import re
-import secrets
 import shutil
 import time
 import uuid
@@ -26,7 +25,10 @@ from pydantic import BaseModel, Field
 
 from app import model_registry as registry
 from app.brand import DISPLAY_NAME, LEGACY_DISPLAY_NAME
-from app.local_request_security import require_safe_browser_origin
+from app.local_request_security import (
+    matches_any_secret,
+    require_safe_browser_origin,
+)
 
 _MANAGER_INSTALL_FLAG = "_MODEL_RECOVERY_INSTALLED"
 _ROUTE_INSTALL_FLAG = "_ovllm_model_recovery_routes_installed"
@@ -611,7 +613,7 @@ async def _require_access(
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
     supplied = authorization.removeprefix("Bearer ")
-    if not any(secrets.compare_digest(supplied, key) for key in configured):
+    if not matches_any_secret(supplied, configured):
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 

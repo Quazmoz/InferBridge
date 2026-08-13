@@ -17,7 +17,6 @@ import hashlib
 import json
 import os
 import re
-import secrets
 import threading
 import time
 from collections.abc import Callable
@@ -31,7 +30,10 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from app.brand import DISPLAY_NAME, LEGACY_DISPLAY_NAME
-from app.local_request_security import require_safe_browser_origin
+from app.local_request_security import (
+    matches_any_secret,
+    require_safe_browser_origin,
+)
 
 _HF_REPO_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}/[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$")
 _HF_TOKEN_RE = re.compile(r"^hf_[A-Za-z0-9]{8,500}$")
@@ -694,7 +696,7 @@ async def _require_access(
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
     supplied = authorization.removeprefix("Bearer ")
-    if not any(secrets.compare_digest(supplied, key) for key in configured):
+    if not matches_any_secret(supplied, configured):
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
@@ -707,7 +709,7 @@ def _authorized_for_preflight(scope: dict[str, Any], settings: Any) -> bool:
     if not raw.startswith("Bearer "):
         return False
     supplied = raw.removeprefix("Bearer ")
-    return any(secrets.compare_digest(supplied, key) for key in configured)
+    return matches_any_secret(supplied, configured)
 
 
 class HuggingFacePreflightMiddleware:

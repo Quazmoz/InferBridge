@@ -12,7 +12,6 @@ import asyncio
 import copy
 import functools
 import logging
-import secrets
 import threading
 import time
 from dataclasses import dataclass, field
@@ -22,6 +21,7 @@ from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, R
 from fastapi.responses import JSONResponse
 
 from app.brand import DISPLAY_NAME, LEGACY_DISPLAY_NAME
+from app.local_request_security import matches_any_secret
 from app.telemetry import cpu_stats, disk_stats, gpu_stats, memory_stats
 from runtime import device_check
 
@@ -66,7 +66,7 @@ async def _require_access(
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
     supplied = authorization.removeprefix("Bearer ")
-    if not any(secrets.compare_digest(supplied, key) for key in configured):
+    if not matches_any_secret(supplied, configured):
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
