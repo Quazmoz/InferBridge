@@ -133,8 +133,16 @@ function openMenu({ focus = 'first' } = {}) {
 
 function closeAfterAction() {
     queueMicrotask(() => {
-        const focusStayedInMenu = menu.contains(document.activeElement);
-        closeMenu({ restoreFocus: focusStayedInMenu });
+        // Clicking an item's label forwards a programmatic click to its button, and a
+        // programmatic click never moves focus, so the document body still holds it.
+        // Restore the trigger unless the action deliberately focused something else,
+        // such as an input inside a modal it opened.
+        const active = document.activeElement;
+        const focusMovedAway = Boolean(active)
+            && active !== document.body
+            && active !== document.documentElement
+            && !menu.contains(active);
+        closeMenu({ restoreFocus: !focusMovedAway });
     });
 }
 
