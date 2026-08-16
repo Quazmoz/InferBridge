@@ -127,9 +127,7 @@ def estimated_quality_penalty(weight_format: str) -> float:
     recommendation.
     """
 
-    return {"fp16": 0.0, "int8": 1.5, "int4": 4.0}.get(
-        str(weight_format or "fp16").lower(), 8.0
-    )
+    return {"fp16": 0.0, "int8": 1.5, "int4": 4.0}.get(str(weight_format or "fp16").lower(), 8.0)
 
 
 def profile_precision_bonus(

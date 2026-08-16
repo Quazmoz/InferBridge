@@ -34,7 +34,11 @@ from runtime.openvino_engine import build_plugin_config  # noqa: E402
 QUALITY_CASES = (
     ("exact", "Reply with exactly INFERBRIDGE_OK and nothing else.", "INFERBRIDGE_OK"),
     ("arithmetic", "What is 17 multiplied by 23? Reply with only the integer.", "391"),
-    ("instruction", "Reply with exactly three words: local inference works", "local inference works"),
+    (
+        "instruction",
+        "Reply with exactly three words: local inference works",
+        "local inference works",
+    ),
 )
 
 
@@ -225,7 +229,9 @@ def _print_summary(results: list[QuantizationResult]) -> None:
             else "-"
         )
         load_s = f"{result.load_time_s:.2f}" if result.load_time_s is not None else "-"
-        smoke = f"{result.smoke_pass_rate * 100:.0f}%" if result.smoke_pass_rate is not None else "-"
+        smoke = (
+            f"{result.smoke_pass_rate * 100:.0f}%" if result.smoke_pass_rate is not None else "-"
+        )
         rate = f"{result.mean_tokens_per_s:.2f}" if result.mean_tokens_per_s is not None else "-"
         status = "ok" if result.success else "fail"
         print(

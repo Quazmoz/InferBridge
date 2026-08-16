@@ -115,9 +115,13 @@ class DeviceProfileMixin:
         )
 
         if profile == "fastest":
-            return speed * 0.72 + fit * 0.18 - memory * 0.8 + (8 if benchmark else 0) + precision_prior
+            return (
+                speed * 0.72 + fit * 0.18 - memory * 0.8 + (8 if benchmark else 0) + precision_prior
+            )
         if profile == "best-quality":
-            return quality * 0.72 + fit * 0.20 + speed * 0.08 + min(params, 32) * 0.2 + precision_prior
+            return (
+                quality * 0.72 + fit * 0.20 + speed * 0.08 + min(params, 32) * 0.2 + precision_prior
+            )
         if profile == "lowest-memory":
             return fit * 0.35 + 70.0 / max(memory, 0.35) + speed * 0.08 + precision_prior
         if profile == "lowest-power":
