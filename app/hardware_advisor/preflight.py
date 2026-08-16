@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from app.quantization_policy import recommend_quantization
+
 from .common import base_device, normalize_profile, safe_float
 
 
@@ -22,6 +24,11 @@ class PreflightMixin:
         profile = normalize_profile(profile)
         snapshot = snapshot or self.hardware_snapshot()
         target = loaded_device or self.recommend_device(cfg, profile=profile, snapshot=snapshot)
+        quantization = recommend_quantization(
+            backend=str(getattr(cfg, "backend", "openvino-genai")),
+            device=target,
+            profile=profile,
+        )
         estimates = self.estimate_model(cfg, device=target)
         memory = snapshot.get("memory", {})
         disk = snapshot.get("disk", {})
@@ -153,6 +160,14 @@ class PreflightMixin:
             "recommended_device": target,
             "recommended_context_len": recommended_context,
             "recommended_output_tokens": recommended_output,
+            "recommended_weight_format": quantization.weight_format,
+            "quantization_recommendation": {
+                "weight_format": quantization.weight_format,
+                "reason": quantization.reason,
+                "group_size": quantization.group_size,
+                "ratio": quantization.ratio,
+                "sym": quantization.sym,
+            },
             "warnings": warnings,
             "requires_confirmation": bool(blocking or caution),
             "downloaded": bool(downloaded),
