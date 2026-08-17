@@ -70,9 +70,9 @@ def migrate_state(raw: Any) -> dict[str, Any]:
         "completed_app_version",
     ):
         state[key] = _normalized_text(state.get(key))
-    state["network_cors_origins"] = _normalized_text(
-        state.get("network_cors_origins"), limit=2048
-    ) or ""
+    state["network_cors_origins"] = (
+        _normalized_text(state.get("network_cors_origins"), limit=2048) or ""
+    )
 
     selected_device = _normalized_text(state.get("selected_device"))
     if selected_device is not None:

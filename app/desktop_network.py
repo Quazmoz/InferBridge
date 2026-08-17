@@ -90,7 +90,9 @@ class DesktopApiKeyStore:
         if any(char.isspace() or not char.isprintable() for char in key):
             raise ValueError("API keys cannot contain whitespace or control characters.")
         if "," in key:
-            raise ValueError("The desktop UI stores one API key. Comma-separated keys are environment-only.")
+            raise ValueError(
+                "The desktop UI stores one API key. Comma-separated keys are environment-only."
+            )
         return key
 
     @staticmethod
@@ -246,7 +248,9 @@ def normalize_cors_origins(value: str) -> str:
         return ""
     if "*" in parts:
         if len(parts) != 1:
-            raise ValueError("Wildcard CORS must be used by itself, not mixed with explicit origins.")
+            raise ValueError(
+                "Wildcard CORS must be used by itself, not mixed with explicit origins."
+            )
         return "*"
     normalized: list[str] = []
     for origin in parts:
@@ -258,7 +262,9 @@ def normalize_cors_origins(value: str) -> str:
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
             raise ValueError("Browser origins must be complete http:// or https:// origins.")
         if parsed.username or parsed.password or parsed.query or parsed.fragment:
-            raise ValueError("Browser origins cannot contain credentials, query strings, or fragments.")
+            raise ValueError(
+                "Browser origins cannot contain credentials, query strings, or fragments."
+            )
         if parsed.path not in {"", "/"}:
             raise ValueError("Browser origins cannot contain URL paths.")
         host = parsed.hostname
@@ -308,8 +314,10 @@ def resolve_desktop_network_settings(
         except ValueError as exc:
             cors = ""
             cors_blocked_reason = f"Saved browser origins were not applied: {str(exc)[:220]}"
-        cors_source = "desktop_setting" if cors else (
-            "security_fallback" if cors_blocked_reason else "default"
+        cors_source = (
+            "desktop_setting"
+            if cors
+            else ("security_fallback" if cors_blocked_reason else "default")
         )
 
     if "OV_LLM_API_KEY" in values:
@@ -427,7 +435,6 @@ def is_trusted_desktop_loopback_request(request: Request) -> bool:
     return client in _LOOPBACK_CLIENTS and request_host in _LOOPBACK_HOSTS
 
 
-
 class DesktopNetworkStatusResponse(BaseModel):
     active_bind_host: str
     host_source: str
@@ -538,7 +545,9 @@ class DesktopNetworkService:
             api_key_configured=bool(desired.settings.api_key),
             api_key_source=desired.api_key_source,
             api_key_persistence=(
-                self.credential_store.persistence if desired.api_key_source == "secure_store" else None
+                self.credential_store.persistence
+                if desired.api_key_source == "secure_store"
+                else None
             ),
             cors_origins=desired.settings.cors_origins,
             cors_source=desired.cors_source,
@@ -616,7 +625,9 @@ def _local_ui_dependency():
     ) -> None:
         require_safe_browser_origin(request)
         if not is_trusted_desktop_loopback_request(request) or x_ov_llm_ui != "1":
-            raise HTTPException(status_code=403, detail="Network settings are available only locally.")
+            raise HTTPException(
+                status_code=403, detail="Network settings are available only locally."
+            )
 
     return require_local_ui
 

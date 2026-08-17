@@ -79,9 +79,7 @@ def test_persisted_lan_setting_resolves_to_wildcard_with_secure_key(clean_networ
 
 
 def test_lan_off_overrides_stale_persisted_host_data(clean_network_env, tmp_path):
-    state = migrate_state(
-        {"schema_version": 1, "lan_access_enabled": False, "host": "0.0.0.0"}
-    )
+    state = migrate_state({"schema_version": 1, "lan_access_enabled": False, "host": "0.0.0.0"})
     resolution = resolve_desktop_network_settings(
         Settings.from_env(),
         state=state,
@@ -164,9 +162,10 @@ def test_invalid_environment_cors_is_not_applied_in_packaged_mode(clean_network_
 
 
 def test_cors_normalization_and_wildcard_rules():
-    assert normalize_cors_origins(
-        "http://192.168.1.50:3000, https://example.test/"
-    ) == "http://192.168.1.50:3000,https://example.test"
+    assert (
+        normalize_cors_origins("http://192.168.1.50:3000, https://example.test/")
+        == "http://192.168.1.50:3000,https://example.test"
+    )
     assert normalize_cors_origins("*") == "*"
     with pytest.raises(ValueError, match="Wildcard CORS"):
         normalize_cors_origins("*,http://192.168.1.50:3000")
@@ -193,9 +192,10 @@ def test_lan_ip_detection_filters_down_loopback_and_link_local_interfaces():
         interface_stats=stats,
         primary_address="10.8.0.2",
     ) == ("10.8.0.2", "192.168.1.20")
-    assert detect_private_lan_ipv4(
-        interface_addresses={}, interface_stats={}, primary_address=""
-    ) == ()
+    assert (
+        detect_private_lan_ipv4(interface_addresses={}, interface_stats={}, primary_address="")
+        == ()
+    )
 
 
 def test_endpoint_display_never_uses_wildcard_bind_address():
@@ -226,9 +226,7 @@ def test_api_key_gating_and_restart_pending_state(clean_network_env, tmp_path):
     with pytest.raises(ValueError, match="requires an API key"):
         service.update(DesktopNetworkUpdateRequest(allow_lan=True))
 
-    response = service.update(
-        DesktopNetworkUpdateRequest(allow_lan=True, generate_api_key=True)
-    )
+    response = service.update(DesktopNetworkUpdateRequest(allow_lan=True, generate_api_key=True))
     assert response.generated_api_key
     assert response.status.api_key_configured is True
     assert response.status.restart_required is True
@@ -335,7 +333,9 @@ def test_uvicorn_uses_resolved_desktop_host(monkeypatch):
             return None
 
     monkeypatch.setattr(desktop_server, "create_desktop_app", lambda **_kwargs: fake_app)
-    monkeypatch.setitem(sys.modules, "uvicorn", SimpleNamespace(Config=FakeConfig, Server=FakeServer))
+    monkeypatch.setitem(
+        sys.modules, "uvicorn", SimpleNamespace(Config=FakeConfig, Server=FakeServer)
+    )
 
     assert desktop_server.run_server(port=8123, instance_nonce="n", control_token="c") == 0
     assert captured["host"] == "0.0.0.0"
