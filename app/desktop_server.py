@@ -90,6 +90,7 @@ def create_desktop_app(
 
     from app.config import Settings
     from app.data_migrations import ensure_data_schema
+    from app.desktop_browser_auth import DesktopBrowserAuthBridgeMiddleware
     from app.desktop_network import (
         DesktopApiKeyStore,
         DesktopNetworkResolution,
@@ -162,6 +163,12 @@ def create_desktop_app(
         logging.getLogger("ov-llm.desktop").warning(network_resolution.cors_blocked_reason)
 
     app = create_app(settings)
+    if settings.api_key:
+        app.add_middleware(
+            DesktopBrowserAuthBridgeMiddleware,
+            api_key=settings.api_key,
+            ui_token=secrets.token_urlsafe(32),
+        )
     if app.state.manager.force_mock and not mock:
         raise RuntimeError(
             "OpenVINO GenAI could not be loaded by the packaged application. Run the desktop "

@@ -32,6 +32,7 @@ from app import (
     connection_hub_ui,
     context_budget_ui,
     conversation_management_ui,
+    desktop_browser_auth_ui,
     desktop_network_ui,
     desktop_operations_ui,
     doctor_ui,
@@ -109,6 +110,7 @@ COMPOSITION: tuple[UiExtension, ...] = (
     gui_stability.EXTENSION,
     # Desktop-only surfaces. Registered always, rendered only when the capability is active.
     desktop_network_ui.EXTENSION,
+    desktop_browser_auth_ui.EXTENSION,
     storage_manager_ui.EXTENSION,
     runtime_health_ui.EXTENSION,
 )
