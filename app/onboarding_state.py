@@ -34,6 +34,8 @@ def default_state() -> dict[str, Any]:
         "last_hardware_fingerprint": None,
         "last_benchmark_reference": None,
         "completed_app_version": None,
+        "lan_access_enabled": False,
+        "network_cors_origins": "",
     }
 
 
@@ -58,6 +60,7 @@ def migrate_state(raw: Any) -> dict[str, Any]:
     state["schema_version"] = SCHEMA_VERSION
     state["completed"] = bool(state["completed"])
     state["restart_requested"] = bool(state["restart_requested"])
+    state["lan_access_enabled"] = bool(state["lan_access_enabled"])
     for key in (
         "selected_model",
         "actual_device",
@@ -67,6 +70,9 @@ def migrate_state(raw: Any) -> dict[str, Any]:
         "completed_app_version",
     ):
         state[key] = _normalized_text(state.get(key))
+    state["network_cors_origins"] = _normalized_text(
+        state.get("network_cors_origins"), limit=2048
+    ) or ""
 
     selected_device = _normalized_text(state.get("selected_device"))
     if selected_device is not None:

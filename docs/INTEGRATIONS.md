@@ -8,8 +8,25 @@ can change behavior.
 For the values from the server that is running now, open **Generation Settings > Local
 API > Connection Hub** in the built-in UI. The Hub shows the active Base URL, loaded
 model IDs, authentication state, generic copyable examples, and an independent API
-self-test. See [Local Connection Hub](CONNECTION_HUB.md). The examples below remain
-reference configuration; packaged desktop launches may use a different loopback port.
+self-test. Packaged desktop users can configure authenticated LAN access under **Network /
+API access**. See [Local Connection Hub](CONNECTION_HUB.md) and [LAN and home-lab
+access](LAN_ACCESS.md). The examples below remain reference configuration; packaged
+desktop launches may use a different active port.
+
+## Packaged desktop LAN setup
+
+For the packaged application, prefer the built-in UI instead of Windows environment
+variables:
+
+1. Open **Generation Settings > Local API > Network / API access**.
+2. Generate or enter a strong API key.
+3. Enable **Allow access from other devices on my local network**.
+4. Leave CORS blank unless the client is a browser application on another origin.
+5. Choose **Apply and restart**.
+6. Use one of the displayed private LAN Base URLs from the remote client.
+
+Do not use `0.0.0.0` as a client URL. It is only a bind address. InferBridge preserves the
+actual dynamic/fallback port selected by the desktop launcher.
 
 ## Open WebUI
 
@@ -24,20 +41,23 @@ Start a loaded text-generation model:
   --auto-convert
 ```
 
-For a trusted LAN connection, bind deliberately and require a key:
+For a trusted LAN connection in source mode, bind deliberately and require a key:
 
 ```powershell
 $env:OV_LLM_API_KEY = "replace-with-a-local-secret"
-$env:OV_LLM_CORS_ORIGINS = "http://openwebui-host:3000"
 .\start_server.bat --host 0.0.0.0 --model tinyllama-1.1b-chat-fp16 --device CPU
 ```
+
+Open WebUI is normally a server-to-server client, so CORS is not required merely because
+it runs on another machine. Configure `OV_LLM_CORS_ORIGINS` only when a browser origin
+actually calls InferBridge directly.
 
 Do not expose this server directly to the internet.
 
 ### Open WebUI connection
 
-Use an OpenAI-compatible connection. Prefer the actual Base URL shown by Connection Hub;
-the default source-server shape is:
+Use an OpenAI-compatible connection. Prefer the actual Base URL shown by Connection Hub
+or Network / API settings. The default source-server shape is:
 
 ```text
 Base URL: http://127.0.0.1:8000/v1
@@ -45,8 +65,9 @@ API key:  any non-empty value when auth is disabled
 API key:  the exact OV_LLM_API_KEY value when auth is enabled
 ```
 
-From another trusted machine, replace `127.0.0.1` with the Windows host's private IP.
-Ensure Windows Firewall permits only the intended private network and port.
+From another trusted machine, replace `127.0.0.1` with the Windows host's displayed
+private IP. Ensure Windows Firewall permits InferBridge only on the intended Private
+network profile and active port.
 
 ### Validate the Open WebUI request contract
 
@@ -80,8 +101,8 @@ Record the Open WebUI version in any published compatibility note.
 
 ### Recommended endpoint
 
-Use the Base URL shown by Connection Hub. For a source server on the default port, that
-is:
+Use the Base URL shown by Connection Hub or Network / API settings. For a source server
+on the default port, that is:
 
 ```text
 http://127.0.0.1:8000/v1
@@ -89,6 +110,9 @@ http://127.0.0.1:8000/v1
 
 The server supports both Chat Completions and the Responses API. For newer n8n nodes
 that use Responses, `/v1/responses` supports streaming and non-streaming text output.
+
+n8n is normally a server-to-server client and does not require CORS for a normal OpenAI-
+compatible connection.
 
 ### Validate the n8n request contract
 
@@ -105,7 +129,7 @@ sequence expected by OpenAI-compatible automation clients.
 
 ### Manual workflow checklist
 
-1. Configure an OpenAI-compatible credential with the local base URL.
+1. Configure an OpenAI-compatible credential with the local or LAN base URL.
 2. Select the loaded catalog model ID exactly as returned by `/v1/models`.
 3. Run one simple text workflow without streaming.
 4. Run a streaming-capable workflow when supported by the selected node.
@@ -135,6 +159,9 @@ response = client.chat.completions.create(
 print(response.choices[0].message.content)
 ```
 
+For a LAN client, use the displayed private LAN Base URL and configured API key. Ordinary
+SDK clients do not need CORS.
+
 The official OpenAI SDK is not required by the server. This example is for external
 client usage only.
 
@@ -149,6 +176,7 @@ contract. They do not prove:
 - compatibility of arbitrary speculative-decoding model pairs
 - every Open WebUI or n8n release
 - GPU or NPU support that was not exercised on real hardware
+- Windows Firewall behavior on an untested machine or network profile
 
 Use the Windows certification report for hardware claims and the manual checklist for
 actual client-version claims.

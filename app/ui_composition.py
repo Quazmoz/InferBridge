@@ -15,7 +15,7 @@ progress controller" is declared on the extension itself via ``before=``.
 Surfaces that only exist when the desktop launcher provides their APIs carry
 ``capability="desktop"``. They register unconditionally so they are always present, testable,
 and syntax-checked; the desktop entry point activates the capability that makes them render.
-That replaces the previous arrangement, in which those two surfaces existed only if
+That replaces the previous arrangement, in which those desktop surfaces existed only if
 ``app.desktop_server`` happened to be the module that imported them.
 """
 
@@ -32,6 +32,7 @@ from app import (
     connection_hub_ui,
     context_budget_ui,
     conversation_management_ui,
+    desktop_network_ui,
     desktop_operations_ui,
     doctor_ui,
     gui_stability,
@@ -107,6 +108,7 @@ COMPOSITION: tuple[UiExtension, ...] = (
     connection_hub_ui.EXTENSION,
     gui_stability.EXTENSION,
     # Desktop-only surfaces. Registered always, rendered only when the capability is active.
+    desktop_network_ui.EXTENSION,
     storage_manager_ui.EXTENSION,
     runtime_health_ui.EXTENSION,
 )

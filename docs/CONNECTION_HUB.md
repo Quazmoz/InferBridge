@@ -4,7 +4,7 @@ InferBridge's built-in browser UI includes a **Local Connection Hub** under **Ge
 
 ## Connection values
 
-The Hub derives its values from the running server rather than assuming the default port. This matters for the packaged desktop application, which can select an available loopback port at startup.
+The Hub derives its values from the running server rather than assuming the default port. This matters for the packaged desktop application, which can select an available port at startup.
 
 It shows:
 
@@ -15,7 +15,7 @@ It shows:
 - loaded generation-capable model IDs that can be used for chat requests
 - whether the server is local-only or configured for LAN access
 
-The configured API key is never returned to the browser. When authentication is enabled, the Hub shows `YOUR_INFERBRIDGE_API_KEY` as a placeholder. When authentication is disabled, SDK examples use the harmless non-empty value `not-required` for clients that require an API-key string.
+The configured server API key is never returned by Hub metadata. When authentication is enabled, the Hub shows `YOUR_INFERBRIDGE_API_KEY` as a placeholder. When authentication is disabled, SDK examples use the harmless non-empty value `not-required` for clients that require an API-key string.
 
 If more than one generation-capable model is loaded, select the exact model ID to copy or test. The Hub does not silently choose an arbitrary model.
 
@@ -45,7 +45,7 @@ Each check reports `Passed`, `Failed`, or `Skipped` with its own duration and sa
 
 Generation checks use a small synthetic prompt. They do not use conversation history, browser state, files, or other user content. The self-test does not load, unload, convert, delete, or modify models.
 
-When API authentication is enabled, the protected self-test coordinator requires the same API credential already entered in the built-in browser UI. The browser sends that credential only as an `Authorization` header for the self-test request. The Hub never replaces the displayed placeholder with that credential and never returns the server-configured secret in metadata or self-test results.
+When API authentication is enabled, the protected self-test coordinator requires the browser session to prove knowledge of the API credential. In packaged desktop mode, a GUI-generated or manually entered browser credential is kept in session-scoped browser storage rather than `localStorage`. The persisted server credential remains in Windows DPAPI storage and is never returned by the Hub.
 
 After the browser proves access, authentication verification runs server-side. InferBridge verifies both a valid configured credential and rejection of an intentionally invalid credential without returning the configured key to browser JavaScript. This prevents an unrelated localhost process from using the Connection Hub as an authenticated inference proxy merely by spoofing the UI marker header.
 
@@ -57,13 +57,18 @@ The Connection Hub dialog can be closed while a self-test is running. Closing th
 
 ## LAN access
 
-LAN access remains advanced and opt-in. The packaged desktop application keeps its loopback-only listener by default.
+LAN access remains opt-in. The packaged desktop application keeps its loopback-only listener by default.
 
-When the configured listener is loopback-only, the Hub reports that other devices cannot connect. When a source server is deliberately bound beyond loopback, the Hub reports that the local network may be able to reach it and reminds you that:
+Packaged users configure LAN mode through **Network / API access** next to the Connection Hub. LAN activation requires an API key, does not automatically enable wildcard CORS, preserves the actual dynamic/fallback port, and shows usable private LAN endpoints after restart.
 
-- API-key authentication should be enabled
+When a listener is bound beyond loopback, remember that:
+
+- API-key authentication is required for packaged LAN mode
 - Windows Firewall and other network controls still determine reachability
-- wildcard listeners such as `0.0.0.0` do not identify one stable LAN address
+- wildcard listeners such as `0.0.0.0` are bind addresses, not client URLs
+- remote clients should use the displayed private LAN IP and active port
 - InferBridge is not a hardened public internet gateway
 
-The Hub does not enable LAN binding, enumerate private interfaces automatically, change firewall rules, configure routers, forward ports, or provide internet tunneling or relay services.
+InferBridge does not silently configure firewall rules, routers, port forwarding, internet tunnels, or relay services.
+
+See [LAN and home-lab access](LAN_ACCESS.md) for setup, CORS guidance, configuration precedence, and troubleshooting.

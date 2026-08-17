@@ -6,17 +6,18 @@ The installed and portable desktop build uses a lightweight Python system-tray c
 
 1. Launch **InferBridge** from the Start Menu or portable directory.
 2. The tray controller acquires the per-user application lock.
-3. It starts the packaged server on `127.0.0.1`, waits for liveness and readiness, and optionally opens the browser.
+3. It starts the packaged server on the configured listener, which is `127.0.0.1` by default, waits for liveness and readiness through loopback, and optionally opens the browser.
 4. Closing the browser does not stop the server or tray controller.
-5. Use the tray menu to inspect status, manage the owned server, copy connection settings, run local checks, or export diagnostics.
+5. Use the tray menu to inspect status, manage the owned server, copy local connection settings, run local checks, or export diagnostics.
+6. Use **Generation Settings > Local API > Network / API access** for authenticated LAN or home-lab access.
 
 ## Menu
 
 The root menu is intentionally small. Related actions are grouped into Status, Copy, Server, and Folders submenus.
 
-- **Open Chat** opens the existing browser UI on the actual active port.
+- **Open Chat** opens the existing browser UI on the actual active port through loopback.
 - **Status** displays server state, active model, actual device, and model-preparation progress.
-- **Copy** provides the API base URL, chat URL, and OpenAI-compatible environment/Python configuration. It uses a placeholder instead of copying a configured API key.
+- **Copy** provides the local API base URL, chat URL, and OpenAI-compatible environment/Python configuration. It uses a placeholder instead of copying a configured API key. LAN endpoints are shown in Network / API settings because they depend on the active private interfaces.
 - **Server** starts, stops, or restarts the owned server, refreshes the hardware scan, and runs the existing short benchmark when a generation model is loaded.
 - **Folders** opens the writable model and log directories.
 - **Export Diagnostics** creates a local sanitized ZIP after a confirmation summary.
@@ -38,9 +39,15 @@ The tray keeps the P0 per-user lock for its entire lifetime. Server metadata con
 
 The tray stores a separate random server-control token only in process memory and passes it to the child server. Loopback-only control routes require that token. The token is not returned by status endpoints and is not written to normal logs.
 
-A second launcher invocation opens the existing healthy browser UI. When the tray is running with the server stopped, the second invocation writes a bounded local activation command that asks the existing tray to start the server. It does not start a competing owner.
+A second launcher invocation opens the existing healthy browser UI through `127.0.0.1`, even if the API listener is also bound for LAN access. When the tray is running with the server stopped, the second invocation writes a bounded local activation command that asks the existing tray to start the server. It does not start a competing owner.
 
 The tray terminates only the `subprocess.Popen` child it created and whose PID matches current validated metadata. It never searches for or kills unrelated Python processes.
+
+## Network settings and restart
+
+Listener changes require a server restart. **Apply and restart** in Network / API settings saves the non-secret LAN/CORS preferences, keeps the API key in secure credential storage, writes the existing restart marker, and lets the tray restart its owned child. The tray retains the existing dynamic/fallback port behavior.
+
+The tray does not create Windows Firewall rules. See [LAN and home-lab access](LAN_ACCESS.md) for Private-network firewall guidance.
 
 ## Start with Windows
 

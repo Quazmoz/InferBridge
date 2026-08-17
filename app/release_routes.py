@@ -7,13 +7,23 @@ from datetime import UTC, datetime
 from fastapi import HTTPException, Request
 
 from app.build_info import load_build_info
+from app.local_request_security import require_safe_browser_origin
 from app.release_models import SemanticVersion
 from app.update_checker import UpdateChecker, UpdatePreferences, UpdateStore, check_due
 from app.version import DATA_SCHEMA_VERSION
 
+_LOOPBACK_CLIENTS = frozenset({"127.0.0.1", "::1", "localhost", "testclient"})
+
 
 def _require_local_ui(request: Request) -> None:
-    if request.headers.get("X-OV-LLM-UI") != "1":
+    require_safe_browser_origin(request)
+    client = str(request.client.host if request.client else "").strip().lower()
+    request_host = str(request.url.hostname or "").strip().lower()
+    if (
+        request.headers.get("X-OV-LLM-UI") != "1"
+        or client not in _LOOPBACK_CLIENTS
+        or request_host not in {"127.0.0.1", "::1", "localhost"}
+    ):
         raise HTTPException(
             status_code=403, detail="This action requires the local application UI."
         )
