@@ -77,6 +77,7 @@ SERVER_ORDER = (
 )
 
 DESKTOP_ONLY_ORDER = (
+    "ovllm-desktop-network-extension",
     "ovllm-storage-manager-extension",
     "ovllm-runtime-health-extension",
 )
@@ -159,8 +160,8 @@ def test_every_extension_appears_exactly_once():
 def test_desktop_surfaces_are_always_registered_but_render_only_when_activated():
     """Registration no longer depends on which entry point imported the module.
 
-    Both surfaces used to exist only if ``app.desktop_server`` was the importer, which is
-    why neither had browser coverage. They are now always registered and gated by
+    These surfaces used to exist only if ``app.desktop_server`` was the importer, which is
+    why they lacked browser coverage. They are now always registered and gated by
     capability, so they can be composed, syntax-checked, and driven in a test.
     """
 

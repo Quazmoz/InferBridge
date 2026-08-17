@@ -74,7 +74,7 @@ def test_persisted_lan_setting_resolves_to_wildcard_with_secure_key(clean_networ
         env=os.environ,
     )
     assert resolution.settings.host == "0.0.0.0"
-    assert resolution.api_key == _STRONG_KEY
+    assert resolution.settings.api_key == _STRONG_KEY
     assert resolution.api_key_source == "secure_store"
 
 

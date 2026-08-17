@@ -40,7 +40,7 @@ def _current_process_created_at() -> float:
         return 0.0
 
 
-def choose_available_listener_port(preferred: int = 8000) -> int:
+def choose_available_port(preferred: int = 8000) -> int:
     """Choose a port available for either loopback or wildcard desktop listeners.
 
     The socket is never put into listening mode. Binding the wildcard address here is
@@ -57,6 +57,10 @@ def choose_available_listener_port(preferred: int = 8000) -> int:
                 continue
             return int(sock.getsockname()[1])
     raise RuntimeError("No local TCP port is available for the application server.")
+
+
+# Compatibility alias for code/tests that want the listener-specific name.
+choose_available_listener_port = choose_available_port
 
 
 @dataclass(frozen=True)
@@ -232,7 +236,7 @@ class DesktopServerController:
         try:
             self.recover_stale_metadata()
             preferred = self.port or self.options.preferred_port
-            port = choose_available_listener_port(preferred)
+            port = choose_available_port(preferred)
             nonce = secrets.token_urlsafe(24)
             control_token = secrets.token_urlsafe(32)
             provisional = InstanceMetadata(
