@@ -187,20 +187,33 @@ async function saveAndRestart() {
 }
 async function generate() {
   if (saving) return;
-  const wildcard = String(cors.value || '').trim() === '*';
-  if (wildcard && !window.confirm('Wildcard CORS allows browser scripts from any origin to attempt requests. Continue with a generated API key?')) return;
+  const draftLan = Boolean(lan.checked);
+  const draftCors = String(cors.value || '').trim();
+  const persistedCors = String(status?.cors_origins || '').trim();
   saving=true; apply.disabled=true; message('Generating and securely storing an API key...');
   try {
-    const body={allow_lan:Boolean(lan.checked),cors_origins:String(cors.value || '').trim(),api_key:null,generate_api_key:true,remove_stored_api_key:false,acknowledge_wildcard_cors:wildcard};
-    const result=await api(API,{method:'POST',body:JSON.stringify(body)}); status=result.status; render(); showGenerated(result.generated_api_key || ''); if (result.generated_api_key) setPendingApiKey(result.generated_api_key); message('API key generated. Copy it now, then choose Apply and restart.');
+    const body={allow_lan:Boolean(status?.lan_setting_enabled),cors_origins:persistedCors,api_key:null,generate_api_key:true,remove_stored_api_key:false,acknowledge_wildcard_cors:persistedCors === '*'};
+    const result=await api(API,{method:'POST',body:JSON.stringify(body)});
+    status=result.status; render();
+    if (!status.host_environment_override) lan.checked=draftLan;
+    if (!status.cors_environment_override) cors.value=draftCors;
+    showGenerated(result.generated_api_key || '');
+    if (result.generated_api_key) setPendingApiKey(result.generated_api_key);
+    message('API key generated and stored. Copy it now. Listener and CORS edits remain drafts until you choose Apply and restart.');
   } catch (error) { message(error instanceof Error ? error.message : 'API key could not be generated.', true); }
   finally { saving=false; apply.disabled=false; }
 }
 async function removeKey() {
   if (!window.confirm('Remove the desktop-managed API key? LAN access cannot remain enabled without authentication.')) return;
   if (lan.checked) { message('Turn off LAN access before removing the stored API key.', true); return; }
+  const persistedCors=String(status?.cors_origins || '').trim();
+  const nextCors=persistedCors === '*' ? '' : persistedCors;
   saving=true; apply.disabled=true;
-  try { const result=await api(API,{method:'POST',body:JSON.stringify({allow_lan:false,cors_origins:String(cors.value || '').trim(),api_key:null,generate_api_key:false,remove_stored_api_key:true,acknowledge_wildcard_cors:false})}); status=result.status; setPendingApiKey(null); if (!status.restart_required) promotePendingApiKey(); render(); showGenerated(); message('Stored API key removed. Apply and restart if a restart is pending.'); }
+  try {
+    const result=await api(API,{method:'POST',body:JSON.stringify({allow_lan:false,cors_origins:nextCors,api_key:null,generate_api_key:false,remove_stored_api_key:true,acknowledge_wildcard_cors:false})});
+    status=result.status; setPendingApiKey(null); if (!status.restart_required) promotePendingApiKey(); render(); showGenerated();
+    message(persistedCors === '*' ? 'Stored API key removed and wildcard CORS cleared. Apply and restart if a restart is pending.' : 'Stored API key removed. Apply and restart if a restart is pending.');
+  }
   catch (error) { message(error instanceof Error ? error.message : 'Stored API key could not be removed.', true); }
   finally { saving=false; apply.disabled=false; }
 }

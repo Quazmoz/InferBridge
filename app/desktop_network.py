@@ -595,17 +595,22 @@ class DesktopNetworkService:
             if not request.acknowledge_wildcard_cors:
                 raise ValueError("Confirm the wildcard CORS warning before applying '*'.")
 
-        if replacement_key:
-            self.credential_store.set_key(replacement_key)
-        elif request.remove_stored_api_key:
-            self.credential_store.remove()
-
+        # Commit non-secret settings before rotating the secret. If secure credential
+        # persistence fails afterward, startup still applies the existing safety gate:
+        # LAN exposure falls back to loopback when no usable key is available. This order
+        # also avoids storing a newly generated key that the UI never receives when the
+        # state write itself fails.
         self.state_store.update(
             **{
                 _NETWORK_STATE_LAN: bool(request.allow_lan),
                 _NETWORK_STATE_CORS: cors,
             }
         )
+        if replacement_key:
+            self.credential_store.set_key(replacement_key)
+        elif request.remove_stored_api_key:
+            self.credential_store.remove()
+
         status = self.status()
         return DesktopNetworkUpdateResponse(
             status=status,
@@ -661,7 +666,7 @@ def register_desktop_network_routes(app: Any, *, service: DesktopNetworkService)
         except OSError as exc:
             raise HTTPException(
                 status_code=500,
-                detail="The desktop API key could not be saved securely.",
+                detail="The desktop network settings could not be saved securely.",
             ) from exc
         from fastapi.responses import JSONResponse
 
