@@ -14,7 +14,7 @@ Open **Generation Settings > Local API > Network / API access**.
 4. Choose **Apply and restart**.
 5. After restart, copy one of the displayed LAN endpoints such as `http://192.168.1.20:8123/v1` into the trusted remote client.
 
-The desktop application stores a GUI-managed API key with Windows DPAPI under InferBridge's normal writable configuration root. The persisted key is not returned by status APIs, written to diagnostics, or stored in browser `localStorage`. The built-in browser uses only a session-scoped credential copy for authenticated requests.
+The desktop application stores a GUI-managed API key with Windows DPAPI under InferBridge's normal writable configuration root. The persisted key is not returned by status APIs, written to diagnostics, or stored in browser `localStorage`. When packaged authentication is active, the local UI receives a random per-process HttpOnly, SameSite cookie. For protected requests from that validated loopback browser session, InferBridge supplies one configured API key internally on the server side. The API key itself is not placed in page source or returned to browser JavaScript. Remote LAN clients never receive this browser-auth bridge and must present their own `Authorization: Bearer <API_KEY>` header.
 
 Installed mode stores mutable state under `%LOCALAPPDATA%\InferBridge`. Portable mode keeps it under the portable `data` directory. The DPAPI-encrypted key is bound to the Windows user context, so moving a portable directory to another machine may require configuring a new key. Nothing mutable is written into the installed program directory.
 
