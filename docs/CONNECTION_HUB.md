@@ -45,11 +45,11 @@ Each check reports `Passed`, `Failed`, or `Skipped` with its own duration and sa
 
 Generation checks use a small synthetic prompt. They do not use conversation history, browser state, files, or other user content. The self-test does not load, unload, convert, delete, or modify models.
 
-When API authentication is enabled in packaged desktop mode, the local browser receives a random per-process HttpOnly cookie that proves the request belongs to the loopback InferBridge UI session. The desktop server uses that proof to attach one configured API credential internally to protected `/v1/*` requests and the Connection Hub self-test. The stored API key remains in DPAPI or the process environment and is never returned to browser JavaScript or persisted in `localStorage`.
+When API authentication is enabled in packaged desktop mode, the local browser receives a random per-process HttpOnly cookie that proves the request belongs to the loopback InferBridge UI session. The desktop server uses that proof to attach one configured API credential internally to protected `/v1/*` requests and the Connection Hub self-test. The persisted API key remains in DPAPI or the process environment and is never returned by Hub metadata or stored in browser `localStorage`. A key generated from Network / API settings is shown once so the user can copy it before the stored value becomes non-retrievable through the UI.
 
 Remote LAN clients do not receive this local-browser bridge. They must present their configured API key normally. Loopback SDK or CLI clients without the desktop UI cookie also keep the ordinary explicit API-key contract.
 
-Authentication verification inside the Hub still runs server-side. InferBridge verifies both a valid configured credential and rejection of an intentionally invalid credential without returning the configured key to browser JavaScript. The local-browser bridge is restricted to a matching loopback client and loopback Host header, and it does not authenticate remote LAN requests.
+Authentication verification inside the Hub still runs server-side. InferBridge verifies both a valid configured credential and rejection of an intentionally invalid credential without returning the persisted key to browser JavaScript. The local-browser bridge is restricted to a matching loopback client and loopback Host header, and it does not authenticate remote LAN requests.
 
 The Hub also pins its internal callback port to the actual ASGI listener socket, falling back to the configured port only when socket metadata is unavailable. A caller-supplied `Host` port cannot redirect the server-side credential to a different localhost service. Literal loopback hostnames such as `127.0.0.1`, `localhost`, and `::1` remain supported.
 
