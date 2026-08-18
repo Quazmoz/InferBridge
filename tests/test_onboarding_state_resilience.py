@@ -27,6 +27,20 @@ def test_state_migration_normalizes_device_and_sanitizes_text():
     assert state["selected_device"] == "AUTO:NPU,GPU,CPU"
 
 
+def test_state_migration_does_not_enable_flags_from_truthy_strings():
+    state = migrate_state(
+        {
+            "completed": "true",
+            "restart_requested": "false",
+            "lan_access_enabled": "false",
+        }
+    )
+
+    assert state["completed"] is False
+    assert state["restart_requested"] is False
+    assert state["lan_access_enabled"] is False
+
+
 def test_invalid_selected_device_restarts_onboarding_without_dropping_model():
     state = migrate_state(
         {
