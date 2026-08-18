@@ -11,6 +11,7 @@ from app.update_checker import (
     UpdateChecker,
     UpdatePreferences,
     UpdateStore,
+    _manifest_channel_allowed,
     check_due,
 )
 
@@ -87,6 +88,14 @@ def test_update_store_serializes_fixed_temp_file_writes(tmp_path, monkeypatch):
 
     assert max_active_writers == 1
     assert stores[0].load_cache().latest_checked_version in {"0.9.7", "0.9.8"}
+
+
+def test_nightly_channel_accepts_beta_manifests_as_well_as_stable_and_nightly():
+    assert _manifest_channel_allowed("nightly", "stable") is True
+    assert _manifest_channel_allowed("nightly", "beta") is True
+    assert _manifest_channel_allowed("nightly", "nightly") is True
+    assert _manifest_channel_allowed("beta", "nightly") is False
+    assert _manifest_channel_allowed("stable", "beta") is False
 
 
 def test_channel_change_ignores_fresh_cache_and_old_etag(tmp_path, monkeypatch):
