@@ -117,8 +117,10 @@ class Settings:
 
     def __post_init__(self) -> None:
         from app.conversion_stream_safety import install_conversion_stream_safety
+        from app.desktop_credential_safety import install_desktop_credential_safety
         from app.desktop_model_paths import install_desktop_model_path_extension
         from app.desktop_shutdown_safety import install_desktop_shutdown_safety
+        from app.embedding_lifecycle_safety import install_embedding_lifecycle_safety
         from app.engine_handoff_safety import install_engine_handoff_safety
         from app.huggingface_access import install_huggingface_access_manager_extension
         from app.huggingface_manager_safety import install_huggingface_manager_safety
@@ -132,6 +134,10 @@ class Settings:
         from app.status_split import install_status_manager_extension
         from app.structured_progress import install_structured_progress_protocol
 
+        # These guards patch low-level engine/credential primitives before the higher
+        # lifecycle wrappers begin using them.
+        install_embedding_lifecycle_safety()
+        install_desktop_credential_safety()
         install_desktop_model_path_extension()
         install_model_load_target_routing()
         install_engine_handoff_safety()
