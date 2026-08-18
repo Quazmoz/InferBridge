@@ -8,7 +8,12 @@ from fastapi.testclient import TestClient
 
 from app import release_routes
 from app.release_routes import register_release_routes
-from app.update_checker import UpdateCache, UpdateCheckResult, UpdatePreferences, UpdateStore
+from app.update_checker import (
+    UpdateCache,
+    UpdateCheckResult,
+    UpdatePreferences,
+    UpdateStore,
+)
 
 
 def _client(tmp_path) -> tuple[TestClient, UpdateStore]:
