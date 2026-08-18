@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import json
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,12 @@ from app.onboarding_models import OnboardingStatusResponse
 from runtime.device_check import normalize_device
 
 SCHEMA_VERSION = 1
+_STATE_READ_ATTEMPTS = 3
+_STATE_READ_RETRY_SECONDS = 0.05
+
+
+class UnsupportedStateVersion(ValueError):
+    """The saved state belongs to a newer application schema and must be preserved."""
 
 
 @dataclass(frozen=True)
@@ -50,8 +57,15 @@ def migrate_state(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise ValueError("Onboarding state must be a JSON object.")
     version = int(raw.get("schema_version", 0) or 0)
-    if version < 0 or version > SCHEMA_VERSION:
+    if version < 0:
         raise ValueError("Unsupported onboarding state version.")
+    if version > SCHEMA_VERSION:
+        # A rollback or older portable binary must never quarantine a valid state file
+        # written by a newer InferBridge version. Failing closed preserves that state for
+        # the newer version instead of silently resetting onboarding and network settings.
+        raise UnsupportedStateVersion(
+            f"Onboarding state schema {version} is newer than supported schema {SCHEMA_VERSION}."
+        )
 
     state = default_state()
     for key in state:
@@ -94,7 +108,7 @@ class OnboardingStateStore:
         self._lock = threading.RLock()
 
     def _quarantine_corrupt_state(self) -> None:
-        """Move an unreadable state file aside so recovery is reported only once."""
+        """Move malformed state aside so recovery is reported only once."""
 
         backup = self.path.with_suffix(self.path.suffix + ".corrupt")
         try:
@@ -110,14 +124,42 @@ class OnboardingStateStore:
             backup.write_bytes(self.path.read_bytes())
             self.path.unlink()
 
+    def _read_state_text(self) -> str | None:
+        """Read state with short retries for transient Windows sharing violations."""
+
+        last_error: OSError | None = None
+        for attempt in range(_STATE_READ_ATTEMPTS):
+            try:
+                return self.path.read_text(encoding="utf-8-sig")
+            except FileNotFoundError:
+                # The file can legitimately disappear between exists() and read_text()
+                # when another recovery path atomically moves it aside.
+                return None
+            except OSError as exc:
+                last_error = exc
+                if attempt + 1 < _STATE_READ_ATTEMPTS:
+                    time.sleep(_STATE_READ_RETRY_SECONDS)
+        assert last_error is not None
+        raise last_error
+
     def load(self) -> StateLoadResult:
         with self._lock:
             if not self.path.exists():
                 return StateLoadResult(default_state())
+
+            # Filesystem access failures are not corruption. Retry likely transient
+            # Windows locks, then propagate a persistent error without moving or replacing
+            # the valid state file.
+            text = self._read_state_text()
+            if text is None:
+                return StateLoadResult(default_state())
+
             try:
-                raw = json.loads(self.path.read_text(encoding="utf-8-sig"))
+                raw = json.loads(text)
                 return StateLoadResult(migrate_state(raw))
-            except (OSError, TypeError, ValueError):
+            except UnsupportedStateVersion:
+                raise
+            except (TypeError, ValueError):
                 self._quarantine_corrupt_state()
                 return StateLoadResult(
                     default_state(),
