@@ -37,16 +37,20 @@ def register_release_routes(app, *, paths) -> None:
     async def release_status():
         preferences = store.load_preferences()
         cache = store.load_cache()
+        cache_matches_channel = cache.channel == preferences.channel
+        relevant_last_checked_at = cache.last_checked_at if cache_matches_channel else None
         build = load_build_info(paths.resource_root)
         return {
             "build": build.model_dump(mode="json"),
             "installation_mode": installation_mode,
             "data_schema_version": DATA_SCHEMA_VERSION,
             "update_checks": preferences.model_dump(mode="json"),
-            "latest_checked_version": cache.latest_checked_version,
-            "last_update_check_time": cache.last_checked_at,
-            "check_due": check_due(cache.last_checked_at, datetime.now(UTC)),
-            "cached_manifest": cache.manifest,
+            "latest_checked_version": (
+                cache.latest_checked_version if cache_matches_channel else None
+            ),
+            "last_update_check_time": relevant_last_checked_at,
+            "check_due": check_due(relevant_last_checked_at, datetime.now(UTC)),
+            "cached_manifest": cache.manifest if cache_matches_channel else None,
         }
 
     @app.post("/desktop/release/check", include_in_schema=False)
