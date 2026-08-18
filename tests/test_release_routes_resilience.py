@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import asyncio
+import threading
+import time
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
+import httpx
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -16,8 +20,7 @@ from app.update_checker import (
 )
 
 
-def _client(tmp_path) -> tuple[TestClient, UpdateStore]:
-    store = UpdateStore(tmp_path)
+def _app(tmp_path) -> FastAPI:
     app = FastAPI()
     register_release_routes(
         app,
@@ -27,7 +30,11 @@ def _client(tmp_path) -> tuple[TestClient, UpdateStore]:
             portable=False,
         ),
     )
-    return TestClient(app), store
+    return app
+
+
+def _client(tmp_path) -> tuple[TestClient, UpdateStore]:
+    return TestClient(_app(tmp_path)), UpdateStore(tmp_path)
 
 
 def test_release_status_hides_cache_from_previous_channel(tmp_path):
@@ -104,3 +111,39 @@ def test_release_check_offloads_blocking_checker(tmp_path, monkeypatch):
     assert response.json()["message"] == "forced"
     assert len(calls) == 1
     assert calls[0][2] == {"force": True}
+
+
+def test_release_check_serializes_overlapping_requests(tmp_path, monkeypatch):
+    active = 0
+    max_active = 0
+    counter_lock = threading.Lock()
+
+    def slow_check(_self, *, force=False):
+        nonlocal active, max_active
+        assert force is True
+        with counter_lock:
+            active += 1
+            max_active = max(max_active, active)
+        try:
+            time.sleep(0.04)
+            return UpdateCheckResult(status="current", checked_at=datetime.now(UTC))
+        finally:
+            with counter_lock:
+                active -= 1
+
+    monkeypatch.setattr(release_routes, "_require_local_ui", lambda _request: None)
+    monkeypatch.setattr(release_routes.UpdateChecker, "check", slow_check)
+    app = _app(tmp_path)
+
+    async def run_requests():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            return await asyncio.gather(
+                client.post("/desktop/release/check"),
+                client.post("/desktop/release/check"),
+            )
+
+    responses = asyncio.run(run_requests())
+
+    assert [response.status_code for response in responses] == [200, 200]
+    assert max_active == 1
