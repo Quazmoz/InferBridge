@@ -116,6 +116,19 @@ def test_persistent_state_read_error_preserves_original_file(tmp_path, monkeypat
     assert not store.path.with_suffix(store.path.suffix + ".corrupt").exists()
 
 
+def test_nonfinite_schema_version_is_quarantined_instead_of_crashing(tmp_path):
+    store = OnboardingStateStore(tmp_path / "onboarding" / "state.json")
+    store.path.parent.mkdir(parents=True, exist_ok=True)
+    store.path.write_text('{"schema_version": Infinity, "completed": true}', encoding="utf-8")
+
+    loaded = store.load()
+
+    assert loaded.recovered is True
+    assert loaded.state["completed"] is False
+    assert not store.path.exists()
+    assert store.path.with_suffix(store.path.suffix + ".corrupt").exists()
+
+
 def test_newer_state_schema_is_preserved_instead_of_quarantined(tmp_path):
     store = OnboardingStateStore(tmp_path / "onboarding" / "state.json")
     store.path.parent.mkdir(parents=True, exist_ok=True)
