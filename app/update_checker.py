@@ -216,6 +216,14 @@ def _fetch_release_index(
     raise OSError("No approved GitHub release endpoint was available.")
 
 
+def _manifest_channel_allowed(selected: ReleaseChannel, published: ReleaseChannel) -> bool:
+    if selected == "stable":
+        return published == "stable"
+    if selected == "beta":
+        return published in {"stable", "beta"}
+    return published in {"stable", "beta", "nightly"}
+
+
 class UpdateChecker:
     def __init__(
         self,
@@ -290,15 +298,10 @@ class UpdateChecker:
             )
             with self.opener(manifest_request, timeout=self.timeout_seconds) as response:
                 manifest = ReleaseManifest.model_validate(_read_json(response))
-            channel_allowed = (
-                manifest.channel == "stable"
-                if preferences.channel == "stable"
-                else manifest.channel in {"stable", preferences.channel}
-            )
             if (
                 manifest.version != release_version
                 or not channel_accepts(preferences.channel, manifest.version)
-                or not channel_allowed
+                or not _manifest_channel_allowed(preferences.channel, manifest.channel)
             ):
                 raise ValueError(
                     "Release manifest version or channel does not match the GitHub release."
