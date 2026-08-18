@@ -33,6 +33,7 @@ def _require_local_ui(request: Request) -> None:
 def register_release_routes(app, *, paths) -> None:
     store = UpdateStore(paths.config_dir)
     installation_mode = "portable" if paths.portable else "installed"
+    release_check_lock = asyncio.Lock()
 
     @app.get("/desktop/release/status", include_in_schema=False)
     async def release_status():
@@ -57,8 +58,12 @@ def register_release_routes(app, *, paths) -> None:
     @app.post("/desktop/release/check", include_in_schema=False)
     async def check_release(request: Request):
         _require_local_ui(request)
-        checker = UpdateChecker(store=store, installation_mode=installation_mode)
-        result = await asyncio.to_thread(checker.check, force=True)
+        # A second manual click or overlapping browser request must not let an older
+        # network response overwrite a newer update cache entry. Keep the network work
+        # off the event loop while serializing checks for this desktop app instance.
+        async with release_check_lock:
+            checker = UpdateChecker(store=store, installation_mode=installation_mode)
+            result = await asyncio.to_thread(checker.check, force=True)
         return result.model_dump(mode="json")
 
     @app.put("/desktop/release/settings", include_in_schema=False)
