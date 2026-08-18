@@ -45,7 +45,7 @@ def _reject_reparse_point_delete(manager: Any, model_id: str) -> None:
 def install_model_lifecycle_safety() -> None:
     """Install conversion/load/delete coordination on ``ModelManager``."""
 
-    from app import model_manager as manager_module
+    from app import errors, model_manager as manager_module
     from runtime import device_check
 
     manager_class = manager_module.ModelManager
@@ -106,7 +106,15 @@ def install_model_lifecycle_safety() -> None:
             except Exception as exc:  # noqa: BLE001 - callback cannot return an HTTP error
                 cfg = self.catalog.get(model_id)
                 name = cfg.name if cfg else model_id
-                message = f"Conversion finished, but loading could not start: {exc}"
+                detail = self._sanitize_progress_line(
+                    errors.format_model_load_error(exc),
+                    limit=180,
+                )
+                message = (
+                    f"Conversion finished, but loading could not start: {detail}"
+                    if detail
+                    else "Conversion finished, but loading could not start."
+                )
                 self._set_status(model_id, "error", error=message)
                 self._set_progress(model_id, "error", message)
                 manager_module.logger.exception(
