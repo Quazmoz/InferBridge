@@ -299,10 +299,10 @@ class HuggingFaceCredentialStore:
             # Do not clear the in-memory copy until persistent deletion succeeds.
             # A Windows sharing/permission error must remain visible and retryable.
             self._memory_token = None
-            try:
+            # Metadata contains no secret and must not turn successful DPAPI token
+            # deletion into a false credential-removal failure.
+            with contextlib.suppress(OSError):
                 self.metadata_path.unlink()
-            except FileNotFoundError:
-                pass
             return had_memory_token or removed_persisted_token
 
     def read_metadata(self) -> dict[str, Any]:
@@ -782,7 +782,9 @@ class HuggingFacePreflightMiddleware:
         cfg = manager.catalog.get(model_id) if model_id else None
         if path == "/v1/models/convert" and cfg is not None:
             source_model = cfg.source_model
-        trust_remote_code = bool(payload.get("trust_remote_code"))
+        # Only an actual JSON boolean true can opt into the reviewed remote-code path.
+        # Truthy strings such as "false" must not bypass the normal access preflight.
+        trust_remote_code = payload.get("trust_remote_code") is True
         if (
             path == "/v1/models/download-custom"
             and cfg is not None
