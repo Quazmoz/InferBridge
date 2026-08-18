@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 import urllib.error
 import urllib.request
 from collections.abc import Callable
@@ -39,6 +40,7 @@ _RELEASES_APIS = tuple(
 _MANIFEST_PREFIXES = (ARTIFACT_PREFIX, *LEGACY_ARTIFACT_PREFIXES)
 _MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 _DEFAULT_INTERVAL = timedelta(hours=24)
+_UPDATE_STORE_WRITE_LOCK = threading.RLock()
 _ModelT = TypeVar("_ModelT", bound=BaseModel)
 
 
@@ -91,10 +93,14 @@ class UpdateStore:
 
     @staticmethod
     def _write(path: Path, model: BaseModel) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_suffix(path.suffix + ".tmp")
-        temporary.write_text(model.model_dump_json(indent=2) + "\n", encoding="utf-8")
-        temporary.replace(path)
+        # Release checks are offloaded to worker threads. Serialize the fixed-name
+        # temporary-file transaction across all store instances so overlapping checks
+        # cannot truncate or replace each other's temporary file on Windows.
+        with _UPDATE_STORE_WRITE_LOCK:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = path.with_suffix(path.suffix + ".tmp")
+            temporary.write_text(model.model_dump_json(indent=2) + "\n", encoding="utf-8")
+            temporary.replace(path)
 
     def load_preferences(self) -> UpdatePreferences:
         return self._load(self.preferences_path, UpdatePreferences, UpdatePreferences)
