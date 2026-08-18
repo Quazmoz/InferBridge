@@ -37,12 +37,26 @@ def _sanitize_run(run: dict[str, Any]) -> dict[str, Any]:
     return safe
 
 
+def _sanitize_runs(runs: list[Any]) -> list[Any]:
+    return [_sanitize_run(run) if isinstance(run, dict) else run for run in runs]
+
+
 class BenchmarkStore(_core.BenchmarkStore):
     """JSON benchmark store serialized with advisor writes and sanitized failures."""
 
     def __init__(self, path, *, max_runs: int = 100) -> None:
         super().__init__(path, max_runs=max_runs)
         self._lock = path_lock(self.path)
+        # Upgrade existing stores in place. Old builds persisted raw native exception
+        # strings, which can contain local paths or credential-like values.
+        with self._lock:
+            data = self._read()
+            safe_runs = _sanitize_runs(data["runs"])
+            if safe_runs != data["runs"]:
+                self._write({"schema_version": data["schema_version"], "runs": safe_runs})
+
+    def list_runs(self) -> list[dict[str, Any]]:
+        return [run for run in _sanitize_runs(super().list_runs()) if isinstance(run, dict)]
 
     def append(self, run: dict[str, Any]) -> None:
         super().append(_sanitize_run(run))
