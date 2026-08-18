@@ -46,6 +46,16 @@ def default_state() -> dict[str, Any]:
     }
 
 
+def _normalized_bool(value: Any, *, default: bool = False) -> bool:
+    """Normalize persisted flags without treating arbitrary truthy values as enabled."""
+
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int) and value in {0, 1}:
+        return bool(value)
+    return default
+
+
 def _normalized_text(value: Any, *, limit: int = 1024) -> str | None:
     if value in (None, ""):
         return None
@@ -72,9 +82,9 @@ def migrate_state(raw: Any) -> dict[str, Any]:
         if key in raw:
             state[key] = raw[key]
     state["schema_version"] = SCHEMA_VERSION
-    state["completed"] = bool(state["completed"])
-    state["restart_requested"] = bool(state["restart_requested"])
-    state["lan_access_enabled"] = bool(state["lan_access_enabled"])
+    state["completed"] = _normalized_bool(state["completed"])
+    state["restart_requested"] = _normalized_bool(state["restart_requested"])
+    state["lan_access_enabled"] = _normalized_bool(state["lan_access_enabled"])
     for key in (
         "selected_model",
         "actual_device",
