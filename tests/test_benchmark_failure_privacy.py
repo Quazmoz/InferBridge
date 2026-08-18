@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 from runtime import benchmark_runner
 
@@ -51,3 +52,37 @@ def test_benchmark_store_sanitizes_failure_before_persistence(tmp_path):
     assert r"C:\Users\Private" not in stored_error
     assert "[redacted]" in stored_error
     assert secret in original["results"][0]["error"]
+
+
+def test_benchmark_store_scrubs_historical_failure_rows_on_open(tmp_path):
+    secret = "hf_" + "d" * 32
+    path = tmp_path / "benchmarks.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "runs": [
+                    {
+                        "run_id": "old-run",
+                        "results": [
+                            {
+                                "model_id": "model",
+                                "success": False,
+                                "error": rf"C:\Users\Private\old\model {secret}",
+                            }
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    store = benchmark_runner.BenchmarkStore(path)
+    stored_error = store.list_runs()[0]["results"][0]["error"]
+    raw_file = path.read_text(encoding="utf-8")
+
+    assert secret not in stored_error
+    assert r"C:\Users\Private" not in stored_error
+    assert secret not in raw_file
+    assert "[redacted]" in raw_file
