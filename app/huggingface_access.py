@@ -289,13 +289,21 @@ class HuggingFaceCredentialStore:
 
     def remove(self) -> bool:
         with self._lock:
-            existed = bool(self._memory_token) or self.token_path.exists()
-            self._memory_token = None
-            with contextlib.suppress(OSError):
+            had_memory_token = bool(self._memory_token)
+            removed_persisted_token = False
+            try:
                 self.token_path.unlink()
-            with contextlib.suppress(OSError):
+                removed_persisted_token = True
+            except FileNotFoundError:
+                pass
+            # Do not clear the in-memory copy until persistent deletion succeeds.
+            # A Windows sharing/permission error must remain visible and retryable.
+            self._memory_token = None
+            try:
                 self.metadata_path.unlink()
-            return existed
+            except FileNotFoundError:
+                pass
+            return had_memory_token or removed_persisted_token
 
     def read_metadata(self) -> dict[str, Any]:
         try:
@@ -836,7 +844,13 @@ def register_huggingface_access_routes(app: FastAPI) -> None:
     @router.delete("/token")
     async def remove_token(request: Request):
         service = _service_for_state(request.app.state)
-        removed = service.store.remove()
+        try:
+            removed = service.store.remove()
+        except OSError:
+            return _json_response(
+                {"detail": "Stored Hugging Face token could not be removed from secure storage."},
+                status_code=500,
+            )
         await service.clear_cache()
         status_payload = service.status()
         message = "Stored Hugging Face token removed."
