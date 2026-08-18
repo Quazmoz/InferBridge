@@ -353,12 +353,15 @@ class OnboardingService:
             raise ValueError("Acknowledge the model preflight warnings before continuing.")
         if request.trust_remote_code and not bool(cfg.trust_remote_code):
             raise ValueError("Remote code is not enabled for this reviewed catalog model.")
-        self._validate_storage_location(request.model_storage_location, request.model_id)
 
         async with self._jobs_lock:
             for existing in self._jobs.values():
                 if existing.status == "running":
                     raise RuntimeError("Another first-run model preparation is already active.")
+            # Storage validation can rewrite the writable model catalog. Keep that mutation
+            # inside the same critical section as the active-job check so a rejected second
+            # request cannot retarget model files while another preparation is running.
+            self._validate_storage_location(request.model_storage_location, request.model_id)
             job = PreparationJob(
                 job_id=f"onboard-{uuid.uuid4().hex[:16]}",
                 model_id=request.model_id,
