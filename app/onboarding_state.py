@@ -63,10 +63,27 @@ def _normalized_text(value: Any, *, limit: int = 1024) -> str | None:
     return text[:limit] or None
 
 
+def _schema_version(value: Any) -> int:
+    """Parse the persisted schema version without lossy numeric coercion."""
+
+    if value in (None, ""):
+        return 0
+    if isinstance(value, bool):
+        raise ValueError("Onboarding state schema version must be an integer.")
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        digits = text[1:] if text.startswith("-") else text
+        if digits.isdigit():
+            return int(text)
+    raise ValueError("Onboarding state schema version must be an integer.")
+
+
 def migrate_state(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise ValueError("Onboarding state must be a JSON object.")
-    version = int(raw.get("schema_version", 0) or 0)
+    version = _schema_version(raw.get("schema_version", 0))
     if version < 0:
         raise ValueError("Unsupported onboarding state version.")
     if version > SCHEMA_VERSION:
