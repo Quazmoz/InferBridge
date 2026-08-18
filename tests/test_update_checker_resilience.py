@@ -1,5 +1,9 @@
+import threading
+import time
 import urllib.error
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import app.update_checker as update_checker_module
 from app.update_checker import (
@@ -44,6 +48,45 @@ def test_checker_normalizes_naive_clock_and_clamps_timeout(tmp_path):
     assert result.status == "offline"
     assert result.checked_at == datetime(2026, 7, 29, 12, tzinfo=UTC)
     assert calls == [0.1, 0.1]
+
+
+def test_update_store_serializes_fixed_temp_file_writes(tmp_path, monkeypatch):
+    original_write_text = Path.write_text
+    counter_lock = threading.Lock()
+    active_writers = 0
+    max_active_writers = 0
+
+    def slow_write_text(path, *args, **kwargs):
+        nonlocal active_writers, max_active_writers
+        if path.name.endswith(".tmp"):
+            with counter_lock:
+                active_writers += 1
+                max_active_writers = max(max_active_writers, active_writers)
+            try:
+                time.sleep(0.03)
+                return original_write_text(path, *args, **kwargs)
+            finally:
+                with counter_lock:
+                    active_writers -= 1
+        return original_write_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", slow_write_text)
+    stores = (UpdateStore(tmp_path), UpdateStore(tmp_path))
+    caches = (
+        UpdateCache(channel="stable", latest_checked_version="0.9.7"),
+        UpdateCache(channel="stable", latest_checked_version="0.9.8"),
+    )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [
+            executor.submit(store.save_cache, cache)
+            for store, cache in zip(stores, caches, strict=True)
+        ]
+        for future in futures:
+            future.result()
+
+    assert max_active_writers == 1
+    assert stores[0].load_cache().latest_checked_version in {"0.9.7", "0.9.8"}
 
 
 def test_channel_change_ignores_fresh_cache_and_old_etag(tmp_path, monkeypatch):
