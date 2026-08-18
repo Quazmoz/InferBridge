@@ -132,8 +132,6 @@ class OnboardingStateStore:
             try:
                 return self.path.read_text(encoding="utf-8-sig")
             except FileNotFoundError:
-                # The file can legitimately disappear between exists() and read_text()
-                # when another recovery path atomically moves it aside.
                 return None
             except OSError as exc:
                 last_error = exc
@@ -144,12 +142,9 @@ class OnboardingStateStore:
 
     def load(self) -> StateLoadResult:
         with self._lock:
-            if not self.path.exists():
-                return StateLoadResult(default_state())
-
-            # Filesystem access failures are not corruption. Retry likely transient
-            # Windows locks, then propagate a persistent error without moving or replacing
-            # the valid state file.
+            # The read is authoritative. Avoid Path.exists() here because supported
+            # Python versions can suppress some filesystem OSErrors in exists() and
+            # return False, which would misclassify an inaccessible state file as absent.
             text = self._read_state_text()
             if text is None:
                 return StateLoadResult(default_state())
