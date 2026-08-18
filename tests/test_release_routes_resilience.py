@@ -6,8 +6,9 @@ from types import SimpleNamespace
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app import release_routes
 from app.release_routes import register_release_routes
-from app.update_checker import UpdateCache, UpdatePreferences, UpdateStore
+from app.update_checker import UpdateCache, UpdateCheckResult, UpdatePreferences, UpdateStore
 
 
 def _client(tmp_path) -> tuple[TestClient, UpdateStore]:
@@ -69,3 +70,32 @@ def test_release_status_keeps_cache_for_selected_channel(tmp_path):
     assert payload["last_update_check_time"] is not None
     assert payload["cached_manifest"] == {"version": "0.9.7b1"}
     assert payload["check_due"] is False
+
+
+def test_release_check_offloads_blocking_checker(tmp_path, monkeypatch):
+    calls = []
+
+    async def fake_to_thread(function, /, *args, **kwargs):
+        calls.append((function, args, kwargs))
+        return function(*args, **kwargs)
+
+    monkeypatch.setattr(release_routes.asyncio, "to_thread", fake_to_thread)
+    monkeypatch.setattr(release_routes, "_require_local_ui", lambda _request: None)
+    monkeypatch.setattr(
+        release_routes.UpdateChecker,
+        "check",
+        lambda _self, *, force=False: UpdateCheckResult(
+            status="current",
+            checked_at=datetime.now(UTC),
+            message="forced" if force else "scheduled",
+        ),
+    )
+    client, _store = _client(tmp_path)
+
+    response = client.post("/desktop/release/check")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "current"
+    assert response.json()["message"] == "forced"
+    assert len(calls) == 1
+    assert calls[0][2] == {"force": True}
