@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 
 from fastapi import HTTPException, Request
@@ -56,11 +57,9 @@ def register_release_routes(app, *, paths) -> None:
     @app.post("/desktop/release/check", include_in_schema=False)
     async def check_release(request: Request):
         _require_local_ui(request)
-        return (
-            UpdateChecker(store=store, installation_mode=installation_mode)
-            .check(force=True)
-            .model_dump(mode="json")
-        )
+        checker = UpdateChecker(store=store, installation_mode=installation_mode)
+        result = await asyncio.to_thread(checker.check, force=True)
+        return result.model_dump(mode="json")
 
     @app.put("/desktop/release/settings", include_in_schema=False)
     async def update_release_settings(request: Request):
