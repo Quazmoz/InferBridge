@@ -46,6 +46,26 @@ def test_remove_preserves_in_memory_token_when_persisted_delete_fails(
     assert store.token_path.exists()
 
 
+def test_remove_succeeds_when_only_non_secret_metadata_cleanup_fails(tmp_path, monkeypatch):
+    store = HuggingFaceCredentialStore(_settings(tmp_path))
+    store._memory_token = _token()
+    store.token_path.write_bytes(b"stored-token-placeholder")
+    store.metadata_path.write_text('{"state":"connected"}', encoding="utf-8")
+    original_unlink = Path.unlink
+
+    def metadata_locked(path, *args, **kwargs):
+        if path == store.metadata_path:
+            raise PermissionError("metadata is locked")
+        return original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", metadata_locked)
+
+    assert store.remove() is True
+    assert store._memory_token is None
+    assert not store.token_path.exists()
+    assert store.metadata_path.exists()
+
+
 def test_remove_route_reports_secure_storage_failure_without_claiming_success(
     tmp_path, monkeypatch
 ):
