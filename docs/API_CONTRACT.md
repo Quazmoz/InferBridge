@@ -20,6 +20,8 @@ A mock contract result is not evidence that a driver or hardware target works.
 
 Returns an OpenAI-style model list. InferBridge includes local lifecycle status as an additional field.
 
+Exact model IDs are strict across Chat Completions, Responses, and embeddings. An unknown exact ID returns `404`; InferBridge never silently substitutes the configured default or another loaded engine. The documented `model=auto` and `model=auto:<profile>` advisor selectors remain explicit exceptions that intentionally choose among compatible loaded generation models.
+
 ### `POST /v1/chat/completions`
 
 Supported request fields:
@@ -154,7 +156,7 @@ Custom registration and download requests accept `trust_remote_code`. It default
 - `GET /health/live` is an unauthenticated liveness probe.
 - `GET /health/ready` returns 503 while model preparation is active and 200 otherwise.
 
-Health routes remain available without an API key so local supervisors can check the process. `/v1/*` routes are protected when `OV_LLM_API_KEY` is set.
+Health routes remain available without an API key to **loopback clients** so local supervisors can check the process. If no API key is configured, InferBridge rejects all non-loopback HTTP clients before routing, including health and browser-UI requests. This keeps an accidental `--host 0.0.0.0` or direct Uvicorn wildcard bind from exposing an unauthenticated server. `/v1/*` routes additionally enforce bearer authentication when `OV_LLM_API_KEY` is configured.
 
 ## Authentication, CORS, and rate limiting
 
@@ -176,6 +178,7 @@ InferBridge uses conventional status codes:
 
 - `400` invalid request, device expression, model or backend pairing, or conversion option
 - `401` missing or invalid API key
+- `403` non-loopback access attempted while API authentication is disabled
 - `404` unknown model
 - `409` model is unloaded, busy, loading, or in a conflicting lifecycle state
 - `413` request body exceeds the configured maximum
