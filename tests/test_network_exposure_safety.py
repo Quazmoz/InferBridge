@@ -23,10 +23,16 @@ def _app(api_key: str | None) -> FastAPI:
     return app
 
 
-async def _get(app: FastAPI, client_host: str):
+async def _get(
+    app: FastAPI,
+    client_host: str,
+    *,
+    path: str = "/health",
+    headers: dict[str, str] | None = None,
+):
     transport = httpx.ASGITransport(app=app, client=(client_host, 50000))
     async with httpx.AsyncClient(transport=transport, base_url="http://inferbridge") as client:
-        return await client.get("/health")
+        return await client.get(path, headers=headers)
 
 
 def test_loopback_host_detection_is_strict():
@@ -56,11 +62,30 @@ def test_loopback_client_remains_available_without_api_key():
     assert response.json() == {"status": "ok"}
 
 
-def test_remote_client_is_allowed_to_reach_routes_when_authentication_is_configured():
-    response = asyncio.run(_get(_app("configured-secret"), "192.168.1.50"))
+def test_remote_non_api_surface_requires_bearer_when_authentication_is_configured():
+    app = _app("configured-secret")
 
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    missing = asyncio.run(_get(app, "192.168.1.50"))
+    invalid = asyncio.run(
+        _get(
+            app,
+            "192.168.1.50",
+            headers={"Authorization": "Bearer wrong-secret"},
+        )
+    )
+    allowed = asyncio.run(
+        _get(
+            app,
+            "192.168.1.50",
+            headers={"Authorization": "Bearer configured-secret"},
+        )
+    )
+
+    assert missing.status_code == 401
+    assert missing.headers["www-authenticate"] == "Bearer"
+    assert invalid.status_code == 401
+    assert allowed.status_code == 200
+    assert allowed.json() == {"status": "ok"}
 
 
 def test_actual_inferbridge_app_installs_remote_guard():
@@ -69,6 +94,42 @@ def test_actual_inferbridge_app_installs_remote_guard():
     response = asyncio.run(_get(app, "192.168.1.50"))
 
     assert response.status_code == 403
+
+
+def test_actual_inferbridge_remote_health_requires_configured_bearer():
+    app = create_app(Settings(force_mock=True, api_key="configured-secret"))
+
+    missing = asyncio.run(_get(app, "192.168.1.50", path="/health/live"))
+    allowed = asyncio.run(
+        _get(
+            app,
+            "192.168.1.50",
+            path="/health/live",
+            headers={"Authorization": "Bearer configured-secret"},
+        )
+    )
+
+    assert missing.status_code == 401
+    assert allowed.status_code == 200
+    assert allowed.json() == {"status": "ok"}
+
+
+def test_remote_v1_calls_keep_existing_route_authentication_contract():
+    app = create_app(Settings(force_mock=True, api_key="configured-secret"))
+
+    missing = asyncio.run(_get(app, "192.168.1.50", path="/v1/models"))
+    allowed = asyncio.run(
+        _get(
+            app,
+            "192.168.1.50",
+            path="/v1/models",
+            headers={"Authorization": "Bearer configured-secret"},
+        )
+    )
+
+    assert missing.status_code == 401
+    assert allowed.status_code == 200
+    assert allowed.json()["object"] == "list"
 
 
 def test_specific_non_loopback_bind_warns_without_api_key():
