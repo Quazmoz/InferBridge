@@ -33,7 +33,7 @@ binaries = []
 hiddenimports = collect_submodules("app") + collect_submodules("runtime")
 
 # PyInstaller's pkg_resources runtime hook imports setuptools' vendored jaraco.text
-# before desktop_launcher.py runs. setuptools 81 reads package data such as
+# before the application entry point runs. setuptools 81 reads package data such as
 # ``setuptools/_vendor/jaraco/text/Lorem ipsum.txt`` at import time. PyInstaller can
 # otherwise collect the Python modules without that data file, which turns a successful
 # install into an immediate "Unhandled exception in script" crash on first launch.
@@ -141,7 +141,7 @@ for distribution in (
         pass
 
 analysis = Analysis(
-    [str(root / "app" / "desktop_launcher.py")],
+    [str(root / "app" / "frozen_entrypoint.py")],
     pathex=[str(root)],
     binaries=binaries,
     datas=datas,
