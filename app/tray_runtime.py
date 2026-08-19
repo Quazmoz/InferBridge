@@ -22,8 +22,12 @@ class TrayRuntimeMixin:
             self._activate_existing_instance()
             return 0
         try:
-            with contextlib.suppress(OSError):
-                self.command_file.unlink()
+            # Command and restart markers are one-shot coordination files owned by a
+            # specific tray session. If a prior tray exited before consuming them, they
+            # must not trigger actions in this newly authoritative controller instance.
+            for marker in (self.command_file, self.restart_request_file):
+                with contextlib.suppress(OSError):
+                    marker.unlink()
             if not self.args.start_stopped:
                 try:
                     self._start_server(open_chat=not self.args.no_browser and not self.args.startup)
