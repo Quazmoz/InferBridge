@@ -153,10 +153,10 @@ Custom registration and download requests accept `trust_remote_code`. It default
 ## Health routes
 
 - `GET /health` returns process, runtime, device, and model-count state.
-- `GET /health/live` is an unauthenticated liveness probe.
+- `GET /health/live` is an unauthenticated **loopback** liveness probe.
 - `GET /health/ready` returns 503 while model preparation is active and 200 otherwise.
 
-Health routes remain available without an API key to **loopback clients** so local supervisors can check the process. If no API key is configured, InferBridge rejects all non-loopback HTTP clients before routing, including health and browser-UI requests. This keeps an accidental `--host 0.0.0.0` or direct Uvicorn wildcard bind from exposing an unauthenticated server. `/v1/*` routes additionally enforce bearer authentication when `OV_LLM_API_KEY` is configured.
+Health routes remain available without an API key to loopback clients so local supervisors can check the process. All non-loopback HTTP access is fail-closed: if no API key is configured, InferBridge rejects the remote request before routing; if an API key is configured, remote UI, asset, and health requests must send the same bearer key. `/v1/*` requests continue through their established route-level authentication so existing throttling and API error behavior are preserved. This keeps accidental wildcard binds and intentional LAN mode consistently authenticated without making localhost probes depend on credentials.
 
 ## Authentication, CORS, and rate limiting
 
@@ -177,7 +177,7 @@ Repeated failed authentication attempts are throttled. Keys are compared using a
 InferBridge uses conventional status codes:
 
 - `400` invalid request, device expression, model or backend pairing, or conversion option
-- `401` missing or invalid API key
+- `401` missing or invalid API key, including authenticated LAN access to non-API surfaces
 - `403` non-loopback access attempted while API authentication is disabled
 - `404` unknown model
 - `409` model is unloaded, busy, loading, or in a conflicting lifecycle state
