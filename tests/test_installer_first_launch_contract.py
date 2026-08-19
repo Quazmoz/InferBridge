@@ -55,3 +55,11 @@ def test_installer_runs_bootstrap_probe_before_offering_postinstall_launch():
     assert "InstalledRuntimeReady := VerifyInstalledRuntime();" in script
     assert "Check: CanLaunchInstalledRuntime" in script
     assert "Setup will not launch the application automatically" in script
+
+
+def test_installer_bootstrap_probe_never_registers_for_windows_restart():
+    hook = (ROOT / "packaging" / "runtime_hook.py").read_text(encoding="utf-8")
+    helper_modes = hook.split("helper_modes = {", 1)[1].split("}", 1)[0]
+
+    assert '"--native-smoke"' in helper_modes
+    assert '"--bootstrap-smoke"' in helper_modes
