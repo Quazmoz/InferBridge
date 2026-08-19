@@ -133,9 +133,11 @@ def _show_runtime_failure(detail: str) -> None:
         "and logs.\n\n"
         f"Technical detail: {detail}"
     )
-    # Release validation launches the hidden native-smoke helper non-interactively.
-    # Never display a modal dialog in that mode because it would hang the build.
-    if "--native-smoke" in sys.argv[1:]:
+    # Release validation and the installer bootstrap probe both launch hidden helper
+    # processes. Never display a modal dialog in either mode: the caller is waiting for the
+    # exit code and a dialog would make validation look hung or crashed.
+    helper_modes = {"--native-smoke", "--bootstrap-smoke"}
+    if set(sys.argv[1:]) & helper_modes:
         _write_runtime_failure(message)
         return
     try:
