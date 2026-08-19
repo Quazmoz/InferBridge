@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -79,3 +80,34 @@ def test_log_collection_skips_reparse_point_log_file(tmp_path, monkeypatch):
 
     assert files == {}
     assert categories == []
+
+
+def test_repeated_exports_at_same_timestamp_use_unique_paths(tmp_path, monkeypatch):
+    paths = _paths(tmp_path)
+    fixed = datetime(2026, 8, 19, 6, 50, tzinfo=UTC)
+    suffixes = iter(("11111111", "22222222", "33333333"))
+    monkeypatch.setattr(diagnostics.secrets, "token_hex", lambda _length: next(suffixes))
+    hardware = {
+        "fingerprint": "test",
+        "os": {},
+        "cpu": {},
+        "memory": {},
+        "disk": {},
+        "runtime": {},
+        "devices": [],
+        "available_devices": [],
+    }
+
+    outputs = [
+        DiagnosticsCollector(
+            paths=paths,
+            now=lambda: fixed,
+            hardware_snapshot=hardware,
+            npu_readiness={"state": "unknown"},
+        ).export().path
+        for _ in range(3)
+    ]
+
+    assert len(set(outputs)) == 3
+    assert all(path.is_file() for path in outputs)
+    assert not list(paths.diagnostics_dir.glob("*.tmp"))
