@@ -283,6 +283,7 @@ def _register_for_update_restart() -> None:
         "--diagnostic",
         "--headless",
         "--native-smoke",
+        "--bootstrap-smoke",
     }
     if arguments & helper_modes or _portable_install():
         return
