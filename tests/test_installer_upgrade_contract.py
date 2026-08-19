@@ -163,16 +163,15 @@ def test_native_release_gate_rejects_tokenizer_dll_outside_internal(tmp_path):
         verify_native_distribution(root, run_native_smoke=False)
 
 
-def test_native_release_gate_executes_packaged_smoke_on_windows(monkeypatch, tmp_path):
+def test_native_release_gate_executes_packaged_smokes_on_windows(monkeypatch, tmp_path):
     root = _native_distribution(tmp_path)
     psutil_dir = root / "_internal" / "psutil"
     psutil_dir.mkdir()
     (psutil_dir / "_psutil_windows.pyd").write_bytes(b"pyd")
-    captured = {}
+    calls = []
 
     def fake_run(command, **kwargs):
-        captured["command"] = command
-        captured.update(kwargs)
+        calls.append((command, kwargs))
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
     monkeypatch.setattr(release_scan, "os", SimpleNamespace(name="nt"))
@@ -180,28 +179,55 @@ def test_native_release_gate_executes_packaged_smoke_on_windows(monkeypatch, tmp
 
     verify_native_distribution(root)
 
-    assert captured["command"] == [str(root / "InferBridge.exe"), "--native-smoke"]
-    assert captured["cwd"] == root
-    # The gate also imports torch, Transformers, and Optimum Intel inside the bundle to
-    # prove conversion can start, which takes far longer than loading native bindings.
-    assert captured["timeout"] == 300
+    executable = str(root / "InferBridge.exe")
+    assert [command for command, _kwargs in calls] == [
+        [executable, "--bootstrap-smoke"],
+        [executable, "--native-smoke"],
+    ]
+    assert [kwargs["timeout"] for _command, kwargs in calls] == [60, 300]
+    assert all(kwargs["cwd"] == root for _command, kwargs in calls)
 
 
-def test_native_release_gate_surfaces_packaged_smoke_failure(monkeypatch, tmp_path):
+def test_native_release_gate_stops_on_bootstrap_smoke_failure(monkeypatch, tmp_path):
     root = _native_distribution(tmp_path)
     psutil_dir = root / "_internal" / "psutil"
     psutil_dir.mkdir()
     (psutil_dir / "_psutil_windows.pyd").write_bytes(b"pyd")
+
+    def fake_run(command, **_kwargs):
+        if "--bootstrap-smoke" in command:
+            return SimpleNamespace(
+                returncode=2,
+                stdout="",
+                stderr="desktop startup import failed",
+            )
+        raise AssertionError("native smoke must not run after bootstrap failure")
+
     monkeypatch.setattr(release_scan, "os", SimpleNamespace(name="nt"))
-    monkeypatch.setattr(
-        release_scan.subprocess,
-        "run",
-        lambda *args, **kwargs: SimpleNamespace(
+    monkeypatch.setattr(release_scan.subprocess, "run", fake_run)
+
+    with pytest.raises(RuntimeError, match="desktop bootstrap smoke test failed") as exc_info:
+        verify_native_distribution(root)
+    assert "desktop startup import failed" in str(exc_info.value)
+
+
+def test_native_release_gate_surfaces_packaged_native_smoke_failure(monkeypatch, tmp_path):
+    root = _native_distribution(tmp_path)
+    psutil_dir = root / "_internal" / "psutil"
+    psutil_dir.mkdir()
+    (psutil_dir / "_psutil_windows.pyd").write_bytes(b"pyd")
+
+    def fake_run(command, **_kwargs):
+        if "--bootstrap-smoke" in command:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        return SimpleNamespace(
             returncode=2,
             stdout="",
             stderr="Cannot load library openvino_tokenizers.dll: 126",
-        ),
-    )
+        )
+
+    monkeypatch.setattr(release_scan, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(release_scan.subprocess, "run", fake_run)
 
     with pytest.raises(RuntimeError, match="native smoke test failed") as exc_info:
         verify_native_distribution(root)
