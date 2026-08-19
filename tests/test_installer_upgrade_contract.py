@@ -16,8 +16,10 @@ def test_installer_reuses_identity_and_removes_only_immutable_runtime_payload():
     assert "UsePreviousAppDir=yes" in script
     assert "CloseApplications=force" in script
     assert "CloseApplicationsFilter={#MyAppExeName},{#MyLegacyAppExeName},*.dll,*.pyd" in script
-    assert "RestartApplications=yes" in script
+    assert "RestartApplications=no" in script
+    assert "RestartApplications=yes" not in script
     assert "Flags: nowait postinstall skipifsilent" in script
+    assert "Check: CanLaunchInstalledRuntime" in script
     assert "runascurrentuser" not in script
 
     install_delete = script.split("[InstallDelete]", 1)[1].split("[Files]", 1)[0]
