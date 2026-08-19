@@ -36,14 +36,35 @@ class InstanceMetadata:
         if not isinstance(raw, dict):
             return None
         try:
-            pid = int(raw["pid"])
-            port = int(raw["port"])
-            nonce = str(raw["nonce"])
-            executable = str(raw["executable"])
-            started_at = str(raw["started_at"])
-        except (KeyError, TypeError, ValueError):
+            pid = raw["pid"]
+            port = raw["port"]
+            nonce = raw["nonce"]
+            executable = raw["executable"]
+            started_at = raw["started_at"]
+        except KeyError:
             return None
-        if pid < 1 or not 1 <= port <= 65535 or not nonce:
+        # This metadata participates in process ownership and stale-instance decisions.
+        # Do not use lossy int()/str() coercion: bools, floats, numeric strings, Infinity,
+        # or structured values must never become plausible process-control metadata.
+        if (
+            isinstance(pid, bool)
+            or not isinstance(pid, int)
+            or isinstance(port, bool)
+            or not isinstance(port, int)
+            or not isinstance(nonce, str)
+            or not isinstance(executable, str)
+            or not isinstance(started_at, str)
+        ):
+            return None
+        if (
+            pid < 1
+            or not 1 <= port <= 65535
+            or not nonce
+            or len(nonce) > 512
+            or any(ord(char) < 32 for char in nonce)
+            or len(executable) > 32768
+            or len(started_at) > 256
+        ):
             return None
         return cls(pid, port, nonce, executable, started_at)
 

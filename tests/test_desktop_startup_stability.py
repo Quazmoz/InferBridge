@@ -70,3 +70,76 @@ def test_controller_surfaces_immediate_child_exit(monkeypatch, tmp_path) -> None
     )
     assert controller.child is None
     assert controller.metadata is None
+
+
+def test_controller_refuses_spawn_without_verifiable_tray_identity(monkeypatch, tmp_path) -> None:
+    paths = SimpleNamespace(launcher_metadata_file=tmp_path / "instance.json")
+    controller = DesktopServerController(
+        paths=paths,
+        options=ServerControllerOptions(preferred_port=8123),
+        log_path=tmp_path / "desktop.log",
+    )
+    metadata = desktop_launcher.InstanceMetadata(
+        pid=1,
+        port=8123,
+        nonce="nonce",
+        executable="InferBridge.exe",
+        started_at="now",
+    )
+    spawned = False
+
+    def fake_popen(*_args, **_kwargs):
+        nonlocal spawned
+        spawned = True
+        raise AssertionError("child spawn must not be attempted")
+
+    monkeypatch.setattr(desktop_controller, "_current_process_created_at", lambda: 0.0)
+    monkeypatch.setattr(desktop_controller.subprocess, "Popen", fake_popen)
+
+    with pytest.raises(RuntimeError, match="could not verify the tray process identity"):
+        controller._spawn(metadata, "control-token")
+
+    assert spawned is False
+
+
+def _metadata_payload(**changes):
+    payload = {
+        "pid": 1234,
+        "port": 8123,
+        "nonce": "nonce-value",
+        "executable": "InferBridge.exe",
+        "started_at": "2026-08-19T06:59:00Z",
+    }
+    payload.update(changes)
+    return payload
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("pid", True),
+        ("pid", 1234.5),
+        ("pid", "1234"),
+        ("pid", float("inf")),
+        ("port", False),
+        ("port", 8123.5),
+        ("port", "8123"),
+        ("port", float("nan")),
+        ("nonce", {"unexpected": "object"}),
+        ("executable", ["InferBridge.exe"]),
+        ("started_at", 123),
+    ],
+)
+def test_instance_metadata_rejects_lossy_or_structured_values(field, value):
+    assert desktop_launcher.InstanceMetadata.from_json(_metadata_payload(**{field: value})) is None
+
+
+def test_nonfinite_instance_metadata_file_is_treated_as_stale(tmp_path):
+    path = tmp_path / "desktop-instance.json"
+    path.write_text(
+        '{"pid":Infinity,"port":8123,"nonce":"n","executable":"InferBridge.exe",'
+        '"started_at":"now"}',
+        encoding="utf-8",
+    )
+
+    assert desktop_launcher._read_metadata(path) is None

@@ -39,7 +39,7 @@ The retained 0.6.1 hardware evidence comes from one Intel Core Ultra 9 185H lapt
 7. Follow the download, conversion, validation, compilation, loading, and benchmark stages.
 8. Continue to chat or copy the OpenAI-compatible endpoint for another client.
 
-The desktop launcher binds to `127.0.0.1`, selects an available local port, waits for liveness and readiness, opens the browser, and prevents duplicate instances. Model weights are downloaded separately and are not included in the base installer.
+The desktop launcher binds to `127.0.0.1` by default, selects an available port, waits for liveness and readiness, opens the browser, and prevents duplicate instances. Packaged **Network / API access** settings can deliberately enable authenticated LAN access while internal health checks and desktop control remain on loopback. See [LAN and home-lab access](docs/LAN_ACCESS.md). Model weights are downloaded separately and are not included in the base installer.
 
 The first model setup can take significant time. NPU support depends on the actual Intel platform, driver, model, precision, and OpenVINO release. A requested target is not proof of execution. InferBridge reports the actual device from successful measured generation when the runtime exposes that evidence.
 
@@ -113,7 +113,7 @@ See [QUICKSTART.md](QUICKSTART.md) for the complete setup flow.
 
 ### Responsive layout
 
-![InferBridge responsive layout](screenshots/responsive_preview.png)
+![InferBridge responsive preview](screenshots/responsive_preview.png)
 
 ## Documentation
 
@@ -137,6 +137,7 @@ See [QUICKSTART.md](QUICKSTART.md) for the complete setup flow.
 - [Local vision chat](docs/VISION.md)
 - [Open WebUI guide](OPENWEBUI.md)
 - [Open WebUI and n8n integrations](docs/INTEGRATIONS.md)
+- [LAN and home-lab access](docs/LAN_ACCESS.md)
 - [Device support](docs/DEVICE_SUPPORT.md)
 - [Verified Model Library](docs/MODEL_LIBRARY.md)
 - [Model preparation cancellation](docs/model-cancellation.md)
@@ -200,7 +201,7 @@ See [QUICKSTART.md](QUICKSTART.md) for the complete setup flow.
 
 ### Windows desktop distribution
 
-- Hidden-console launcher with loopback binding
+- Hidden-console launcher with secure loopback default and opt-in authenticated LAN binding
 - Per-user single-instance lock with live nonce verification
 - Bounded liveness and readiness polling
 - Safe port fallback and duplicate-instance prevention
@@ -247,12 +248,14 @@ InferBridge 0.7.0 and later recognize the legacy `%LOCALAPPDATA%\OpenVINOWindows
 Existing environment variables remain supported:
 
 ```text
+OV_LLM_HOST
 OV_LLM_DATA_DIR
 OV_LLM_MODELS_FILE
 OV_LLM_MODELS_DIR
 OV_LLM_CACHE_DIR
 OV_LLM_BENCHMARK_RESULTS
 OV_LLM_API_KEY
+OV_LLM_CORS_ORIGINS
 OV_LLM_DEVICE
 OV_LLM_MODEL
 OV_LLM_MOCK
@@ -390,7 +393,7 @@ Linux GPU and NPU support remains driver-dependent and experimental. InferBridge
 
 ## Security and privacy
 
-- Loopback is the safe default.
+- Loopback is the safe default; packaged LAN binding is explicit and requires API authentication.
 - State-changing routes can require an API key.
 - Cross-origin browser access is opt-in.
 - The browser page allows no inline script: `script-src` is `'self'` plus a per-response nonce, with UI payloads served as same-origin assets.

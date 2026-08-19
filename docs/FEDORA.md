@@ -23,19 +23,22 @@ chmod +x setup.sh start_server.sh setup/*.sh setup/linux/*.sh
 ./setup.sh --minimal
 ```
 
-If `python3` is not Python 3.11 through 3.14, install a supported interpreter and pass it explicitly:
+If `python3` is not Python 3.11 through 3.14, install a supported interpreter and pass it explicitly. An explicit `--python` command is authoritative and does not require a separate `python3` executable:
 
 ```bash
 ./setup.sh --minimal --python python3.13
 ```
 
+If `.venv` already exists with a different or unsupported Python version, setup stops with an actionable message instead of silently reusing an incompatible environment. Remove `.venv` before intentionally switching interpreter versions.
+
 ## Device check
 
 ```bash
 ./start_server.sh --check-devices
+./setup/linux/check_hardware.sh
 ```
 
-Device visibility is determined by OpenVINO. InferBridge cannot use a target that OpenVINO does not expose.
+Device visibility is determined by OpenVINO. InferBridge cannot use a target that OpenVINO does not expose. The hardware helper also reports access to `/dev/dri/renderD*` GPU nodes and `/dev/accel/accel*` NPU nodes.
 
 ## Model conversion
 
@@ -46,7 +49,7 @@ Install conversion dependencies and convert a catalog model:
 ./setup/linux/convert_model.sh --id tinyllama-1.1b-chat-fp16
 ```
 
-Gated Hugging Face models require accepted model terms and an `HF_TOKEN` configured in `.env` or the shell.
+Gated Hugging Face models require accepted model terms and an `HF_TOKEN` exported in the InferBridge process environment. Setup deliberately does not copy Hugging Face CLI credentials into `.env`.
 
 ## Start InferBridge
 
@@ -58,20 +61,39 @@ Gated Hugging Face models require accepted model terms and an `HF_TOKEN` configu
 
 Open the built-in InferBridge UI at `http://localhost:8000`.
 
+For the desktop-controller lifecycle from a source checkout:
+
+```bash
+./.venv/bin/python -m app.desktop_launcher --mock
+```
+
+If a Linux tray backend is unavailable, the launcher keeps the server alive without a tray icon. Desktop data uses `$XDG_DATA_HOME/InferBridge` when configured with an absolute path, otherwise `~/.local/share/InferBridge`.
+
+Optional desktop helpers:
+
+```bash
+sudo dnf install -y zenity xdg-utils wl-clipboard
+# X11 alternative:
+sudo dnf install -y xclip
+```
+
+These helpers are optional; the server and browser UI do not depend on them.
+
 ## Driver caveats
 
 - CPU should work once the Python and OpenVINO packages install.
-- GPU requires Intel's Linux GPU runtime and driver stack plus render-device permissions.
-- NPU requires Intel's Linux NPU driver, supported hardware, and a compatible kernel.
+- GPU requires Intel's Linux GPU runtime and driver stack plus usable render-device permissions.
+- NPU requires Intel's Linux NPU driver, supported hardware, a compatible kernel, and usable accel-device permissions.
 - Do not assume NPU availability merely because `lspci` shows an AI or NPU-like device.
-- Start GPU and NPU validation with `./start_server.sh --check-devices`.
+- Start GPU and NPU validation with `./start_server.sh --check-devices` and `./setup/linux/check_hardware.sh`.
 
 ## Troubleshooting
 
 - Permission denied on scripts: run `chmod +x setup.sh start_server.sh setup/*.sh setup/linux/*.sh`.
 - Missing virtual environment: run `./setup.sh --minimal`.
 - Missing `lspci`: run `sudo dnf install -y pciutils`.
-- OpenVINO sees only CPU: install or verify Intel GPU or NPU drivers, then rerun device discovery.
+- OpenVINO sees only CPU: install or verify Intel GPU or NPU drivers and device permissions, then rerun discovery.
+- `/dev/dri` or `/dev/accel` exists but is not usable: inspect the `render`/`video` group and log out/in after membership changes.
 - Import errors: remove and recreate `.venv`, then rerun setup.
-- Gated Hugging Face models: set `HF_TOKEN=hf_...` only after accepting the model license.
+- Gated Hugging Face models: export `HF_TOKEN=hf_...` only after accepting the model license.
 - Corporate TLS or proxy failures: configure `REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE`, and/or `HTTPS_PROXY` before installing dependencies or converting models.

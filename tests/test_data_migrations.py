@@ -63,10 +63,35 @@ def test_every_malformed_marker_shape_reports_the_same_actionable_failure(tmp_pa
     marker must not escape as a raw decoding traceback."""
 
     value = paths(tmp_path)
-    (tmp_path / "data-schema.json").write_text(content, encoding="utf-8")
+    marker = tmp_path / "data-schema.json"
+    marker.write_text(content, encoding="utf-8")
 
     with pytest.raises(RuntimeError, match="persistent data schema marker is invalid"):
         ensure_data_schema(value)
+
+    assert marker.read_text(encoding="utf-8") == content
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "[]",
+        '{"schema_version": true}',
+        '{"schema_version": 1.5}',
+        '{"schema_version": "1"}',
+        '{"schema_version": Infinity}',
+        '{"schema_version": NaN}',
+    ],
+)
+def test_malformed_schema_marker_is_never_coerced(tmp_path, payload):
+    value = paths(tmp_path)
+    marker = tmp_path / "data-schema.json"
+    marker.write_text(payload, encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="schema marker"):
+        ensure_data_schema(value)
+
+    assert marker.read_text(encoding="utf-8") == payload
 
 
 def test_a_utf8_bom_marker_is_still_readable(tmp_path):

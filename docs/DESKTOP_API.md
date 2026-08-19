@@ -2,7 +2,7 @@
 
 The packaged desktop server extends the existing FastAPI application. It does not duplicate model recommendation, conversion, load, or benchmark logic in JavaScript.
 
-All request and response bodies use Pydantic models from `app.onboarding_models`.
+All request and response bodies use Pydantic models from `app/onboarding_models`.
 
 ## Read routes
 
@@ -24,13 +24,19 @@ All request and response bodies use Pydantic models from `app.onboarding_models`
 | `POST /v1/onboarding/complete` | Return connection details for a successfully verified job |
 | `POST /v1/onboarding/restart` | Restart setup without deleting models or benchmarks |
 
-When `OV_LLM_API_KEY` is configured, state-changing routes require the same bearer-key policy as the existing protected API.
+When `OV_LLM_API_KEY` is configured, **all `/v1/onboarding/*` routes, including reads, require the same bearer-key policy as the rest of `/v1`**. The packaged loopback browser does not expose the API key to JavaScript: `DesktopBrowserAuthBridgeMiddleware` injects it server-side for trusted local UI requests after the browser receives its HttpOnly loopback session cookie.
+
+State-changing browser requests additionally require InferBridge's safe-origin checks. Normal non-browser clients authenticate with `Authorization: Bearer <key>`.
 
 ## Desktop process routes
 
-`GET /desktop/instance` returns the local instance nonce and selected port for launcher identity verification.
+`GET /desktop/instance` is loopback-only and returns the local instance nonce and selected port for launcher identity verification. It is intentionally outside the `/v1` API-key contract.
 
-`POST /desktop/shutdown` requires the exact nonce in `X-Instance-Nonce`. It requests a graceful Uvicorn shutdown for the matching local desktop process. The launcher never terminates unrelated processes.
+The tray-owned control plane lives under `/desktop/control/*`. `POST /desktop/control/shutdown`, `GET /desktop/control/status`, and the other control endpoints require the exact high-entropy tray control token in `X-Desktop-Control` and reject non-loopback clients. The control token is passed privately from the tray to its child server and is separate from the user-configured API key.
+
+Browser-accessible desktop operations live under `/v1/desktop/operations/*` and follow the normal `/v1` bearer-key policy when authentication is configured.
+
+The controller never terminates a server process unless the child PID matches the metadata for the process it owns. If graceful shutdown does not complete within the bounded timeout, fallback termination is applied only to that owned child.
 
 ## Preparation contract
 

@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import secrets
+import socket
 import subprocess
 import sys
 import time
@@ -21,7 +22,6 @@ from app.desktop_launcher import (
     InstanceMetadata,
     _read_metadata,
     _write_metadata,
-    choose_available_port,
     verify_instance,
     wait_for_readiness,
 )
@@ -38,6 +38,29 @@ def _current_process_created_at() -> float:
         return float(psutil.Process(os.getpid()).create_time())
     except Exception:
         return 0.0
+
+
+def choose_available_port(preferred: int = 8000) -> int:
+    """Choose a port available for either loopback or wildcard desktop listeners.
+
+    The socket is never put into listening mode. Binding the wildcard address here is
+    only an availability probe so a later LAN-mode Uvicorn bind cannot collide with a
+    service that owns the preferred port on another local interface.
+    """
+
+    for candidate in (preferred, 0):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
+            try:
+                sock.bind(("0.0.0.0", candidate))
+            except OSError:
+                continue
+            return int(sock.getsockname()[1])
+    raise RuntimeError("No local TCP port is available for the application server.")
+
+
+# Compatibility alias for code/tests that want the listener-specific name.
+choose_available_listener_port = choose_available_port
 
 
 @dataclass(frozen=True)
@@ -127,6 +150,12 @@ class DesktopServerController:
         return f"http://127.0.0.1:{self.port}" if self.port else None
 
     def _server_command(self, metadata: InstanceMetadata) -> list[str]:
+        owner_created_at = _current_process_created_at()
+        if owner_created_at <= 0:
+            raise RuntimeError(
+                "InferBridge could not verify the tray process identity required for safe "
+                "server ownership. Restart the application from a complete installation."
+            )
         if getattr(sys, "frozen", False):
             command = [sys.executable, "--server-child"]
         else:
@@ -140,7 +169,7 @@ class DesktopServerController:
                 "--owner-pid",
                 str(os.getpid()),
                 "--owner-created-at",
-                str(_current_process_created_at()),
+                str(owner_created_at),
             ]
         )
         if self.options.portable:

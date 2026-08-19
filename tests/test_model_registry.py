@@ -41,8 +41,9 @@ def test_load_catalog_parses_entries(tmp_path):
 def test_shipped_catalog_uses_supported_formats_and_recommended_devices():
     catalog = load_catalog(BASE_DIR / "models.json")
     assert catalog
-    assert all(cfg.weight_format in {"fp16", "int4"} for cfg in catalog.values())
+    assert all(cfg.weight_format in {"fp16", "int4", "int8"} for cfg in catalog.values())
     assert catalog["tinyllama-1.1b-chat-int4"].weight_format == "int4"
+    assert catalog["qwen2.5-1.5b-int8"].weight_format == "int8"
     assert all(parse_device_expression(cfg.recommended_device) for cfg in catalog.values())
 
 

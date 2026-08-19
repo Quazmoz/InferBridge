@@ -106,6 +106,46 @@ def test_latest_load_request_resumes_after_conversion() -> None:
     asyncio.run(scenario())
 
 
+def test_deferred_load_failure_redacts_secret_and_machine_path() -> None:
+    async def scenario() -> None:
+        manager = _manager()
+        release = asyncio.Event()
+
+        async def fake_conversion() -> None:
+            try:
+                await release.wait()
+                manager._clear_status(MODEL_ID)
+            finally:
+                manager.convert_tasks.pop(MODEL_ID, None)
+
+        conversion = asyncio.create_task(fake_conversion())
+        manager.convert_tasks[MODEL_ID] = conversion
+        manager._set_status(MODEL_ID, "converting")
+        manager.schedule_load(MODEL_ID, "NPU")
+
+        original_schedule_load = manager.schedule_load
+        secret = "hf_" + "s" * 32
+
+        def fail_load(*_args, **_kwargs):
+            raise RuntimeError(r"C:\Users\Quinn\private\model " + secret)
+
+        manager.schedule_load = fail_load
+        release.set()
+        await conversion
+        await asyncio.sleep(0)
+
+        error = manager.status_overrides[MODEL_ID]["error"]
+        assert secret not in error
+        assert r"C:\Users\Quinn" not in error
+        assert "[redacted]" in error
+
+        manager.schedule_load = original_schedule_load
+        manager._clear_status(MODEL_ID)
+        await manager.shutdown()
+
+    asyncio.run(scenario())
+
+
 def test_shutdown_does_not_start_a_deferred_load() -> None:
     async def scenario() -> None:
         manager = _manager()

@@ -13,6 +13,7 @@ from app.model_library_conversion import (
     is_reparse_point as _is_reparse_point,
     record_conversion_metadata,
 )
+from app.model_library_policy import ModelLibraryService
 from app.model_library_schema import (
     ALLOWED_DEVICES as _ALLOWED_DEVICES,
     ALLOWED_PROFILES as _ALLOWED_PROFILES,
@@ -37,7 +38,6 @@ from app.model_library_schema import (
 )
 from app.model_library_service import (
     OFFICIAL_MANIFEST_URL,
-    ModelLibraryService,
     definition_to_config as _definition_to_config,
     model_definition,
 )

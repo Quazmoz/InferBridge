@@ -291,13 +291,21 @@ class HuggingFaceCredentialStore:
 
     def remove(self) -> bool:
         with self._lock:
-            existed = bool(self._memory_token) or self.token_path.exists()
-            self._memory_token = None
-            with contextlib.suppress(OSError):
+            had_memory_token = bool(self._memory_token)
+            removed_persisted_token = False
+            try:
                 self.token_path.unlink()
+                removed_persisted_token = True
+            except FileNotFoundError:
+                pass
+            # Do not clear the in-memory copy until persistent deletion succeeds.
+            # A Windows sharing/permission error must remain visible and retryable.
+            self._memory_token = None
+            # Metadata contains no secret and must not turn successful DPAPI token
+            # deletion into a false credential-removal failure.
             with contextlib.suppress(OSError):
                 self.metadata_path.unlink()
-            return existed
+            return had_memory_token or removed_persisted_token
 
     def read_metadata(self) -> dict[str, Any]:
         try:
@@ -776,7 +784,9 @@ class HuggingFacePreflightMiddleware:
         cfg = manager.catalog.get(model_id) if model_id else None
         if path == "/v1/models/convert" and cfg is not None:
             source_model = cfg.source_model
-        trust_remote_code = bool(payload.get("trust_remote_code"))
+        # Only an actual JSON boolean true can opt into the reviewed remote-code path.
+        # Truthy strings such as "false" must not bypass the normal access preflight.
+        trust_remote_code = payload.get("trust_remote_code") is True
         if (
             path == "/v1/models/download-custom"
             and cfg is not None
@@ -838,7 +848,13 @@ def register_huggingface_access_routes(app: FastAPI) -> None:
     @router.delete("/token")
     async def remove_token(request: Request):
         service = _service_for_state(request.app.state)
-        removed = service.store.remove()
+        try:
+            removed = service.store.remove()
+        except OSError:
+            return _json_response(
+                {"detail": "Stored Hugging Face token could not be removed from secure storage."},
+                status_code=500,
+            )
         await service.clear_cache()
         status_payload = service.status()
         message = "Stored Hugging Face token removed."

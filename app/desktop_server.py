@@ -21,6 +21,12 @@ def owner_process_matches(
 ) -> bool:
     if owner_pid <= 0:
         return True
+    # A positive owner PID participates in orphan detection. PID-only ownership is
+    # unsafe because Windows can reuse process IDs after the tray exits. Current tray
+    # launches always supply the psutil creation timestamp, so missing/invalid identity
+    # metadata must fail closed instead of silently weakening the ownership check.
+    if owner_created_at <= 0:
+        return False
     try:
         if process_factory is None:
             import psutil
@@ -29,9 +35,7 @@ def owner_process_matches(
         process = process_factory(owner_pid)
         if not process.is_running():
             return False
-        if owner_created_at > 0:
-            return abs(float(process.create_time()) - float(owner_created_at)) < 1.0
-        return True
+        return abs(float(process.create_time()) - float(owner_created_at)) < 1.0
     except Exception:
         return False
 
@@ -90,6 +94,14 @@ def create_desktop_app(
 
     from app.config import Settings
     from app.data_migrations import ensure_data_schema
+    from app.desktop_browser_auth import DesktopBrowserAuthBridgeMiddleware
+    from app.desktop_network import (
+        DesktopApiKeyStore,
+        DesktopNetworkResolution,
+        DesktopNetworkService,
+        register_desktop_network_routes,
+        resolve_desktop_network_settings,
+    )
     from app.desktop_onboarding import DesktopOnboardingService
     from app.desktop_operations import DesktopOperationsService
     from app.desktop_operations_routes import register_desktop_operations_routes
@@ -108,12 +120,7 @@ def create_desktop_app(
     from app.ui_composition import DESKTOP_CAPABILITY
     from app.ui_registry import activate
 
-    # Filesystem safety is a backend contract, not a side effect of composing the UI.
     install_storage_root_safety()
-    # The storage manager and runtime health center are always registered by
-    # app.ui_composition. Activating the capability is what makes them render, and this is
-    # the process that provides the routes they call. Import order no longer matters:
-    # app.server resolves the composition per request rather than binding it at import.
     activate(DESKTOP_CAPABILITY)
 
     from app.server import create_app
@@ -128,9 +135,16 @@ def create_desktop_app(
     os.environ.setdefault("TRANSFORMERS_CACHE", str(paths.huggingface_cache_dir / "transformers"))
     os.environ.setdefault("OV_CACHE_DIR", str(paths.compiled_cache_dir))
 
-    settings = Settings.from_env().replace(host="127.0.0.1", port=port)
+    base_settings = Settings.from_env().replace(port=port)
     state_store = OnboardingStateStore(paths.onboarding_file)
     state = state_store.load().state
+    credential_store = DesktopApiKeyStore(paths.config_dir)
+    network_resolution = resolve_desktop_network_settings(
+        base_settings,
+        state=state,
+        credential_store=credential_store,
+    )
+    settings = network_resolution.settings
     if state.get("completed") and not state.get("restart_requested"):
         selected_model = state.get("selected_model")
         selected_device = state.get("selected_device")
@@ -138,8 +152,27 @@ def create_desktop_app(
             default_model=selected_model if selected_model else None,
             device=selected_device if selected_device else None,
         )
+        network_resolution = DesktopNetworkResolution(
+            settings=settings,
+            host_source=network_resolution.host_source,
+            cors_source=network_resolution.cors_source,
+            api_key_source=network_resolution.api_key_source,
+            lan_blocked_reason=network_resolution.lan_blocked_reason,
+            cors_blocked_reason=network_resolution.cors_blocked_reason,
+        )
+
+    if network_resolution.lan_blocked_reason:
+        logging.getLogger("ov-llm.desktop").warning(network_resolution.lan_blocked_reason)
+    if network_resolution.cors_blocked_reason:
+        logging.getLogger("ov-llm.desktop").warning(network_resolution.cors_blocked_reason)
 
     app = create_app(settings)
+    if settings.api_key:
+        app.add_middleware(
+            DesktopBrowserAuthBridgeMiddleware,
+            api_key=settings.api_key,
+            ui_token=secrets.token_urlsafe(32),
+        )
     if app.state.manager.force_mock and not mock:
         raise RuntimeError(
             "OpenVINO GenAI could not be loaded by the packaged application. Run the desktop "
@@ -160,6 +193,14 @@ def create_desktop_app(
         paths=paths,
         endpoint_port=port,
     )
+    network = DesktopNetworkService(
+        active_resolution=network_resolution,
+        base_settings=base_settings,
+        paths=paths,
+        state_store=state_store,
+        credential_store=credential_store,
+        endpoint_port=port,
+    )
     storage = StorageManagerService(
         settings=settings,
         manager=app.state.manager,
@@ -174,6 +215,7 @@ def create_desktop_app(
     app.state.desktop_paths = paths
     app.state.onboarding_service = onboarding
     app.state.desktop_operations_service = operations
+    app.state.desktop_network_service = network
     app.state.storage_manager_service = storage
     app.state.runtime_health_service = runtime_health
     app.state.shutting_down = False
@@ -198,6 +240,7 @@ def create_desktop_app(
         instance_nonce=instance_nonce,
         control_token=control_token,
     )
+    register_desktop_network_routes(app, service=network)
     register_release_routes(app, paths=paths)
     register_storage_manager_routes(app, service=storage)
     register_runtime_health_routes(app, service=runtime_health)
@@ -227,7 +270,7 @@ def run_server(
     )
     config = uvicorn.Config(
         app,
-        host="127.0.0.1",
+        host=app.state.settings.host,
         port=port,
         log_level="info",
         access_log=False,

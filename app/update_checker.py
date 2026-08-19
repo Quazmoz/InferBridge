@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 import urllib.error
 import urllib.request
 from collections.abc import Callable
@@ -39,13 +40,16 @@ _RELEASES_APIS = tuple(
 _MANIFEST_PREFIXES = (ARTIFACT_PREFIX, *LEGACY_ARTIFACT_PREFIXES)
 _MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 _DEFAULT_INTERVAL = timedelta(hours=24)
+_UPDATE_STORE_WRITE_LOCK = threading.RLock()
 _ModelT = TypeVar("_ModelT", bound=BaseModel)
 
 
 class UpdatePreferences(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    enabled: bool = False
+    # Update discovery is opt-in network activity. Only an actual persisted JSON boolean
+    # may enable it; values such as 1, "true", "yes", or "on" must fail closed.
+    enabled: bool = Field(default=False, strict=True)
     channel: ReleaseChannel = "stable"
     skipped_versions: list[str] = Field(default_factory=list, max_length=50)
 
@@ -53,6 +57,7 @@ class UpdatePreferences(BaseModel):
 class UpdateCache(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    channel: ReleaseChannel | None = None
     releases_etag: str | None = None
     last_checked_at: datetime | None = None
     latest_checked_version: str | None = None
@@ -90,10 +95,14 @@ class UpdateStore:
 
     @staticmethod
     def _write(path: Path, model: BaseModel) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_suffix(path.suffix + ".tmp")
-        temporary.write_text(model.model_dump_json(indent=2) + "\n", encoding="utf-8")
-        temporary.replace(path)
+        # Release checks are offloaded to worker threads. Serialize the fixed-name
+        # temporary-file transaction across all store instances so overlapping checks
+        # cannot truncate or replace each other's temporary file on Windows.
+        with _UPDATE_STORE_WRITE_LOCK:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = path.with_suffix(path.suffix + ".tmp")
+            temporary.write_text(model.model_dump_json(indent=2) + "\n", encoding="utf-8")
+            temporary.replace(path)
 
     def load_preferences(self) -> UpdatePreferences:
         return self._load(self.preferences_path, UpdatePreferences, UpdatePreferences)
@@ -209,6 +218,14 @@ def _fetch_release_index(
     raise OSError("No approved GitHub release endpoint was available.")
 
 
+def _manifest_channel_allowed(selected: ReleaseChannel, published: ReleaseChannel) -> bool:
+    if selected == "stable":
+        return published == "stable"
+    if selected == "beta":
+        return published in {"stable", "beta"}
+    return published in {"stable", "beta", "nightly"}
+
+
 class UpdateChecker:
     def __init__(
         self,
@@ -231,6 +248,7 @@ class UpdateChecker:
         try:
             return ReleaseManifest.model_validate(cache.manifest)
         except ValueError:
+            cache.channel = None
             cache.releases_etag = None
             cache.last_checked_at = None
             cache.latest_checked_version = None
@@ -241,23 +259,31 @@ class UpdateChecker:
     def check(self, *, force: bool = False) -> UpdateCheckResult:
         preferences = self.store.load_preferences()
         cache = self.store.load_cache()
-        cached_manifest = self._validated_cached_manifest(cache)
+        cache_matches_channel = cache.channel == preferences.channel
+        cached_manifest = (
+            self._validated_cached_manifest(cache) if cache_matches_channel else None
+        )
+        # Cached release metadata, timestamps and ETags are valid only for the channel
+        # that produced them. A channel change must force a fresh, unconditional request.
+        cache_matches_channel = cache.channel == preferences.channel
+        cached_checked_at = cache.last_checked_at if cache_matches_channel else None
         checked_at = _as_utc(self.now())
         if not preferences.enabled:
-            return UpdateCheckResult(status="disabled", checked_at=cache.last_checked_at)
-        if not force and not check_due(cache.last_checked_at, checked_at):
+            return UpdateCheckResult(status="disabled", checked_at=cached_checked_at)
+        if not force and not check_due(cached_checked_at, checked_at):
             return self._result_for_manifest(
-                cached_manifest, preferences, "not_due", cache.last_checked_at
+                cached_manifest, preferences, "not_due", cached_checked_at
             )
 
         try:
             releases, etag = _fetch_release_index(
                 opener=self.opener,
                 timeout_seconds=self.timeout_seconds,
-                etag=cache.releases_etag,
+                etag=cache.releases_etag if cache_matches_channel else None,
             )
             candidate = _candidate_manifest_url(releases, preferences.channel)
             if candidate is None:
+                cache.channel = preferences.channel
                 cache.last_checked_at = checked_at
                 cache.latest_checked_version = None
                 cache.manifest = None
@@ -274,19 +300,15 @@ class UpdateChecker:
             )
             with self.opener(manifest_request, timeout=self.timeout_seconds) as response:
                 manifest = ReleaseManifest.model_validate(_read_json(response))
-            channel_allowed = (
-                manifest.channel == "stable"
-                if preferences.channel == "stable"
-                else manifest.channel in {"stable", preferences.channel}
-            )
             if (
                 manifest.version != release_version
                 or not channel_accepts(preferences.channel, manifest.version)
-                or not channel_allowed
+                or not _manifest_channel_allowed(preferences.channel, manifest.channel)
             ):
                 raise ValueError(
                     "Release manifest version or channel does not match the GitHub release."
                 )
+            cache.channel = preferences.channel
             cache.releases_etag = etag
             cache.last_checked_at = checked_at
             cache.latest_checked_version = manifest.version
@@ -294,9 +316,13 @@ class UpdateChecker:
             self.store.save_cache(cache)
             return self._result_for_manifest(manifest, preferences, "current", checked_at)
         except urllib.error.HTTPError as exc:
-            if exc.code == 304 and cached_manifest:
+            if exc.code == 304 and cache_matches_channel:
                 cache.last_checked_at = checked_at
                 self.store.save_cache(cache)
+                if cached_manifest is None:
+                    # A channel-aware cache with no manifest records a prior successful
+                    # release-index check that had no eligible release for this channel.
+                    return UpdateCheckResult(status="current", checked_at=checked_at)
                 return self._result_for_manifest(
                     cached_manifest, preferences, "current", checked_at
                 )

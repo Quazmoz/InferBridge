@@ -16,6 +16,7 @@ from app.huggingface_access import install_huggingface_access_routes_extension
 from app.model_cancellation import install_model_cancellation_routes_extension
 from app.model_library_routes import install_model_library_routes_extension
 from app.model_recovery import install_model_recovery_routes_extension
+from app.network_exposure_safety import host_is_loopback, install_network_exposure_safety
 from app.paths import resolve_runtime_paths
 from app.status_split import install_status_split_routes_extension
 from app.ui_composition import compose as compose_browser_ui
@@ -25,6 +26,7 @@ from runtime.npu_compat import install_openvino_genai_compat
 # Install runtime compatibility and route extensions before app.model_manager/app.server
 # bind their imported engine functions.
 install_openvino_genai_compat()
+install_network_exposure_safety()
 install_model_library_routes_extension()
 install_model_cancellation_routes_extension()
 install_model_recovery_routes_extension()
@@ -117,11 +119,14 @@ class Settings:
 
     def __post_init__(self) -> None:
         from app.conversion_stream_safety import install_conversion_stream_safety
+        from app.desktop_credential_safety import install_desktop_credential_safety
         from app.desktop_model_paths import install_desktop_model_path_extension
         from app.desktop_shutdown_safety import install_desktop_shutdown_safety
+        from app.embedding_lifecycle_safety import install_embedding_lifecycle_safety
         from app.engine_handoff_safety import install_engine_handoff_safety
         from app.huggingface_access import install_huggingface_access_manager_extension
         from app.huggingface_manager_safety import install_huggingface_manager_safety
+        from app.huggingface_metadata_safety import install_huggingface_metadata_safety
         from app.lifecycle_safety import install_model_lifecycle_safety
         from app.model_cancellation import install_model_cancellation_manager_extension
         from app.model_load_target import install_model_load_target_routing
@@ -129,12 +134,18 @@ class Settings:
         from app.model_recovery import install_model_recovery_manager_extension
         from app.model_recovery_cleanup import install_model_recovery_cleanup
         from app.model_recovery_status import install_model_recovery_status_extension
+        from app.model_resolution_safety import install_model_resolution_safety
         from app.status_split import install_status_manager_extension
         from app.structured_progress import install_structured_progress_protocol
 
+        # These guards patch low-level engine/credential primitives before the higher
+        # lifecycle wrappers begin using them.
+        install_embedding_lifecycle_safety()
+        install_desktop_credential_safety()
         install_desktop_model_path_extension()
         install_model_load_target_routing()
         install_engine_handoff_safety()
+        install_model_resolution_safety()
         install_conversion_stream_safety()
         # The structured reader intentionally installs after the stream-safety layer
         # and retains its terminal-state protection while adding schema validation.
@@ -145,6 +156,7 @@ class Settings:
         install_model_recovery_cleanup()
         install_status_manager_extension()
         install_model_recovery_status_extension()
+        install_huggingface_metadata_safety()
         install_huggingface_access_manager_extension()
         install_huggingface_manager_safety()
         # Install watchdogs last so late cancellation and recovery wrappers cannot
@@ -210,11 +222,11 @@ class Settings:
                 "Wildcard CORS allows arbitrary websites to call the local API. Set explicit "
                 "OV_LLM_CORS_ORIGINS values or configure OV_LLM_API_KEY."
             )
-        if self.host.strip() in {"0.0.0.0", "::"} and not self.api_key:
+        if not host_is_loopback(self.host) and not self.api_key:
             warnings.append(
                 f"OV_LLM_HOST is set to {self.host!r}, which can expose the server beyond "
-                "localhost, but OV_LLM_API_KEY is not set. Set OV_LLM_API_KEY before "
-                "exposing the server beyond a trusted local machine/network."
+                "localhost, but OV_LLM_API_KEY is not set. Non-loopback requests will be "
+                "rejected until an API key is configured."
             )
 
         for warning in warnings:

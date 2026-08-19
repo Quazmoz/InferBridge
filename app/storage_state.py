@@ -52,11 +52,14 @@ class StorageRuntimeState:
             return {}
         output: dict[str, int] = {}
         for model_id, raw in values.items():
-            if model_id not in self.manager.catalog:
+            if model_id not in self.manager.catalog or isinstance(raw, bool):
                 continue
             try:
                 timestamp = int(raw)
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OverflowError):
+                # Python's JSON decoder accepts non-standard Infinity/NaN values by
+                # default. Corrupt usage metadata must never make storage-manager
+                # initialization fail just because int(Infinity) overflows.
                 continue
             if timestamp > 0:
                 output[model_id] = timestamp

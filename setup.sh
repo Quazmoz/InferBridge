@@ -84,7 +84,9 @@ else
     echo "WARNING: /etc/os-release was not found. Continuing best-effort."
 fi
 
-if ! command -v python3 >/dev/null 2>&1; then
+# An explicit --python command is authoritative. Do not reject a valid custom
+# interpreter just because the distro does not provide a `python3` convenience link.
+if [ -z "$PYTHON_CMD" ] && ! command -v python3 >/dev/null 2>&1; then
     echo "ERROR: python3 was not found." >&2
     print_python_install_hint "$OS_ID"
     exit 1
@@ -104,35 +106,25 @@ ENV_FILE="$REPO_ROOT/.env"
 ENV_EXAMPLE_FILE="$REPO_ROOT/.env.example"
 if [ ! -f "$ENV_FILE" ] && [ -f "$ENV_EXAMPLE_FILE" ]; then
     cp "$ENV_EXAMPLE_FILE" "$ENV_FILE"
+    chmod 600 "$ENV_FILE" 2>/dev/null || true
     echo "Created .env from .env.example"
 fi
 
-TOKEN_FILE="${HOME:-}/.cache/huggingface/token"
-if [ -f "$ENV_FILE" ] && [ -f "$TOKEN_FILE" ]; then
-    HF_TOKEN_VALUE="$(tr -d '\r\n' < "$TOKEN_FILE")"
-    if [[ "$HF_TOKEN_VALUE" == hf_* ]]; then
-        if grep -Eq '^HF_TOKEN=hf_[^[:space:]#]+' "$ENV_FILE"; then
-            echo "HF_TOKEN is already configured in .env"
-        else
-            TMP_ENV="$(mktemp)"
-            awk -v token="$HF_TOKEN_VALUE" '
-                BEGIN { replaced = 0 }
-                replaced == 0 && $0 ~ /^HF_TOKEN=/ {
-                    print "HF_TOKEN=" token
-                    replaced = 1
-                    next
-                }
-                { print }
-                END {
-                    if (replaced == 0) {
-                        print "HF_TOKEN=" token
-                    }
-                }
-            ' "$ENV_FILE" > "$TMP_ENV"
-            mv "$TMP_ENV" "$ENV_FILE"
-            echo "Configured HF_TOKEN in .env from ~/.cache/huggingface/token"
-        fi
-    fi
+# Hugging Face CLI credentials are user-owned secrets. Never copy their contents
+# into the repository's .env file. The runtime can consume an explicitly exported
+# HF_TOKEN/HUGGING_FACE_HUB_TOKEN when gated-model access is required.
+HF_TOKEN_FILE=""
+if [ -n "${HF_HOME:-}" ]; then
+    HF_TOKEN_FILE="${HF_HOME%/}/token"
+elif [ -n "${XDG_CACHE_HOME:-}" ]; then
+    HF_TOKEN_FILE="${XDG_CACHE_HOME%/}/huggingface/token"
+elif [ -n "${HOME:-}" ]; then
+    HF_TOKEN_FILE="${HOME%/}/.cache/huggingface/token"
+fi
+if [ -n "$HF_TOKEN_FILE" ] && [ -f "$HF_TOKEN_FILE" ]; then
+    echo "Detected existing Hugging Face CLI credentials."
+    echo "InferBridge does not copy Hugging Face tokens into .env."
+    echo "For gated-model access, export HF_TOKEN before starting InferBridge."
 fi
 
 if [ "$SKIP_HARDWARE_CHECK" -eq 0 ]; then

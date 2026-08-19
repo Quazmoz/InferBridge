@@ -75,13 +75,29 @@ def executable_dir() -> Path:
     return packaged_resource_root()
 
 
+def _home_from_env(env: Mapping[str, str]) -> Path:
+    configured = str(env.get("HOME") or "").strip()
+    return Path(configured).expanduser() if configured else Path.home()
+
+
 def _default_local_app_data(env: Mapping[str, str]) -> Path:
+    # Preserve LOCALAPPDATA as an explicit compatibility override even on non-Windows
+    # hosts. Tests, portable automation, and users migrating existing data may already
+    # depend on it.
     configured = str(env.get("LOCALAPPDATA") or "").strip()
     if configured:
         return Path(configured).expanduser()
     if os.name == "nt":
         return Path.home() / "AppData" / "Local"
-    return Path.home() / ".local" / "share"
+
+    xdg_data_home = str(env.get("XDG_DATA_HOME") or "").strip()
+    if xdg_data_home:
+        candidate = Path(xdg_data_home).expanduser()
+        # The XDG Base Directory specification requires absolute paths. Ignore a
+        # relative value rather than resolving it against an arbitrary launch cwd.
+        if candidate.is_absolute():
+            return candidate
+    return _home_from_env(env) / ".local" / "share"
 
 
 def _contains_data(path: Path) -> bool:

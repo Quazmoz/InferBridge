@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -57,6 +59,17 @@ class TrayMenuState:
     start_with_windows: bool
 
 
+def _boolean(value: Any, *, default: bool = False) -> bool:
+    return value if isinstance(value, bool) else default
+
+
+def _recent_events(payload: Mapping[str, Any]) -> tuple[Mapping[str, Any], ...]:
+    value = payload.get("events")
+    if not isinstance(value, list):
+        return ()
+    return tuple(item for item in value[-50:] if isinstance(item, Mapping))
+
+
 def _first_loaded_model(payload: Mapping[str, Any]) -> Mapping[str, Any] | None:
     explicit = payload.get("active_model")
     if isinstance(explicit, Mapping):
@@ -65,7 +78,7 @@ def _first_loaded_model(payload: Mapping[str, Any]) -> Mapping[str, Any] | None:
     if not isinstance(models, list):
         return None
     for item in models:
-        if isinstance(item, Mapping) and item.get("is_loaded"):
+        if isinstance(item, Mapping) and item.get("is_loaded") is True:
             return item
     return None
 
@@ -105,8 +118,8 @@ def snapshot_from_status(
             warning="The local server is running but status could not be read.",
         )
 
-    live = bool(payload.get("live"))
-    ready = bool(payload.get("ready"))
+    live = _boolean(payload.get("live"))
+    ready = _boolean(payload.get("ready"))
     preparing = payload.get("preparation")
     active = _first_loaded_model(payload)
     actual = None
@@ -119,13 +132,16 @@ def snapshot_from_status(
         requested = str(active.get("requested_device") or "") or None
         actual = str(active.get("actual_device") or active.get("device") or "") or None
 
+    recent_events = _recent_events(payload)
     stage = None
     percent = None
     if isinstance(preparing, Mapping) and preparing.get("status") == "running":
         stage = str(preparing.get("stage_label") or preparing.get("stage") or "Preparing model")
         raw_percent = preparing.get("percent")
-        if isinstance(raw_percent, int | float):
-            percent = max(0.0, min(float(raw_percent), 100.0))
+        if isinstance(raw_percent, int | float) and not isinstance(raw_percent, bool):
+            candidate = float(raw_percent)
+            if math.isfinite(candidate):
+                percent = max(0.0, min(candidate, 100.0))
         return TraySnapshot(
             phase=TrayPhase.PREPARING,
             server_status="Preparing model",
@@ -138,10 +154,10 @@ def snapshot_from_status(
             actual_device=actual,
             preparation_stage=stage,
             preparation_percent=percent,
-            benchmark_running=bool(payload.get("benchmark_running")),
-            api_key_configured=bool(payload.get("api_key_configured")),
-            controller_available=bool(payload.get("controller_available", True)),
-            recent_events=tuple(payload.get("events") or ()),
+            benchmark_running=_boolean(payload.get("benchmark_running")),
+            api_key_configured=_boolean(payload.get("api_key_configured")),
+            controller_available=_boolean(payload.get("controller_available"), default=True),
+            recent_events=recent_events,
         )
 
     error = str(payload.get("error") or "").strip() or None
@@ -172,12 +188,12 @@ def snapshot_from_status(
         active_model_name=model_name,
         requested_device=requested,
         actual_device=actual,
-        benchmark_running=bool(payload.get("benchmark_running")),
-        api_key_configured=bool(payload.get("api_key_configured")),
-        controller_available=bool(payload.get("controller_available", True)),
+        benchmark_running=_boolean(payload.get("benchmark_running")),
+        api_key_configured=_boolean(payload.get("api_key_configured")),
+        controller_available=_boolean(payload.get("controller_available"), default=True),
         warning=warning,
         error=error,
-        recent_events=tuple(payload.get("events") or ()),
+        recent_events=recent_events,
     )
 
 
@@ -208,7 +224,9 @@ def menu_state(
         open_model_folder=models_dir is not None,
         open_log_folder=logs_dir is not None,
         export_diagnostics=diagnostics_dir is not None,
-        start_with_windows=not portable,
+        # StartupRegistration currently uses the Windows HKCU Run key. Do not expose a
+        # toggle on Linux/macOS that cannot actually persist the requested state.
+        start_with_windows=os.name == "nt" and not portable,
     )
 
 

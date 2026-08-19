@@ -81,6 +81,7 @@ def register_model_library_routes(app: FastAPI) -> None:
         tags=["model-library"],
         dependencies=[Depends(_require_access)],
     )
+    refresh_lock = asyncio.Lock()
 
     @router.get("")
     async def model_library(
@@ -103,17 +104,22 @@ def register_model_library_routes(app: FastAPI) -> None:
 
     @router.post("/refresh")
     async def refresh_model_library(request: Request):
-        try:
-            result = await _service(request).refresh_official()
-        except httpx.HTTPError as exc:
-            raise HTTPException(
-                status_code=502,
-                detail="The official model-library release manifest could not be downloaded.",
-            ) from exc
-        except ManifestValidationError as exc:
-            raise HTTPException(status_code=502, detail=str(exc)[:300]) from exc
-        snapshot = await asyncio.to_thread(_service(request).snapshot)
-        return {"status": "refreshed", "result": result, "library": snapshot}
+        # Refresh downloads, catalog application, and fixed-name cache replacement form
+        # one transaction. Serializing the route prevents overlapping requests from
+        # racing on model-library-manifest.json.tmp or letting an older response replace
+        # a newer cached manifest after it finishes later.
+        async with refresh_lock:
+            try:
+                result = await _service(request).refresh_official()
+            except httpx.HTTPError as exc:
+                raise HTTPException(
+                    status_code=502,
+                    detail="The official model-library release manifest could not be downloaded.",
+                ) from exc
+            except ManifestValidationError as exc:
+                raise HTTPException(status_code=502, detail=str(exc)[:300]) from exc
+            snapshot = await asyncio.to_thread(_service(request).snapshot)
+            return {"status": "refreshed", "result": result, "library": snapshot}
 
     @router.get("/export")
     async def export_model_definitions(

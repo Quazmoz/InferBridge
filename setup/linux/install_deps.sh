@@ -68,14 +68,24 @@ raise SystemExit(0 if major == 3 and 11 <= minor <= 14 else 1)
 PY
 }
 
+python_version_key() {
+    "$1" - <<'PY'
+import sys
+print(f"{sys.version_info.major}.{sys.version_info.minor}")
+PY
+}
+
 resolve_python() {
     local candidate resolved
     local candidates=()
 
     if [ -n "$PYTHON_CMD" ]; then
         candidates+=("$PYTHON_CMD")
+    else
+        # Prefer the distro's canonical python3 when it is supported. This avoids
+        # unexpectedly creating a venv with an older side-by-side interpreter.
+        candidates+=(python3 python3.14 python3.13 python3.12 python3.11)
     fi
-    candidates+=(python3.11 python3.12 python3.13 python3.14 python3)
 
     for candidate in "${candidates[@]}"; do
         [ -n "$candidate" ] || continue
@@ -91,7 +101,11 @@ resolve_python() {
         fi
     done
 
-    echo "ERROR: Python 3.11, 3.12, 3.13, or 3.14 was not found." >&2
+    if [ -n "$PYTHON_CMD" ]; then
+        echo "ERROR: --python '$PYTHON_CMD' is unavailable or is not Python 3.11-3.14." >&2
+    else
+        echo "ERROR: Python 3.11, 3.12, 3.13, or 3.14 was not found." >&2
+    fi
     if command -v python3 >/dev/null 2>&1; then
         echo "Detected python3: $(python3 --version 2>&1)" >&2
     fi
@@ -110,6 +124,24 @@ if [ -d "$VENV_DIR" ] && [ ! -x "$VENV_PYTHON" ]; then
     echo "ERROR: $VENV_DIR exists but $VENV_PYTHON is missing." >&2
     echo "Remove or recreate the existing virtual environment, then run setup again." >&2
     exit 1
+fi
+
+if [ -x "$VENV_PYTHON" ]; then
+    if ! python_is_supported "$VENV_PYTHON"; then
+        echo "ERROR: Existing virtual environment uses an unsupported Python version:" >&2
+        echo "  $($VENV_PYTHON --version 2>&1)" >&2
+        echo "Remove $VENV_DIR and run setup again." >&2
+        exit 1
+    fi
+    if [ -n "$PYTHON_CMD" ]; then
+        REQUESTED_VERSION="$(python_version_key "$PYTHON_BIN")"
+        VENV_VERSION="$(python_version_key "$VENV_PYTHON")"
+        if [ "$REQUESTED_VERSION" != "$VENV_VERSION" ]; then
+            echo "ERROR: Existing virtual environment uses Python $VENV_VERSION, but --python requested $REQUESTED_VERSION." >&2
+            echo "Remove $VENV_DIR and run setup again to switch interpreters." >&2
+            exit 1
+        fi
+    fi
 fi
 
 if [ ! -d "$VENV_DIR" ]; then

@@ -6,6 +6,8 @@ import math
 from collections.abc import Mapping
 from typing import Any
 
+from app.quantization_policy import estimated_quality_penalty, profile_precision_bonus
+
 from .common import base_device, clamp, infer_parameter_count_b, normalize_profile, safe_float
 
 
@@ -20,6 +22,9 @@ class DeviceProfileMixin:
             score += 3.0
         if "embedding" in str(getattr(cfg, "backend", "")).lower():
             return 0.0
+        # Precision is a ranking prior only. Actual quality must come from explicit
+        # model-specific validation; compressed variants are not assumed lossless.
+        score -= estimated_quality_penalty(getattr(cfg, "weight_format", "fp16"))
         return clamp(score / 100.0) * 100.0
 
     def _estimated_speed_score(
@@ -44,6 +49,7 @@ class DeviceProfileMixin:
         params = infer_parameter_count_b(cfg.id, cfg.name, cfg.source_model)
         runtime_estimate = self.estimate_model(cfg, device="CPU")["runtime_memory_gb"]
         gpu_total = self._gpu_total_gb(snapshot)
+        precision = str(getattr(cfg, "weight_format", "fp16") or "fp16").lower()
 
         def score(device: str) -> float:
             base = base_device(device)
@@ -65,6 +71,16 @@ class DeviceProfileMixin:
                 value += {"NPU": 88, "GPU": 82, "CPU": 70}.get(base, 50)
                 if base == "NPU" and params > 4.5:
                     value -= 35
+
+            # InferBridge's explicit NPU compatibility profile is for symmetric INT4.
+            # Keep FP16 compatibility behavior intact, prefer INT4 on NPU, and avoid
+            # turning unverified INT8/NPU combinations into the default recommendation.
+            if base == "NPU":
+                if precision == "int4":
+                    value += 10
+                elif precision == "int8":
+                    value -= 30
+
             benchmark = self._latest_benchmark(cfg.id, device)
             if benchmark:
                 value += min(safe_float(benchmark.get("tokens_sec")), 40.0)
@@ -94,14 +110,21 @@ class DeviceProfileMixin:
         fit = safe_float(evaluation.get("fit_score"), 0.0)
         params = safe_float(evaluation.get("parameter_count_b"), 1.0)
         base = base_device(device)
+        precision_prior = profile_precision_bonus(
+            getattr(cfg, "weight_format", "fp16"), profile, device=device
+        )
 
         if profile == "fastest":
-            return speed * 0.72 + fit * 0.18 - memory * 0.8 + (8 if benchmark else 0)
+            return (
+                speed * 0.72 + fit * 0.18 - memory * 0.8 + (8 if benchmark else 0) + precision_prior
+            )
         if profile == "best-quality":
-            return quality * 0.72 + fit * 0.20 + speed * 0.08 + min(params, 32) * 0.2
+            return (
+                quality * 0.72 + fit * 0.20 + speed * 0.08 + min(params, 32) * 0.2 + precision_prior
+            )
         if profile == "lowest-memory":
-            return fit * 0.35 + 70.0 / max(memory, 0.35) + speed * 0.08
+            return fit * 0.35 + 70.0 / max(memory, 0.35) + speed * 0.08 + precision_prior
         if profile == "lowest-power":
             power = {"NPU": 100.0, "GPU": 68.0, "CPU": 55.0}.get(base, 45.0)
-            return power * 0.58 + fit * 0.27 + speed * 0.15 - memory
-        return quality * 0.38 + speed * 0.30 + fit * 0.28 - memory * 0.35
+            return power * 0.58 + fit * 0.27 + speed * 0.15 - memory + precision_prior
+        return quality * 0.38 + speed * 0.30 + fit * 0.28 - memory * 0.35 + precision_prior

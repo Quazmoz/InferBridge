@@ -20,6 +20,8 @@ A mock contract result is not evidence that a driver or hardware target works.
 
 Returns an OpenAI-style model list. InferBridge includes local lifecycle status as an additional field.
 
+Exact model IDs are strict across Chat Completions, Responses, and embeddings. An unknown exact ID returns `404`; InferBridge never silently substitutes the configured default or another loaded engine. The documented `model=auto` and `model=auto:<profile>` advisor selectors remain explicit exceptions that intentionally choose among compatible loaded generation models.
+
 ### `POST /v1/chat/completions`
 
 Supported request fields:
@@ -151,10 +153,10 @@ Custom registration and download requests accept `trust_remote_code`. It default
 ## Health routes
 
 - `GET /health` returns process, runtime, device, and model-count state.
-- `GET /health/live` is an unauthenticated liveness probe.
+- `GET /health/live` is an unauthenticated **loopback** liveness probe.
 - `GET /health/ready` returns 503 while model preparation is active and 200 otherwise.
 
-Health routes remain available without an API key so local supervisors can check the process. `/v1/*` routes are protected when `OV_LLM_API_KEY` is set.
+Health routes remain available without an API key to loopback clients so local supervisors can check the process. All non-loopback HTTP access is fail-closed: if no API key is configured, InferBridge rejects the remote request before routing; if an API key is configured, remote UI, asset, and health requests must send the same bearer key. `/v1/*` requests continue through their established route-level authentication so existing throttling and API error behavior are preserved. This keeps accidental wildcard binds and intentional LAN mode consistently authenticated without making localhost probes depend on credentials.
 
 ## Authentication, CORS, and rate limiting
 
@@ -175,7 +177,8 @@ Repeated failed authentication attempts are throttled. Keys are compared using a
 InferBridge uses conventional status codes:
 
 - `400` invalid request, device expression, model or backend pairing, or conversion option
-- `401` missing or invalid API key
+- `401` missing or invalid API key, including authenticated LAN access to non-API surfaces
+- `403` non-loopback access attempted while API authentication is disabled
 - `404` unknown model
 - `409` model is unloaded, busy, loading, or in a conflicting lifecycle state
 - `413` request body exceeds the configured maximum

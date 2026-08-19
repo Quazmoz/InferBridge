@@ -17,7 +17,7 @@ from app.desktop_operations_models import (
     DiagnosticsExportResponse,
     HardwareScanControlResponse,
 )
-from app.diagnostics import redact_path
+from app.diagnostics import redact_path, sanitize_text
 from app.local_request_security import (
     matches_any_secret,
     require_safe_browser_origin,
@@ -25,12 +25,10 @@ from app.local_request_security import (
 )
 
 
-def _state_change_auth(settings: Settings):
+def _api_key_auth(settings: Settings):
     async def require_key(
-        request: Request,
         authorization: str | None = Header(default=None),
     ) -> None:
-        require_safe_browser_origin(request)
         configured = [item.strip() for item in (settings.api_key or "").split(",") if item.strip()]
         if not configured:
             return
@@ -39,6 +37,19 @@ def _state_change_auth(settings: Settings):
         supplied = authorization.removeprefix("Bearer ")
         if not matches_any_secret(supplied, configured):
             raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
+    return require_key
+
+
+def _state_change_auth(settings: Settings):
+    require_api_key = _api_key_auth(settings)
+
+    async def require_key(
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ) -> None:
+        require_safe_browser_origin(request)
+        await require_api_key(authorization)
 
     return require_key
 
@@ -129,10 +140,14 @@ def register_desktop_operations_routes(
         try:
             benchmark = await service.run_short_benchmark()
         except RuntimeError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)[:300]) from exc
+            raise HTTPException(status_code=409, detail=sanitize_text(exc, limit=300)) from exc
         return BenchmarkControlResponse(benchmark=dict(benchmark))
 
-    router = APIRouter(prefix="/v1/desktop/operations", tags=["desktop-operations"])
+    router = APIRouter(
+        prefix="/v1/desktop/operations",
+        tags=["desktop-operations"],
+        dependencies=[Depends(_api_key_auth(settings))],
+    )
 
     @router.get("/status", response_model=DesktopOperationsStatusResponse)
     async def browser_operations_status():
@@ -147,7 +162,7 @@ def register_desktop_operations_routes(
         try:
             result = await asyncio.to_thread(service.export_diagnostics)
         except RuntimeError as exc:
-            raise HTTPException(status_code=500, detail=str(exc)[:300]) from exc
+            raise HTTPException(status_code=500, detail=sanitize_text(exc, limit=300)) from exc
         return DiagnosticsExportResponse(
             filename=result.path.name,
             path=redact_path(result.path),
