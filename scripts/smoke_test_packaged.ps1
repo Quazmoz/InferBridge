@@ -88,7 +88,21 @@ try {
         throw "Packaged runtime reported installation mode '$($Release.installation_mode)' instead of '$ExpectedMode'."
     }
     $Ui = Invoke-WebRequest -UseBasicParsing -Uri "$Origin/" -TimeoutSec 20
-    if ($Ui.Content -notmatch "About & Updates") { throw "Packaged About and Updates UI is missing." }
+    # Feature payloads are served as content-addressed /ui/ assets rather than inlined
+    # into the document, so the document carries the script reference and the asset
+    # carries the markup. Follow the reference so this still proves the surface ships.
+    $ReleaseScript = [regex]::Match(
+        $Ui.Content, '<script id="ovllm-release-extension" src="([^"]+)"')
+    if (-not $ReleaseScript.Success) {
+        throw "Packaged UI document does not reference the About and Updates extension."
+    }
+    $ReleaseAsset = Invoke-WebRequest -UseBasicParsing -Uri "$Origin$($ReleaseScript.Groups[1].Value)" -TimeoutSec 20
+    if ($ReleaseAsset.StatusCode -ne 200) {
+        throw "Packaged About and Updates asset did not load: HTTP $($ReleaseAsset.StatusCode)."
+    }
+    if ($ReleaseAsset.Content -notmatch "About & Updates") {
+        throw "Packaged About and Updates UI is missing."
+    }
 
     $ValidatorArguments = @(
         (Join-Path $RepoRoot "scripts\validate_api_contract.py"),
