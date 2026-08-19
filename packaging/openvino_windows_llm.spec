@@ -32,6 +32,14 @@ if third_party.is_file():
 binaries = []
 hiddenimports = collect_submodules("app") + collect_submodules("runtime")
 
+# PyInstaller's pkg_resources runtime hook imports setuptools' vendored jaraco.text
+# before desktop_launcher.py runs. setuptools 81 reads package data such as
+# ``setuptools/_vendor/jaraco/text/Lorem ipsum.txt`` at import time. PyInstaller can
+# otherwise collect the Python modules without that data file, which turns a successful
+# install into an immediate "Unhandled exception in script" crash on first launch.
+# Collect setuptools package data explicitly so the frozen bootstrap is self-contained.
+datas += collect_data_files("setuptools", include_py_files=False)
+
 # Optimum 2.x discovers accelerator-specific CLI commands by walking the on-disk
 # PEP 420 namespace at optimum.commands.register. PyInstaller normally places Python
 # modules in its archive, where pathlib.iterdir() cannot see them. Materialize every
