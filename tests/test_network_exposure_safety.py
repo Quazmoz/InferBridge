@@ -6,7 +6,9 @@ from types import SimpleNamespace
 import httpx
 from fastapi import FastAPI
 
+from app.config import Settings
 from app.network_exposure_safety import UnauthenticatedRemoteAccessMiddleware, host_is_loopback
+from app.server import create_app
 
 
 def _app(api_key: str | None) -> FastAPI:
@@ -59,3 +61,17 @@ def test_remote_client_is_allowed_to_reach_routes_when_authentication_is_configu
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_actual_inferbridge_app_installs_remote_guard():
+    app = create_app(Settings(force_mock=True, api_key=None))
+
+    response = asyncio.run(_get(app, "192.168.1.50"))
+
+    assert response.status_code == 403
+
+
+def test_specific_non_loopback_bind_warns_without_api_key():
+    warnings = Settings(host="192.168.1.50", api_key=None).validate()
+
+    assert any("Non-loopback requests will be rejected" in warning for warning in warnings)
