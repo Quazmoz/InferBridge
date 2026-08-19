@@ -16,6 +16,7 @@ from app.huggingface_access import install_huggingface_access_routes_extension
 from app.model_cancellation import install_model_cancellation_routes_extension
 from app.model_library_routes import install_model_library_routes_extension
 from app.model_recovery import install_model_recovery_routes_extension
+from app.network_exposure_safety import install_network_exposure_safety
 from app.paths import resolve_runtime_paths
 from app.status_split import install_status_split_routes_extension
 from app.ui_composition import compose as compose_browser_ui
@@ -25,6 +26,7 @@ from runtime.npu_compat import install_openvino_genai_compat
 # Install runtime compatibility and route extensions before app.model_manager/app.server
 # bind their imported engine functions.
 install_openvino_genai_compat()
+install_network_exposure_safety()
 install_model_library_routes_extension()
 install_model_cancellation_routes_extension()
 install_model_recovery_routes_extension()
