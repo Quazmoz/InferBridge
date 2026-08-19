@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import zipfile
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import PurePosixPath
 
 import pytest
 
@@ -166,7 +166,7 @@ def test_scalar_types_are_preserved_for_machine_readable_diagnostics() -> None:
 
 
 def test_paths_inside_structures_are_redacted() -> None:
-    cleaned = sanitize_value({"models_dir": Path("/home/dana/models")})
+    cleaned = sanitize_value({"models_dir": PurePosixPath("/home/dana/models")})
 
     assert cleaned == {"models_dir": "/home/<redacted-user>/models"}
 
@@ -337,7 +337,7 @@ def test_json_bytes_is_stable_and_newline_terminated() -> None:
 
 
 def test_redact_path_accepts_both_paths_and_strings() -> None:
-    assert redact_path(Path("/home/erin/models")) == "/home/<redacted-user>/models"
+    assert redact_path(PurePosixPath("/home/erin/models")) == "/home/<redacted-user>/models"
     assert redact_path("/home/erin/models") == "/home/<redacted-user>/models"
 
 
@@ -357,7 +357,10 @@ def _export(paths: RuntimePaths, **kwargs) -> tuple[zipfile.ZipFile, object]:
 def test_export_produces_a_named_archive_with_a_manifest(paths) -> None:
     archive, result = _export(paths)
 
-    assert result.path.name == "inferbridge-diagnostics-20260304-050607.zip"
+    # A random suffix keeps a tray export and a server export in the same second from
+    # colliding; the timestamped prefix is the part that stays contractual.
+    assert result.path.name.startswith("inferbridge-diagnostics-20260304-050607-")
+    assert result.path.suffix == ".zip"
     with archive:
         manifest = json.loads(archive.read("manifest.json"))
         assert manifest["schema_version"] == 1
@@ -481,7 +484,10 @@ def test_export_refuses_a_symlinked_diagnostics_directory(tmp_path, paths) -> No
     real = tmp_path / "elsewhere"
     real.mkdir()
     linked = tmp_path / "linked-diagnostics"
-    linked.symlink_to(real, target_is_directory=True)
+    try:
+        linked.symlink_to(real, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("Directory symlinks are unavailable on this platform.")
     paths = RuntimePaths(**{**paths.__dict__, "diagnostics_dir": linked})
 
     with pytest.raises(RuntimeError, match="symbolic link"):

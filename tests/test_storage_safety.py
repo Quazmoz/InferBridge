@@ -24,6 +24,20 @@ from app.storage_safety import (
 )
 
 
+def _symlink_or_skip(link, target, *, target_is_directory: bool = False) -> None:
+    """Create a symlink, or skip when the platform will not allow one.
+
+    Creating a symbolic link on Windows needs Developer Mode or an elevated account, so
+    an ordinary developer or release machine cannot exercise these refusal paths. Skip
+    rather than fail: the guard under test is real, the privilege to stage it is not.
+    """
+
+    try:
+        link.symlink_to(target, target_is_directory=target_is_directory)
+    except (OSError, NotImplementedError):
+        pytest.skip("Symbolic links are unavailable on this platform.")
+
+
 class _Task:
     def __init__(self, done: bool) -> None:
         self._done = done
@@ -80,7 +94,7 @@ def test_a_symlinked_target_is_flagged_unsafe(tmp_path) -> None:
     outside = tmp_path / "outside"
     outside.mkdir()
     (outside / "precious.bin").write_bytes(b"important")
-    (root / "tiny").symlink_to(outside, target_is_directory=True)
+    _symlink_or_skip(root / "tiny", outside, target_is_directory=True)
 
     measurement = _measure_tree(root / "tiny", root=root)
 
@@ -95,7 +109,7 @@ def test_a_symlink_nested_inside_the_tree_is_flagged_unsafe(tmp_path) -> None:
     target.mkdir(parents=True)
     outside = tmp_path / "outside"
     outside.mkdir()
-    (target / "link").symlink_to(outside, target_is_directory=True)
+    _symlink_or_skip(target / "link", outside, target_is_directory=True)
 
     assert _measure_tree(target, root=root).unsafe is True
 
@@ -106,7 +120,7 @@ def test_a_symlinked_file_inside_the_tree_is_flagged_unsafe(tmp_path) -> None:
     target.mkdir(parents=True)
     outside = tmp_path / "outside.bin"
     outside.write_bytes(b"important")
-    (target / "link.bin").symlink_to(outside)
+    _symlink_or_skip(target / "link.bin", outside)
 
     assert _measure_tree(target, root=root).unsafe is True
 
@@ -115,7 +129,7 @@ def test_a_symlinked_root_makes_every_child_unsafe(tmp_path) -> None:
     real_root = tmp_path / "real"
     (real_root / "tiny").mkdir(parents=True)
     linked_root = tmp_path / "models"
-    linked_root.symlink_to(real_root, target_is_directory=True)
+    _symlink_or_skip(linked_root, real_root, target_is_directory=True)
 
     assert _measure_tree(linked_root / "tiny", root=linked_root).unsafe is True
 
@@ -150,7 +164,7 @@ def test_the_root_itself_counts_as_within_the_root(tmp_path) -> None:
 
 def test_path_existence_does_not_follow_a_broken_symlink(tmp_path) -> None:
     link = tmp_path / "dangling"
-    link.symlink_to(tmp_path / "never-created")
+    _symlink_or_skip(link, tmp_path / "never-created")
 
     assert _path_exists(link) is True
     assert link.exists() is False
@@ -184,7 +198,7 @@ def test_removal_refuses_to_follow_a_symlink_out_of_the_managed_root(tmp_path) -
     outside = tmp_path / "outside"
     outside.mkdir()
     (outside / "precious.bin").write_bytes(b"important")
-    (root / "tiny").symlink_to(outside, target_is_directory=True)
+    _symlink_or_skip(root / "tiny", outside, target_is_directory=True)
 
     with pytest.raises(StorageConflict) as conflict:
         _remove_tree(root / "tiny", root=root, description="model files")

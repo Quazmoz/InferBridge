@@ -78,6 +78,7 @@ SERVER_ORDER = (
 
 DESKTOP_ONLY_ORDER = (
     "ovllm-desktop-network-extension",
+    "ovllm-desktop-browser-auth-extension",
     "ovllm-storage-manager-extension",
     "ovllm-runtime-health-extension",
 )

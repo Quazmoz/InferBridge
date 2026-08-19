@@ -5,7 +5,15 @@ import asyncio
 import pytest
 
 from app.model_manager import ModelManager, NoModelsLoaded, UnknownModel
+from app.model_resolution_safety import install_model_resolution_safety
 from app.ui_extension import inject_multimodal_ui
+
+# Constructing Settings installs the safety stack, which patches
+# ModelManager.resolve_engine for the whole process. Whether that had already happened
+# used to depend on which test files ran first, so this module saw the bare advisor
+# error in isolation and the composed one in a full run. Install it here so these tests
+# always exercise the same stack the application runs.
+install_model_resolution_safety()
 
 
 class FakeAdvisor:
@@ -38,7 +46,7 @@ def test_model_manager_rejects_auto_when_no_generation_model_is_loaded():
 
 def test_model_manager_rejects_unknown_auto_profile():
     manager = bare_manager(None)
-    with pytest.raises(UnknownModel, match="Unknown advisor profile"):
+    with pytest.raises(UnknownModel, match="Invalid advisor model selector"):
         manager.resolve_engine("auto:impossible")
 
 

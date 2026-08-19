@@ -34,7 +34,12 @@ def paths(tmp_path):
 def client(paths):
     app = FastAPI()
     register_release_routes(app, paths=paths)
-    with TestClient(app, raise_server_exceptions=False) as test_client:
+    # The local-UI guard requires a loopback request host, not merely a loopback client,
+    # so a DNS-rebinding origin cannot reach these routes. Drive them over the loopback
+    # literal the packaged UI uses rather than TestClient's default "testserver" host.
+    with TestClient(
+        app, base_url="http://127.0.0.1:8000", raise_server_exceptions=False
+    ) as test_client:
         yield test_client
 
 
@@ -83,6 +88,9 @@ def test_status_surfaces_a_recent_check_as_not_due(client, paths) -> None:
     checked_at = datetime.now(UTC) - timedelta(hours=1)
     store.save_cache(
         UpdateCache(
+            # Cached metadata is only valid for the channel that produced it, so the
+            # cache must name the channel the preferences currently select.
+            channel="stable",
             last_checked_at=checked_at,
             latest_checked_version="9.9.9",
             manifest={"version": "9.9.9"},
