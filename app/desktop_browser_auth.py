@@ -10,9 +10,10 @@ Remote LAN requests never receive this cookie and must continue presenting the A
 
 from __future__ import annotations
 
-import secrets
 from http.cookies import SimpleCookie
 from typing import Any
+
+from app.local_request_security import secret_matches
 
 _COOKIE_NAME = "inferbridge_desktop_ui"
 _LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})
@@ -55,7 +56,7 @@ def _cookie_matches(scope: dict[str, Any], expected: str) -> bool:
         supplied = morsel.value if morsel is not None else ""
     except Exception:
         return False
-    return bool(supplied and secrets.compare_digest(supplied, expected))
+    return bool(supplied and secret_matches(supplied, expected))
 
 
 def _protected_path(path: str) -> bool:
