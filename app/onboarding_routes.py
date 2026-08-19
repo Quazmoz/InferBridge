@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, s
 from fastapi.responses import RedirectResponse
 
 from app.config import Settings
+from app.diagnostics_privacy import sanitize_text
 from app.local_request_security import require_safe_browser_origin
 from app.onboarding_models import (
     CancelPreparationResponse,
@@ -25,12 +26,10 @@ from app.onboarding_models import (
 from app.onboarding_service import OnboardingService
 
 
-def _state_change_auth(settings: Settings):
+def _api_key_auth(settings: Settings):
     async def require_key(
-        request: Request,
         authorization: str | None = Header(default=None),
     ) -> None:
-        require_safe_browser_origin(request)
         configured = [item.strip() for item in (settings.api_key or "").split(",") if item.strip()]
         if not configured:
             return
@@ -43,9 +42,22 @@ def _state_change_auth(settings: Settings):
     return require_key
 
 
+def _state_change_auth(settings: Settings):
+    require_api_key = _api_key_auth(settings)
+
+    async def require_key(
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ) -> None:
+        require_safe_browser_origin(request)
+        await require_api_key(authorization)
+
+    return require_key
+
+
 def _bad_request(exc: Exception) -> HTTPException:
-    message = str(exc).strip() or "The onboarding request could not be completed."
-    return HTTPException(status_code=400, detail=message[:300])
+    message = sanitize_text(exc, limit=300).strip() or "The onboarding request could not be completed."
+    return HTTPException(status_code=400, detail=message)
 
 
 def register_onboarding_routes(
@@ -54,7 +66,11 @@ def register_onboarding_routes(
     service: OnboardingService,
     settings: Settings,
 ) -> None:
-    router = APIRouter(prefix="/v1/onboarding", tags=["onboarding"])
+    router = APIRouter(
+        prefix="/v1/onboarding",
+        tags=["onboarding"],
+        dependencies=[Depends(_api_key_auth(settings))],
+    )
     mutation_auth = [Depends(_state_change_auth(settings))]
 
     @router.get("/documentation", include_in_schema=False)
@@ -99,7 +115,7 @@ def register_onboarding_routes(
         try:
             return await service.start_preparation(request)
         except RuntimeError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)[:300]) from exc
+            raise HTTPException(status_code=409, detail=sanitize_text(exc, limit=300)) from exc
         except (KeyError, ValueError) as exc:
             raise _bad_request(exc) from exc
 
@@ -108,7 +124,7 @@ def register_onboarding_routes(
         try:
             return service.progress(job_id)
         except KeyError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
+            raise HTTPException(status_code=404, detail=sanitize_text(exc, limit=300)) from exc
 
     @router.post(
         "/preparation/{job_id}/cancel",
@@ -119,7 +135,7 @@ def register_onboarding_routes(
         try:
             return await service.cancel(job_id)
         except KeyError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
+            raise HTTPException(status_code=404, detail=sanitize_text(exc, limit=300)) from exc
 
     @router.post(
         "/complete",
@@ -145,7 +161,7 @@ def register_onboarding_routes(
         try:
             return service.connection_configuration()
         except ValueError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
+            raise HTTPException(status_code=409, detail=sanitize_text(exc, limit=300)) from exc
 
     app.include_router(router)
 
