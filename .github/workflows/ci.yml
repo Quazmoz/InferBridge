@@ -175,7 +175,7 @@ jobs:
             }
           }
 
-      - name: Compile Python release, packaging, and UI tools
+      - name: Compile Python release, packaging, security, and UI tools
         run: >-
           python -m py_compile
           packaging/runtime_hook.py
@@ -187,11 +187,14 @@ jobs:
           app/context_budget.py
           app/context_budget_ui.py
           app/conversation_management_ui.py
+          app/desktop_browser_auth.py
+          app/desktop_network.py
           app/desktop_server.py
           app/header_overflow_ui.py
           app/hf_search_ui.py
           app/huggingface_access.py
           app/huggingface_access_ui.py
+          app/local_request_security.py
           app/model_cancellation.py
           app/model_lifecycle_ui.py
           app/model_preparation_timeouts.py
@@ -199,6 +202,7 @@ jobs:
           app/model_recovery_cleanup.py
           app/model_recovery_status.py
           app/model_recovery_ui.py
+          app/network_exposure_safety.py
           app/operation_queue_ui.py
           app/progress_operation_ui.py
           app/request_logging.py
@@ -231,7 +235,7 @@ jobs:
       - name: Install targeted test dependencies
         run: python -m pip install -e .[dev]
 
-      - name: Run targeted release, packaging, UI, lifecycle, and resilience tests
+      - name: Run targeted release, security, packaging, UI, lifecycle, and resilience tests
         env:
           OV_LLM_MOCK: "true"
         run: >-
@@ -243,6 +247,11 @@ jobs:
           tests/test_installer_upgrade_contract.py
           tests/test_installer_first_launch_contract.py
           tests/test_runtime_hook_upgrade.py
+          tests/test_api_key_comparison.py
+          tests/test_desktop_api_key_store_removal.py
+          tests/test_desktop_browser_auth.py
+          tests/test_desktop_network.py
+          tests/test_network_exposure_safety.py
           tests/test_cancellation_ui.py
           tests/test_connection_hub.py
           tests/test_connection_hub_hardening.py
