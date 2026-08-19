@@ -25,6 +25,7 @@ from app.diagnostics_privacy import (
     windows_edition,
 )
 from app.diagnostics_sections import DiagnosticsSectionsMixin
+from app.model_library_conversion import is_reparse_point
 from app.paths import RuntimePaths
 
 SCHEMA_VERSION = 1
@@ -128,14 +129,19 @@ class DiagnosticsCollector(DiagnosticsSectionsMixin):
         )
 
     def _assert_safe_output_root(self, directory: Path) -> None:
+        # Path.is_symlink() does not reliably cover Windows directory junctions. Reject
+        # all reparse points before resolving the path so diagnostics can never be
+        # redirected outside the application-managed data root.
+        if is_reparse_point(directory):
+            raise RuntimeError(
+                "Diagnostics directory cannot be a symbolic link or Windows junction."
+            )
         resolved = directory.resolve()
         expected = self.paths.diagnostics_dir.resolve()
         if resolved != expected:
             raise RuntimeError(
                 "Diagnostics output must remain inside the application diagnostics directory."
             )
-        if directory.is_symlink():
-            raise RuntimeError("Diagnostics directory cannot be a symbolic link.")
         probe = directory / ".diagnostics-write-test"
         try:
             probe.write_text("ok", encoding="utf-8")
