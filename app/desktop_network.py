@@ -199,11 +199,21 @@ class DesktopApiKeyStore:
             return key
 
     def remove(self) -> bool:
+        """Remove the persisted credential without reporting a partial success.
+
+        File deletion can fail transiently on Windows because of antivirus scans, ACLs, or
+        another process holding the DPAPI blob open. Keep the in-memory credential intact
+        until the on-disk removal has succeeded so callers can surface the OSError and the
+        process remains in a truthful, recoverable state.
+        """
+
         with self._lock:
             existed = bool(self._memory_key) or self.key_path.exists()
-            self._memory_key = None
-            with contextlib.suppress(OSError):
+            try:
                 self.key_path.unlink()
+            except FileNotFoundError:
+                pass
+            self._memory_key = None
             return existed
 
 
