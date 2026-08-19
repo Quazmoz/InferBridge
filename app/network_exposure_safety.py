@@ -24,13 +24,22 @@ def host_is_loopback(value: Any) -> bool:
     if host.startswith("[") and host.endswith("]"):
         host = host[1:-1]
     try:
-        return ipaddress.ip_address(host).is_loopback
+        address = ipaddress.ip_address(host)
     except ValueError:
         return False
+    if address.is_loopback:
+        return True
+    mapped = getattr(address, "ipv4_mapped", None)
+    return bool(mapped and mapped.is_loopback)
 
 
 def _authentication_configured(settings: Any) -> bool:
-    return bool([item.strip() for item in str(getattr(settings, "api_key", "") or "").split(",") if item.strip()])
+    configured = [
+        item.strip()
+        for item in str(getattr(settings, "api_key", "") or "").split(",")
+        if item.strip()
+    ]
+    return bool(configured)
 
 
 class UnauthenticatedRemoteAccessMiddleware:
@@ -57,7 +66,9 @@ class UnauthenticatedRemoteAccessMiddleware:
             return
 
         client = scope.get("client")
-        client_host = str(client[0] if isinstance(client, tuple | list) and client else "").strip()
+        client_host = str(
+            client[0] if isinstance(client, tuple | list) and client else ""
+        ).strip()
         if client_host in _TEST_CLIENTS or host_is_loopback(client_host):
             await self.app(scope, receive, send)
             return
