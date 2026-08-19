@@ -10,6 +10,32 @@ VENV_PYTHON="$REPO_ROOT/.venv/bin/python"
 OS_ID="$(detect_linux_id)"
 PLATFORM_NAME="$(linux_platform_name "$OS_ID")"
 
+has_rw_device() {
+    local pattern="$1"
+    local path
+    shopt -s nullglob
+    # shellcheck disable=SC2206
+    local matches=( $pattern )
+    shopt -u nullglob
+    for path in "${matches[@]}"; do
+        if [ -r "$path" ] && [ -w "$path" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+print_device_nodes() {
+    local label="$1"
+    local directory="$2"
+    if [ -d "$directory" ]; then
+        echo "  $label:"
+        ls -la "$directory" || true
+    else
+        echo "  $label not found."
+    fi
+}
+
 echo "=========================================="
 echo "  Experimental Linux hardware diagnostics"
 echo "=========================================="
@@ -58,21 +84,50 @@ else
 fi
 echo
 
-echo "Intel GPU hints:"
-if [ -e /dev/dri ]; then
-    echo "  /dev/dri exists:"
-    ls -la /dev/dri || true
+echo "Intel accelerator device nodes:"
+print_device_nodes "/dev/dri" "/dev/dri"
+print_device_nodes "/dev/accel" "/dev/accel"
+
+echo "  Access checks:"
+if has_rw_device '/dev/dri/renderD*'; then
+    echo "    GPU render node: readable/writable by current user"
+elif [ -d /dev/dri ]; then
+    echo "    WARNING: no readable/writable /dev/dri/renderD* node for current user"
 else
-    echo "  /dev/dri not found. Intel GPU runtime access is not visible from this shell."
+    echo "    GPU render node: not present"
+fi
+if has_rw_device '/dev/accel/accel*'; then
+    echo "    NPU accel node: readable/writable by current user"
+elif [ -d /dev/accel ]; then
+    echo "    WARNING: no readable/writable /dev/accel/accel* node for current user"
+else
+    echo "    NPU accel node: not present"
 fi
 
 GROUPS_TEXT="$(id -nG 2>/dev/null || true)"
 echo "  Current user groups: ${GROUPS_TEXT:-unknown}"
-if printf '%s\n' "$GROUPS_TEXT" | tr ' ' '\n' | grep -qx 'render'; then
-    echo "  render group: current user is a member"
+if printf '%s\n' "$GROUPS_TEXT" | tr ' ' '\n' | grep -Eq '^(render|video)$'; then
+    echo "  accelerator group: current user is in render and/or video"
+elif ! has_rw_device '/dev/dri/renderD*' && ! has_rw_device '/dev/accel/accel*'; then
+    echo "  WARNING: current user is not in render/video and has no accelerator device access."
+    CURRENT_USER="${USER:-${LOGNAME:-$(id -un 2>/dev/null || printf user)}}"
+    echo "  Guidance only: sudo usermod -aG render,video \"$CURRENT_USER\""
+    echo "  Log out and back in after changing group membership."
 else
-    echo "  WARNING: current user is not in the render group; GPU access may fail."
-    echo "  Guidance only: sudo usermod -aG render,video \"$USER\""
+    echo "  accelerator group: render/video membership not detected, but device access is already available"
+fi
+echo
+
+echo "Relevant kernel modules:"
+if command -v lsmod >/dev/null 2>&1; then
+    MODULES="$(lsmod 2>/dev/null | awk 'NR == 1 || $1 ~ /^(xe|i915|intel_vpu|ivpu)$/ {print}' || true)"
+    if [ -n "$MODULES" ]; then
+        printf '%s\n' "$MODULES"
+    else
+        echo "  no xe, i915, intel_vpu, or ivpu module reported by lsmod"
+    fi
+else
+    echo "  lsmod not available"
 fi
 echo
 
@@ -119,7 +174,12 @@ if has_openvino:
                 full_name = core.get_property(device, "FULL_DEVICE_NAME")
             except Exception:
                 full_name = device
-            print(f"    {device}: {full_name}")
+            try:
+                driver = core.get_property(device, "DRIVER_VERSION")
+            except Exception:
+                driver = None
+            suffix = f"; driver={driver}" if driver else ""
+            print(f"    {device}: {full_name}{suffix}")
     except Exception as exc:
         print(f"  OpenVINO device discovery failed: {exc}")
 else:
@@ -132,7 +192,8 @@ echo
 
 echo "Notes:"
 echo "  - CPU should work once Python/OpenVINO packages install."
-echo "  - GPU requires Intel's Linux GPU runtime/driver stack and user permissions for render devices."
-echo "  - NPU requires Intel's NPU Linux driver, supported hardware, and a compatible kernel."
-echo "  - If OpenVINO does not list GPU or NPU, the app cannot target that device."
+echo "  - GPU requires Intel's Linux GPU runtime/driver stack and usable /dev/dri render nodes."
+echo "  - NPU requires Intel's Linux NPU driver, supported hardware/kernel, and usable /dev/accel nodes."
+echo "  - PCI visibility alone does not prove OpenVINO can use an accelerator."
+echo "  - If OpenVINO does not list GPU or NPU, InferBridge cannot target that device."
 echo "  - This script prints sudo commands only as guidance and does not run them."

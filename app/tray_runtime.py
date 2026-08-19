@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import os
+import sys
 import threading
 import time
 from datetime import UTC, datetime
@@ -79,10 +81,44 @@ class TrayRuntimeMixin:
                 break
         return 0
 
+    def _run_linux_without_tray(self, reason: str) -> int:
+        """Keep the local server alive when a Linux tray backend is unavailable.
+
+        Linux desktop environments vary widely: GNOME may omit StatusNotifier/AppIndicator
+        support, Wayland sessions may not expose a compatible backend, and headless or SSH
+        sessions intentionally have no tray. The tray is a convenience layer, not the
+        server's availability boundary, so a backend failure must not tear down a healthy
+        InferBridge server.
+        """
+
+        controller = getattr(self, "controller", None)
+        if controller is not None and not controller.running:
+            logger.error("Linux tray unavailable and no local server is running: %s", reason)
+            show_dialog(
+                APP_TITLE,
+                "The Linux system-tray icon is unavailable and the local server is not "
+                "running. Start InferBridge with --headless or use ./start_server.sh to "
+                "review the startup failure.",
+                error=True,
+            )
+            return 6
+
+        detail = str(reason or "system-tray backend unavailable").replace("\n", " ")[:200]
+        logger.warning("Linux tray unavailable; continuing without tray icon: %s", detail)
+        show_dialog(
+            APP_TITLE,
+            "The Linux system-tray icon is unavailable in this desktop session. "
+            "InferBridge will keep running without a tray icon. Use the browser UI or "
+            "stop the launcher process to exit.",
+        )
+        return self._run_headless()
+
     def _run_tray(self) -> int:
         try:
             import pystray
         except Exception as exc:
+            if sys.platform.startswith("linux"):
+                return self._run_linux_without_tray(str(exc))
             show_dialog(
                 APP_TITLE,
                 "The system-tray component could not initialize. Reinstall a complete desktop "
@@ -113,6 +149,20 @@ class TrayRuntimeMixin:
             return 0
         except Exception as exc:  # noqa: BLE001 - tray backend boundary
             logger.exception("Tray library failed")
+            if sys.platform.startswith("linux"):
+                # A pystray backend may fail after import but before setup starts. Do not
+                # launch a second polling thread if setup already created one; in that
+                # case, simply keep the controller process alive until it is stopped.
+                if self.poll_thread and self.poll_thread.is_alive():
+                    detail = str(exc).replace("\n", " ")[:200]
+                    logger.warning(
+                        "Linux tray backend failed after polling started; continuing headless: %s",
+                        detail,
+                    )
+                    while not self.stop_event.wait(0.5):
+                        pass
+                    return 0
+                return self._run_linux_without_tray(str(exc))
             show_dialog(
                 APP_TITLE, f"The tray icon stopped unexpectedly: {str(exc)[:240]}", error=True
             )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -223,7 +224,9 @@ def menu_state(
         open_model_folder=models_dir is not None,
         open_log_folder=logs_dir is not None,
         export_diagnostics=diagnostics_dir is not None,
-        start_with_windows=not portable,
+        # StartupRegistration currently uses the Windows HKCU Run key. Do not expose a
+        # toggle on Linux/macOS that cannot actually persist the requested state.
+        start_with_windows=os.name == "nt" and not portable,
     )
 
 
