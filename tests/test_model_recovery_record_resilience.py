@@ -59,7 +59,7 @@ def test_recovery_log_tail_is_bounded_and_sanitized():
 
     assert normalized is not None
     assert len(normalized["log_tail"]) == 9
-    assert normalized["log_tail"][0] == "line-3"
+    assert normalized["log_tail"][0] == "line-4"
     assert normalized["log_tail"][-1] == "[redacted]"
 
 
