@@ -248,18 +248,50 @@ begin
   RegDeleteValue(HKCU, RunKey, 'OpenVINOWindowsLLM');
 end;
 
-function CoreVersionPart(const Value: String; PartIndex: Integer): Integer;
+function StripBuildMetadata(const Value: String): String;
 var
-  Clean, Segment: String;
-  DashPos, DotPos, Index: Integer;
+  PlusPos: Integer;
 begin
-  Result := 0;
-  Clean := Value;
+  Result := Value;
+  PlusPos := Pos('+', Result);
+  if PlusPos > 0 then
+    Delete(Result, PlusPos, Length(Result));
+end;
+
+function VersionCore(const Value: String): String;
+var
+  DashPos: Integer;
+begin
+  Result := StripBuildMetadata(Value);
+  DashPos := Pos('-', Result);
+  if DashPos > 0 then
+    Delete(Result, DashPos, Length(Result));
+end;
+
+function VersionPrerelease(const Value: String): String;
+var
+  Clean: String;
+  DashPos: Integer;
+begin
+  Clean := StripBuildMetadata(Value);
   DashPos := Pos('-', Clean);
   if DashPos > 0 then
-    Delete(Clean, DashPos, Length(Clean));
+    Result := Copy(Clean, DashPos + 1, Length(Clean))
+  else
+    Result := '';
+end;
+
+function VersionIdentifierPart(const Value: String; PartIndex: Integer): String;
+var
+  Clean, Segment: String;
+  DotPos, Index: Integer;
+begin
+  Result := '';
+  Clean := Value;
   for Index := 0 to PartIndex do
   begin
+    if Clean = '' then
+      exit;
     DotPos := Pos('.', Clean);
     if DotPos > 0 then
     begin
@@ -271,21 +303,96 @@ begin
       Segment := Clean;
       Clean := '';
     end;
+    if Index = PartIndex then
+    begin
+      Result := Segment;
+      exit;
+    end;
   end;
-  Result := StrToIntDef(Segment, 0);
 end;
 
-function CompareCoreVersions(const Left, Right: String): Integer;
+function CoreVersionPart(const Value: String; PartIndex: Integer): Integer;
+begin
+  Result := StrToIntDef(VersionIdentifierPart(VersionCore(Value), PartIndex), 0);
+end;
+
+function IsNumericIdentifier(const Value: String): Boolean;
 var
-  Index, LeftPart, RightPart: Integer;
+  Index: Integer;
+begin
+  Result := Value <> '';
+  if not Result then
+    exit;
+  for Index := 1 to Length(Value) do
+  begin
+    if (Value[Index] < '0') or (Value[Index] > '9') then
+    begin
+      Result := False;
+      exit;
+    end;
+  end;
+end;
+
+function ComparePrereleaseIdentifier(const Left, Right: String): Integer;
+var
+  LeftNumeric, RightNumeric: Boolean;
+begin
+  Result := 0;
+  if Left = Right then
+    exit;
+
+  LeftNumeric := IsNumericIdentifier(Left);
+  RightNumeric := IsNumericIdentifier(Right);
+  if LeftNumeric and RightNumeric then
+  begin
+    if Length(Left) < Length(Right) then begin Result := -1; exit; end;
+    if Length(Left) > Length(Right) then begin Result := 1; exit; end;
+    if Left < Right then begin Result := -1; exit; end;
+    Result := 1;
+    exit;
+  end;
+  if LeftNumeric then begin Result := -1; exit; end;
+  if RightNumeric then begin Result := 1; exit; end;
+  if Left < Right then
+    Result := -1
+  else
+    Result := 1;
+end;
+
+function CompareSemanticVersions(const Left, Right: String): Integer;
+var
+  Index, LeftCorePart, RightCorePart: Integer;
+  LeftPre, RightPre, LeftPart, RightPart: String;
 begin
   Result := 0;
   for Index := 0 to 2 do
   begin
-    LeftPart := CoreVersionPart(Left, Index);
-    RightPart := CoreVersionPart(Right, Index);
-    if LeftPart < RightPart then begin Result := -1; exit; end;
-    if LeftPart > RightPart then begin Result := 1; exit; end;
+    LeftCorePart := CoreVersionPart(Left, Index);
+    RightCorePart := CoreVersionPart(Right, Index);
+    if LeftCorePart < RightCorePart then begin Result := -1; exit; end;
+    if LeftCorePart > RightCorePart then begin Result := 1; exit; end;
+  end;
+
+  LeftPre := VersionPrerelease(Left);
+  RightPre := VersionPrerelease(Right);
+  if (LeftPre = '') and (RightPre = '') then
+    exit;
+  if LeftPre = '' then begin Result := 1; exit; end;
+  if RightPre = '' then begin Result := -1; exit; end;
+
+  Index := 0;
+  while True do
+  begin
+    LeftPart := VersionIdentifierPart(LeftPre, Index);
+    RightPart := VersionIdentifierPart(RightPre, Index);
+    if (LeftPart = '') and (RightPart = '') then
+      exit;
+    if LeftPart = '' then begin Result := -1; exit; end;
+    if RightPart = '' then begin Result := 1; exit; end;
+    Result := ComparePrereleaseIdentifier(LeftPart, RightPart);
+    if Result <> 0 then
+      exit;
+    Index := Index + 1;
   end;
 end;
 
@@ -338,7 +445,7 @@ begin
   InstalledRuntimeReady := False;
   Result := True;
   Existing := InstalledVersion();
-  if (Existing <> '') and (CompareCoreVersions(Existing, '{#MyAppVersion}') > 0) then
+  if (Existing <> '') and (CompareSemanticVersions(Existing, '{#MyAppVersion}') > 0) then
     Result := MsgBox(
       'A newer version (' + Existing + ') is installed.' + #13#10 + #13#10 +
       'Downgrading can leave configuration that this older release cannot read. Review the rollback documentation and create a configuration backup before continuing.' + #13#10 + #13#10 +
