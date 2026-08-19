@@ -77,3 +77,29 @@ def test_embeddings_unknown_model_returns_404_instead_of_using_another_engine(lo
 
     assert response.status_code == 404
     assert response.json()["detail"] == f"Unknown model '{UNKNOWN_ID}'"
+
+
+def test_unknown_model_error_is_bounded_and_control_character_safe(loaded_client):
+    manager = loaded_client.app.state.manager
+    malicious = "unknown\r\nmodel-" + ("x" * 1000)
+
+    with pytest.raises(UnknownModel) as captured:
+        manager.resolve_engine(malicious)
+
+    message = str(captured.value)
+    assert "\r" not in message
+    assert "\n" not in message
+    assert len(message) < 190
+    assert message.endswith("…'")
+
+
+def test_invalid_auto_profile_error_is_bounded(loaded_client):
+    manager = loaded_client.app.state.manager
+    selector = "auto:" + ("not-a-profile" * 100)
+
+    with pytest.raises(UnknownModel) as captured:
+        manager.resolve_engine(selector)
+
+    message = str(captured.value)
+    assert len(message) < 280
+    assert "Supported profiles:" in message
