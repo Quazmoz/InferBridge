@@ -126,6 +126,7 @@ class Settings:
         from app.engine_handoff_safety import install_engine_handoff_safety
         from app.huggingface_access import install_huggingface_access_manager_extension
         from app.huggingface_manager_safety import install_huggingface_manager_safety
+        from app.huggingface_metadata_safety import install_huggingface_metadata_safety
         from app.lifecycle_safety import install_model_lifecycle_safety
         from app.model_cancellation import install_model_cancellation_manager_extension
         from app.model_load_target import install_model_load_target_routing
@@ -155,6 +156,7 @@ class Settings:
         install_model_recovery_cleanup()
         install_status_manager_extension()
         install_model_recovery_status_extension()
+        install_huggingface_metadata_safety()
         install_huggingface_access_manager_extension()
         install_huggingface_manager_safety()
         # Install watchdogs last so late cancellation and recovery wrappers cannot
