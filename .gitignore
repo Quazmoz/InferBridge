@@ -77,3 +77,6 @@ mcp.*.json
 .deps_installed
 .convert_deps_installed
 .source_package_installed
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+graft/
