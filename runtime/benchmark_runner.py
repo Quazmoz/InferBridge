@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import re
 from typing import Any
 
@@ -14,6 +15,7 @@ _SECRET_RE = re.compile(
     r"(hf_[A-Za-z0-9_=-]{8,}|Bearer\s+[A-Za-z0-9._~+/=-]+|token\s*[:=]\s*\S+)",
     re.IGNORECASE,
 )
+_BENCHMARK_SCHEMA_VERSION = 1
 
 
 def _safe_error(value: Any, *, limit: int = 500) -> str | None:
@@ -37,8 +39,8 @@ def _sanitize_run(run: dict[str, Any]) -> dict[str, Any]:
     return safe
 
 
-def _sanitize_runs(runs: list[Any]) -> list[Any]:
-    return [_sanitize_run(run) if isinstance(run, dict) else run for run in runs]
+def _sanitize_runs(runs: list[Any]) -> list[dict[str, Any]]:
+    return [_sanitize_run(run) for run in runs if isinstance(run, dict)]
 
 
 class BenchmarkStore(_core.BenchmarkStore):
@@ -55,8 +57,28 @@ class BenchmarkStore(_core.BenchmarkStore):
             if safe_runs != data["runs"]:
                 self._write({"schema_version": data["schema_version"], "runs": safe_runs})
 
+    def _read(self) -> dict[str, Any]:
+        if not self.path.exists():
+            return {"schema_version": _BENCHMARK_SCHEMA_VERSION, "runs": []}
+        try:
+            payload = json.loads(self.path.read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError):
+            return {"schema_version": _BENCHMARK_SCHEMA_VERSION, "runs": []}
+        if not isinstance(payload, dict) or not isinstance(payload.get("runs"), list):
+            return {"schema_version": _BENCHMARK_SCHEMA_VERSION, "runs": []}
+        schema = payload.get("schema_version", _BENCHMARK_SCHEMA_VERSION)
+        if (
+            isinstance(schema, bool)
+            or not isinstance(schema, int)
+            or schema != _BENCHMARK_SCHEMA_VERSION
+        ):
+            # Do not coerce Infinity, floats, strings, or a newer schema and do not
+            # rewrite an incompatible file from this older reader.
+            return {"schema_version": _BENCHMARK_SCHEMA_VERSION, "runs": []}
+        return {"schema_version": schema, "runs": payload["runs"]}
+
     def list_runs(self) -> list[dict[str, Any]]:
-        return [run for run in _sanitize_runs(super().list_runs()) if isinstance(run, dict)]
+        return _sanitize_runs(super().list_runs())
 
     def append(self, run: dict[str, Any]) -> None:
         super().append(_sanitize_run(run))
