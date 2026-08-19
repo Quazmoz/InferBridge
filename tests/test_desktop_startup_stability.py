@@ -72,6 +72,36 @@ def test_controller_surfaces_immediate_child_exit(monkeypatch, tmp_path) -> None
     assert controller.metadata is None
 
 
+def test_controller_refuses_spawn_without_verifiable_tray_identity(monkeypatch, tmp_path) -> None:
+    paths = SimpleNamespace(launcher_metadata_file=tmp_path / "instance.json")
+    controller = DesktopServerController(
+        paths=paths,
+        options=ServerControllerOptions(preferred_port=8123),
+        log_path=tmp_path / "desktop.log",
+    )
+    metadata = desktop_launcher.InstanceMetadata(
+        pid=1,
+        port=8123,
+        nonce="nonce",
+        executable="InferBridge.exe",
+        started_at="now",
+    )
+    spawned = False
+
+    def fake_popen(*_args, **_kwargs):
+        nonlocal spawned
+        spawned = True
+        raise AssertionError("child spawn must not be attempted")
+
+    monkeypatch.setattr(desktop_controller, "_current_process_created_at", lambda: 0.0)
+    monkeypatch.setattr(desktop_controller.subprocess, "Popen", fake_popen)
+
+    with pytest.raises(RuntimeError, match="could not verify the tray process identity"):
+        controller._spawn(metadata, "control-token")
+
+    assert spawned is False
+
+
 def _metadata_payload(**changes):
     payload = {
         "pid": 1234,
