@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
+import secrets
 import threading
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -87,9 +89,16 @@ def configure_logging(logs_dir: Path) -> Path:
 
 def atomic_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-    temporary.replace(path)
+    # Command and heartbeat files can be written by separate desktop processes. Give
+    # each writer its own staging file so atomic replace remains safe even when two
+    # second-launch activations or installer coordination requests arrive together.
+    temporary = path.with_name(f".{path.name}.{secrets.token_hex(6)}.tmp")
+    try:
+        temporary.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        temporary.replace(path)
+    finally:
+        with contextlib.suppress(OSError):
+            temporary.unlink()
 
 
 def tray_icon(phase: TrayPhase):
