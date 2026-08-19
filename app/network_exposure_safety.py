@@ -5,12 +5,12 @@ from __future__ import annotations
 import functools
 import ipaddress
 import json
-import secrets
 from typing import Any
 
 from fastapi import FastAPI
 
 from app.brand import DISPLAY_NAME, LEGACY_DISPLAY_NAME
+from app.local_request_security import matches_any_secret
 
 _INSTALL_FLAG = "_inferbridge_network_exposure_safety_installed"
 _TEST_CLIENTS = frozenset({"testclient"})
@@ -42,14 +42,19 @@ def _configured_keys(settings: Any) -> tuple[str, ...]:
     )
 
 
-def _authorization_header(scope: dict[str, Any]) -> str:
+def _header(scope: dict[str, Any], expected_name: bytes) -> str:
     for name, value in scope.get("headers", []):
-        if name.lower() == b"authorization":
-            try:
-                return value.decode("latin-1")
-            except UnicodeError:
-                return ""
+        if name.lower() != expected_name:
+            continue
+        try:
+            return value.decode("latin-1")
+        except UnicodeError:
+            return ""
     return ""
+
+
+def _authorization_header(scope: dict[str, Any]) -> str:
+    return _header(scope, b"authorization")
 
 
 def _bearer_is_valid(scope: dict[str, Any], configured: tuple[str, ...]) -> bool:
@@ -57,7 +62,17 @@ def _bearer_is_valid(scope: dict[str, Any], configured: tuple[str, ...]) -> bool
     if not authorization.startswith("Bearer "):
         return False
     supplied = authorization.removeprefix("Bearer ")
-    return any(secrets.compare_digest(supplied, key) for key in configured)
+    return matches_any_secret(supplied, configured)
+
+
+def _is_cors_preflight(scope: dict[str, Any]) -> bool:
+    """Return whether this is a browser CORS preflight rather than a generic OPTIONS call."""
+
+    if str(scope.get("method") or "").upper() != "OPTIONS":
+        return False
+    origin = _header(scope, b"origin").strip()
+    requested_method = _header(scope, b"access-control-request-method").strip()
+    return bool(origin and requested_method)
 
 
 async def _send_error(
@@ -127,9 +142,9 @@ class UnauthenticatedRemoteAccessMiddleware:
             await self.app(scope, receive, send)
             return
 
-        if str(scope.get("method") or "").upper() == "OPTIONS":
-            # Let the CORS middleware answer preflight. No protected resource body is
-            # exposed by an OPTIONS response.
+        if _is_cors_preflight(scope):
+            # A browser preflight carries no protected response body or credentials. Plain
+            # OPTIONS requests are not preflights and remain authenticated below.
             await self.app(scope, receive, send)
             return
 
