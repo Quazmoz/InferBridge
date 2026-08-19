@@ -56,17 +56,19 @@ def test_pyinstaller_collects_openvino_tokenizer_distribution_explicitly():
     assert '"openvino-tokenizers",' in spec
 
 
-def test_runtime_hook_discovers_actual_openvino_dll_directories_and_avoids_smoke_dialogs():
+def test_runtime_hook_discovers_actual_openvino_dll_directories_and_avoids_helper_dialogs():
     hook = (ROOT / "packaging" / "runtime_hook.py").read_text(encoding="utf-8")
 
     assert 'bundle_root.rglob("*.dll")' in hook
     assert '"openvino_tokenizers.dll"' in hook
-    assert 'if "--native-smoke" in sys.argv[1:]' in hook
+    assert 'helper_modes = {"--native-smoke", "--bootstrap-smoke"}' in hook
+    assert "set(sys.argv[1:]) & helper_modes" in hook
 
 
 def _native_distribution(tmp_path: Path) -> Path:
     (tmp_path / "InferBridge.exe").write_bytes(b"exe")
-    native = tmp_path / "_internal" / "native"
+    internal = tmp_path / "_internal"
+    native = internal / "native"
     native.mkdir(parents=True)
     for name in (
         "openvino.dll",
@@ -76,7 +78,23 @@ def _native_distribution(tmp_path: Path) -> Path:
         "openvino_intel_npu_plugin.dll",
     ):
         (native / name).write_bytes(b"dll")
+    setuptools_data = internal / "setuptools" / "_vendor" / "jaraco" / "text"
+    setuptools_data.mkdir(parents=True)
+    (setuptools_data / "Lorem ipsum.txt").write_text("packaged bootstrap data", encoding="utf-8")
     return tmp_path
+
+
+def test_native_release_gate_requires_setuptools_bootstrap_data(tmp_path):
+    root = _native_distribution(tmp_path)
+    psutil_dir = root / "_internal" / "psutil"
+    psutil_dir.mkdir()
+    (psutil_dir / "_psutil_windows.pyd").write_bytes(b"pyd")
+
+    bootstrap_data = root / "_internal" / "setuptools" / "_vendor" / "jaraco" / "text" / "Lorem ipsum.txt"
+    bootstrap_data.unlink()
+
+    with pytest.raises(RuntimeError, match="setuptools jaraco.text bootstrap data"):
+        verify_native_distribution(root, run_native_smoke=False)
 
 
 def test_native_release_gate_requires_one_psutil_windows_extension(tmp_path):
