@@ -19,8 +19,25 @@ def _app(api_key: str | None) -> FastAPI:
     async def health():
         return {"status": "ok"}
 
+    @app.options("/health")
+    async def health_options():
+        return {"status": "options"}
+
     app.add_middleware(UnauthenticatedRemoteAccessMiddleware)
     return app
+
+
+async def _request(
+    app: FastAPI,
+    client_host: str,
+    *,
+    method: str = "GET",
+    path: str = "/health",
+    headers: dict[str, str] | None = None,
+):
+    transport = httpx.ASGITransport(app=app, client=(client_host, 50000))
+    async with httpx.AsyncClient(transport=transport, base_url="http://inferbridge") as client:
+        return await client.request(method, path, headers=headers)
 
 
 async def _get(
@@ -30,9 +47,7 @@ async def _get(
     path: str = "/health",
     headers: dict[str, str] | None = None,
 ):
-    transport = httpx.ASGITransport(app=app, client=(client_host, 50000))
-    async with httpx.AsyncClient(transport=transport, base_url="http://inferbridge") as client:
-        return await client.get(path, headers=headers)
+    return await _request(app, client_host, path=path, headers=headers)
 
 
 def test_loopback_host_detection_is_strict():
@@ -86,6 +101,43 @@ def test_remote_non_api_surface_requires_bearer_when_authentication_is_configure
     assert invalid.status_code == 401
     assert allowed.status_code == 200
     assert allowed.json() == {"status": "ok"}
+
+
+def test_remote_non_ascii_bearer_fails_closed_without_exception():
+    response = asyncio.run(
+        _get(
+            _app("configured-secret"),
+            "192.168.1.50",
+            headers={"Authorization": "Bearer sécuret"},
+        )
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid or missing API key"
+
+
+def test_only_real_cors_preflight_bypasses_outer_bearer_check():
+    app = _app("configured-secret")
+
+    plain_options = asyncio.run(
+        _request(app, "192.168.1.50", method="OPTIONS", path="/health")
+    )
+    preflight = asyncio.run(
+        _request(
+            app,
+            "192.168.1.50",
+            method="OPTIONS",
+            path="/health",
+            headers={
+                "Origin": "http://client.example",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+    )
+
+    assert plain_options.status_code == 401
+    assert preflight.status_code == 200
+    assert preflight.json() == {"status": "options"}
 
 
 def test_actual_inferbridge_app_installs_remote_guard():
