@@ -32,6 +32,7 @@ def test_loopback_host_detection_is_strict():
     assert host_is_loopback("127.8.9.10") is True
     assert host_is_loopback("::1") is True
     assert host_is_loopback("[::1]") is True
+    assert host_is_loopback("::ffff:127.0.0.1") is True
     assert host_is_loopback("localhost") is True
     assert host_is_loopback("0.0.0.0") is False
     assert host_is_loopback("192.168.1.50") is False
