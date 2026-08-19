@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import platform
+import secrets
 import zipfile
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
@@ -64,13 +65,14 @@ class DiagnosticsCollector(DiagnosticsSectionsMixin):
         self.paths.diagnostics_dir.mkdir(parents=True, exist_ok=True)
         self._assert_safe_output_root(self.paths.diagnostics_dir)
         created = self.now().astimezone(UTC)
-        filename = f"inferbridge-diagnostics-{created.strftime('%Y%m%d-%H%M%S')}.zip"
+        # The tray and local server can both export diagnostics. A random suffix keeps
+        # the final artifact and its fixed-name .tmp sibling unique without requiring
+        # a cross-process lock between those two desktop components.
+        filename = (
+            f"inferbridge-diagnostics-{created.strftime('%Y%m%d-%H%M%S')}-"
+            f"{secrets.token_hex(4)}.zip"
+        )
         output = self.paths.diagnostics_dir / filename
-        if output.exists():
-            output = self.paths.diagnostics_dir / (
-                f"inferbridge-diagnostics-{created.strftime('%Y%m%d-%H%M%S')}-"
-                f"{created.microsecond:06d}.zip"
-            )
 
         files: dict[str, bytes] = {}
         categories: list[str] = []
