@@ -58,7 +58,10 @@ VersionInfoProductVersion={#MyAppVersionNumeric}
 ; holding files under {app}.
 CloseApplications=force
 CloseApplicationsFilter={#MyAppExeName},{#MyLegacyAppExeName},*.dll,*.pyd
-RestartApplications=yes
+; Do not let Restart Manager relaunch the just-replaced executable before Setup's installed-
+; runtime probe has validated it. The checked post-install [Run] entry is the single restart
+; authority for interactive installs; InferBridge does not auto-install updates silently.
+RestartApplications=no
 SetupLogging=yes
 UsePreviousAppDir=yes
 UsePreviousGroup=no
