@@ -36,6 +36,8 @@ The local browser, tray controller, instance verification, health checks, and de
 
 Packaged LAN exposure requires an API key. If a persisted LAN setting or `OV_LLM_HOST` requests network exposure while no API key is available, InferBridge stays bound to `127.0.0.1` and reports the blocked configuration instead of starting an unauthenticated LAN listener.
 
+Source/CLI mode applies the same security intent at the request boundary. If it is bound to a non-loopback address without `OV_LLM_API_KEY`, loopback clients can still use the process but non-loopback HTTP requests are rejected. This also protects a direct Uvicorn wildcard bind from accidentally exposing an unauthenticated InferBridge server.
+
 A GUI-managed key can be generated in Network / API settings. Advanced users can instead provide:
 
 ```powershell
@@ -90,9 +92,10 @@ Source mode keeps the existing precedence:
 
 The repo-root `.env` is a source-mode convenience. Do not expect an installed packaged application to have or read a repo-root `.env`.
 
-Examples:
+Authenticated LAN example:
 
 ```powershell
+$env:OV_LLM_API_KEY = "replace-with-a-strong-secret"
 .\start_server.bat --host 0.0.0.0
 ```
 
@@ -103,6 +106,8 @@ $env:OV_LLM_HOST = "0.0.0.0"
 $env:OV_LLM_API_KEY = "replace-with-a-strong-secret"
 .\start_server.bat
 ```
+
+Binding source mode to a non-loopback address without an API key is not an unauthenticated LAN mode. Remote HTTP clients receive `403` until an API key is configured; localhost access remains available for recovery.
 
 ### Packaged desktop mode
 
