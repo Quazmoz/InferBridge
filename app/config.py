@@ -133,6 +133,7 @@ class Settings:
         from app.model_recovery import install_model_recovery_manager_extension
         from app.model_recovery_cleanup import install_model_recovery_cleanup
         from app.model_recovery_status import install_model_recovery_status_extension
+        from app.model_resolution_safety import install_model_resolution_safety
         from app.status_split import install_status_manager_extension
         from app.structured_progress import install_structured_progress_protocol
 
@@ -143,6 +144,7 @@ class Settings:
         install_desktop_model_path_extension()
         install_model_load_target_routing()
         install_engine_handoff_safety()
+        install_model_resolution_safety()
         install_conversion_stream_safety()
         # The structured reader intentionally installs after the stream-safety layer
         # and retains its terminal-state protection while adding schema validation.
