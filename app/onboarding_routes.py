@@ -58,7 +58,9 @@ def _state_change_auth(settings: Settings):
 
 
 def _bad_request(exc: Exception) -> HTTPException:
-    message = sanitize_text(exc, limit=300).strip() or "The onboarding request could not be completed."
+    message = (
+        sanitize_text(exc, limit=300).strip() or "The onboarding request could not be completed."
+    )
     return HTTPException(status_code=400, detail=message)
 
 

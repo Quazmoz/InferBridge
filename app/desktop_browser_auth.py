@@ -38,9 +38,9 @@ def _host_header_name(value: str) -> str:
 
 def _trusted_loopback_scope(scope: dict[str, Any]) -> bool:
     client = scope.get("client")
-    client_host = str(
-        client[0] if isinstance(client, (tuple, list)) and client else ""
-    ).strip("[]").lower()
+    client_host = (
+        str(client[0] if isinstance(client, (tuple, list)) and client else "").strip("[]").lower()
+    )
     return client_host in _LOOPBACK and _host_header_name(_header(scope, b"host")) in _LOOPBACK
 
 
@@ -91,22 +91,19 @@ class DesktopBrowserAuthBridgeMiddleware:
                 for key, value in scope.get("headers", ())
                 if key.lower() != b"authorization"
             ]
-            headers.append((b"authorization", f"Bearer {self.api_key}".encode("utf-8")))
+            headers.append((b"authorization", f"Bearer {self.api_key}".encode()))
             forwarded = dict(scope)
             forwarded["headers"] = headers
 
         issue_cookie = (
-            trusted
-            and path == "/"
-            and str(scope.get("method") or "GET").upper() in {"GET", "HEAD"}
+            trusted and path == "/" and str(scope.get("method") or "GET").upper() in {"GET", "HEAD"}
         )
 
         async def send_with_cookie(message: dict[str, Any]) -> None:
             if issue_cookie and message.get("type") == "http.response.start":
                 headers = list(message.get("headers", ()))
                 cookie = (
-                    f"{_COOKIE_NAME}={self.ui_token}; Path=/; HttpOnly; "
-                    "SameSite=Strict"
+                    f"{_COOKIE_NAME}={self.ui_token}; Path=/; HttpOnly; SameSite=Strict"
                 ).encode("ascii")
                 headers.append((b"set-cookie", cookie))
                 message = dict(message)

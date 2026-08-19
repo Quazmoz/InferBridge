@@ -100,9 +100,7 @@ class UnauthenticatedRemoteAccessMiddleware:
             return
 
         client = scope.get("client")
-        client_host = str(
-            client[0] if isinstance(client, tuple | list) and client else ""
-        ).strip()
+        client_host = str(client[0] if isinstance(client, tuple | list) and client else "").strip()
         if client_host in _TEST_CLIENTS or host_is_loopback(client_host):
             await self.app(scope, receive, send)
             return

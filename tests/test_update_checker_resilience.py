@@ -5,6 +5,8 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 import app.update_checker as update_checker_module
 from app.update_checker import (
     UpdateCache,
@@ -51,29 +53,27 @@ def test_checker_normalizes_naive_clock_and_clamps_timeout(tmp_path):
     assert calls == [0.1, 0.1]
 
 
-def test_malformed_update_opt_in_values_fail_closed_without_network(tmp_path):
-    for raw_enabled in (1, "true", "yes", "on"):
-        store = UpdateStore(tmp_path)
-        store.preferences_path.write_text(
-            f'{{"enabled":{raw_enabled!r},"channel":"stable","skipped_versions":[]}}'.replace(
-                "'", '"'
-            ),
-            encoding="utf-8",
-        )
-        calls = []
+@pytest.mark.parametrize("raw_enabled", [1, "true", "yes", "on"])
+def test_malformed_update_opt_in_values_fail_closed_without_network(tmp_path, raw_enabled):
+    store = UpdateStore(tmp_path)
+    store.preferences_path.write_text(
+        f'{{"enabled":{raw_enabled!r},"channel":"stable","skipped_versions":[]}}'.replace("'", '"'),
+        encoding="utf-8",
+    )
+    calls = []
 
-        def unexpected_network(*_args, **_kwargs):
-            calls.append(True)
-            raise AssertionError("malformed opt-in must not trigger network access")
+    def unexpected_network(*_args, **_kwargs):
+        calls.append(True)
+        raise AssertionError("malformed opt-in must not trigger network access")
 
-        result = UpdateChecker(
-            store=store,
-            installation_mode="installed",
-            opener=unexpected_network,
-        ).check(force=True)
+    result = UpdateChecker(
+        store=store,
+        installation_mode="installed",
+        opener=unexpected_network,
+    ).check(force=True)
 
-        assert result.status == "disabled"
-        assert calls == []
+    assert result.status == "disabled"
+    assert calls == []
 
 
 def test_literal_boolean_update_opt_in_remains_supported(tmp_path):

@@ -117,9 +117,7 @@ def test_shutdown_drain_waits_for_active_embedding_worker():
     assert _state(engine).idle.is_set() is True
 
 
-def test_desktop_key_removal_does_not_claim_success_when_unlink_fails(
-    tmp_path, monkeypatch
-):
+def test_desktop_key_removal_does_not_claim_success_when_unlink_fails(tmp_path, monkeypatch):
     install_desktop_credential_safety()
     store = DesktopApiKeyStore(tmp_path / "config")
     store.key_path.parent.mkdir(parents=True, exist_ok=True)
@@ -142,9 +140,7 @@ def test_desktop_key_removal_does_not_claim_success_when_unlink_fails(
     assert store.key_path.exists()
 
 
-def test_desktop_network_updates_do_not_interleave_state_and_key_writes(
-    tmp_path, monkeypatch
-):
+def test_desktop_network_updates_do_not_interleave_state_and_key_writes(tmp_path, monkeypatch):
     for name in _NETWORK_ENV:
         monkeypatch.delenv(name, raising=False)
     install_desktop_credential_safety()

@@ -24,9 +24,7 @@ def _token() -> str:
     return "hf_" + "r" * 32
 
 
-def test_remove_preserves_in_memory_token_when_persisted_delete_fails(
-    tmp_path, monkeypatch
-):
+def test_remove_preserves_in_memory_token_when_persisted_delete_fails(tmp_path, monkeypatch):
     store = HuggingFaceCredentialStore(_settings(tmp_path))
     store._memory_token = _token()
     store.token_path.write_bytes(b"locked-token-placeholder")

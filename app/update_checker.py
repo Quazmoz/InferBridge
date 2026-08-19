@@ -260,9 +260,7 @@ class UpdateChecker:
         preferences = self.store.load_preferences()
         cache = self.store.load_cache()
         cache_matches_channel = cache.channel == preferences.channel
-        cached_manifest = (
-            self._validated_cached_manifest(cache) if cache_matches_channel else None
-        )
+        cached_manifest = self._validated_cached_manifest(cache) if cache_matches_channel else None
         # Cached release metadata, timestamps and ETags are valid only for the channel
         # that produced them. A channel change must force a fresh, unconditional request.
         cache_matches_channel = cache.channel == preferences.channel

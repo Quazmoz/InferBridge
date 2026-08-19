@@ -104,7 +104,9 @@ def test_repeated_exports_at_same_timestamp_use_unique_paths(tmp_path, monkeypat
             now=lambda: fixed,
             hardware_snapshot=hardware,
             npu_readiness={"state": "unknown"},
-        ).export().path
+        )
+        .export()
+        .path
         for _ in range(3)
     ]
 

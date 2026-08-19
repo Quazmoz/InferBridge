@@ -32,9 +32,7 @@ def test_nonfinite_schema_does_not_break_advisor_or_get_rewritten(tmp_path):
 
 def test_future_schema_is_read_only_to_older_advisor(tmp_path):
     path = tmp_path / "benchmarks.json"
-    original = json.dumps(
-        {"schema_version": 2, "runs": [{"run_id": "future", "extra": {"x": 1}}]}
-    )
+    original = json.dumps({"schema_version": 2, "runs": [{"run_id": "future", "extra": {"x": 1}}]})
     path.write_text(original, encoding="utf-8")
     store = _Store(path)
 
