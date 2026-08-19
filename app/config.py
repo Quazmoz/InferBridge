@@ -16,7 +16,7 @@ from app.huggingface_access import install_huggingface_access_routes_extension
 from app.model_cancellation import install_model_cancellation_routes_extension
 from app.model_library_routes import install_model_library_routes_extension
 from app.model_recovery import install_model_recovery_routes_extension
-from app.network_exposure_safety import install_network_exposure_safety
+from app.network_exposure_safety import host_is_loopback, install_network_exposure_safety
 from app.paths import resolve_runtime_paths
 from app.status_split import install_status_split_routes_extension
 from app.ui_composition import compose as compose_browser_ui
@@ -218,11 +218,11 @@ class Settings:
                 "Wildcard CORS allows arbitrary websites to call the local API. Set explicit "
                 "OV_LLM_CORS_ORIGINS values or configure OV_LLM_API_KEY."
             )
-        if self.host.strip() in {"0.0.0.0", "::"} and not self.api_key:
+        if not host_is_loopback(self.host) and not self.api_key:
             warnings.append(
                 f"OV_LLM_HOST is set to {self.host!r}, which can expose the server beyond "
-                "localhost, but OV_LLM_API_KEY is not set. Set OV_LLM_API_KEY before "
-                "exposing the server beyond a trusted local machine/network."
+                "localhost, but OV_LLM_API_KEY is not set. Non-loopback requests will be "
+                "rejected until an API key is configured."
             )
 
         for warning in warnings:
