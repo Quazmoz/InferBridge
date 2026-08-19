@@ -1,9 +1,9 @@
 """Frozen executable process boundary for the packaged InferBridge launcher.
 
 PyInstaller runtime hooks execute before this module. The lightweight
-``--bootstrap-smoke`` mode therefore proves that the frozen interpreter and all
-runtime-hook dependencies can start from the installed directory without paying
-the cost of starting the tray, server, or model stack.
+``--bootstrap-smoke`` mode therefore proves that the frozen interpreter, runtime hooks,
+and desktop startup import graph can load from the installed directory without starting
+the tray, server, browser, or model runtime.
 """
 
 from __future__ import annotations
@@ -33,10 +33,21 @@ def _show_startup_failure(error: BaseException) -> None:
         pass
 
 
+def _bootstrap_smoke() -> int:
+    """Import the real desktop startup graph without starting owned resources."""
+
+    try:
+        from app.desktop_launcher import main
+        from app.tray_app import run_tray_controller
+    except Exception:  # noqa: BLE001 - installer-owned frozen import boundary
+        return 2
+    return 0 if callable(main) and callable(run_tray_controller) else 2
+
+
 def run(argv: list[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     if arguments == ["--bootstrap-smoke"]:
-        return 0
+        return _bootstrap_smoke()
 
     try:
         from app.desktop_launcher import main
