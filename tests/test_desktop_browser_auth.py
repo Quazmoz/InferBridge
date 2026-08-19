@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from app.desktop_browser_auth import DesktopBrowserAuthBridgeMiddleware
+from app.desktop_browser_auth import DesktopBrowserAuthBridgeMiddleware, _cookie_matches
 from app.desktop_browser_auth_ui import DESKTOP_BROWSER_AUTH_JS
 
 
@@ -147,6 +147,13 @@ def test_cookie_bridge_does_not_attach_api_key_to_unprotected_routes():
     )
 
     assert b"authorization" not in captured["request_headers"]
+
+
+def test_malformed_non_ascii_cookie_fails_closed_without_exception():
+    scope = _scope(path="/v1/models")
+    scope["headers"].append((b"cookie", b"inferbridge_desktop_ui=s\xe9curet"))
+
+    assert _cookie_matches(scope, "random-desktop-ui-token") is False
 
 
 def test_packaged_auth_ui_masks_managed_key_without_persisting_secret():
