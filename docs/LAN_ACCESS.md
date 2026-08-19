@@ -38,6 +38,8 @@ Packaged LAN exposure requires an API key. If a persisted LAN setting or `OV_LLM
 
 Source/CLI mode applies the same security intent at the request boundary. If it is bound to a non-loopback address without `OV_LLM_API_KEY`, loopback clients can still use the process but non-loopback HTTP requests are rejected. This also protects a direct Uvicorn wildcard bind from accidentally exposing an unauthenticated InferBridge server.
 
+When a key is configured, **all non-loopback HTTP access remains authenticated**. `/v1/*` uses the established API-key dependencies and throttling. Remote browser UI, static assets, and health endpoints also require the bearer key. Loopback UI and health probes remain available without credentials so the tray and local supervisors continue to work normally. A normal browser navigation cannot attach a bearer header to the top-level InferBridge page, so LAN access is intended primarily for authenticated API clients such as SDKs, Open WebUI, n8n, and other trusted tools rather than exposing the built-in UI remotely.
+
 A GUI-managed key can be generated in Network / API settings. Advanced users can instead provide:
 
 ```powershell
