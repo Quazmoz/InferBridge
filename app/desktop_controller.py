@@ -150,6 +150,12 @@ class DesktopServerController:
         return f"http://127.0.0.1:{self.port}" if self.port else None
 
     def _server_command(self, metadata: InstanceMetadata) -> list[str]:
+        owner_created_at = _current_process_created_at()
+        if owner_created_at <= 0:
+            raise RuntimeError(
+                "InferBridge could not verify the tray process identity required for safe "
+                "server ownership. Restart the application from a complete installation."
+            )
         if getattr(sys, "frozen", False):
             command = [sys.executable, "--server-child"]
         else:
@@ -163,7 +169,7 @@ class DesktopServerController:
                 "--owner-pid",
                 str(os.getpid()),
                 "--owner-created-at",
-                str(_current_process_created_at()),
+                str(owner_created_at),
             ]
         )
         if self.options.portable:
