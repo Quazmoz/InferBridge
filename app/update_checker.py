@@ -47,7 +47,9 @@ _ModelT = TypeVar("_ModelT", bound=BaseModel)
 class UpdatePreferences(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    enabled: bool = False
+    # Update discovery is opt-in network activity. Only an actual persisted JSON boolean
+    # may enable it; values such as 1, "true", "yes", or "on" must fail closed.
+    enabled: bool = Field(default=False, strict=True)
     channel: ReleaseChannel = "stable"
     skipped_versions: list[str] = Field(default_factory=list, max_length=50)
 
