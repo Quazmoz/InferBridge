@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -108,8 +109,6 @@ def test_linux_tray_fallback_keeps_controller_loop_alive(monkeypatch):
 
     class Stub(TrayRuntimeMixin):
         def __init__(self):
-            import threading
-
             self.args = SimpleNamespace(headless_seconds=0)
             self.stop_event = threading.Event()
             self.polls = 0
