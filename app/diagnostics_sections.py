@@ -16,6 +16,7 @@ from app.diagnostics_privacy import (
     sanitize_text,
     sanitize_value,
 )
+from app.model_library_conversion import is_reparse_point
 
 ALLOWED_RUNTIME_KEYS = {
     "application_version",
@@ -104,12 +105,16 @@ class DiagnosticsSectionsMixin:
         return {"events": events}
 
     def _collect_logs(self, files: dict[str, bytes], categories: list[str]) -> None:
+        if is_reparse_point(self.paths.logs_dir):
+            self.collection_errors.append("logs: rejected symbolic link or Windows junction")
+            return
+
         allowed = ("launcher.log", "desktop.log", "tray.log")
         included = False
         for name in allowed:
             path = self.paths.logs_dir / name
             try:
-                if not path.is_file() or path.is_symlink():
+                if not path.is_file() or is_reparse_point(path):
                     continue
                 resolved = path.resolve()
                 if resolved.parent != self.paths.logs_dir.resolve():
@@ -131,13 +136,19 @@ class DiagnosticsSectionsMixin:
         files: dict[str, bytes],
         categories: list[str],
     ) -> None:
+        if is_reparse_point(self.paths.diagnostics_dir):
+            self.collection_errors.append(
+                "certification: rejected symbolic link or Windows junction"
+            )
+            return
+
         included = False
         candidates = sorted(self.paths.diagnostics_dir.glob("*certification*.json"))[
             :MAX_CERTIFICATION_FILES
         ]
         for path in candidates:
             try:
-                if path.is_symlink() or not path.is_file():
+                if is_reparse_point(path) or not path.is_file():
                     continue
                 resolved = path.resolve()
                 if resolved.parent != self.paths.diagnostics_dir.resolve():
