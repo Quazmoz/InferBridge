@@ -33,3 +33,25 @@ def test_newer_data_schema_is_rejected(tmp_path):
     (tmp_path / "data-schema.json").write_text('{"schema_version": 2}')
     with pytest.raises(RuntimeError, match="older than the persistent data schema"):
         ensure_data_schema(value)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "[]",
+        '{"schema_version": true}',
+        '{"schema_version": 1.5}',
+        '{"schema_version": "1"}',
+        '{"schema_version": Infinity}',
+        '{"schema_version": NaN}',
+    ],
+)
+def test_malformed_schema_marker_is_never_coerced(tmp_path, payload):
+    value = paths(tmp_path)
+    marker = tmp_path / "data-schema.json"
+    marker.write_text(payload, encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="schema marker"):
+        ensure_data_schema(value)
+
+    assert marker.read_text(encoding="utf-8") == payload
