@@ -7,6 +7,7 @@ import json
 import logging
 import secrets
 import threading
+import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
@@ -87,6 +88,19 @@ def configure_logging(logs_dir: Path) -> Path:
     return path
 
 
+#: Backoff for transient Windows replace contention, mirroring ``app.storage_safety``.
+_REPLACE_RETRY_DELAYS_SECONDS = (0.0, 0.05, 0.15, 0.3, 0.6)
+#: Sharing and lock violations reach Python as a bare OSError rather than a dedicated
+#: subclass; ERROR_ACCESS_DENIED arrives as PermissionError.
+_TRANSIENT_REPLACE_WINERRORS = frozenset({32, 33})
+
+
+def _is_transient_replace_error(exc: OSError) -> bool:
+    if isinstance(exc, PermissionError):
+        return True
+    return getattr(exc, "winerror", None) in _TRANSIENT_REPLACE_WINERRORS
+
+
 def atomic_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     # Command and heartbeat files can be written by separate desktop processes. Give
@@ -95,7 +109,23 @@ def atomic_json(path: Path, payload: dict[str, Any]) -> None:
     temporary = path.with_name(f".{path.name}.{secrets.token_hex(6)}.tmp")
     try:
         temporary.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-        temporary.replace(path)
+        # Independent staging files make the write atomic, but on Windows the replace
+        # itself is not contention-free: MoveFileEx onto a destination that another
+        # writer, an antivirus scanner, or a file-sync client currently holds open
+        # fails with ERROR_ACCESS_DENIED or a sharing violation. Those are transient,
+        # so retry briefly rather than let a lost tray command surface as a crash.
+        last_error: OSError | None = None
+        for delay in _REPLACE_RETRY_DELAYS_SECONDS:
+            if delay:
+                time.sleep(delay)
+            try:
+                temporary.replace(path)
+                return
+            except OSError as exc:
+                if not _is_transient_replace_error(exc):
+                    raise
+                last_error = exc
+        raise last_error if last_error is not None else OSError("Atomic replace did not complete.")
     finally:
         with contextlib.suppress(OSError):
             temporary.unlink()

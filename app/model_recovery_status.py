@@ -54,22 +54,31 @@ def _normalize_recovery_record(manager: Any, model_id: str, record: Any) -> dict
     if not isinstance(operation_id, str):
         operation_id = None
     elif operation_id:
-        operation_id = "".join(char for char in operation_id if char.isprintable()).strip()[:128] or None
+        operation_id = (
+            "".join(char for char in operation_id if char.isprintable()).strip()[:128] or None
+        )
 
+    # Membership in a set hashes the candidate, so an unhashable JSON value such as an
+    # object or array would raise TypeError out of the very function that exists to keep
+    # a corrupt recovery file from breaking model-status polling. Check the type first.
     operation_type = record.get("operation_type")
-    if operation_type not in {"load", "convert"}:
+    if not isinstance(operation_type, str) or operation_type not in {"load", "convert"}:
         operation_type = None
 
     terminal_state = record.get("terminal_state")
-    if terminal_state not in {"error", "cancelled"}:
+    if not isinstance(terminal_state, str) or terminal_state not in {"error", "cancelled"}:
         terminal_state = "error"
 
     failed_stage = record.get("failed_stage")
-    if failed_stage not in {"download", "conversion", "load"}:
+    if not isinstance(failed_stage, str) or failed_stage not in {"download", "conversion", "load"}:
         failed_stage = "conversion"
 
     last_completed = record.get("last_completed_stage")
-    if last_completed not in {"none", "download", "conversion"}:
+    if not isinstance(last_completed, str) or last_completed not in {
+        "none",
+        "download",
+        "conversion",
+    }:
         last_completed = "none"
 
     raw_tail = record.get("log_tail")
