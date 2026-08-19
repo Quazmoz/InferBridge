@@ -57,9 +57,18 @@ def test_installer_runs_bootstrap_probe_before_offering_postinstall_launch():
     assert "Setup will not launch the application automatically" in script
 
 
-def test_installer_bootstrap_probe_never_registers_for_windows_restart():
+def test_installer_bootstrap_probe_is_noninteractive_and_never_restart_registered():
     hook = (ROOT / "packaging" / "runtime_hook.py").read_text(encoding="utf-8")
-    helper_modes = hook.split("helper_modes = {", 1)[1].split("}", 1)[0]
+    failure_guard = hook.split("def _show_runtime_failure", 1)[1].split(
+        "def _fail_runtime_validation", 1
+    )[0]
+    restart_guard = hook.split("def _register_for_update_restart", 1)[1].split(
+        '_restore_output("stdout", 1)', 1
+    )[0]
 
-    assert '"--native-smoke"' in helper_modes
-    assert '"--bootstrap-smoke"' in helper_modes
+    assert '"--native-smoke"' in failure_guard
+    assert '"--bootstrap-smoke"' in failure_guard
+    assert "set(sys.argv[1:]) & helper_modes" in failure_guard
+    assert '"--native-smoke"' in restart_guard
+    assert '"--bootstrap-smoke"' in restart_guard
+    assert "arguments & helper_modes" in restart_guard
