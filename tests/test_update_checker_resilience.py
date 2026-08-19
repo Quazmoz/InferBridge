@@ -51,6 +51,53 @@ def test_checker_normalizes_naive_clock_and_clamps_timeout(tmp_path):
     assert calls == [0.1, 0.1]
 
 
+def test_malformed_update_opt_in_values_fail_closed_without_network(tmp_path):
+    for raw_enabled in (1, "true", "yes", "on"):
+        store = UpdateStore(tmp_path)
+        store.preferences_path.write_text(
+            f'{{"enabled":{raw_enabled!r},"channel":"stable","skipped_versions":[]}}'.replace(
+                "'", '"'
+            ),
+            encoding="utf-8",
+        )
+        calls = []
+
+        def unexpected_network(*_args, **_kwargs):
+            calls.append(True)
+            raise AssertionError("malformed opt-in must not trigger network access")
+
+        result = UpdateChecker(
+            store=store,
+            installation_mode="installed",
+            opener=unexpected_network,
+        ).check(force=True)
+
+        assert result.status == "disabled"
+        assert calls == []
+
+
+def test_literal_boolean_update_opt_in_remains_supported(tmp_path):
+    store = UpdateStore(tmp_path)
+    store.preferences_path.write_text(
+        '{"enabled":true,"channel":"stable","skipped_versions":[]}',
+        encoding="utf-8",
+    )
+    calls = []
+
+    def offline(_request, timeout):
+        calls.append(timeout)
+        raise OSError("offline")
+
+    result = UpdateChecker(
+        store=store,
+        installation_mode="installed",
+        opener=offline,
+    ).check(force=True)
+
+    assert result.status == "offline"
+    assert calls
+
+
 def test_update_store_serializes_fixed_temp_file_writes(tmp_path, monkeypatch):
     original_write_text = Path.write_text
     counter_lock = threading.Lock()
