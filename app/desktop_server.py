@@ -21,6 +21,12 @@ def owner_process_matches(
 ) -> bool:
     if owner_pid <= 0:
         return True
+    # A positive owner PID participates in orphan detection. PID-only ownership is
+    # unsafe because Windows can reuse process IDs after the tray exits. Current tray
+    # launches always supply the psutil creation timestamp, so missing/invalid identity
+    # metadata must fail closed instead of silently weakening the ownership check.
+    if owner_created_at <= 0:
+        return False
     try:
         if process_factory is None:
             import psutil
@@ -29,9 +35,7 @@ def owner_process_matches(
         process = process_factory(owner_pid)
         if not process.is_running():
             return False
-        if owner_created_at > 0:
-            return abs(float(process.create_time()) - float(owner_created_at)) < 1.0
-        return True
+        return abs(float(process.create_time()) - float(owner_created_at)) < 1.0
     except Exception:
         return False
 
