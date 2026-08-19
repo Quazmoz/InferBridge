@@ -13,6 +13,8 @@ from app.telemetry import dir_size_gb
 
 from .common import base_device
 
+_BENCHMARK_SCHEMA_VERSION = 1
+
 
 def benchmark_matches_direct_device(row: Mapping[str, Any], device: str) -> bool:
     """Return whether a benchmark proved execution on one direct device."""
@@ -46,18 +48,32 @@ class EvidenceMixin:
 
         with self._store_lock:
             try:
-                data = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                data = {"runs": []}
+                data = json.loads(path.read_text(encoding="utf-8-sig"))
+            except (OSError, ValueError):
+                data = {"schema_version": _BENCHMARK_SCHEMA_VERSION, "runs": []}
+        if not isinstance(data, dict):
+            data = {"schema_version": _BENCHMARK_SCHEMA_VERSION, "runs": []}
+        schema = data.get("schema_version", _BENCHMARK_SCHEMA_VERSION)
+        if (
+            isinstance(schema, bool)
+            or not isinstance(schema, int)
+            or schema != _BENCHMARK_SCHEMA_VERSION
+            or not isinstance(data.get("runs"), list)
+        ):
+            data = {"schema_version": _BENCHMARK_SCHEMA_VERSION, "runs": []}
+
         rows: list[dict[str, Any]] = []
-        for run in data.get("runs", []) if isinstance(data, dict) else []:
+        for run in data["runs"]:
             if not isinstance(run, dict):
                 continue
-            for result in run.get("results", []) if isinstance(run.get("results"), list) else []:
-                if not isinstance(result, dict) or not result.get("success"):
+            results = run.get("results")
+            if not isinstance(results, list):
+                continue
+            for result in results:
+                if not isinstance(result, dict) or result.get("success") is not True:
                     continue
                 row = dict(result)
-                row["automatic"] = bool(run.get("automatic"))
+                row["automatic"] = run.get("automatic") is True
                 row["hardware_fingerprint"] = run.get("hardware_fingerprint")
                 row["created_at"] = run.get("created_at") or result.get("timestamp")
                 rows.append(row)
