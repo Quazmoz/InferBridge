@@ -10,14 +10,14 @@ from __future__ import annotations
 
 import sys
 
-from app.brand import DISPLAY_NAME
+_APP_TITLE = "InferBridge"
 
 
 def _show_startup_failure(error: BaseException) -> None:
     """Report an unexpected frozen-launch failure without exposing a traceback."""
 
     message = (
-        f"{DISPLAY_NAME} could not start because the packaged runtime raised "
+        f"{_APP_TITLE} could not start because the packaged runtime raised "
         f"{error.__class__.__name__}.\n\n"
         "Reinstall the latest build over the existing installation. Your downloaded "
         "models and settings are stored separately and are preserved."
@@ -25,7 +25,7 @@ def _show_startup_failure(error: BaseException) -> None:
     try:
         from app.desktop_shell import show_dialog
 
-        show_dialog(DISPLAY_NAME, message, error=True)
+        show_dialog(_APP_TITLE, message, error=True)
     except Exception:
         # A failure this early may also prevent the dialog helper from importing. The
         # important invariant is that the exception does not escape to PyInstaller's
