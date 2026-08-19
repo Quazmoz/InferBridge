@@ -110,6 +110,42 @@ def _require_internal_file(root: Path, relative: Path, label: str) -> Path:
     return target
 
 
+def _run_packaged_bootstrap_smoke(root: Path) -> None:
+    """Prove the installed frozen interpreter can import the desktop startup graph."""
+
+    if os.name != "nt":
+        return
+    executable = root / "InferBridge.exe"
+    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    try:
+        result = subprocess.run(  # noqa: S603 - executable is the just-built local artifact
+            [str(executable), "--bootstrap-smoke"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
+            check=False,
+            creationflags=creationflags,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("Packaged desktop bootstrap smoke test timed out.") from exc
+    except OSError as exc:
+        raise RuntimeError("Packaged desktop bootstrap smoke test could not start.") from exc
+    if result.returncode == 0:
+        return
+    detail = "\n".join(
+        line.strip() for line in (result.stderr or result.stdout or "").splitlines() if line.strip()
+    )
+    if len(detail) > 800:
+        detail = detail[-800:]
+    suffix = f" Detail: {detail}" if detail else ""
+    raise RuntimeError(
+        f"Packaged desktop bootstrap smoke test failed with exit code {result.returncode}.{suffix}"
+    )
+
+
 def _run_packaged_native_smoke(root: Path) -> None:
     """Load the frozen OpenVINO bindings and the model-conversion import chain.
 
@@ -173,6 +209,7 @@ def verify_native_distribution(root: Path, *, run_native_smoke: bool = True) -> 
         "setuptools jaraco.text bootstrap data",
     )
     if run_native_smoke:
+        _run_packaged_bootstrap_smoke(root)
         _run_packaged_native_smoke(root)
 
 
