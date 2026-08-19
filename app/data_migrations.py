@@ -21,11 +21,28 @@ def _atomic_json(path: Path, payload: dict) -> None:
 
 
 def _read_schema(path: Path) -> int:
-    if not path.exists():
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+    except FileNotFoundError:
         return MINIMUM_SUPPORTED_DATA_SCHEMA_VERSION
-    payload = json.loads(path.read_text(encoding="utf-8-sig"))
-    version = int(payload.get("schema_version", 0))
-    if version < 1:
+    except OSError:
+        # An inaccessible marker is not equivalent to an absent marker. Propagate the
+        # filesystem failure instead of guessing a schema and potentially writing over
+        # configuration that belongs to a different or newer installation state.
+        raise
+
+    try:
+        payload = json.loads(text)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("The persistent data schema marker is invalid.") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError("The persistent data schema marker must be a JSON object.")
+
+    version = payload.get("schema_version")
+    # The application writes an integer here. Do not accept bools, fractional values,
+    # numeric strings, Infinity, or NaN through lossy int() coercion at a migration
+    # boundary where selecting the wrong schema can be destructive.
+    if isinstance(version, bool) or not isinstance(version, int) or version < 1:
         raise RuntimeError("The persistent data schema marker is invalid.")
     return version
 
