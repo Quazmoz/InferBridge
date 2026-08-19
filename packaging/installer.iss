@@ -101,7 +101,7 @@ Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{a
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent; Check: CanLaunchInstalledRuntime
 
 [Code]
 const
@@ -110,7 +110,12 @@ const
   ForceStopSettleMilliseconds = 2000;
   RemoveTreeAttempts = 3;
   RemoveTreeSettleMilliseconds = 750;
+  RuntimeCheckAttempts = 3;
+  RuntimeCheckSettleMilliseconds = 500;
   RunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
+
+var
+  InstalledRuntimeReady: Boolean;
 
 function DataRootPath(Index: Integer): String;
 begin
@@ -292,10 +297,42 @@ begin
     RegQueryStringValue(HKLM, Key, 'DisplayVersion', Result);
 end;
 
+function VerifyInstalledRuntime(): Boolean;
+var
+  Attempt, ResultCode: Integer;
+  Started: Boolean;
+begin
+  Result := False;
+  for Attempt := 1 to RuntimeCheckAttempts do
+  begin
+    ResultCode := -1;
+    Started := Exec(
+      ExpandConstant('{app}\{#MyAppExeName}'),
+      '--bootstrap-smoke',
+      ExpandConstant('{app}'),
+      SW_HIDE,
+      ewWaitUntilTerminated,
+      ResultCode);
+    if Started and (ResultCode = 0) then
+    begin
+      Result := True;
+      exit;
+    end;
+    if Attempt < RuntimeCheckAttempts then
+      Sleep(RuntimeCheckSettleMilliseconds);
+  end;
+end;
+
+function CanLaunchInstalledRuntime(): Boolean;
+begin
+  Result := InstalledRuntimeReady;
+end;
+
 function InitializeSetup(): Boolean;
 var
   Existing: String;
 begin
+  InstalledRuntimeReady := False;
   Result := True;
   Existing := InstalledVersion();
   if (Existing <> '') and (CompareCoreVersions(Existing, '{#MyAppVersion}') > 0) then
@@ -310,6 +347,19 @@ function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := '';
   StopRunningInstance();
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep <> ssPostInstall then
+    exit;
+
+  InstalledRuntimeReady := VerifyInstalledRuntime();
+  if not InstalledRuntimeReady then
+    SuppressibleMsgBox(
+      'InferBridge was copied to disk, but its installed runtime failed the startup self-check.' + #13#10 + #13#10 +
+      'Setup will not launch the application automatically. Run the latest installer over this installation again. Your downloaded models and settings are preserved.',
+      mbError, MB_OK, IDOK);
 end;
 
 function InitializeUninstall(): Boolean;
