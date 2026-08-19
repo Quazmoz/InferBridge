@@ -15,13 +15,25 @@ def test_pyinstaller_uses_hardened_entrypoint_and_bundles_setuptools_data():
     assert "Lorem ipsum.txt" in spec
 
 
-def test_bootstrap_smoke_exits_before_desktop_launcher_import(monkeypatch):
-    # If this sentinel module were imported, attribute access would fail. The bootstrap
-    # probe must stop before application imports so the installer can cheaply validate the
-    # frozen interpreter and PyInstaller runtime hooks from the installed directory.
-    monkeypatch.setitem(sys.modules, "app.desktop_launcher", None)
+def test_bootstrap_smoke_imports_desktop_startup_graph_without_running_it(monkeypatch):
+    def must_not_run(*_args, **_kwargs):
+        raise AssertionError("bootstrap smoke must not start desktop resources")
+
+    monkeypatch.setitem(sys.modules, "app.desktop_launcher", SimpleNamespace(main=must_not_run))
+    monkeypatch.setitem(
+        sys.modules,
+        "app.tray_app",
+        SimpleNamespace(run_tray_controller=must_not_run),
+    )
 
     assert frozen_entrypoint.run(["--bootstrap-smoke"]) == 0
+
+
+def test_bootstrap_smoke_rejects_broken_desktop_startup_import(monkeypatch):
+    monkeypatch.setitem(sys.modules, "app.desktop_launcher", SimpleNamespace(main=lambda: None))
+    monkeypatch.setitem(sys.modules, "app.tray_app", None)
+
+    assert frozen_entrypoint.run(["--bootstrap-smoke"]) == 2
 
 
 def test_frozen_boundary_contains_unexpected_launcher_exception(monkeypatch):
