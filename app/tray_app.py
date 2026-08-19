@@ -69,8 +69,9 @@ class TrayApplication(
         self.stop_event.set()
         with contextlib.suppress(Exception):
             self.controller.stop()
-        with contextlib.suppress(OSError):
-            self.heartbeat_file.unlink()
+        for marker in (self.heartbeat_file, self.command_file, self.restart_request_file):
+            with contextlib.suppress(OSError):
+                marker.unlink()
         if self.poll_thread and self.poll_thread.is_alive():
             self.poll_thread.join(timeout=5)
 
