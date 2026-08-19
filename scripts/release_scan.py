@@ -98,6 +98,18 @@ def _require_single_internal_file(root: Path, pattern: str, label: str) -> Path:
     return matches[0]
 
 
+def _require_internal_file(root: Path, relative: Path, label: str) -> Path:
+    """Require one package-data file at its deterministic PyInstaller destination."""
+
+    target = root / "_internal" / relative
+    if not target.is_file():
+        raise RuntimeError(
+            f"Packaged runtime is missing {label}: "
+            f"{(Path('_internal') / relative).as_posix()}"
+        )
+    return target
+
+
 def _run_packaged_native_smoke(root: Path) -> None:
     """Load the frozen OpenVINO bindings and the model-conversion import chain.
 
@@ -155,6 +167,11 @@ def verify_native_distribution(root: Path, *, run_native_smoke: bool = True) -> 
 
     _require_single_internal_file(root, "_psutil_windows*.pyd", "psutil Windows extension")
     _require_single_internal_file(root, "openvino_tokenizers.dll", "OpenVINO tokenizer extension")
+    _require_internal_file(
+        root,
+        Path("setuptools/_vendor/jaraco/text/Lorem ipsum.txt"),
+        "setuptools jaraco.text bootstrap data",
+    )
     if run_native_smoke:
         _run_packaged_native_smoke(root)
 
