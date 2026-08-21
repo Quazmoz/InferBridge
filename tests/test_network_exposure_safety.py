@@ -119,9 +119,7 @@ def test_remote_non_ascii_bearer_fails_closed_without_exception():
 def test_only_real_cors_preflight_bypasses_outer_bearer_check():
     app = _app("configured-secret")
 
-    plain_options = asyncio.run(
-        _request(app, "192.168.1.50", method="OPTIONS", path="/health")
-    )
+    plain_options = asyncio.run(_request(app, "192.168.1.50", method="OPTIONS", path="/health"))
     preflight = asyncio.run(
         _request(
             app,
