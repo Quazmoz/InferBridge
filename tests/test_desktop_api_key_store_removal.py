@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import pytest
-
 from app.desktop_network import DesktopApiKeyStore
 
 
