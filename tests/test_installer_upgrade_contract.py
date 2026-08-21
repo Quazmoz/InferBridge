@@ -80,9 +80,7 @@ def _native_distribution(tmp_path: Path) -> Path:
         (native / name).write_bytes(b"dll")
     setuptools_data = internal / "setuptools" / "_vendor" / "jaraco" / "text"
     setuptools_data.mkdir(parents=True)
-    (setuptools_data / "Lorem ipsum.txt").write_text(
-        "packaged bootstrap data", encoding="utf-8"
-    )
+    (setuptools_data / "Lorem ipsum.txt").write_text("packaged bootstrap data", encoding="utf-8")
     return tmp_path
 
 
@@ -93,13 +91,7 @@ def test_native_release_gate_requires_setuptools_bootstrap_data(tmp_path):
     (psutil_dir / "_psutil_windows.pyd").write_bytes(b"pyd")
 
     bootstrap_data = (
-        root
-        / "_internal"
-        / "setuptools"
-        / "_vendor"
-        / "jaraco"
-        / "text"
-        / "Lorem ipsum.txt"
+        root / "_internal" / "setuptools" / "_vendor" / "jaraco" / "text" / "Lorem ipsum.txt"
     )
     bootstrap_data.unlink()
 
