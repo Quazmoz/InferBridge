@@ -104,8 +104,7 @@ def _require_internal_file(root: Path, relative: Path, label: str) -> Path:
     target = root / "_internal" / relative
     if not target.is_file():
         raise RuntimeError(
-            f"Packaged runtime is missing {label}: "
-            f"{(Path('_internal') / relative).as_posix()}"
+            f"Packaged runtime is missing {label}: {(Path('_internal') / relative).as_posix()}"
         )
     return target
 
