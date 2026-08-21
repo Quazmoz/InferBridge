@@ -61,6 +61,135 @@ class DiagnosticsCollector(DiagnosticsSectionsMixin):
     collection_errors: list[str] = field(default_factory=list)
     redactions_applied: set[str] = field(default_factory=set)
 
+    def support_summary(self) -> str:
+        """Return a concise, sanitized block safe to paste into a support request.
+
+        The summary deliberately uses the same allowlisted section producers as the
+        local diagnostics ZIP. It never reads logs, environment variables, prompts,
+        chat history, credentials, cookies, browser storage, or model-file contents.
+        """
+
+        application = sanitize_value(
+            self._application_payload(), redactions=self.redactions_applied
+        )
+        hardware = sanitize_value(self._hardware_payload(), redactions=self.redactions_applied)
+        runtime = sanitize_value(self._runtime_payload(), redactions=self.redactions_applied)
+        configuration = sanitize_value(
+            self._configuration_payload(), redactions=self.redactions_applied
+        )
+
+        application = application if isinstance(application, Mapping) else {}
+        hardware = hardware if isinstance(hardware, Mapping) else {}
+        runtime = runtime if isinstance(runtime, Mapping) else {}
+        configuration = configuration if isinstance(configuration, Mapping) else {}
+
+        os_info = hardware.get("os")
+        os_info = os_info if isinstance(os_info, Mapping) else {}
+        cpu = hardware.get("cpu")
+        cpu = cpu if isinstance(cpu, Mapping) else {}
+        memory = hardware.get("memory")
+        memory = memory if isinstance(memory, Mapping) else {}
+        runtime_versions = hardware.get("runtime")
+        runtime_versions = runtime_versions if isinstance(runtime_versions, Mapping) else {}
+
+        devices = [item for item in hardware.get("devices", []) if isinstance(item, Mapping)]
+        available_devices = [str(item) for item in hardware.get("available_devices", []) if item]
+        gpu_names = [
+            str(item.get("full_name") or item.get("device"))
+            for item in devices
+            if str(item.get("device") or "").upper().startswith("GPU")
+        ]
+        npu_names = [
+            str(item.get("full_name") or item.get("device"))
+            for item in devices
+            if str(item.get("device") or "").upper().startswith("NPU")
+        ]
+
+        device_state = runtime.get("device")
+        if isinstance(device_state, Mapping):
+            selected_device = (
+                device_state.get("actual")
+                or device_state.get("actual_device")
+                or device_state.get("selected")
+                or device_state.get("default")
+            )
+        else:
+            selected_device = device_state
+        selected_device = selected_device or configuration.get("device") or "unavailable"
+
+        active_model = runtime.get("active_model")
+        model_name = None
+        model_format = None
+        if isinstance(active_model, Mapping):
+            model_name = (
+                active_model.get("name") or active_model.get("id") or active_model.get("model_id")
+            )
+            model_format = active_model.get("weight_format") or active_model.get("precision")
+        elif active_model:
+            model_name = active_model
+
+        if not model_name:
+            models = runtime.get("models")
+            if isinstance(models, Mapping):
+                loaded = models.get("loaded")
+                if isinstance(loaded, list) and loaded:
+                    model_name = loaded[0]
+
+        os_parts = [
+            os_info.get("edition"),
+            os_info.get("release"),
+            os_info.get("version"),
+        ]
+        os_label = " ".join(str(part) for part in os_parts if part) or str(
+            os_info.get("system") or "unavailable"
+        )
+        cpu_name = (
+            cpu.get("name")
+            or cpu.get("full_name")
+            or cpu.get("brand")
+            or cpu.get("model")
+            or "unavailable"
+        )
+        ram_total = memory.get("total_gb")
+        ram_label = (
+            f"{ram_total} GB"
+            if isinstance(ram_total, int | float) and ram_total > 0
+            else "unavailable"
+        )
+
+        artifact_kind = application.get("build_metadata") or {}
+        artifact_kind = artifact_kind if isinstance(artifact_kind, Mapping) else {}
+        environment_label = (
+            str(artifact_kind.get("artifact_kind") or "packaged")
+            if application.get("packaged")
+            else "development"
+        )
+
+        lines = [
+            "InferBridge Diagnostics",
+            f"Version: {application.get('application_version') or __version__}",
+            f"Build: {artifact_kind.get('build_id') or artifact_kind.get('build_date') or 'unavailable'}",
+            f"Environment: {environment_label}",
+            f"Installation: {application.get('installation_mode') or 'unavailable'}",
+            f"OS: {os_label}",
+            f"Architecture: {application.get('architecture') or os_info.get('architecture') or 'unavailable'}",
+            f"CPU: {cpu_name}",
+            f"RAM: {ram_label}",
+            f"GPU: {', '.join(gpu_names) if gpu_names else 'not detected'}",
+            f"NPU: {', '.join(npu_names) if npu_names else 'not detected'}",
+            f"OpenVINO: {runtime_versions.get('openvino') or 'unavailable'}",
+            f"OpenVINO GenAI: {runtime_versions.get('openvino_genai') or 'unavailable'}",
+            f"Available devices: {', '.join(available_devices) if available_devices else 'none detected'}",
+            f"Selected device: {selected_device}",
+            f"Model: {model_name or 'none loaded'}",
+            f"Model format: {model_format or 'unavailable'}",
+            f"Mock mode: {'yes' if runtime.get('mock') else 'no'}",
+            "",
+            "Privacy: credentials, prompts, chat history, browser storage, logs, and model files are not included.",
+            "Paste this into the InferBridge feedback form or a GitHub issue.",
+        ]
+        return sanitize_text("\n".join(lines), redactions=self.redactions_applied, limit=16 * 1024)
+
     def export(self) -> DiagnosticsResult:
         self.paths.diagnostics_dir.mkdir(parents=True, exist_ok=True)
         self._assert_safe_output_root(self.paths.diagnostics_dir)

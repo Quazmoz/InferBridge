@@ -48,6 +48,7 @@ from app import (
     runtime_health_ui,
     status_split_ui,
     storage_manager_ui,
+    support_ui,
     ui_extension,
     ui_polish,
     ui_quality,
@@ -92,6 +93,7 @@ COMPOSITION: tuple[UiExtension, ...] = (
     ui_polish.EXTENSION,
     ui_quality.EXTENSION,
     doctor_ui.EXTENSION,
+    support_ui.EXTENSION,
     header_overflow_ui.EXTENSION,
     # The progress controller is declared before the surfaces that must precede it, because
     # each of those names it in `before=`. Document order ends up: split status, operation
