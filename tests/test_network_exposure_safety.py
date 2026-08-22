@@ -108,7 +108,7 @@ def test_remote_non_ascii_bearer_fails_closed_without_exception():
         _get(
             _app("configured-secret"),
             "192.168.1.50",
-            headers={"Authorization": "Bearer sécuret"},
+            headers={"Authorization": b"Bearer s\xe9curet"},
         )
     )
 
