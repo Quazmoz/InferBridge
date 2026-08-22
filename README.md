@@ -12,13 +12,13 @@ OpenVINO GenAI remains the inference runtime. InferBridge does not replace OpenV
 
 ## Project and release status
 
-**Current stable release: `0.9.5`.** See [0.9.5](docs/releases/0.9.5.md) for the full record. It brings transactional model preparation, strict converted-artifact validation, working packaged conversion, reliable install-over-existing and uninstall flows, uninterrupted device switching, model preparation recovery, stage-aware preparation watchdogs, secure Hugging Face access, and context-budget visibility to the stable channel.
+**Current stable release: `0.9.6`.** See [0.9.6](docs/releases/0.9.6.md) for the full record. It promotes the 0.9.6 beta architecture, installer hardening, security boundaries, lifecycle reliability, support workflows, and privacy-safe diagnostics to the stable channel.
 
-- [Windows installer](https://github.com/Quazmoz/InferBridge/releases/download/v0.9.5/InferBridge-0.9.5-windows-x64-installer.exe)
-- [Portable ZIP](https://github.com/Quazmoz/InferBridge/releases/download/v0.9.5/InferBridge-0.9.5-windows-x64-portable.zip)
-- [SHA-256 checksums](https://github.com/Quazmoz/InferBridge/releases/download/v0.9.5/InferBridge-0.9.5-checksums.txt)
+- [Windows installer](https://github.com/Quazmoz/InferBridge/releases/download/v0.9.6/InferBridge-0.9.6-windows-x64-installer.exe)
+- [Portable ZIP](https://github.com/Quazmoz/InferBridge/releases/download/v0.9.6/InferBridge-0.9.6-windows-x64-portable.zip)
+- [SHA-256 checksums](https://github.com/Quazmoz/InferBridge/releases/download/v0.9.6/InferBridge-0.9.6-checksums.txt)
 
-There is no pre-release newer than the current stable release. Versions 0.9.0 through 0.9.3 were published only as betas and are superseded by 0.9.5. Beta builds ship ahead of the next stable release and are marked pre-release on GitHub.
+There is no pre-release newer than the current stable release. Versions 0.9.0 through 0.9.3 were published only as betas and are superseded by 0.9.6. Beta builds ship ahead of the next stable release and are marked pre-release on GitHub.
 
 Releases from `v0.7.0` onward use the canonical `Quazmoz/InferBridge` repository and `InferBridge-<version>` artifact names. Releases through `v0.6.3` were published before the rename, and their repository links and artifact filenames intentionally retain the former product identity.
 
@@ -170,7 +170,8 @@ See [QUICKSTART.md](QUICKSTART.md) for the complete setup flow.
 
 ### Release notes
 
-- [0.9.5](docs/releases/0.9.5.md) — current stable release
+- [0.9.6](docs/releases/0.9.6.md) — current stable release
+- [0.9.5](docs/releases/0.9.5.md)
 
 ## Implemented capabilities
 
