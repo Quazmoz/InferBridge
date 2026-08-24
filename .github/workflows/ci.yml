@@ -3,7 +3,7 @@ name: CI
 on:
   workflow_dispatch:
   push:
-    branches: ["main", "development", "beta"]
+    branches: ["main", "dev", "beta"]
     paths-ignore:
       - "**/*.md"
       - "docs/**"
@@ -90,6 +90,7 @@ jobs:
             --host 127.0.0.1 \
             --port 8123 \
             --model tinyllama-1.1b-chat-fp16 \
+            --device CPU \
             > contract-server.log 2>&1 &
           echo $! > contract-server.pid
 
