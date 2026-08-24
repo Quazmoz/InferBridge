@@ -31,6 +31,27 @@ def benchmark_matches_direct_device(row: Mapping[str, Any], device: str) -> bool
     )
 
 
+def _benchmark_evidence_rank(row: Mapping[str, Any]) -> tuple[int, int, int, int]:
+    """Rank matching evidence by measurement strength, not merely append order.
+
+    A manual Benchmark Lab run should not be displaced by a later one-shot automatic
+    post-load sample on the same unchanged hardware. Within the same class, newer store
+    order remains the tie-breaker in :meth:`EvidenceMixin._latest_benchmark`.
+    """
+
+    manual = 1 if row.get("automatic") is not True else 0
+    try:
+        methodology = max(int(row.get("methodology_version") or 0), 0)
+    except (TypeError, ValueError, OverflowError):
+        methodology = 0
+    try:
+        measured_runs = max(int(row.get("runs") or 1), 1)
+    except (TypeError, ValueError, OverflowError):
+        measured_runs = 1
+    decode = 1 if row.get("decode_tokens_sec") is not None else 0
+    return manual, methodology, measured_runs, decode
+
+
 def _compact_benchmark_evidence(row: Mapping[str, Any]) -> dict[str, Any]:
     """Keep advisor/status evidence small even when Benchmark Lab stores samples."""
 
@@ -53,6 +74,9 @@ def _compact_benchmark_evidence(row: Mapping[str, Any]) -> dict[str, Any]:
         "methodology_version",
         "automatic",
         "synthetic",
+        "runs",
+        "warmup_runs",
+        "stability",
         "score",
     )
     return {field: row.get(field) for field in fields if field in row}
@@ -136,7 +160,13 @@ class EvidenceMixin:
             if not fingerprint or row_fingerprint != fingerprint:
                 continue
             matches.append(row)
-        return _compact_benchmark_evidence(matches[-1]) if matches else None
+        if not matches:
+            return None
+        _, selected = max(
+            enumerate(matches),
+            key=lambda item: (_benchmark_evidence_rank(item[1]), item[0]),
+        )
+        return _compact_benchmark_evidence(selected)
 
     def _model_size_key(self, cfg: Any) -> str | None:
         try:

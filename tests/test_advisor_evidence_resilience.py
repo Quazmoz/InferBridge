@@ -18,6 +18,19 @@ class _Evidence(EvidenceMixin):
         self.catalog = {}
 
 
+def _matching_evidence(path) -> _Evidence:
+    evidence = _Evidence(path)
+    evidence.catalog = {
+        "model": SimpleNamespace(
+            source_model="example/model",
+            backend="openvino-genai",
+            weight_format="int4",
+        )
+    }
+    evidence.hardware_snapshot = lambda: {"fingerprint": "current-hardware"}
+    return evidence
+
+
 def test_string_false_success_is_not_advisor_evidence(tmp_path):
     path = tmp_path / "benchmarks.json"
     path.write_text(
@@ -128,15 +141,66 @@ def test_synthetic_benchmark_never_becomes_current_hardware_evidence(tmp_path):
         encoding="utf-8",
     )
 
-    evidence = _Evidence(path)
-    evidence.catalog = {
-        "model": SimpleNamespace(
-            source_model="example/model",
-            backend="openvino-genai",
-            weight_format="int4",
-        )
-    }
-    evidence.hardware_snapshot = lambda: {"fingerprint": "current-hardware"}
+    evidence = _matching_evidence(path)
 
     assert evidence._benchmark_rows()[0]["synthetic"] is True
     assert evidence._latest_benchmark("model", "CPU") is None
+
+
+def test_manual_multi_run_evidence_outranks_later_automatic_sample(tmp_path):
+    path = tmp_path / "benchmarks.json"
+    identity = {
+        "model_id": "model",
+        "source_model": "example/model",
+        "backend": "openvino-genai",
+        "weight_format": "int4",
+        "requested_device": "CPU",
+        "actual_device": "CPU",
+        "success": True,
+    }
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "runs": [
+                    {
+                        "created_at": "2026-08-24T10:00:00Z",
+                        "hardware_fingerprint": "current-hardware",
+                        "methodology_version": 2,
+                        "automatic": False,
+                        "results": [
+                            {
+                                **identity,
+                                "runs": 5,
+                                "warmup_runs": 1,
+                                "decode_tokens_sec": 24.0,
+                                "stability": {"status": "stable", "cv_percent": 2.0},
+                            }
+                        ],
+                    },
+                    {
+                        "created_at": "2026-08-24T11:00:00Z",
+                        "hardware_fingerprint": "current-hardware",
+                        "methodology_version": 1,
+                        "automatic": True,
+                        "results": [
+                            {
+                                **identity,
+                                "runs": 1,
+                                "decode_tokens_sec": 12.0,
+                            }
+                        ],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    selected = _matching_evidence(path)._latest_benchmark("model", "CPU")
+
+    assert selected is not None
+    assert selected["automatic"] is False
+    assert selected["runs"] == 5
+    assert selected["decode_tokens_sec"] == 24.0
+    assert selected["stability"]["status"] == "stable"
