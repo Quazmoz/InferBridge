@@ -105,9 +105,13 @@ def test_metric_statistics_use_median_and_population_cv():
     assert stats["cv_percent"] > 0
 
 
-def test_bundled_ui_contains_integrated_benchmark_lab():
+def test_bundled_ui_contains_integrated_benchmark_lab_and_truthful_optional_metrics():
     assert "Benchmark Lab" in ADVISOR_EXTENSION_JS
     assert "benchmark-run-lab-btn" in ADVISOR_EXTENSION_JS
     assert "benchmark-copy-results" in ADVISOR_EXTENSION_JS
     assert "benchmark-download-json" in ADVISOR_EXTENSION_JS
     assert "Synthetic / mock mode" in ADVISOR_EXTENSION_JS
+    assert "benchmarkExportWithCapturedEnvironment" in ADVISOR_EXTENSION_JS
+    assert "capturedBenchmarkExport" in ADVISOR_EXTENSION_JS
+    assert "formatOptionalMs" in ADVISOR_EXTENSION_JS
+    assert "value === null || value === undefined || value === ''" in ADVISOR_EXTENSION_JS

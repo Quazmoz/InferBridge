@@ -1,6 +1,31 @@
 """Hardware advisor JavaScript, part 3."""
 
 SCRIPT_3 = r"""
+    const benchmarkBaseFormatMs = formatMs;
+    formatMs = function formatOptionalMs(value) {
+        if (value === null || value === undefined || value === '') return '—';
+        return benchmarkBaseFormatMs(value);
+    };
+
+    const benchmarkExportWithCapturedEnvironment = safeBenchmarkExport;
+    safeBenchmarkExport = function capturedBenchmarkExport(run) {
+        const safe = benchmarkExportWithCapturedEnvironment(run);
+        const environment = run?.environment || {};
+        const devices = Array.isArray(environment.devices) ? environment.devices : [];
+        safe.system = {
+            cpu: environment.cpu || null,
+            ram_gb: environment.ram_gb ?? null,
+            inferbridge: environment.inferbridge || null,
+            openvino: environment.openvino || null,
+            openvino_genai: environment.openvino_genai || null,
+            devices: devices.map(item => ({
+                device: item?.device || item?.base || null,
+                driver_version: item?.driver_version || null,
+            })),
+        };
+        return safe;
+    };
+
     modelSelect.addEventListener('change', event => {
         if (event.isTrusted && !autoSelecting && autoRoutingProfile) {
             autoRoutingProfile = null;
