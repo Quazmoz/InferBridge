@@ -204,3 +204,58 @@ def test_manual_multi_run_evidence_outranks_later_automatic_sample(tmp_path):
     assert selected["runs"] == 5
     assert selected["decode_tokens_sec"] == 24.0
     assert selected["stability"]["status"] == "stable"
+
+
+def test_new_conversion_marker_invalidates_older_benchmark_evidence(tmp_path):
+    path = tmp_path / "benchmarks.json"
+    model_dir = tmp_path / "converted-model"
+    model_dir.mkdir()
+    marker = model_dir / ".ovllm-conversion.json"
+    marker.write_text(json.dumps({"recorded_at": "2026-08-24T09:00:00Z"}), encoding="utf-8")
+
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "runs": [
+                    {
+                        "created_at": "2026-08-24T10:00:00Z",
+                        "hardware_fingerprint": "current-hardware",
+                        "methodology_version": 2,
+                        "automatic": False,
+                        "results": [
+                            {
+                                "model_id": "model",
+                                "source_model": "example/model",
+                                "backend": "openvino-genai",
+                                "weight_format": "int4",
+                                "requested_device": "CPU",
+                                "actual_device": "CPU",
+                                "success": True,
+                                "runs": 5,
+                                "decode_tokens_sec": 20.0,
+                            }
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    evidence = _Evidence(path)
+    evidence.catalog = {
+        "model": SimpleNamespace(
+            source_model="example/model",
+            backend="openvino-genai",
+            weight_format="int4",
+            abs_path=lambda _base: model_dir,
+        )
+    }
+    evidence.hardware_snapshot = lambda: {"fingerprint": "current-hardware"}
+
+    assert evidence._latest_benchmark("model", "CPU") is not None
+
+    marker.write_text(json.dumps({"recorded_at": "2026-08-24T11:00:00Z"}), encoding="utf-8")
+
+    assert evidence._latest_benchmark("model", "CPU") is None

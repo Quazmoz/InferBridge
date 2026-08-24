@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,14 @@ from app.telemetry import dir_size_gb
 from .common import base_device
 
 _BENCHMARK_SCHEMA_VERSION = 1
+_ARTIFACT_IDENTITY_FILES = (
+    "openvino_model.xml",
+    "openvino_model.bin",
+    "openvino_language_model.xml",
+    "openvino_language_model.bin",
+    "config.json",
+)
+_ARTIFACT_MTIME_TOLERANCE_SECONDS = 2.0
 
 
 def benchmark_matches_direct_device(row: Mapping[str, Any], device: str) -> bool:
@@ -50,6 +59,68 @@ def _benchmark_evidence_rank(row: Mapping[str, Any]) -> tuple[int, int, int, int
         measured_runs = 1
     decode = 1 if row.get("decode_tokens_sec") is not None else 0
     return manual, methodology, measured_runs, decode
+
+
+def _parse_benchmark_time(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _artifact_changed_after_benchmark(cfg: Any, row: Mapping[str, Any]) -> bool:
+    """Return whether local converted artifacts are newer than this benchmark.
+
+    Benchmark stores intentionally remain backward compatible and therefore do not require
+    a new persisted artifact-fingerprint field. Instead, current converted-model metadata
+    provides a conservative invalidation signal: a newer conversion marker or key OpenVINO
+    artifact means the measured result predates the files that would execute now.
+
+    Benchmark timestamps historically have one-second precision. A small mtime tolerance
+    prevents a file written earlier in the same second from being misclassified as newer.
+    """
+
+    benchmark_at = _parse_benchmark_time(row.get("created_at") or row.get("timestamp"))
+    abs_path = getattr(cfg, "abs_path", None)
+    if benchmark_at is None or not callable(abs_path):
+        return False
+    try:
+        model_dir = Path(abs_path(BASE_DIR))
+    except Exception:
+        return False
+    if not model_dir.is_dir():
+        return False
+
+    marker = model_dir / ".ovllm-conversion.json"
+    try:
+        metadata = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        metadata = None
+    if isinstance(metadata, dict):
+        recorded_at = _parse_benchmark_time(metadata.get("recorded_at"))
+        if recorded_at is not None and recorded_at > benchmark_at:
+            return True
+
+    benchmark_epoch = benchmark_at.timestamp()
+    for filename in _ARTIFACT_IDENTITY_FILES:
+        candidate = model_dir / filename
+        try:
+            stat = candidate.stat()
+        except OSError:
+            continue
+        if not candidate.is_file():
+            continue
+        if stat.st_mtime > benchmark_epoch + _ARTIFACT_MTIME_TOLERANCE_SECONDS:
+            return True
+    return False
 
 
 def _compact_benchmark_evidence(row: Mapping[str, Any]) -> dict[str, Any]:
@@ -158,6 +229,8 @@ class EvidenceMixin:
                 continue
             row_fingerprint = row.get("hardware_fingerprint")
             if not fingerprint or row_fingerprint != fingerprint:
+                continue
+            if _artifact_changed_after_benchmark(cfg, row):
                 continue
             matches.append(row)
         if not matches:
