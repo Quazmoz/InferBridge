@@ -7,6 +7,27 @@ SCRIPT_3 = r"""
         return benchmarkBaseFormatMs(value);
     };
 
+    const benchmarkBaseFormatGb = formatGb;
+    formatGb = function formatOptionalGb(value) {
+        if (value === null || value === undefined || value === '') return 'Unknown';
+        return benchmarkBaseFormatGb(value);
+    };
+
+    const benchmarkBaseEnsureDefaults = ensureBenchmarkDefaults;
+    ensureBenchmarkDefaults = function safeBenchmarkDefaults(data) {
+        const seededBefore = benchmarkSelectionsSeeded;
+        benchmarkBaseEnsureDefaults(data);
+        if (seededBefore || benchmarkSelectedModels.size !== 1) return;
+
+        const modelId = [...benchmarkSelectedModels][0];
+        const selected = benchmarkModels(data).find(model => model.id === modelId);
+        const loadedDevice = selected?.runtime?.device || latestStatus?.device?.loaded?.[modelId] || '';
+        const directDevice = String(loadedDevice).split('.', 1)[0].toUpperCase();
+        if (selected?.loaded && ['CPU', 'GPU', 'NPU'].includes(directDevice)) {
+            benchmarkSelectedDevices = new Set([directDevice]);
+        }
+    };
+
     const benchmarkExportWithCapturedEnvironment = safeBenchmarkExport;
     safeBenchmarkExport = function capturedBenchmarkExport(run) {
         const safe = benchmarkExportWithCapturedEnvironment(run);
