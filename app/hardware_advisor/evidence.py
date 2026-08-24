@@ -31,6 +31,33 @@ def benchmark_matches_direct_device(row: Mapping[str, Any], device: str) -> bool
     )
 
 
+def _compact_benchmark_evidence(row: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep advisor/status evidence small even when Benchmark Lab stores samples."""
+
+    fields = (
+        "model_id",
+        "source_model",
+        "backend",
+        "weight_format",
+        "requested_device",
+        "actual_device",
+        "load_time_ms",
+        "time_to_first_token_ms",
+        "total_latency_ms",
+        "tokens_sec",
+        "decode_tokens_sec",
+        "success",
+        "timestamp",
+        "created_at",
+        "hardware_fingerprint",
+        "methodology_version",
+        "automatic",
+        "synthetic",
+        "score",
+    )
+    return {field: row.get(field) for field in fields if field in row}
+
+
 class EvidenceMixin:
     def _benchmark_rows(self) -> list[dict[str, Any]]:
         path = Path(self.settings.benchmark_results_file)
@@ -69,12 +96,15 @@ class EvidenceMixin:
             results = run.get("results")
             if not isinstance(results, list):
                 continue
+            synthetic_run = run.get("mock") is True or run.get("synthetic") is True
             for result in results:
                 if not isinstance(result, dict) or result.get("success") is not True:
                     continue
                 row = dict(result)
                 row["automatic"] = run.get("automatic") is True
+                row["synthetic"] = synthetic_run or result.get("synthetic") is True
                 row["hardware_fingerprint"] = run.get("hardware_fingerprint")
+                row["methodology_version"] = run.get("methodology_version")
                 row["created_at"] = run.get("created_at") or result.get("timestamp")
                 rows.append(row)
         self._benchmark_cache = rows
@@ -82,12 +112,18 @@ class EvidenceMixin:
         self._benchmark_cache_mtime_ns = mtime_ns
         return rows
 
-    def _latest_benchmark(self, model_id: str, device: str | None = None) -> dict[str, Any] | None:
+    def _latest_benchmark(
+        self,
+        model_id: str,
+        device: str | None = None,
+    ) -> dict[str, Any] | None:
         fingerprint = self.hardware_snapshot().get("fingerprint")
         cfg = self.catalog.get(model_id)
         matches = []
         for row in self._benchmark_rows():
             if row.get("model_id") != model_id:
+                continue
+            if row.get("synthetic") is True:
                 continue
             if device and not benchmark_matches_direct_device(row, device):
                 continue
@@ -97,10 +133,10 @@ class EvidenceMixin:
             ):
                 continue
             row_fingerprint = row.get("hardware_fingerprint")
-            if row_fingerprint and row_fingerprint != fingerprint:
+            if not fingerprint or row_fingerprint != fingerprint:
                 continue
             matches.append(row)
-        return matches[-1] if matches else None
+        return _compact_benchmark_evidence(matches[-1]) if matches else None
 
     def _model_size_key(self, cfg: Any) -> str | None:
         try:

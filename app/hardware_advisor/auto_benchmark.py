@@ -86,62 +86,78 @@ class AutoBenchmarkRunnerMixin:
             text = "".join(chunks)
             completion_tokens = await asyncio.to_thread(engine.count_tokens, text)
             tps = completion_tokens / latency_s
+            ttft_s = first_token_at - started if first_token_at is not None else None
+            decode_tps = None
+            if completion_tokens >= 2 and ttft_s is not None and latency_s > ttft_s:
+                decode_tps = (completion_tokens - 1) / (latency_s - ttft_s)
+
             run_id = f"auto-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}"
+            actual_device = getattr(engine, "actual_device", None) or getattr(
+                engine, "device", device
+            )
             result = {
                 "run_id": run_id,
                 "model_id": model_id,
+                "source_model": cfg.source_model,
+                "backend": cfg.backend,
+                "weight_format": cfg.weight_format,
                 "requested_device": device,
-                "actual_device": getattr(engine, "actual_device", None)
-                or getattr(engine, "device", device),
+                "actual_device": actual_device,
                 "load_time_ms": round(load_time_ms, 3) if load_time_ms is not None else None,
-                "time_to_first_token_ms": (
-                    round((first_token_at - started) * 1000, 3)
-                    if first_token_at is not None
-                    else None
-                ),
+                "time_to_first_token_ms": round(ttft_s * 1000, 3) if ttft_s is not None else None,
                 "total_latency_ms": round(latency_s * 1000, 3),
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
                 "tokens_sec": round(tps, 3),
+                "decode_tokens_sec": round(decode_tps, 3) if decode_tps is not None else None,
+                "prefill_tokens_sec": None,
                 "success": True,
                 "error": None,
                 "timestamp": utc_now(),
                 "runs": 1,
+                "warmup_runs": 0,
                 "score": None,
+                "synthetic": False,
             }
             run = {
                 "run_id": run_id,
+                "benchmark_schema_version": 2,
+                "methodology_version": 1,
                 "created_at": utc_now(),
                 "finished_at": utc_now(),
                 "prompt": AUTOMATIC_PROMPT,
+                "models": [model_id],
+                "devices": [device],
+                "preset": "automatic-short",
                 "max_tokens": 24,
                 "runs_per_combo": 1,
+                "warmup_runs": 0,
                 "mock": False,
+                "synthetic": False,
                 "automatic": True,
                 "hardware_fingerprint": self.hardware_snapshot().get("fingerprint"),
                 "results": [result],
                 "recommendation": {
                     "model_id": model_id,
                     "requested_device": device,
-                    "actual_device": result["actual_device"],
+                    "actual_device": actual_device,
                     "score": None,
                     "summary": f"Automatic short benchmark completed for {model_id} on {device}.",
                     "rationale": [
-                        f"{tps:.2f} tokens/sec",
+                        f"{(decode_tps if decode_tps is not None else tps):.2f} tokens/sec",
                         f"{result['time_to_first_token_ms']:.1f} ms first-token latency"
                         if result["time_to_first_token_ms"] is not None
                         else "First-token latency was unavailable.",
                     ],
                     "caveat": "This short benchmark is local evidence, not a general performance guarantee.",
                 },
-                "caveat": "Automatic short benchmark; run the full benchmark suite for comparative evidence.",
+                "caveat": "Automatic short benchmark; run Benchmark Lab for comparative evidence.",
             }
             await asyncio.to_thread(self._append_run, run)
             manager.emit_event(
                 "info",
-                f"Hardware advisor benchmarked {cfg.name} on {device} ({tps:.1f} t/s)",
+                f"Hardware advisor benchmarked {cfg.name} on {device} ({(decode_tps if decode_tps is not None else tps):.1f} t/s)",
             )
-            # Refresh estimates so measured load and throughput evidence appears immediately.
             self._snapshot_at = 0.0
         except asyncio.CancelledError:
             raise
@@ -151,9 +167,6 @@ class AutoBenchmarkRunnerMixin:
             )
 
     async def shutdown(self) -> None:
-        # A load-finalization task can schedule the actual benchmark while it is being
-        # cancelled. Drain in waves so shutdown cannot leave an untracked generation
-        # task running against engines that are about to be closed.
         while self._tasks:
             tasks = list(self._tasks)
             self._tasks.difference_update(tasks)

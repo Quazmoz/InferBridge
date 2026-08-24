@@ -1,13 +1,34 @@
 """Hardware advisor JavaScript, part 2."""
 
-SCRIPT_2 = r"""                <td>${escapeHtml(model.recommended_device)}</td>
-                <td>${formatGb(model.download_size_gb)}</td>
-                <td>${formatGb(model.converted_size_gb)}<div class="advisor-hw-sub">${escapeHtml(model.converted_size_source)}</div></td>
-                <td>${formatGb(model.runtime_memory_gb)}</td>
-                <td>${Math.max(0, Number(model.first_load_seconds || 0)).toFixed(0)}s<div class="advisor-hw-sub">${escapeHtml(model.first_load_source)}</div></td>
-                <td>${warnings.length ? `<ul class="advisor-warning-list">${warnings.slice(0, 2).map(item => `<li>${escapeHtml(item.message)}</li>`).join('')}</ul>` : 'Ready'}</td>
-            </tr>`;
-        }).join('')}</tbody></table></div>`;
+SCRIPT_2 = r"""
+    function advisorTabsHtml() {
+        return `
+            <div class="advisor-view-tabs" role="tablist" aria-label="Hardware performance tools">
+                <button id="advisor-tab-advisor" class="advisor-view-tab ${activeView === 'advisor' ? 'active' : ''}" type="button" role="tab" aria-selected="${activeView === 'advisor'}" aria-controls="advisor-panel-advisor" tabindex="${activeView === 'advisor' ? '0' : '-1'}" data-advisor-view="advisor">Advisor</button>
+                <button id="advisor-tab-benchmark" class="advisor-view-tab ${activeView === 'benchmark' ? 'active' : ''}" type="button" role="tab" aria-selected="${activeView === 'benchmark'}" aria-controls="advisor-panel-benchmark" tabindex="${activeView === 'benchmark' ? '0' : '-1'}" data-advisor-view="benchmark">Benchmark Lab</button>
+            </div>`;
+    }
+
+    function advisorViewHtml(data) {
+        const hardware = data.hardware || {};
+        const memory = hardware.memory || {};
+        const disk = hardware.disk || {};
+        const cpu = hardware.cpu || {};
+        const recommendation = currentRecommendation();
+        return `
+            <div id="advisor-panel-advisor" role="tabpanel" aria-labelledby="advisor-tab-advisor">
+                <div class="advisor-profile-row">${PROFILE_ORDER.map(profile => `<button type="button" class="advisor-profile-btn ${profile === selectedProfile ? 'active' : ''}" data-profile="${profile}">${escapeHtml(PROFILE_LABELS[profile])}</button>`).join('')}</div>
+                <div class="advisor-grid">
+                    <section class="advisor-card advisor-recommendation"><h3>${escapeHtml(PROFILE_LABELS[selectedProfile])} recommendation</h3>${recommendationHtml(recommendation)}</section>
+                    <section class="advisor-card"><h3>Hardware preflight</h3><div class="advisor-hardware-grid">
+                        <div class="advisor-hw-item"><div class="advisor-hw-label">CPU</div><div class="advisor-hw-value">${escapeHtml(cpu.name || 'Unknown CPU')}</div><div class="advisor-hw-sub">${Number(cpu.physical_cores || 0)} physical · ${Number(cpu.logical_cores || 0)} logical cores</div></div>
+                        <div class="advisor-hw-item"><div class="advisor-hw-label">RAM</div><div class="advisor-hw-value">${formatGb(memory.available_gb)} available</div><div class="advisor-hw-sub">${formatGb(memory.total_gb)} installed · ${Number(memory.used_percent || 0).toFixed(0)}% used</div></div>
+                        <div class="advisor-hw-item"><div class="advisor-hw-label">Disk</div><div class="advisor-hw-value">${formatGb(disk.free_gb)} free</div><div class="advisor-hw-sub">${formatGb(latestStatus?.disk?.models_gb ?? disk.models_gb)} currently used by models</div></div>
+                        <div class="advisor-hw-item"><div class="advisor-hw-label">OpenVINO devices / drivers</div><div class="advisor-hw-value">${deviceSummary(hardware)}</div><div class="advisor-hw-sub">Runtime ${escapeHtml(hardware.runtime?.openvino_genai || hardware.runtime?.openvino || 'unknown')}</div></div>
+                    </div><div class="advisor-notice">${escapeHtml(data.estimates_notice || '')}<br>Hardware fingerprint: ${escapeHtml(hardware.fingerprint || 'unknown')}</div></section>
+                </div>
+                <section class="advisor-card advisor-models"><h3>Model compatibility before download</h3>${modelRowsHtml(data.models || [])}</section>
+            </div>`;
     }
 
     function render() {
@@ -17,29 +38,49 @@ SCRIPT_2 = r"""                <td>${escapeHtml(model.recommended_device)}</td>
             body.innerHTML = '<div class="advisor-empty">Hardware advisor data is not available from this server version.</div>';
             return;
         }
-        const hardware = data.hardware || {};
-        const memory = hardware.memory || {};
-        const disk = hardware.disk || {};
-        const cpu = hardware.cpu || {};
-        const recommendation = currentRecommendation();
         const warningCount = (data.models || []).filter(item => item.compatibility === 'blocked').length;
         button.classList.toggle('has-warning', warningCount > 0);
         body.innerHTML = `
-            <div class="advisor-profile-row">${PROFILE_ORDER.map(profile => `<button type="button" class="advisor-profile-btn ${profile === selectedProfile ? 'active' : ''}" data-profile="${profile}">${escapeHtml(PROFILE_LABELS[profile])}</button>`).join('')}</div>
-            <div class="advisor-grid">
-                <section class="advisor-card advisor-recommendation"><h3>${escapeHtml(PROFILE_LABELS[selectedProfile])} recommendation</h3>${recommendationHtml(recommendation)}</section>
-                <section class="advisor-card"><h3>Hardware preflight</h3><div class="advisor-hardware-grid">
-                    <div class="advisor-hw-item"><div class="advisor-hw-label">CPU</div><div class="advisor-hw-value">${escapeHtml(cpu.name || 'Unknown CPU')}</div><div class="advisor-hw-sub">${Number(cpu.physical_cores || 0)} physical · ${Number(cpu.logical_cores || 0)} logical cores</div></div>
-                    <div class="advisor-hw-item"><div class="advisor-hw-label">RAM</div><div class="advisor-hw-value">${formatGb(memory.available_gb)} available</div><div class="advisor-hw-sub">${formatGb(memory.total_gb)} installed · ${Number(memory.used_percent || 0).toFixed(0)}% used</div></div>
-                    <div class="advisor-hw-item"><div class="advisor-hw-label">Disk</div><div class="advisor-hw-value">${formatGb(disk.free_gb)} free</div><div class="advisor-hw-sub">${formatGb(latestStatus?.disk?.models_gb ?? disk.models_gb)} currently used by models</div></div>
-                    <div class="advisor-hw-item"><div class="advisor-hw-label">OpenVINO devices / drivers</div><div class="advisor-hw-value">${deviceSummary(hardware)}</div><div class="advisor-hw-sub">Runtime ${escapeHtml(hardware.runtime?.openvino_genai || hardware.runtime?.openvino || 'unknown')}</div></div>
-                </div><div class="advisor-notice">${escapeHtml(data.estimates_notice || '')}<br>Hardware fingerprint: ${escapeHtml(hardware.fingerprint || 'unknown')}</div></section>
-            </div>
-            <section class="advisor-card advisor-models"><h3>Model compatibility before download</h3>${modelRowsHtml(data.models || [])}</section>`;
-        body.querySelectorAll('[data-profile]').forEach(profileButton => profileButton.addEventListener('click', () => selectProfile(profileButton.dataset.profile)));
-        document.getElementById('advisor-use-auto')?.addEventListener('click', useAutoProfile);
-        document.getElementById('advisor-prepare-model')?.addEventListener('click', prepareRecommendation);
+            ${advisorTabsHtml()}
+            ${activeView === 'benchmark' ? benchmarkLabHtml(data) : advisorViewHtml(data)}`;
+        wireAdvisorTabs();
+        if (activeView === 'advisor') {
+            body.querySelectorAll('[data-profile]').forEach(profileButton => profileButton.addEventListener('click', () => selectProfile(profileButton.dataset.profile)));
+            document.getElementById('advisor-use-auto')?.addEventListener('click', useAutoProfile);
+            document.getElementById('advisor-prepare-model')?.addEventListener('click', prepareRecommendation);
+        } else {
+            wireBenchmarkLab();
+        }
         syncAutoSelection();
+    }
+
+    function wireAdvisorTabs() {
+        const tabs = [...body.querySelectorAll('[role="tab"][data-advisor-view]')];
+        tabs.forEach((tab, index) => {
+            tab.addEventListener('click', () => selectAdvisorView(tab.dataset.advisorView, false));
+            tab.addEventListener('keydown', event => {
+                let target = null;
+                if (event.key === 'ArrowRight') target = tabs[(index + 1) % tabs.length];
+                if (event.key === 'ArrowLeft') target = tabs[(index - 1 + tabs.length) % tabs.length];
+                if (event.key === 'Home') target = tabs[0];
+                if (event.key === 'End') target = tabs[tabs.length - 1];
+                if (!target) return;
+                event.preventDefault();
+                selectAdvisorView(target.dataset.advisorView, true);
+            });
+        });
+    }
+
+    function selectAdvisorView(view, focusTab = true) {
+        activeView = view === 'benchmark' ? 'benchmark' : 'advisor';
+        render();
+        if (activeView === 'benchmark') {
+            void loadBenchmarkHistory();
+            if (benchmarkRunning) startBenchmarkProgressPolling();
+        }
+        if (focusTab) {
+            window.setTimeout(() => document.getElementById(`advisor-tab-${activeView}`)?.focus(), 0);
+        }
     }
 
     function selectProfile(profile) {
@@ -97,7 +138,7 @@ SCRIPT_2 = r"""                <td>${escapeHtml(model.recommended_device)}</td>
             if (!response.ok) return;
             latestStatus = await response.json();
             syncAutoSelection();
-            if (forceRender || overlay.classList.contains('visible')) render();
+            if (forceRender || (overlay.classList.contains('visible') && activeView === 'advisor')) render();
         } catch { /* normal server polling remains authoritative */ }
     }
 
@@ -106,8 +147,9 @@ SCRIPT_2 = r"""                <td>${escapeHtml(model.recommended_device)}</td>
         document.body.style.overflow = 'hidden';
         render();
         void refresh(true);
-        if (!refreshTimer) refreshTimer = window.setInterval(() => refresh(true), 5000);
-        closeButton?.focus();
+        if (!refreshTimer) refreshTimer = window.setInterval(() => refresh(false), 5000);
+        if (activeView === 'benchmark' && benchmarkRunning) startBenchmarkProgressPolling();
+        window.setTimeout(() => document.getElementById(`advisor-tab-${activeView}`)?.focus(), 0);
     }
 
     function close() {
@@ -117,6 +159,7 @@ SCRIPT_2 = r"""                <td>${escapeHtml(model.recommended_device)}</td>
             window.clearInterval(refreshTimer);
             refreshTimer = null;
         }
+        stopBenchmarkProgressPolling();
         button.focus();
     }
 
@@ -144,4 +187,8 @@ SCRIPT_2 = r"""                <td>${escapeHtml(model.recommended_device)}</td>
         const modelId = requestBody.model || requestBody.model_id;
         const model = (data.models || []).find(item => item.id === modelId);
         if (!model) return [];
+        return (model.warnings || [])
+            .filter(item => ['warning', 'blocking'].includes(item.severity))
+            .map(item => item.message);
+    }
 """

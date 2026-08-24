@@ -27,21 +27,47 @@ SCRIPT_1 = r"""
     let latestStatus = null;
     let refreshTimer = null;
     let loading = false;
+    let activeView = 'advisor';
+
+    let benchmarkRunning = false;
+    let benchmarkRun = null;
+    let benchmarkHistory = [];
+    let benchmarkHistoryLoaded = false;
+    let benchmarkHistoryLoading = false;
+    let benchmarkSelectedModels = new Set();
+    let benchmarkSelectedDevices = new Set();
+    let benchmarkAdvancedDevices = [];
+    let benchmarkSelectionsSeeded = false;
+    let benchmarkPreset = 'standard';
+    let benchmarkCustomRuns = 5;
+    let benchmarkCustomTokens = 64;
+    let benchmarkCustomPrompt = '';
+    let benchmarkModelFilter = '';
+    let benchmarkProgressTimer = null;
+    let benchmarkStartedAt = 0;
+    let benchmarkError = '';
+    let benchmarkProgress = {
+        message: 'Ready to benchmark.',
+        current: 0,
+        total: 0,
+    };
 
     const style = document.createElement('style');
     style.textContent = `/*__ADVISOR_STYLE__*/`;
     document.head.appendChild(style);
 
+    const legacyBenchmarkPanel = document.getElementById('benchmark-devices')?.closest('.benchmark-panel');
+    if (legacyBenchmarkPanel) {
+        legacyBenchmarkPanel.hidden = true;
+        legacyBenchmarkPanel.setAttribute('aria-hidden', 'true');
+    }
+
     const button = document.createElement('button');
     button.type = 'button';
     button.id = 'advisor-open-btn';
-    // The compact header overflow menu collects its keyboard-navigable items by the
-    // `icon-btn` class. Without it this button is still announced as a menu item but
-    // arrow keys skip straight past it. Its own `#advisor-open-btn` rules win on
-    // specificity, so the class changes behaviour without changing appearance.
     button.className = 'icon-btn';
     button.title = 'Best model for this PC';
-    button.setAttribute('aria-label', 'Open hardware model advisor');
+    button.setAttribute('aria-label', 'Open Hardware Advisor and Benchmark Lab');
     button.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 9h6v6H9zM9 1v3m6-3v3M9 20v3m6-3v3M20 9h3m-3 6h3M1 9h3m-3 6h3"/></svg>';
     const divider = headerRight.querySelector('.header-divider');
     if (divider) headerRight.insertBefore(button, divider);
@@ -54,9 +80,9 @@ SCRIPT_1 = r"""
             <header class="advisor-header">
                 <div class="advisor-title">
                     <div class="advisor-title-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48 2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48 2.83-2.83"/><circle cx="12" cy="12" r="4"/></svg></div>
-                    <div><h2 id="advisor-heading">Best model for this PC</h2><p>Hardware preflight, measured evidence, and safe model profiles</p></div>
+                    <div><h2 id="advisor-heading">Hardware Advisor</h2><p>Choose what fits this PC, then measure what actually performs best.</p></div>
                 </div>
-                <button id="advisor-close-btn" type="button" aria-label="Close">×</button>
+                <button id="advisor-close-btn" type="button" aria-label="Close Hardware Advisor">×</button>
             </header>
             <div id="advisor-body"><div class="advisor-spinner"></div></div>
         </section>`;
@@ -91,6 +117,17 @@ SCRIPT_1 = r"""
     function formatGb(value) {
         const number = Number(value);
         return Number.isFinite(number) ? `${number.toFixed(number < 1 ? 2 : 1)} GB` : 'Unknown';
+    }
+
+    function formatMs(value) {
+        const number = Number(value);
+        if (!Number.isFinite(number)) return '—';
+        return number >= 1000 ? `${(number / 1000).toFixed(2)} s` : `${number.toFixed(number < 100 ? 1 : 0)} ms`;
+    }
+
+    function formatTps(value) {
+        const number = Number(value);
+        return Number.isFinite(number) && number > 0 ? `${number.toFixed(number < 10 ? 2 : 1)} tok/s` : '—';
     }
 
     function toast(message) {
@@ -143,9 +180,25 @@ SCRIPT_1 = r"""
             return '<div class="advisor-empty">No compatible text-generation recommendation is available. Check the model warnings and free system resources.</div>';
         }
         const warnings = Array.isArray(recommendation.warnings) ? recommendation.warnings : [];
+        const measured = recommendation.benchmark && recommendation.benchmark.success !== false
+            ? recommendation.benchmark
+            : null;
+        const speed = measured?.decode_tokens_sec ?? measured?.tokens_sec;
+        const actual = measured?.actual_device;
+        const requested = measured?.requested_device || recommendation.device;
+        const measuredHtml = measured ? `
+            <div class="advisor-measured">
+                <div class="advisor-measured-label">${measured.synthetic ? 'Synthetic mock evidence' : 'Measured on this PC'}</div>
+                <div class="advisor-measured-grid">
+                    <div><strong>${formatTps(speed)}</strong><span>Generation speed</span></div>
+                    <div><strong>${formatMs(measured.time_to_first_token_ms)}</strong><span>First token</span></div>
+                    <div><strong>${escapeHtml(requested)} → ${escapeHtml(actual || 'unreported')}</strong><span>Requested → actual</span></div>
+                </div>
+            </div>` : '';
         return `
             <div class="advisor-model-name">${escapeHtml(recommendation.model_name)}</div>
             <div class="advisor-reason">${escapeHtml(recommendation.reason)}</div>
+            ${measuredHtml}
             <div class="advisor-pills">
                 <span class="advisor-pill">${escapeHtml(recommendation.device)}</span>
                 <span class="advisor-pill">${escapeHtml(String(recommendation.precision).toUpperCase())}</span>
@@ -165,11 +218,20 @@ SCRIPT_1 = r"""
             .filter(model => !String(model.backend || '').includes('embedding'))
             .sort((a, b) => Number(b.fit_score || 0) - Number(a.fit_score || 0));
         if (!rows.length) return '<div class="advisor-empty">No generation models are registered.</div>';
-        return `<div class="advisor-table-wrap"><table class="advisor-table"><thead><tr>
+        return `<div class="advisor-table-wrap" tabindex="0" aria-label="Model compatibility table"><table class="advisor-table"><thead><tr>
             <th>Model</th><th>Fit</th><th>Device</th><th>Download</th><th>Converted</th><th>Runtime</th><th>First load</th><th>Preflight</th>
         </tr></thead><tbody>${rows.map(model => {
             const warnings = Array.isArray(model.warnings) ? model.warnings : [];
             return `<tr>
                 <td><strong>${escapeHtml(model.name)}</strong><div class="advisor-hw-sub">${escapeHtml(String(model.precision || '').toUpperCase())} · ${Number(model.parameter_count_b || 0).toFixed(2)}B params</div></td>
                 <td><span class="advisor-status ${escapeHtml(model.compatibility)}">${escapeHtml(model.compatibility)}</span><div class="advisor-hw-sub">${Number(model.fit_score || 0).toFixed(0)}/100</div></td>
+                <td>${escapeHtml(model.recommended_device)}</td>
+                <td>${formatGb(model.download_size_gb)}</td>
+                <td>${formatGb(model.converted_size_gb)}<div class="advisor-hw-sub">${escapeHtml(model.converted_size_source)}</div></td>
+                <td>${formatGb(model.runtime_memory_gb)}</td>
+                <td>${Math.max(0, Number(model.first_load_seconds || 0)).toFixed(0)}s<div class="advisor-hw-sub">${escapeHtml(model.first_load_source)}</div></td>
+                <td>${warnings.length ? `<ul class="advisor-warning-list">${warnings.slice(0, 2).map(item => `<li>${escapeHtml(item.message)}</li>`).join('')}</ul>` : 'Ready'}</td>
+            </tr>`;
+        }).join('')}</tbody></table></div>`;
+    }
 """

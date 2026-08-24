@@ -66,20 +66,55 @@ class ProfileRankingMixin:
             "score": round(score, 2),
             "reason": self._profile_reason(profile, cfg, evaluation),
             "warnings": evaluation["warnings"],
+            "benchmark": evaluation.get("benchmark"),
         }
 
-    def _profile_reason(self, profile: str, cfg: Any, evaluation: Mapping[str, Any]) -> str:
+    def _profile_reason(
+        self,
+        profile: str,
+        cfg: Any,
+        evaluation: Mapping[str, Any],
+    ) -> str:
         model = cfg.name
         device = evaluation.get("recommended_device")
+        benchmark = (
+            evaluation.get("benchmark")
+            if isinstance(evaluation.get("benchmark"), Mapping)
+            else None
+        )
+        if benchmark:
+            speed = benchmark.get("decode_tokens_sec")
+            if speed is None:
+                speed = benchmark.get("tokens_sec")
+            speed_text = f"{float(speed):.1f} tok/s" if speed is not None else "measured timing"
+            return (
+                f"{model} on {device} is supported by current local benchmark evidence "
+                f"({speed_text}) plus the selected {PROFILE_LABELS[profile].lower()} fit policy."
+            )
         if profile == "fastest":
-            return f"{model} on {device} has the strongest measured or estimated responsiveness among compatible choices."
+            return (
+                f"{model} on {device} has the strongest estimated responsiveness "
+                "among compatible choices."
+            )
         if profile == "best-quality":
-            return f"{model} is the highest-capability model estimated to fit this PC without a blocking preflight result."
+            return (
+                f"{model} is the highest-capability model estimated to fit this PC "
+                "without a blocking preflight result."
+            )
         if profile == "lowest-memory":
-            return f"{model} has the smallest compatible runtime-memory estimate ({evaluation.get('runtime_memory_gb')} GB)."
+            return (
+                f"{model} has the smallest compatible runtime-memory estimate "
+                f"({evaluation.get('runtime_memory_gb')} GB)."
+            )
         if profile == "lowest-power":
-            return f"{model} on {device} prioritizes efficient Intel acceleration and a compact runtime footprint."
-        return f"{model} on {device} offers the best balance of estimated quality, speed, memory fit, and benchmark evidence."
+            return (
+                f"{model} on {device} prioritizes efficient Intel acceleration "
+                "and a compact runtime footprint."
+            )
+        return (
+            f"{model} on {device} offers the best balance of estimated quality, speed, "
+            "memory fit, and compatible benchmark evidence."
+        )
 
     def select_loaded_model(
         self,
@@ -94,10 +129,15 @@ class ProfileRankingMixin:
         )
         return recommendation.get("model_id") if recommendation else None
 
-    def summary(self, engines: Mapping[str, Any], devices: Mapping[str, str]) -> dict[str, Any]:
+    def summary(
+        self,
+        engines: Mapping[str, Any],
+        devices: Mapping[str, str],
+    ) -> dict[str, Any]:
         snapshot = self.hardware_snapshot()
         profiles = {
-            profile: self.recommend_profile(profile, snapshot=snapshot) for profile in PROFILE_ORDER
+            profile: self.recommend_profile(profile, snapshot=snapshot)
+            for profile in PROFILE_ORDER
         }
         loaded_profiles = {
             profile: self.recommend_profile(
@@ -134,12 +174,16 @@ class ProfileRankingMixin:
             "default_profile": "balanced",
             "profile_order": list(PROFILE_ORDER),
             "profile_labels": dict(PROFILE_LABELS),
-            "auto_model_examples": ["auto", *[f"auto:{item}" for item in PROFILE_ORDER]],
+            "auto_model_examples": [
+                "auto",
+                *[f"auto:{item}" for item in PROFILE_ORDER],
+            ],
             "hardware": snapshot,
             "profiles": profiles,
             "loaded_profiles": loaded_profiles,
             "models": models,
             "estimates_notice": (
-                "Size, memory, power, and compilation values are conservative estimates until a successful benchmark on this hardware is available."
+                "Size, memory, power, and compilation values are conservative estimates "
+                "until a successful benchmark on this hardware is available."
             ),
         }

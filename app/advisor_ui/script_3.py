@@ -1,10 +1,6 @@
 """Hardware advisor JavaScript, part 3."""
 
-SCRIPT_3 = r"""        return (model.warnings || [])
-            .filter(item => ['warning', 'blocking'].includes(item.severity))
-            .map(item => item.message);
-    }
-
+SCRIPT_3 = r"""
     modelSelect.addEventListener('change', event => {
         if (event.isTrusted && !autoSelecting && autoRoutingProfile) {
             autoRoutingProfile = null;
@@ -63,7 +59,7 @@ SCRIPT_3 = r"""        return (model.warnings || [])
                 latestStatus = data;
                 window.setTimeout(() => {
                     syncAutoSelection();
-                    if (overlay.classList.contains('visible')) render();
+                    if (overlay.classList.contains('visible') && activeView === 'advisor') render();
                 }, 0);
             }).catch(() => {});
         }
@@ -73,10 +69,35 @@ SCRIPT_3 = r"""        return (model.warnings || [])
         return response;
     });
 
+    function trapAdvisorFocus(event) {
+        if (event.key !== 'Tab' || !overlay.classList.contains('visible')) return;
+        const focusable = [...document.querySelectorAll(
+            '#advisor-dialog button:not([disabled]), #advisor-dialog input:not([disabled]), #advisor-dialog textarea:not([disabled]), #advisor-dialog select:not([disabled]), #advisor-dialog summary, #advisor-dialog [tabindex]:not([tabindex="-1"])'
+        )].filter(element => !element.hidden && element.getClientRects().length > 0);
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+        }
+    }
+
     button.addEventListener('click', open);
     closeButton?.addEventListener('click', close);
     overlay.addEventListener('click', event => { if (event.target === overlay) close(); });
-    document.addEventListener('keydown', event => { if (event.key === 'Escape' && overlay.classList.contains('visible')) close(); });
+    document.addEventListener('keydown', event => {
+        if (!overlay.classList.contains('visible')) return;
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            close();
+            return;
+        }
+        trapAdvisorFocus(event);
+    });
 
     syncAutoSelection();
     void refresh(false);

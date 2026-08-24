@@ -12,29 +12,38 @@ import argparse
 import asyncio
 import contextlib
 import json
+import statistics
 import sys
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from app import chat_format
-from app.config import Settings
+from app import __version__, chat_format, model_registry
+from app.config import BASE_DIR, Settings
 from app.model_manager import ModelManager
 from runtime import device_check
 from runtime.openvino_engine import BaseEngine, GenParams
+
+try:
+    import psutil
+except ImportError:  # pragma: no cover - psutil is a hard runtime dependency
+    psutil = None  # type: ignore[assignment]
 
 DEFAULT_BENCHMARK_PROMPT = (
     "You are running a local hardware benchmark. Reply with two concise bullet "
     "points about why measuring this exact machine matters."
 )
 DEFAULT_BENCHMARK_DEVICES = ("CPU", "GPU", "NPU", "AUTO")
+BENCHMARK_METHODOLOGY_VERSION = 2
 BENCHMARK_CAVEAT = (
-    "AUTO, MULTI, and HETERO are OpenVINO routing modes. This score reflects "
-    "only the measured run and is not a general speed guarantee."
+    "AUTO, MULTI, and HETERO are OpenVINO routing modes. Requested and actual "
+    "devices are reported separately. Results describe only this local run and "
+    "are not a general speed guarantee."
 )
 
 
@@ -58,6 +67,20 @@ class BenchmarkResult:
     timestamp: str
     runs: int = 1
     score: float | None = None
+    decode_tokens_sec: float | None = None
+    prefill_tokens_sec: float | None = None
+    peak_process_ram_mb: float | None = None
+    warmup_runs: int = 0
+    samples: list[dict[str, Any]] | None = None
+    statistics: dict[str, Any] | None = None
+    stability: dict[str, Any] | None = None
+    parameter_count_b: float | None = None
+    architecture_type: str | None = None
+    active_parameters_b: float | None = None
+    num_experts: int | None = None
+    active_experts: int | None = None
+    estimated_weight_footprint_gb: float | None = None
+    synthetic: bool = False
 
 
 @dataclass
@@ -80,7 +103,12 @@ class ContextDepthResult:
 
 
 class BenchmarkStore:
-    """Small JSON-backed store for benchmark runs."""
+    """Small JSON-backed store for benchmark runs.
+
+    The outer store intentionally remains schema version 1. Benchmark Lab adds
+    additive run/result metadata and a methodology version so existing stores
+    continue to be readable by older InferBridge builds.
+    """
 
     def __init__(self, path: str | Path, *, max_runs: int = 100) -> None:
         self.path = Path(path)
@@ -128,6 +156,54 @@ class BenchmarkStore:
         tmp.replace(self.path)
 
 
+class _ProcessMemorySampler:
+    """Best-effort peak process RSS sampler for one benchmark combination."""
+
+    def __init__(self, interval_seconds: float = 0.05) -> None:
+        self.interval_seconds = interval_seconds
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._process = None
+        self._peak_bytes = 0
+
+    def start(self) -> None:
+        if psutil is None:
+            return
+        try:
+            self._process = psutil.Process()
+            self._sample()
+        except Exception:
+            self._process = None
+            return
+        self._thread = threading.Thread(
+            target=self._run,
+            name="inferbridge-benchmark-memory",
+            daemon=True,
+        )
+        self._thread.start()
+
+    def stop(self) -> float | None:
+        if self._process is None:
+            return None
+        self._sample()
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=max(self.interval_seconds * 4, 0.2))
+        self._sample()
+        return round(self._peak_bytes / (1024**2), 2) if self._peak_bytes else None
+
+    def _run(self) -> None:
+        while not self._stop.wait(self.interval_seconds):
+            self._sample()
+
+    def _sample(self) -> None:
+        try:
+            if self._process is not None:
+                self._peak_bytes = max(self._peak_bytes, int(self._process.memory_info().rss))
+        except Exception:
+            pass
+
+
 async def run_benchmark_suite(
     manager: ModelManager,
     *,
@@ -136,16 +212,64 @@ async def run_benchmark_suite(
     prompt: str = DEFAULT_BENCHMARK_PROMPT,
     max_tokens: int = 64,
     runs: int = 1,
+    warmup_runs: int | None = None,
 ) -> dict[str, Any]:
     """Run every requested model/device combination and return one persisted run."""
 
+    suite_lock = getattr(manager, "_benchmark_suite_lock", None)
+    if suite_lock is None:
+        suite_lock = asyncio.Lock()
+        setattr(manager, "_benchmark_suite_lock", suite_lock)
+
+    async with suite_lock:
+        return await _run_benchmark_suite_locked(
+            manager,
+            model_ids=model_ids,
+            devices=devices,
+            prompt=prompt,
+            max_tokens=max_tokens,
+            runs=runs,
+            warmup_runs=warmup_runs,
+        )
+
+
+async def _run_benchmark_suite_locked(
+    manager: ModelManager,
+    *,
+    model_ids: list[str],
+    devices: list[str],
+    prompt: str,
+    max_tokens: int,
+    runs: int,
+    warmup_runs: int | None,
+) -> dict[str, Any]:
     run_id = f"bench-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}"
     started_at = _utc_now()
-    normalized_devices = [device_check.validate_device_expression(device) for device in devices]
+    normalized_models = _dedupe(model_ids)
+    normalized_devices = _dedupe(
+        [device_check.validate_device_expression(device) for device in devices]
+    )
+    measured_runs = max(int(runs), 1)
+    resolved_warmups = (
+        _infer_warmup_runs(measured_runs)
+        if warmup_runs is None
+        else max(int(warmup_runs), 0)
+    )
+    preset = _benchmark_preset(measured_runs, int(max_tokens), resolved_warmups)
+    environment = _safe_benchmark_environment(manager)
+    hardware_fingerprint = environment.get("hardware_fingerprint")
+    total_combinations = len(normalized_models) * len(normalized_devices)
     results: list[dict[str, Any]] = []
 
-    for model_id in _dedupe(model_ids):
+    _emit_benchmark_progress(
+        manager,
+        f"starting {total_combinations} combination(s) · {preset} preset",
+    )
+
+    combination = 0
+    for model_id in normalized_models:
         for device in normalized_devices:
+            combination += 1
             result = await benchmark_model_device(
                 manager,
                 run_id=run_id,
@@ -153,20 +277,53 @@ async def run_benchmark_suite(
                 device=device,
                 prompt=prompt,
                 max_tokens=max_tokens,
-                runs=runs,
+                runs=measured_runs,
+                warmup_runs=resolved_warmups,
+                combination_index=combination,
+                combination_total=total_combinations,
             )
             results.append(asdict(result))
 
     recommendation = score_benchmark_results(results, mock=manager.force_mock)
+    leaders = summarize_benchmark_results(results)
     return {
         "run_id": run_id,
+        "benchmark_schema_version": 2,
+        "methodology_version": BENCHMARK_METHODOLOGY_VERSION,
         "created_at": started_at,
         "finished_at": _utc_now(),
         "prompt": prompt,
-        "max_tokens": max_tokens,
-        "runs_per_combo": runs,
+        "models": normalized_models,
+        "devices": normalized_devices,
+        "preset": preset,
+        "max_tokens": int(max_tokens),
+        "runs_per_combo": measured_runs,
+        "warmup_runs": resolved_warmups,
         "mock": manager.force_mock,
+        "synthetic": manager.force_mock,
+        "automatic": False,
+        "hardware_fingerprint": hardware_fingerprint,
+        "environment": environment,
+        "methodology": {
+            "version": BENCHMARK_METHODOLOGY_VERSION,
+            "preset": preset,
+            "warmup_runs": resolved_warmups,
+            "measured_runs": measured_runs,
+            "output_token_target": int(max_tokens),
+            "aggregation": "median",
+            "legacy_tokens_sec": (
+                "completion tokens divided by complete generation latency, including TTFT"
+            ),
+            "decode_tokens_sec": (
+                "post-first-token output tokens divided by time after first token"
+            ),
+            "prefill_tokens_sec": (
+                "unavailable unless the runtime exposes a reliable prompt-processing boundary"
+            ),
+            "memory": "peak InferBridge process resident set size (RSS), not device memory",
+        },
         "results": results,
+        "leaders": leaders,
         "recommendation": recommendation,
         "caveat": BENCHMARK_CAVEAT,
     }
@@ -181,6 +338,9 @@ async def benchmark_model_device(
     prompt: str,
     max_tokens: int,
     runs: int,
+    warmup_runs: int = 0,
+    combination_index: int = 1,
+    combination_total: int = 1,
 ) -> BenchmarkResult:
     """Benchmark one model/device pair, continuing failures as result rows."""
 
@@ -188,18 +348,38 @@ async def benchmark_model_device(
     engine: BaseEngine | None = None
     load_time_ms: float | None = None
     prompt_tokens = 0
+    peak_process_ram_mb: float | None = None
     cfg = manager.config_for(model_id)
-    identity = {
-        "source_model": cfg.source_model if cfg else "",
-        "backend": cfg.backend if cfg else "",
-        "weight_format": cfg.weight_format if cfg else "",
-    }
+    identity = _model_identity(manager, cfg)
+    memory_sampler = _ProcessMemorySampler()
+
     try:
+        if cfg is None:
+            raise ValueError(f"Unknown model '{model_id}'.")
+        if "embedding" in str(getattr(cfg, "backend", "")).lower():
+            raise ValueError("Embedding models cannot be benchmarked as generation models.")
+        if not manager.force_mock and not model_registry.is_downloaded(cfg, BASE_DIR):
+            raise ValueError(
+                "Model is not prepared locally. Prepare it explicitly before benchmarking."
+            )
+
+        model_label = getattr(cfg, "name", model_id)
+        prefix = _combination_prefix(
+            combination_index,
+            combination_total,
+            model_label,
+            device,
+        )
+        _emit_benchmark_progress(manager, f"{prefix} · preparing")
+        memory_sampler.start()
+
+        _emit_benchmark_progress(manager, f"{prefix} · loading")
         engine, load_time_s = await manager.build_temporary_engine(model_id, device)
         load_time_ms = _ms(load_time_s)
-        max_prompt_len = cfg.max_prompt_len if cfg else 1536
-        max_context_len = cfg.max_context_len if cfg else 2048
+        max_prompt_len = cfg.max_prompt_len
+        max_context_len = cfg.max_context_len
 
+        _emit_benchmark_progress(manager, f"{prefix} · preparing prompt")
         loop = asyncio.get_running_loop()
         prompt_text, prompt_tokens = await loop.run_in_executor(
             None, _build_benchmark_prompt, engine, prompt, max_prompt_len
@@ -212,40 +392,80 @@ async def benchmark_model_device(
             do_sample=False,
         )
 
-        generations = [
+        for warmup_index in range(max(int(warmup_runs), 0)):
+            _emit_benchmark_progress(
+                manager,
+                f"{prefix} · warming up {warmup_index + 1}/{warmup_runs}",
+            )
             await _stream_generation_once(engine, prompt_text, params)
-            for _ in range(max(int(runs), 1))
-        ]
-        completion_tokens_values = [item["completion_tokens"] for item in generations]
-        total_completion_tokens = sum(completion_tokens_values)
-        total_latency_s = sum(item["latency_s"] for item in generations)
-        ttft_values = [item["ttft_s"] for item in generations if item["ttft_s"] is not None]
 
-        completion_tokens = round(total_completion_tokens / len(generations))
-        total_latency_ms = _ms(total_latency_s / len(generations))
-        ttft_ms = _ms(sum(ttft_values) / len(ttft_values)) if ttft_values else None
-        tokens_sec = (
-            round(total_completion_tokens / total_latency_s, 3) if total_latency_s > 0 else None
-        )
+        samples: list[dict[str, Any]] = []
+        for run_index in range(max(int(runs), 1)):
+            _emit_benchmark_progress(
+                manager,
+                f"{prefix} · prefill · run {run_index + 1}/{runs}",
+            )
+
+            def on_first_token(
+                *,
+                _prefix: str = prefix,
+                _run_index: int = run_index,
+                _runs: int = runs,
+            ) -> None:
+                _emit_benchmark_progress(
+                    manager,
+                    f"{_prefix} · generating · run {_run_index + 1}/{_runs}",
+                )
+
+            generation = await _stream_generation_once(
+                engine,
+                prompt_text,
+                params,
+                on_first_token=on_first_token,
+            )
+            samples.append(_sample_payload(run_index + 1, generation))
+
+        _emit_benchmark_progress(manager, f"{prefix} · finalizing")
+        peak_process_ram_mb = memory_sampler.stop()
+        aggregate = _aggregate_samples(samples)
+        actual_device = _reported_actual_device(engine, device)
+        _emit_benchmark_progress(manager, f"{prefix} · complete")
 
         return BenchmarkResult(
             run_id=run_id,
             model_id=model_id,
             **identity,
             requested_device=device,
-            actual_device=_reported_actual_device(engine, device),
+            actual_device=actual_device,
             load_time_ms=load_time_ms,
-            time_to_first_token_ms=ttft_ms,
-            total_latency_ms=total_latency_ms,
+            time_to_first_token_ms=aggregate["time_to_first_token_ms"],
+            total_latency_ms=aggregate["total_latency_ms"],
             prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            tokens_sec=tokens_sec,
+            completion_tokens=aggregate["completion_tokens"],
+            tokens_sec=aggregate["tokens_sec"],
+            decode_tokens_sec=aggregate["decode_tokens_sec"],
+            prefill_tokens_sec=None,
+            peak_process_ram_mb=peak_process_ram_mb,
             success=True,
             error=None,
             timestamp=timestamp,
-            runs=runs,
+            runs=max(int(runs), 1),
+            warmup_runs=max(int(warmup_runs), 0),
+            samples=samples,
+            statistics=aggregate["statistics"],
+            stability=aggregate["stability"],
+            synthetic=manager.force_mock,
         )
     except Exception as exc:  # noqa: BLE001 - benchmark rows should capture failures
+        peak_process_ram_mb = peak_process_ram_mb or memory_sampler.stop()
+        _emit_benchmark_progress(
+            manager,
+            (
+                f"{_combination_prefix(combination_index, combination_total, model_id, device)} "
+                "· failed"
+            ),
+            level="warning",
+        )
         return BenchmarkResult(
             run_id=run_id,
             model_id=model_id,
@@ -258,13 +478,23 @@ async def benchmark_model_device(
             prompt_tokens=prompt_tokens,
             completion_tokens=0,
             tokens_sec=None,
+            decode_tokens_sec=None,
+            prefill_tokens_sec=None,
+            peak_process_ram_mb=peak_process_ram_mb,
             success=False,
             error=str(exc),
             timestamp=timestamp,
-            runs=runs,
+            runs=max(int(runs), 1),
+            warmup_runs=max(int(warmup_runs), 0),
+            samples=[],
+            statistics={},
+            stability=None,
             score=-25.0,
+            synthetic=manager.force_mock,
         )
     finally:
+        if peak_process_ram_mb is None:
+            memory_sampler.stop()
         if engine is not None:
             with contextlib.suppress(Exception):
                 engine.close()
@@ -368,14 +598,12 @@ async def certify_context_depth(
                 engine.close()
 
 
-def score_benchmark_results(results: list[dict[str, Any]], *, mock: bool = False) -> dict[str, Any]:
-    """Assign balanced scores and choose a practical recommendation.
-
-    Successful runs are always ranked ahead of failed runs. Within successful
-    rows, the score favors high tokens/sec, low first-token latency, low total
-    latency, and modest load time, with an explicit penalty once load time is
-    very high.
-    """
+def score_benchmark_results(
+    results: list[dict[str, Any]],
+    *,
+    mock: bool = False,
+) -> dict[str, Any]:
+    """Assign balanced scores and choose a practical recommendation."""
 
     successes = [r for r in results if r.get("success")]
     if not successes:
@@ -391,7 +619,7 @@ def score_benchmark_results(results: list[dict[str, Any]], *, mock: bool = False
             "caveat": BENCHMARK_CAVEAT,
         }
 
-    max_tps = max(_positive(r.get("tokens_sec")) for r in successes) or 1.0
+    max_tps = max(_benchmark_speed(r) for r in successes) or 1.0
     min_ttft = min(_latency_for_ttft(r) for r in successes)
     min_total = min(_positive(r.get("total_latency_ms")) for r in successes) or 1.0
     min_load = min(max(_positive(r.get("load_time_ms")), 1.0) for r in successes)
@@ -401,7 +629,7 @@ def score_benchmark_results(results: list[dict[str, Any]], *, mock: bool = False
             result["score"] = -25.0
             continue
 
-        tps_norm = _positive(result.get("tokens_sec")) / max_tps
+        tps_norm = _benchmark_speed(result) / max_tps
         ttft_norm = min_ttft / _latency_for_ttft(result)
         total_norm = min_total / (_positive(result.get("total_latency_ms")) or min_total)
         load_ms = max(_positive(result.get("load_time_ms")), 1.0)
@@ -410,15 +638,25 @@ def score_benchmark_results(results: list[dict[str, Any]], *, mock: bool = False
         if load_ms > 30_000:
             high_load_penalty = min((load_ms - 30_000) / 90_000, 1.0) * 0.20
 
-        score = (0.50 * tps_norm) + (0.30 * ttft_norm) + (0.10 * total_norm) + (0.10 * load_norm)
+        score = (
+            (0.50 * tps_norm)
+            + (0.30 * ttft_norm)
+            + (0.10 * total_norm)
+            + (0.10 * load_norm)
+        )
         score = max(0.0, (score - high_load_penalty) * 100)
         result["score"] = round(score, 2)
 
     best = max(successes, key=lambda item: float(item.get("score") or 0.0))
+    best_speed = _benchmark_speed(best)
     summary_prefix = (
-        "Mock benchmark completed; rerun on Windows with OpenVINO hardware for a real device recommendation."
+        "Synthetic mock benchmark completed; rerun on Windows with OpenVINO hardware "
+        "for real performance evidence."
         if mock
-        else f"Recommended {best['model_id']} on {best['requested_device']} from this benchmark run."
+        else (
+            f"Recommended {best['model_id']} on {best['requested_device']} "
+            "from this measured benchmark run."
+        )
     )
     return {
         "model_id": best["model_id"],
@@ -427,9 +665,9 @@ def score_benchmark_results(results: list[dict[str, Any]], *, mock: bool = False
         "score": best.get("score"),
         "summary": summary_prefix,
         "rationale": [
-            f"{best['tokens_sec']:.2f} tokens/sec"
-            if best.get("tokens_sec")
-            else "Tokens/sec was unavailable.",
+            f"{best_speed:.2f} decode tokens/sec"
+            if best_speed
+            else "Decode throughput was unavailable.",
             (
                 f"{best['time_to_first_token_ms']:.1f} ms first-token latency"
                 if best.get("time_to_first_token_ms") is not None
@@ -442,6 +680,52 @@ def score_benchmark_results(results: list[dict[str, Any]], *, mock: bool = False
             ),
         ],
         "caveat": BENCHMARK_CAVEAT,
+    }
+
+
+def summarize_benchmark_results(results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Return measured leaders for the Benchmark Lab summary cards."""
+
+    successful = [row for row in results if row.get("success")]
+    if not successful:
+        return {
+            "fastest_generation": None,
+            "fastest_first_token": None,
+            "best_balanced": None,
+        }
+
+    generation_rows = [row for row in successful if _benchmark_speed(row) > 0]
+    ttft_rows = [
+        row for row in successful if _positive_or_none(row.get("time_to_first_token_ms")) is not None
+    ]
+    fastest_generation = (
+        max(generation_rows, key=_benchmark_speed) if generation_rows else None
+    )
+    fastest_ttft = (
+        min(ttft_rows, key=lambda row: float(row["time_to_first_token_ms"]))
+        if ttft_rows
+        else None
+    )
+    balanced = max(successful, key=lambda row: float(row.get("score") or 0.0))
+
+    def leader(row: dict[str, Any] | None) -> dict[str, Any] | None:
+        if row is None:
+            return None
+        return {
+            "model_id": row.get("model_id"),
+            "weight_format": row.get("weight_format"),
+            "requested_device": row.get("requested_device"),
+            "actual_device": row.get("actual_device"),
+            "decode_tokens_sec": row.get("decode_tokens_sec"),
+            "tokens_sec": row.get("tokens_sec"),
+            "time_to_first_token_ms": row.get("time_to_first_token_ms"),
+            "score": row.get("score"),
+        }
+
+    return {
+        "fastest_generation": leader(fastest_generation),
+        "fastest_first_token": leader(fastest_ttft),
+        "best_balanced": leader(balanced),
     }
 
 
@@ -475,6 +759,76 @@ def split_device_targets(raw: str) -> list[str]:
     return devices
 
 
+def _model_identity(manager: ModelManager, cfg: Any | None) -> dict[str, Any]:
+    identity = {
+        "source_model": cfg.source_model if cfg else "",
+        "backend": cfg.backend if cfg else "",
+        "weight_format": cfg.weight_format if cfg else "",
+        "parameter_count_b": None,
+        "architecture_type": getattr(cfg, "architecture_type", None) if cfg else None,
+        "active_parameters_b": getattr(cfg, "active_parameters_b", None) if cfg else None,
+        "num_experts": getattr(cfg, "num_experts", None) if cfg else None,
+        "active_experts": getattr(cfg, "active_experts", None) if cfg else None,
+        "estimated_weight_footprint_gb": None,
+    }
+    if cfg is None:
+        return identity
+    advisor = getattr(manager, "advisor", None)
+    if advisor is None:
+        return identity
+    try:
+        estimate = advisor.estimate_model(cfg)
+        identity["parameter_count_b"] = estimate.get("parameter_count_b")
+        identity["estimated_weight_footprint_gb"] = estimate.get("converted_size_gb")
+    except Exception:
+        pass
+    return identity
+
+
+def _safe_benchmark_environment(manager: ModelManager) -> dict[str, Any]:
+    """Return reproducibility metadata with no paths, host names, secrets, or serials."""
+
+    environment: dict[str, Any] = {
+        "inferbridge": __version__,
+        "openvino": None,
+        "openvino_genai": None,
+        "hardware_fingerprint": None,
+        "cpu": None,
+        "ram_gb": None,
+        "devices": [],
+    }
+    advisor = getattr(manager, "advisor", None)
+    if advisor is None:
+        return environment
+    try:
+        snapshot = advisor.hardware_snapshot()
+    except Exception:
+        return environment
+
+    runtime = snapshot.get("runtime") if isinstance(snapshot.get("runtime"), dict) else {}
+    cpu = snapshot.get("cpu") if isinstance(snapshot.get("cpu"), dict) else {}
+    memory = snapshot.get("memory") if isinstance(snapshot.get("memory"), dict) else {}
+    environment["openvino"] = runtime.get("openvino")
+    environment["openvino_genai"] = runtime.get("openvino_genai")
+    environment["hardware_fingerprint"] = snapshot.get("fingerprint")
+    environment["cpu"] = cpu.get("name")
+    environment["ram_gb"] = memory.get("total_gb")
+
+    safe_devices = []
+    for item in snapshot.get("devices") or []:
+        if not isinstance(item, dict):
+            continue
+        safe_devices.append(
+            {
+                "device": item.get("device") or item.get("base"),
+                "base": item.get("base"),
+                "driver_version": item.get("driver_version"),
+            }
+        )
+    environment["devices"] = safe_devices
+    return environment
+
+
 def _build_benchmark_prompt(
     engine: BaseEngine,
     prompt: str,
@@ -482,7 +836,10 @@ def _build_benchmark_prompt(
 ) -> tuple[str, int]:
     messages = [{"role": "user", "content": prompt}]
     return chat_format.build_prompt_within_budget(
-        messages, engine.apply_chat_template, engine.count_tokens, max_prompt_len
+        messages,
+        engine.apply_chat_template,
+        engine.count_tokens,
+        max_prompt_len,
     )
 
 
@@ -525,13 +882,17 @@ def _build_exact_context_prompt(
 
 def _validate_context_depth(requested_context: int, max_prompt_len: int) -> None:
     if requested_context < 1 or requested_context > max_prompt_len:
-        raise ValueError(f"Requested context must be between 1 and {max_prompt_len} prompt tokens.")
+        raise ValueError(
+            f"Requested context must be between 1 and {max_prompt_len} prompt tokens."
+        )
 
 
 async def _stream_generation_once(
     engine: BaseEngine,
     prompt: str,
     params: GenParams,
+    *,
+    on_first_token: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     loop = asyncio.get_running_loop()
     started = time.perf_counter()
@@ -545,6 +906,8 @@ async def _stream_generation_once(
                 break
             if first_token_at is None and piece:
                 first_token_at = time.perf_counter()
+                if on_first_token is not None:
+                    on_first_token()
             pieces.append(piece)
         if handle.error is not None:
             raise handle.error
@@ -555,11 +918,181 @@ async def _stream_generation_once(
     latency_s = time.perf_counter() - started
     text = "".join(pieces)
     completion_tokens = await loop.run_in_executor(None, engine.count_tokens, text)
+    ttft_s = None if first_token_at is None else first_token_at - started
     return {
-        "ttft_s": None if first_token_at is None else first_token_at - started,
+        "ttft_s": ttft_s,
         "latency_s": latency_s,
         "completion_tokens": completion_tokens,
+        "tokens_sec": (
+            completion_tokens / latency_s
+            if completion_tokens > 0 and latency_s > 0
+            else None
+        ),
+        "decode_tokens_sec": _decode_tokens_sec(
+            completion_tokens,
+            latency_s,
+            ttft_s,
+        ),
     }
+
+
+def _sample_payload(run_number: int, generation: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "run": run_number,
+        "completion_tokens": int(generation.get("completion_tokens") or 0),
+        "time_to_first_token_ms": _optional_ms(generation.get("ttft_s")),
+        "total_latency_ms": _optional_ms(generation.get("latency_s")),
+        "tokens_sec": _rounded_or_none(generation.get("tokens_sec")),
+        "decode_tokens_sec": _rounded_or_none(generation.get("decode_tokens_sec")),
+    }
+
+
+def _aggregate_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate measured samples only; callers keep warm-ups out of this list."""
+
+    statistics_payload = {
+        "decode_tokens_sec": _metric_stats(
+            [sample.get("decode_tokens_sec") for sample in samples]
+        ),
+        "tokens_sec": _metric_stats([sample.get("tokens_sec") for sample in samples]),
+        "time_to_first_token_ms": _metric_stats(
+            [sample.get("time_to_first_token_ms") for sample in samples]
+        ),
+        "total_latency_ms": _metric_stats(
+            [sample.get("total_latency_ms") for sample in samples]
+        ),
+        "completion_tokens": _metric_stats(
+            [sample.get("completion_tokens") for sample in samples]
+        ),
+    }
+
+    decode_stats = statistics_payload["decode_tokens_sec"]
+    legacy_stats = statistics_payload["tokens_sec"]
+    ttft_stats = statistics_payload["time_to_first_token_ms"]
+    latency_stats = statistics_payload["total_latency_ms"]
+    completion_stats = statistics_payload["completion_tokens"]
+    stability_stats = decode_stats or legacy_stats
+
+    return {
+        "decode_tokens_sec": decode_stats.get("median") if decode_stats else None,
+        "tokens_sec": legacy_stats.get("median") if legacy_stats else None,
+        "time_to_first_token_ms": ttft_stats.get("median") if ttft_stats else None,
+        "total_latency_ms": latency_stats.get("median") if latency_stats else None,
+        "completion_tokens": (
+            int(round(completion_stats["median"])) if completion_stats else 0
+        ),
+        "statistics": statistics_payload,
+        "stability": _stability(stability_stats),
+    }
+
+
+def _metric_stats(values: list[Any]) -> dict[str, Any] | None:
+    numeric = []
+    for value in values:
+        parsed = _positive_or_none(value)
+        if parsed is not None:
+            numeric.append(parsed)
+    if not numeric:
+        return None
+
+    median = statistics.median(numeric)
+    mean = statistics.fmean(numeric)
+    stddev = statistics.pstdev(numeric) if len(numeric) > 1 else 0.0
+    cv_percent = (stddev / mean * 100.0) if mean > 0 else None
+    return {
+        "median": round(median, 3),
+        "min": round(min(numeric), 3),
+        "max": round(max(numeric), 3),
+        "stddev": round(stddev, 3),
+        "cv_percent": round(cv_percent, 2) if cv_percent is not None else None,
+        "sample_count": len(numeric),
+    }
+
+
+def _stability(stats: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not stats:
+        return None
+    cv = stats.get("cv_percent")
+    if cv is None:
+        status = "unknown"
+    elif cv <= 5:
+        status = "stable"
+    elif cv <= 12:
+        status = "moderate"
+    else:
+        status = "variable"
+    return {
+        "status": status,
+        "cv_percent": cv,
+        "min": stats.get("min"),
+        "max": stats.get("max"),
+        "sample_count": stats.get("sample_count"),
+    }
+
+
+def _decode_tokens_sec(
+    completion_tokens: int,
+    latency_s: float,
+    ttft_s: float | None,
+) -> float | None:
+    """Estimate steady decode throughput after the first emitted token.
+
+    TTFT includes prompt processing and first-token decode. With the current
+    stream contract, true prefill-only time is not observable. Excluding the
+    first output token and TTFT is therefore the most defensible decode metric.
+    """
+
+    if completion_tokens < 2 or ttft_s is None:
+        return None
+    decode_seconds = latency_s - ttft_s
+    if decode_seconds <= 0:
+        return None
+    return (completion_tokens - 1) / decode_seconds
+
+
+def _infer_warmup_runs(measured_runs: int) -> int:
+    if measured_runs <= 1:
+        return 0
+    if measured_runs <= 5:
+        return 1
+    return 2
+
+
+def _benchmark_preset(
+    measured_runs: int,
+    max_tokens: int,
+    warmup_runs: int,
+) -> str:
+    if measured_runs == 3 and max_tokens == 32 and warmup_runs == 1:
+        return "quick"
+    if measured_runs == 5 and max_tokens == 64 and warmup_runs == 1:
+        return "standard"
+    if measured_runs == 8 and max_tokens == 128 and warmup_runs == 2:
+        return "thorough"
+    return "custom"
+
+
+def _combination_prefix(
+    index: int,
+    total: int,
+    model_label: str,
+    device: str,
+) -> str:
+    return (
+        f"Benchmark Lab · combination {index}/{max(total, 1)} · "
+        f"{model_label} · {device}"
+    )
+
+
+def _emit_benchmark_progress(
+    manager: ModelManager,
+    message: str,
+    *,
+    level: str = "info",
+) -> None:
+    emit = getattr(manager, "emit_event", None)
+    if callable(emit):
+        emit(level, message)
 
 
 def _dedupe(values: list[str]) -> list[str]:
@@ -580,11 +1113,38 @@ def _ms(seconds: float) -> float:
     return round(seconds * 1000, 3)
 
 
-def _positive(value: Any) -> float:
+def _optional_ms(seconds: Any) -> float | None:
     try:
-        return max(float(value), 0.0)
+        return _ms(float(seconds)) if seconds is not None else None
     except (TypeError, ValueError):
-        return 0.0
+        return None
+
+
+def _rounded_or_none(value: Any) -> float | None:
+    try:
+        return round(float(value), 3) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _positive(value: Any) -> float:
+    parsed = _positive_or_none(value)
+    return parsed if parsed is not None else 0.0
+
+
+def _positive_or_none(value: Any) -> float | None:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    if parsed < 0 or parsed != parsed or parsed in (float("inf"), float("-inf")):
+        return None
+    return parsed
+
+
+def _benchmark_speed(result: dict[str, Any]) -> float:
+    decode = _positive(result.get("decode_tokens_sec"))
+    return decode or _positive(result.get("tokens_sec"))
 
 
 def _latency_for_ttft(result: dict[str, Any]) -> float:
@@ -628,7 +1188,7 @@ def _print_table(run: dict[str, Any]) -> None:
         "ttft_ms",
         "latency_ms",
         "tokens",
-        "tok/s",
+        "decode_t/s",
         "score",
     ]
     rows = []
@@ -642,7 +1202,11 @@ def _print_table(run: dict[str, Any]) -> None:
                 _fmt(result.get("time_to_first_token_ms")),
                 _fmt(result.get("total_latency_ms")),
                 str(result.get("completion_tokens") or 0),
-                _fmt(result.get("tokens_sec")),
+                _fmt(
+                    result.get("decode_tokens_sec")
+                    if result.get("decode_tokens_sec") is not None
+                    else result.get("tokens_sec")
+                ),
                 _fmt(result.get("score")),
             ]
         )
@@ -700,7 +1264,9 @@ def main(argv: list[str] | None = None) -> int:
         description="Benchmark catalog models across OpenVINO devices."
     )
     parser.add_argument(
-        "--benchmark-model", required=True, help="Catalog model id from models.json"
+        "--benchmark-model",
+        required=True,
+        help="Catalog model id from models.json",
     )
     parser.add_argument(
         "--benchmark-devices",
@@ -708,12 +1274,26 @@ def main(argv: list[str] | None = None) -> int:
         help="Device targets, e.g. CPU,GPU,NPU,AUTO or CPU;AUTO:NPU,GPU,CPU",
     )
     parser.add_argument(
-        "--prompt", default=DEFAULT_BENCHMARK_PROMPT, help="Prompt used for every run"
+        "--prompt",
+        default=DEFAULT_BENCHMARK_PROMPT,
+        help="Prompt used for every run",
     )
-    parser.add_argument("--max-tokens", type=int, default=64, help="Generated token limit per run")
-    parser.add_argument("--runs", type=int, default=1, help="Generation runs per model/device")
     parser.add_argument(
-        "--mock", action="store_true", help="Force the mock engine for route/CI validation"
+        "--max-tokens",
+        type=int,
+        default=64,
+        help="Generated token limit per run",
+    )
+    parser.add_argument(
+        "--runs",
+        type=int,
+        default=1,
+        help="Measured generation runs per model/device",
+    )
+    parser.add_argument(
+        "--mock",
+        action="store_true",
+        help="Force the mock engine for route/CI validation",
     )
     parser.add_argument("--output", type=Path, help="Benchmark JSON store path")
     args = parser.parse_args(argv)
