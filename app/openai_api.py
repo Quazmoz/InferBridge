@@ -433,12 +433,26 @@ class ModelRegisterRequest(BaseModel):
 
 
 class BenchmarkRunRequest(BaseModel):
-    model: str | None = None
-    models: list[str] | None = None
-    devices: list[str] = Field(default_factory=lambda: ["CPU", "GPU", "NPU", "AUTO"])
-    prompt: str | None = None
+    model: str | None = Field(default=None, max_length=128)
+    models: list[str] | None = Field(default=None, max_length=16)
+    devices: list[str] = Field(
+        default_factory=lambda: ["CPU", "GPU", "NPU", "AUTO"],
+        max_length=16,
+    )
+    prompt: str | None = Field(default=None, max_length=16_384)
     max_tokens: int = Field(default=64, ge=1, le=4096)
     runs: int = Field(default=1, ge=1, le=10)
+
+    @model_validator(mode="after")
+    def validate_matrix_size(self):
+        model_ids = [self.model] if self.model else []
+        if self.models:
+            model_ids.extend(self.models)
+        model_count = len({model_id for model_id in model_ids if model_id})
+        device_count = len({device for device in self.devices if device})
+        if model_count and model_count * device_count > 32:
+            raise ValueError("Benchmark requests may contain at most 32 model/device combinations.")
+        return self
 
 
 # --- Conversation export --------------------------------------------------
