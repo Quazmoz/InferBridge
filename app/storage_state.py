@@ -135,6 +135,64 @@ class StorageRuntimeState:
                 model_id is not None and model_id in self._cleaning_models
             )
 
+    def _begin_temporary_model(self, model_id: str) -> None:
+        """Mark a temporary engine active until its caller-owned engine is closed."""
+
+        with self._guard_lock:
+            if (
+                self._global_cleanup
+                or model_id in self._cleaning_models
+                or model_id in self._mutating_models
+            ):
+                raise ValueError(
+                    f"Storage cleanup is active for model '{model_id}'. Retry after it finishes."
+                )
+            self._temporary_models[model_id] = self._temporary_models.get(model_id, 0) + 1
+
+    def _end_temporary_model(self, model_id: str) -> None:
+        with self._guard_lock:
+            remaining = self._temporary_models.get(model_id, 1) - 1
+            if remaining > 0:
+                self._temporary_models[model_id] = remaining
+            else:
+                self._temporary_models.pop(model_id, None)
+
+    def _guard_temporary_engine_lifetime(self, model_id: str, engine: Any) -> Any:
+        """Release the storage guard exactly once when a temporary engine closes.
+
+        ``ModelManager.build_temporary_engine`` explicitly transfers engine ownership to
+        its caller, which must close it. Binding the lifecycle guard to that close keeps
+        destructive cleanup blocked for the whole benchmark/validation lifetime rather
+        than only while native construction is running.
+        """
+
+        original_close = getattr(engine, "close", None)
+        if not callable(original_close):
+            self._end_temporary_model(model_id)
+            raise TypeError("Temporary model engines must expose a callable close() method.")
+
+        released = False
+
+        def close_and_release() -> Any:
+            nonlocal released
+            if released:
+                return None
+            try:
+                return original_close()
+            finally:
+                released = True
+                self._end_temporary_model(model_id)
+
+        try:
+            engine.close = close_and_release
+        except Exception:
+            try:
+                original_close()
+            finally:
+                self._end_temporary_model(model_id)
+            raise
+        return engine
+
     def _install_lifecycle_guard(self) -> None:
         if getattr(self.manager, "_storage_cleanup_guard_installed", False):
             return
@@ -176,26 +234,14 @@ class StorageRuntimeState:
         if callable(upstream_temporary):
 
             async def build_temporary_engine(model_id: str, *args: Any, **kwargs: Any):
-                with self._guard_lock:
-                    if (
-                        self._global_cleanup
-                        or model_id in self._cleaning_models
-                        or model_id in self._mutating_models
-                    ):
-                        raise ValueError(
-                            f"Storage cleanup is active for model '{model_id}'. "
-                            "Retry after it finishes."
-                        )
-                    self._temporary_models[model_id] = self._temporary_models.get(model_id, 0) + 1
+                self._begin_temporary_model(model_id)
                 try:
-                    return await upstream_temporary(model_id, *args, **kwargs)
-                finally:
-                    with self._guard_lock:
-                        remaining = self._temporary_models.get(model_id, 1) - 1
-                        if remaining > 0:
-                            self._temporary_models[model_id] = remaining
-                        else:
-                            self._temporary_models.pop(model_id, None)
+                    engine, load_time = await upstream_temporary(model_id, *args, **kwargs)
+                except BaseException:
+                    self._end_temporary_model(model_id)
+                    raise
+                engine = self._guard_temporary_engine_lifetime(model_id, engine)
+                return engine, load_time
 
             self.manager.build_temporary_engine = build_temporary_engine
         self.manager._storage_cleanup_guard_installed = True
