@@ -53,7 +53,11 @@ def test_future_benchmark_schema_is_not_used_as_recommendation_evidence(tmp_path
                 "runs": [
                     {
                         "results": [
-                            {"model_id": "future-model", "success": True, "tokens_sec": 999999}
+                            {
+                                "model_id": "future-model",
+                                "success": True,
+                                "tokens_sec": 999999,
+                            }
                         ]
                     }
                 ],
@@ -91,3 +95,48 @@ def test_malformed_run_results_container_is_ignored(tmp_path):
     )
 
     assert [row["model_id"] for row in _Evidence(path)._benchmark_rows()] == ["ok"]
+
+
+def test_synthetic_benchmark_never_becomes_current_hardware_evidence(tmp_path):
+    path = tmp_path / "benchmarks.json"
+    identity = {
+        "model_id": "model",
+        "source_model": "example/model",
+        "backend": "openvino-genai",
+        "weight_format": "int4",
+        "requested_device": "CPU",
+        "actual_device": "CPU",
+        "success": True,
+        "decode_tokens_sec": 9999.0,
+        "samples": [{"decode_tokens_sec": 9999.0}],
+    }
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "runs": [
+                    {
+                        "created_at": "2026-08-24T10:00:00Z",
+                        "hardware_fingerprint": "current-hardware",
+                        "mock": True,
+                        "synthetic": True,
+                        "results": [identity],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    evidence = _Evidence(path)
+    evidence.catalog = {
+        "model": SimpleNamespace(
+            source_model="example/model",
+            backend="openvino-genai",
+            weight_format="int4",
+        )
+    }
+    evidence.hardware_snapshot = lambda: {"fingerprint": "current-hardware"}
+
+    assert evidence._benchmark_rows()[0]["synthetic"] is True
+    assert evidence._latest_benchmark("model", "CPU") is None
