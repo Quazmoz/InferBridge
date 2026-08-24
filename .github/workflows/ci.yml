@@ -9,7 +9,7 @@ on:
       - "docs/**"
       - "screenshots/**"
   pull_request:
-    branches: ["main"]
+    branches: ["main", "dev"]
     paths-ignore:
       - "**/*.md"
       - "docs/**"
@@ -23,6 +23,96 @@ permissions:
   contents: read
 
 jobs:
+  qualified-release-baseline:
+    name: Qualified Release Baseline (Windows / Python 3.11)
+    runs-on: windows-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements/release.txt
+            pyproject.toml
+
+      - name: Validate pinned release requirements
+        run: python scripts/release_tools.py verify-requirements --path requirements/release.txt
+
+      - name: Install exact qualified release environment
+        run: python -m pip install --disable-pip-version-check -r requirements/release.txt
+
+      - name: Install project without dependency re-resolution
+        run: python -m pip install --disable-pip-version-check --no-deps --no-build-isolation .
+
+      - name: Verify qualified dependency pins
+        run: |
+          python -m pip check
+          python scripts/release_environment.py write-metadata --requirements requirements/release.txt --metadata .ci-release-environment.json
+          python scripts/release_environment.py validate --requirements requirements/release.txt --metadata .ci-release-environment.json
+
+      - name: Validate embedded browser JavaScript
+        run: python scripts/check_injected_javascript.py
+
+      - name: Run Ruff lint and format checks
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Run pytest against the qualified baseline
+        env:
+          OV_LLM_MOCK: "true"
+        run: pytest
+
+  latest-compatible-canary:
+    name: Latest-Compatible Canary (Windows / Python 3.11)
+    # A canary failure is a dev qualification failure. Passing never redefines
+    # requirements/release.txt as a certified release baseline.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/dev') ||
+      (github.event_name == 'pull_request' && github.base_ref == 'dev')
+    runs-on: windows-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Resolve latest source-compatible dependency stack
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install --upgrade --upgrade-strategy eager -e ".[dev,convert,distribution]"
+          python -m pip check
+
+      - name: Record canary dependency inventory
+        run: python -m pip list
+
+      - name: Validate embedded browser JavaScript
+        run: python scripts/check_injected_javascript.py
+
+      - name: Run Ruff lint and format checks
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Run pytest against latest-compatible dependencies
+        env:
+          OV_LLM_MOCK: "true"
+        run: pytest
+
   lint-and-test:
     name: Lint & Test
     runs-on: ubuntu-latest
