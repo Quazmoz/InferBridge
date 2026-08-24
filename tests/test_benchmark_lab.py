@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from app.advisor_ui import ADVISOR_EXTENSION_JS
 from app.config import BASE_DIR, Settings
 from app.server import create_app
-from runtime.benchmark_runner import _decode_tokens_sec, _metric_stats
+from runtime.benchmark_runner_core import _decode_tokens_sec, _metric_stats
 
 
 MODELS = ["tinyllama-1.1b-chat-fp16", "tinyllama-1.1b-chat-int4"]
@@ -66,11 +67,18 @@ def test_benchmark_lab_multi_model_run_keeps_samples_and_robust_statistics(tmp_p
         assert row["prefill_tokens_sec"] is None
 
 
-def test_benchmark_lab_history_round_trip_and_mock_evidence_is_not_advisor_evidence(tmp_path):
+def test_benchmark_lab_history_round_trip_and_mock_evidence_is_not_advisor_evidence(
+    tmp_path,
+):
     with _client(tmp_path) as client:
         run = client.post(
             "/v1/benchmarks/run",
-            json={"model": MODELS[0], "devices": ["CPU"], "runs": 3, "max_tokens": 32},
+            json={
+                "model": MODELS[0],
+                "devices": ["CPU"],
+                "runs": 3,
+                "max_tokens": 32,
+            },
         ).json()
         latest = client.get("/v1/benchmarks/latest").json()["run"]
         listed = client.get("/v1/benchmarks").json()["data"]
@@ -97,12 +105,9 @@ def test_metric_statistics_use_median_and_population_cv():
     assert stats["cv_percent"] > 0
 
 
-def test_bundled_ui_contains_integrated_benchmark_lab(tmp_path):
-    with _client(tmp_path) as client:
-        html = client.get("/").text
-
-    assert "Benchmark Lab" in html
-    assert "benchmark-run-lab-btn" in html
-    assert "benchmark-copy-results" in html
-    assert "benchmark-download-json" in html
-    assert "Synthetic / mock mode" in html
+def test_bundled_ui_contains_integrated_benchmark_lab():
+    assert "Benchmark Lab" in ADVISOR_EXTENSION_JS
+    assert "benchmark-run-lab-btn" in ADVISOR_EXTENSION_JS
+    assert "benchmark-copy-results" in ADVISOR_EXTENSION_JS
+    assert "benchmark-download-json" in ADVISOR_EXTENSION_JS
+    assert "Synthetic / mock mode" in ADVISOR_EXTENSION_JS

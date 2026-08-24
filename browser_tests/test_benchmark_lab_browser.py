@@ -5,7 +5,10 @@ from playwright.sync_api import Page, expect
 
 def _open_benchmark_lab(page: Page, inferbridge_url: str) -> None:
     page.goto(inferbridge_url, wait_until="networkidle")
-    page.locator("#advisor-open-btn").click()
+    advisor = page.locator("#advisor-open-btn")
+    if not advisor.is_visible():
+        page.locator("#ov-header-more-btn").click()
+    advisor.click()
     expect(page.locator("#advisor-dialog")).to_be_visible()
     page.locator("#advisor-tab-benchmark").click()
     expect(page.locator("#advisor-panel-benchmark")).to_be_visible()
@@ -17,7 +20,9 @@ def test_benchmark_lab_runs_in_mock_mode_and_keeps_legacy_panel_hidden(
 ) -> None:
     _open_benchmark_lab(page, inferbridge_url)
 
-    legacy = page.locator("#benchmark-devices").locator("xpath=ancestor::*[contains(@class,'benchmark-panel')][1]")
+    legacy = page.locator("#benchmark-devices").locator(
+        "xpath=ancestor::*[contains(@class,'benchmark-panel')][1]"
+    )
     expect(legacy).to_be_hidden()
     expect(page.locator("#benchmark-run-lab-btn")).to_be_enabled()
 
