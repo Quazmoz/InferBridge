@@ -4,7 +4,7 @@ import asyncio
 
 from app.config import BASE_DIR, Settings
 from app.model_manager import ModelManager
-from runtime.benchmark_runner import benchmark_model_device
+from runtime.benchmark_runner import benchmark_model_device, score_benchmark_results
 from runtime.openvino_engine import MockEngine
 
 MODEL_ID = "tinyllama-1.1b-chat-fp16"
@@ -82,3 +82,35 @@ def test_loaded_model_is_reused_instead_of_allocating_duplicate_engine(tmp_path)
         assert engine.closed is True
 
     asyncio.run(scenario())
+
+
+def test_missing_load_time_is_excluded_from_balanced_score_instead_of_treated_as_instant():
+    results = [
+        {
+            "model_id": "temporary",
+            "requested_device": "CPU",
+            "actual_device": "CPU",
+            "success": True,
+            "decode_tokens_sec": 20.0,
+            "tokens_sec": 18.0,
+            "time_to_first_token_ms": 100.0,
+            "total_latency_ms": 1000.0,
+            "load_time_ms": 1000.0,
+        },
+        {
+            "model_id": "already-loaded",
+            "requested_device": "CPU",
+            "actual_device": "CPU",
+            "success": True,
+            "decode_tokens_sec": 20.0,
+            "tokens_sec": 18.0,
+            "time_to_first_token_ms": 100.0,
+            "total_latency_ms": 1000.0,
+            "load_time_ms": None,
+        },
+    ]
+
+    score_benchmark_results(results)
+
+    assert results[0]["score"] == 100.0
+    assert results[1]["score"] == 100.0

@@ -353,6 +353,103 @@ async def benchmark_model_device(*args: Any, **kwargs: Any):
 _core.benchmark_model_device = benchmark_model_device
 
 
+def score_benchmark_results(
+    results: list[dict[str, Any]],
+    *,
+    mock: bool = False,
+) -> dict[str, Any]:
+    """Score measured dimensions without treating unavailable load time as instant."""
+
+    successes = [row for row in results if row.get("success")]
+    if not successes:
+        for result in results:
+            result["score"] = float(result.get("score") or -25.0)
+        return {
+            "model_id": None,
+            "requested_device": None,
+            "actual_device": None,
+            "score": 0.0,
+            "summary": "No successful benchmark run completed.",
+            "rationale": ["Every requested model/device combination returned an error."],
+            "caveat": _core.BENCHMARK_CAVEAT,
+        }
+
+    max_tps = max(_core._benchmark_speed(row) for row in successes) or 1.0
+    min_ttft = min(_core._latency_for_ttft(row) for row in successes)
+    min_total = min(_core._positive(row.get("total_latency_ms")) for row in successes) or 1.0
+    measured_loads = [
+        value
+        for row in successes
+        if (value := _core._positive_or_none(row.get("load_time_ms"))) is not None
+        and value > 0
+    ]
+    min_load = min(measured_loads) if measured_loads else None
+
+    for result in results:
+        if not result.get("success"):
+            result["score"] = -25.0
+            continue
+
+        components = [
+            (0.50, _core._benchmark_speed(result) / max_tps),
+            (0.30, min_ttft / _core._latency_for_ttft(result)),
+            (
+                0.10,
+                min_total
+                / (_core._positive(result.get("total_latency_ms")) or min_total),
+            ),
+        ]
+        load_ms = _core._positive_or_none(result.get("load_time_ms"))
+        high_load_penalty = 0.0
+        if min_load is not None and load_ms is not None and load_ms > 0:
+            components.append((0.10, min_load / load_ms))
+            if load_ms > 30_000:
+                high_load_penalty = min((load_ms - 30_000) / 90_000, 1.0) * 0.20
+
+        total_weight = sum(weight for weight, _value in components)
+        raw_score = sum(weight * value for weight, value in components) / total_weight
+        result["score"] = round(max(0.0, (raw_score - high_load_penalty) * 100), 2)
+
+    best = max(successes, key=lambda item: float(item.get("score") or 0.0))
+    best_speed = _core._benchmark_speed(best)
+    summary = (
+        "Synthetic mock benchmark completed; rerun on Windows with OpenVINO hardware "
+        "for real performance evidence."
+        if mock
+        else (
+            f"Recommended {best['model_id']} on {best['requested_device']} "
+            "from this measured benchmark run."
+        )
+    )
+    return {
+        "model_id": best["model_id"],
+        "requested_device": best["requested_device"],
+        "actual_device": best.get("actual_device"),
+        "score": best.get("score"),
+        "summary": summary,
+        "rationale": [
+            f"{best_speed:.2f} decode tokens/sec"
+            if best_speed
+            else "Decode throughput was unavailable.",
+            (
+                f"{best['time_to_first_token_ms']:.1f} ms first-token latency"
+                if best.get("time_to_first_token_ms") is not None
+                else "First-token latency was not measurable for this backend."
+            ),
+            (
+                f"{best['load_time_ms']:.1f} ms load time"
+                if best.get("load_time_ms") is not None
+                else "Load time was not measured because the existing loaded engine was reused."
+            ),
+        ],
+        "caveat": _core.BENCHMARK_CAVEAT,
+    }
+
+
+# Core suite functions resolve the scorer by module global at runtime.
+_core.score_benchmark_results = score_benchmark_results
+
+
 async def run_benchmark_suite(*args: Any, **kwargs: Any) -> dict[str, Any]:
     return _sanitize_run(await _core.run_benchmark_suite(*args, **kwargs))
 
