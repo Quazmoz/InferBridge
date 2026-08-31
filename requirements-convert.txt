@@ -11,4 +11,4 @@ nncf>=2.14.0
 huggingface_hub>=0.25.0
 
 # Optional faster Hugging Face downloads (Xet protocol).
-hf_xet>=0.1.0
+hf_xet>=1.6.0
