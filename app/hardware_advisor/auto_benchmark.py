@@ -92,10 +92,7 @@ class AutoBenchmarkRunnerMixin:
                 decode_tps = (completion_tokens - 1) / (latency_s - ttft_s)
             display_tps = decode_tps if decode_tps is not None else tps
 
-            run_id = (
-                f"auto-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}-"
-                f"{uuid.uuid4().hex[:8]}"
-            )
+            run_id = f"auto-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}"
             actual_device = getattr(engine, "actual_device", None) or getattr(
                 engine, "device", device
             )
@@ -108,9 +105,7 @@ class AutoBenchmarkRunnerMixin:
                 "requested_device": device,
                 "actual_device": actual_device,
                 "load_time_ms": round(load_time_ms, 3) if load_time_ms is not None else None,
-                "time_to_first_token_ms": round(ttft_s * 1000, 3)
-                if ttft_s is not None
-                else None,
+                "time_to_first_token_ms": round(ttft_s * 1000, 3) if ttft_s is not None else None,
                 "total_latency_ms": round(latency_s * 1000, 3),
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
@@ -148,9 +143,7 @@ class AutoBenchmarkRunnerMixin:
                     "requested_device": device,
                     "actual_device": actual_device,
                     "score": None,
-                    "summary": (
-                        f"Automatic short benchmark completed for {model_id} on {device}."
-                    ),
+                    "summary": (f"Automatic short benchmark completed for {model_id} on {device}."),
                     "rationale": [
                         f"{display_tps:.2f} tokens/sec",
                         f"{result['time_to_first_token_ms']:.1f} ms first-token latency"

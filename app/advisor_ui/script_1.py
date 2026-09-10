@@ -60,6 +60,9 @@ SCRIPT_1 = r"""
     if (legacyBenchmarkPanel) {
         legacyBenchmarkPanel.hidden = true;
         legacyBenchmarkPanel.setAttribute('aria-hidden', 'true');
+        // The panel's own '.setting-group { display: flex }' rule outranks the user-agent
+        // '[hidden] { display: none }' rule, so the attribute alone leaves it visible.
+        legacyBenchmarkPanel.style.display = 'none';
     }
 
     const button = document.createElement('button');

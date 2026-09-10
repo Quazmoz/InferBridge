@@ -136,8 +136,7 @@ class ProfileRankingMixin:
     ) -> dict[str, Any]:
         snapshot = self.hardware_snapshot()
         profiles = {
-            profile: self.recommend_profile(profile, snapshot=snapshot)
-            for profile in PROFILE_ORDER
+            profile: self.recommend_profile(profile, snapshot=snapshot) for profile in PROFILE_ORDER
         }
         loaded_profiles = {
             profile: self.recommend_profile(

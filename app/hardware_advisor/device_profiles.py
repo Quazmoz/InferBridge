@@ -113,9 +113,7 @@ class DeviceProfileMixin:
             return -10_000.0
         device = loaded_device or str(evaluation.get("recommended_device") or "CPU")
         benchmark = (
-            evaluation.get("benchmark")
-            if isinstance(evaluation.get("benchmark"), dict)
-            else None
+            evaluation.get("benchmark") if isinstance(evaluation.get("benchmark"), dict) else None
         )
         speed = self._estimated_speed_score(cfg, device, benchmark)
         quality = self._quality_score(cfg)
@@ -131,29 +129,15 @@ class DeviceProfileMixin:
 
         if profile == "fastest":
             return (
-                speed * 0.72
-                + fit * 0.18
-                - memory * 0.8
-                + (8 if benchmark else 0)
-                + precision_prior
+                speed * 0.72 + fit * 0.18 - memory * 0.8 + (8 if benchmark else 0) + precision_prior
             )
         if profile == "best-quality":
             return (
-                quality * 0.72
-                + fit * 0.20
-                + speed * 0.08
-                + min(params, 32) * 0.2
-                + precision_prior
+                quality * 0.72 + fit * 0.20 + speed * 0.08 + min(params, 32) * 0.2 + precision_prior
             )
         if profile == "lowest-memory":
             return fit * 0.35 + 70.0 / max(memory, 0.35) + speed * 0.08 + precision_prior
         if profile == "lowest-power":
             power = {"NPU": 100.0, "GPU": 68.0, "CPU": 55.0}.get(base, 45.0)
             return power * 0.58 + fit * 0.27 + speed * 0.15 - memory + precision_prior
-        return (
-            quality * 0.38
-            + speed * 0.30
-            + fit * 0.28
-            - memory * 0.35
-            + precision_prior
-        )
+        return quality * 0.38 + speed * 0.30 + fit * 0.28 - memory * 0.35 + precision_prior

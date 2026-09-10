@@ -140,9 +140,7 @@ async def _stream_loaded_generation_once(
         "latency_s": latency_s,
         "completion_tokens": completion_tokens,
         "tokens_sec": (
-            completion_tokens / latency_s
-            if completion_tokens > 0 and latency_s > 0
-            else None
+            completion_tokens / latency_s if completion_tokens > 0 and latency_s > 0 else None
         ),
         "decode_tokens_sec": _core._decode_tokens_sec(
             completion_tokens,
@@ -380,8 +378,7 @@ def score_benchmark_results(
     measured_loads = [
         value
         for row in successes
-        if (value := _core._positive_or_none(row.get("load_time_ms"))) is not None
-        and value > 0
+        if (value := _core._positive_or_none(row.get("load_time_ms"))) is not None and value > 0
     ]
     min_load = min(measured_loads) if measured_loads else None
 
@@ -395,8 +392,7 @@ def score_benchmark_results(
             (0.30, min_ttft / _core._latency_for_ttft(result)),
             (
                 0.10,
-                min_total
-                / (_core._positive(result.get("total_latency_ms")) or min_total),
+                min_total / (_core._positive(result.get("total_latency_ms")) or min_total),
             ),
         ]
         load_ms = _core._positive_or_none(result.get("load_time_ms"))

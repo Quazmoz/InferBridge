@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -25,6 +27,12 @@ def loaded_client():
     )
     with TestClient(app) as client:
         manager = client.app.state.manager
+        # The startup load lands on the server's event loop thread shortly after the
+        # client is ready and rewrites manager.devices. Let it settle first, otherwise it
+        # races this fixture and overwrites the pinned device.
+        deadline = time.monotonic() + 10.0
+        while MODEL_ID not in manager.devices and time.monotonic() < deadline:
+            time.sleep(0.02)
         manager.engines[MODEL_ID] = MockEngine(MODEL_ID, device="CPU")
         manager.devices[MODEL_ID] = "CPU"
         yield client

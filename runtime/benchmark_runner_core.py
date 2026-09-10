@@ -219,7 +219,7 @@ async def run_benchmark_suite(
     suite_lock = getattr(manager, "_benchmark_suite_lock", None)
     if suite_lock is None:
         suite_lock = asyncio.Lock()
-        setattr(manager, "_benchmark_suite_lock", suite_lock)
+        manager._benchmark_suite_lock = suite_lock
 
     async with suite_lock:
         return await _run_benchmark_suite_locked(
@@ -251,9 +251,7 @@ async def _run_benchmark_suite_locked(
     )
     measured_runs = max(int(runs), 1)
     resolved_warmups = (
-        _infer_warmup_runs(measured_runs)
-        if warmup_runs is None
-        else max(int(warmup_runs), 0)
+        _infer_warmup_runs(measured_runs) if warmup_runs is None else max(int(warmup_runs), 0)
     )
     preset = _benchmark_preset(measured_runs, int(max_tokens), resolved_warmups)
     environment = _safe_benchmark_environment(manager)
@@ -638,12 +636,7 @@ def score_benchmark_results(
         if load_ms > 30_000:
             high_load_penalty = min((load_ms - 30_000) / 90_000, 1.0) * 0.20
 
-        score = (
-            (0.50 * tps_norm)
-            + (0.30 * ttft_norm)
-            + (0.10 * total_norm)
-            + (0.10 * load_norm)
-        )
+        score = (0.50 * tps_norm) + (0.30 * ttft_norm) + (0.10 * total_norm) + (0.10 * load_norm)
         score = max(0.0, (score - high_load_penalty) * 100)
         result["score"] = round(score, 2)
 
@@ -696,15 +689,13 @@ def summarize_benchmark_results(results: list[dict[str, Any]]) -> dict[str, Any]
 
     generation_rows = [row for row in successful if _benchmark_speed(row) > 0]
     ttft_rows = [
-        row for row in successful if _positive_or_none(row.get("time_to_first_token_ms")) is not None
+        row
+        for row in successful
+        if _positive_or_none(row.get("time_to_first_token_ms")) is not None
     ]
-    fastest_generation = (
-        max(generation_rows, key=_benchmark_speed) if generation_rows else None
-    )
+    fastest_generation = max(generation_rows, key=_benchmark_speed) if generation_rows else None
     fastest_ttft = (
-        min(ttft_rows, key=lambda row: float(row["time_to_first_token_ms"]))
-        if ttft_rows
-        else None
+        min(ttft_rows, key=lambda row: float(row["time_to_first_token_ms"])) if ttft_rows else None
     )
     balanced = max(successful, key=lambda row: float(row.get("score") or 0.0))
 
@@ -882,9 +873,7 @@ def _build_exact_context_prompt(
 
 def _validate_context_depth(requested_context: int, max_prompt_len: int) -> None:
     if requested_context < 1 or requested_context > max_prompt_len:
-        raise ValueError(
-            f"Requested context must be between 1 and {max_prompt_len} prompt tokens."
-        )
+        raise ValueError(f"Requested context must be between 1 and {max_prompt_len} prompt tokens.")
 
 
 async def _stream_generation_once(
@@ -924,9 +913,7 @@ async def _stream_generation_once(
         "latency_s": latency_s,
         "completion_tokens": completion_tokens,
         "tokens_sec": (
-            completion_tokens / latency_s
-            if completion_tokens > 0 and latency_s > 0
-            else None
+            completion_tokens / latency_s if completion_tokens > 0 and latency_s > 0 else None
         ),
         "decode_tokens_sec": _decode_tokens_sec(
             completion_tokens,
@@ -951,19 +938,13 @@ def _aggregate_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
     """Aggregate measured samples only; callers keep warm-ups out of this list."""
 
     statistics_payload = {
-        "decode_tokens_sec": _metric_stats(
-            [sample.get("decode_tokens_sec") for sample in samples]
-        ),
+        "decode_tokens_sec": _metric_stats([sample.get("decode_tokens_sec") for sample in samples]),
         "tokens_sec": _metric_stats([sample.get("tokens_sec") for sample in samples]),
         "time_to_first_token_ms": _metric_stats(
             [sample.get("time_to_first_token_ms") for sample in samples]
         ),
-        "total_latency_ms": _metric_stats(
-            [sample.get("total_latency_ms") for sample in samples]
-        ),
-        "completion_tokens": _metric_stats(
-            [sample.get("completion_tokens") for sample in samples]
-        ),
+        "total_latency_ms": _metric_stats([sample.get("total_latency_ms") for sample in samples]),
+        "completion_tokens": _metric_stats([sample.get("completion_tokens") for sample in samples]),
     }
 
     decode_stats = statistics_payload["decode_tokens_sec"]
@@ -978,9 +959,7 @@ def _aggregate_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
         "tokens_sec": legacy_stats.get("median") if legacy_stats else None,
         "time_to_first_token_ms": ttft_stats.get("median") if ttft_stats else None,
         "total_latency_ms": latency_stats.get("median") if latency_stats else None,
-        "completion_tokens": (
-            int(round(completion_stats["median"])) if completion_stats else 0
-        ),
+        "completion_tokens": (int(round(completion_stats["median"])) if completion_stats else 0),
         "statistics": statistics_payload,
         "stability": _stability(stability_stats),
     }
@@ -1078,10 +1057,7 @@ def _combination_prefix(
     model_label: str,
     device: str,
 ) -> str:
-    return (
-        f"Benchmark Lab · combination {index}/{max(total, 1)} · "
-        f"{model_label} · {device}"
-    )
+    return f"Benchmark Lab · combination {index}/{max(total, 1)} · {model_label} · {device}"
 
 
 def _emit_benchmark_progress(

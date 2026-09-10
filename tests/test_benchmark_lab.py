@@ -7,7 +7,6 @@ from app.config import BASE_DIR, Settings
 from app.server import create_app
 from runtime.benchmark_runner_core import _decode_tokens_sec, _metric_stats
 
-
 MODELS = ["tinyllama-1.1b-chat-fp16", "tinyllama-1.1b-chat-int4"]
 
 

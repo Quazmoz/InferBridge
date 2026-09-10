@@ -26,14 +26,19 @@ def test_benchmark_lab_runs_in_mock_mode_and_keeps_legacy_panel_hidden(
     expect(legacy).to_be_hidden()
     expect(page.locator("#benchmark-run-lab-btn")).to_be_enabled()
 
-    page.locator('input[name="benchmark-preset"][value="quick"]').check()
+    # The native radio is visually hidden (opacity:0; pointer-events:none) behind its
+    # styled label, so drive it the way a user does rather than checking the input.
+    page.locator('label.benchmark-preset:has(input[value="quick"])').click()
+    expect(page.locator('input[name="benchmark-preset"][value="quick"]')).to_be_checked()
     page.locator("#benchmark-run-lab-btn").click()
 
     expect(page.locator(".benchmark-progress")).to_be_visible()
     expect(page.locator(".benchmark-results")).to_be_visible(timeout=20_000)
     expect(page.locator(".benchmark-synthetic")).to_contain_text("Synthetic / mock mode")
-    expect(page.locator(".benchmark-table tbody tr")).to_have_count(1)
-    expect(page.locator(".benchmark-table tbody")).to_contain_text("CPU → CPU")
+    # The hidden legacy panel keeps its own .benchmark-table, so scope to the Lab panel.
+    lab_table = page.locator("#advisor-panel-benchmark .benchmark-table")
+    expect(lab_table.locator("tbody tr")).to_have_count(1)
+    expect(lab_table.locator("tbody")).to_contain_text("CPU → CPU")
     expect(page.locator("#benchmark-copy-results")).to_be_visible()
     expect(page.locator("#benchmark-download-json")).to_be_visible()
 
