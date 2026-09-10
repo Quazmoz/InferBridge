@@ -529,11 +529,7 @@ def install_model_recovery_manager_extension() -> None:
 
             if action == "remove_incomplete_files":
                 removed = await asyncio.to_thread(_remove_incomplete_output, self, cfg)
-                record = self._model_recovery_records.get(model_id)
-                if record is not None:
-                    record = {**record, "interrupted_at": int(time.time())}
-                    with contextlib.suppress(OSError):
-                        _write_record(self, model_id, record)
+                _clear_record(self, model_id)
                 return {
                     "status": "cleaned",
                     "action": action,
@@ -543,7 +539,7 @@ def install_model_recovery_manager_extension() -> None:
                         if removed
                         else f"No incomplete conversion files remained for {cfg.name}."
                     ),
-                    "recovery": model_recovery(self, model_id, include_details=False),
+                    "recovery": None,
                 }
 
             if action == "restart_download":

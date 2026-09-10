@@ -17,6 +17,7 @@ MODEL_RECOVERY_UI_JS = r"""
     const RECOVERY_PATH = '/v1/models/recovery';
     const ACTION_PATH = '/v1/models/recovery/action';
     const AUTO_OPEN_PREFIX = 'inferbridge.model-recovery.seen.';
+    const DISMISSED_PREFIX = 'inferbridge.model-recovery.dismissed.';
     let latestPayload = null;
     let recoveries = [];
     let activeRecovery = null;
@@ -32,6 +33,7 @@ MODEL_RECOVERY_UI_JS = r"""
         .ovmr-banner-copy{min-width:0;flex:1}
         .ovmr-banner-title{font-size:12px;font-weight:800;line-height:1.35}
         .ovmr-banner-detail{margin-top:2px;color:var(--text-2);font-size:10.5px;line-height:1.4;overflow-wrap:anywhere}
+        .ovmr-banner-dismiss{width:34px;min-width:34px;padding:0;font-size:18px}
         .ovmr-button{min-height:34px;padding:7px 11px;border:1px solid var(--border);border-radius:9px;background:var(--surface-2);color:var(--text-1);font:inherit;font-size:11px;font-weight:750;cursor:pointer}
         .ovmr-button:hover:not(:disabled){background:var(--surface-3)}
         .ovmr-button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -139,7 +141,7 @@ MODEL_RECOVERY_UI_JS = r"""
             resume: 'Resume preparation',
             retry_failed_stage: 'Retry failed stage',
             restart_download: 'Restart from download',
-            remove_incomplete_files: 'Remove incomplete files',
+            remove_incomplete_files: 'Delete failed model files',
         };
         return labels[action] || action;
     }
@@ -178,7 +180,16 @@ MODEL_RECOVERY_UI_JS = r"""
         button.addEventListener('click', () => {
             if (recoveries[0]) void openRecovery(recoveries[0]);
         });
-        banner.append(copy, button);
+        const dismiss = createElement('button', 'ovmr-button ovmr-banner-dismiss', '×');
+        dismiss.type = 'button';
+        dismiss.setAttribute('aria-label', 'Dismiss recovery reminder');
+        dismiss.addEventListener('click', () => {
+            if (recoveries[0]) {
+                sessionStorage.setItem(`${DISMISSED_PREFIX}${recoveries[0].recovery_id}`, '1');
+            }
+            renderBanner();
+        });
+        banner.append(copy, button, dismiss);
         document.body.appendChild(banner);
         return banner;
     }
@@ -186,7 +197,9 @@ MODEL_RECOVERY_UI_JS = r"""
     function renderBanner() {
         const banner = ensureBanner();
         const recovery = recoveries[0];
-        banner.hidden = !recovery || !!activeRecovery;
+        const dismissed = recovery
+            && sessionStorage.getItem(`${DISMISSED_PREFIX}${recovery.recovery_id}`) === '1';
+        banner.hidden = !recovery || !!activeRecovery || !!dismissed;
         if (!recovery) return;
         banner.querySelector('.ovmr-banner-title').textContent =
             `${recovery.model_name || recovery.model_id} preparation was interrupted`;
@@ -421,7 +434,7 @@ MODEL_RECOVERY_UI_JS = r"""
             return `Restart ${recovery.model_name || recovery.model_id} from download? Cached source files and incomplete conversion output will be removed.`;
         }
         if (action === 'remove_incomplete_files') {
-            return `Remove incomplete conversion files for ${recovery.model_name || recovery.model_id}? Reusable downloaded source files will be kept.`;
+            return `Delete failed model files for ${recovery.model_name || recovery.model_id} and dismiss this recovery? Reusable downloaded source files will be kept.`;
         }
         return '';
     }

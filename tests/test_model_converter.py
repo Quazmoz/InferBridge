@@ -93,6 +93,25 @@ def test_export_model_runs_transactional_command_and_makes_parent(
     assert "Saving OpenVINO IR" in console
 
 
+def test_export_model_preserves_long_conversion_failure(monkeypatch, tmp_path, capsys):
+    original = RuntimeError("failure detail " * 100)
+
+    def fail_export(*_args, **_kwargs):
+        raise original
+
+    monkeypatch.setattr(mc.shutil, "which", lambda _name: "/usr/bin/optimum-cli")
+    monkeypatch.setattr(mc, "_run_model_export_command", fail_export)
+
+    with pytest.raises(RuntimeError) as captured:
+        mc.export_model("org/model", tmp_path / "model")
+
+    assert captured.value is original
+    events = [decode_progress_event(line) for line in capsys.readouterr().out.splitlines()]
+    assert events[-1] is not None
+    assert events[-1].phase == "error"
+    assert len(events[-1].message) == 500
+
+
 def test_model_export_command_publishes_complete_staged_output(tmp_path):
     final = tmp_path / "model"
     script = (

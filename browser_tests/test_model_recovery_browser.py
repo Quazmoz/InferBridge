@@ -143,3 +143,32 @@ def test_recovery_screen_shows_state_details_and_starts_resume(
             "device": "CPU",
         }
     ]
+
+
+def test_recovery_reminder_can_be_dismissed_for_the_session(
+    page: Page,
+    inferbridge_url: str,
+) -> None:
+    page.add_init_script("localStorage.setItem('inferbridge.onboarding.auto-opened.v1', '1')")
+    page.goto(inferbridge_url, wait_until="networkidle")
+    page.route(
+        "**/v1/models/status",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(_status_payload()),
+        ),
+    )
+
+    page.evaluate("fetch('/v1/models/status').then(response => response.json())")
+    overlay = page.locator("#ov-model-recovery-overlay")
+    banner = page.locator("#ov-model-recovery-banner")
+    expect(overlay).to_be_visible()
+
+    overlay.get_by_role("button", name="Close recovery screen").click()
+    expect(banner).to_be_visible()
+    banner.get_by_role("button", name="Dismiss recovery reminder").click()
+    expect(banner).to_be_hidden()
+
+    page.evaluate("fetch('/v1/models/status').then(response => response.json())")
+    expect(banner).to_be_hidden()
