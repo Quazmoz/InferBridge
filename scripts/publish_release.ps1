@@ -11,6 +11,7 @@ param(
 $ErrorActionPreference = "Stop"
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Set-Location $Root
+$ReleaseRepository = "Quazmoz/InferBridge"
 if (-not $ArtifactDirectory) { $ArtifactDirectory = Join-Path $Root "artifacts\release-$Version" }
 $ArtifactDirectory = (Resolve-Path $ArtifactDirectory).Path
 
@@ -51,7 +52,7 @@ if ($LASTEXITCODE -ne 0) {
 
 & git rev-parse --verify --quiet "refs/tags/$Tag" | Out-Null
 if ($LASTEXITCODE -eq 0) { throw "Tag $Tag already exists." }
-$null = cmd /c "gh release view $Tag --repo Quazmoz/openvino-windows-llm >NUL 2>NUL"
+$null = cmd /c "gh release view $Tag --repo $ReleaseRepository >NUL 2>NUL"
 if ($LASTEXITCODE -eq 0) { throw "GitHub release $Tag already exists." }
 
 $Notes = Join-Path $ArtifactDirectory "InferBridge-$Version-release-notes.md"
@@ -68,12 +69,12 @@ if ((git rev-list -n 1 $Tag).Trim() -ne $HeadCommit) { throw "Created tag does n
 git push origin $Tag
 if ($LASTEXITCODE -ne 0) { throw "Tag push failed." }
 
-$Arguments = @("release", "create", $Tag, "--repo", "Quazmoz/openvino-windows-llm", "--verify-tag", "--title", "InferBridge $Version", "--notes-file", $Notes)
+$Arguments = @("release", "create", $Tag, "--repo", $ReleaseRepository, "--verify-tag", "--title", "InferBridge $Version", "--notes-file", $Notes)
 if ($Channel -ne "stable") { $Arguments += "--prerelease" }
 $Arguments += $Upload
 & gh @Arguments
 if ($LASTEXITCODE -ne 0) { throw "GitHub release creation or upload failed." }
-$AssetJson = & gh release view $Tag --repo Quazmoz/openvino-windows-llm --json assets
+$AssetJson = & gh release view $Tag --repo $ReleaseRepository --json assets
 if ($LASTEXITCODE -ne 0) { throw "Published release could not be re-read for artifact verification." }
 $PublishedNames = @((($AssetJson | ConvertFrom-Json).assets) | ForEach-Object { $_.name })
 foreach ($Name in $Expected) {
