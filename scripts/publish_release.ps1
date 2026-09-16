@@ -20,6 +20,21 @@ if ($LASTEXITCODE -ne 0) { throw "Invalid version or channel." }
 & $Python scripts/release_tools.py verify-version-consistency --root $Root --version $Version
 if ($LASTEXITCODE -ne 0) { throw "Version consistency check failed." }
 if (-not [string]::IsNullOrWhiteSpace((git status --porcelain))) { throw "Publishing requires a clean working tree." }
+
+$ExpectedBranch = switch ($Channel) {
+    "stable" { "main" }
+    "beta" { "beta" }
+    "nightly" { "dev" }
+    default { throw "Unsupported release channel: $Channel" }
+}
+$CurrentBranch = (& git branch --show-current).Trim()
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($CurrentBranch)) {
+    throw "Publishing requires an attached release branch. Expected '$ExpectedBranch' for channel '$Channel'."
+}
+if ($CurrentBranch -ne $ExpectedBranch) {
+    throw "Publishing channel '$Channel' requires branch '$ExpectedBranch'; current branch is '$CurrentBranch'. Promote dev -> beta -> main before publishing."
+}
+
 $HeadCommit = (& git rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0 -or $HeadCommit -notmatch '^[0-9a-f]{40}$') { throw "Could not resolve the source commit." }
 
