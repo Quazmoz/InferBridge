@@ -22,3 +22,11 @@ def test_publisher_rejects_detached_head_and_wrong_branch():
 
     assert "Publishing requires an attached release branch" in script
     assert "Promote dev -> beta -> main before publishing." in script
+
+
+def test_publisher_never_allows_unsigned_stable_publication():
+    script = _publisher_script()
+
+    assert 'if ($Channel -eq "stable" -and $AllowUnsigned)' in script
+    assert "-AllowUnsigned is not permitted for stable publication" in script
+    assert 'if ($Channel -eq "stable") { $SigningGate += "--require-signed" }' in script
