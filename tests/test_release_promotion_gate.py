@@ -9,7 +9,7 @@ def _publisher_script() -> str:
 def test_publisher_enforces_channel_branch_mapping():
     script = _publisher_script()
 
-    assert '$ExpectedBranch = switch ($Channel)' in script
+    assert "$ExpectedBranch = switch ($Channel)" in script
     assert '"stable" { "main" }' in script
     assert '"beta" { "beta" }' in script
     assert '"nightly" { "dev" }' in script
