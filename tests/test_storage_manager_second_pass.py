@@ -24,6 +24,14 @@ class FakeConfig:
         return self._model_path
 
 
+class FakeTemporaryEngine:
+    def __init__(self) -> None:
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
+
+
 class FakeManager:
     def __init__(self, config: FakeConfig, models_dir: Path) -> None:
         self.catalog = {config.id: config}
@@ -54,7 +62,7 @@ class FakeManager:
         assert self.temporary_release is not None
         self.temporary_started.set()
         await self.temporary_release.wait()
-        return object(), 0.01
+        return FakeTemporaryEngine(), 0.01
 
     def _ensure_within_models_dir(self, path: Path) -> None:
         resolved = path.resolve()
@@ -130,7 +138,7 @@ def test_duplicate_service_reuses_one_runtime_state(tmp_path: Path) -> None:
     assert second._state.delete_model("first") == {"deleted": False, "freed_bytes": 0}
 
 
-def test_temporary_engine_blocks_model_and_global_cleanup(tmp_path: Path) -> None:
+def test_temporary_engine_blocks_cleanup_until_caller_closes_it(tmp_path: Path) -> None:
     service, manager = make_service(tmp_path)
 
     async def scenario() -> None:
@@ -138,19 +146,44 @@ def test_temporary_engine_blocks_model_and_global_cleanup(tmp_path: Path) -> Non
         manager.temporary_release = asyncio.Event()
         task = asyncio.create_task(manager.build_temporary_engine("first", "CPU"))
         await manager.temporary_started.wait()
-        try:
-            with pytest.raises(StorageConflict, match="temporary model operation"):
-                await service.cleanup(
-                    StorageCleanupRequest(
-                        action="delete_converted_model",
-                        model_id="first",
-                    )
+
+        with pytest.raises(StorageConflict, match="temporary model operation"):
+            await service.cleanup(
+                StorageCleanupRequest(
+                    action="delete_converted_model",
+                    model_id="first",
                 )
-            with pytest.raises(StorageConflict, match="temporary model operation"):
-                await service.cleanup(StorageCleanupRequest(action="clear_compiled_cache"))
-        finally:
-            manager.temporary_release.set()
-            await task
+            )
+        with pytest.raises(StorageConflict, match="temporary model operation"):
+            await service.cleanup(StorageCleanupRequest(action="clear_compiled_cache"))
+
+        manager.temporary_release.set()
+        engine, _load_time = await task
+        assert engine.closed is False
+
+        # Construction is complete, but the temporary native engine can still be
+        # generating. The storage lease must remain active until caller-owned close().
+        with pytest.raises(StorageConflict, match="temporary model operation"):
+            await service.cleanup(
+                StorageCleanupRequest(
+                    action="delete_converted_model",
+                    model_id="first",
+                )
+            )
+        with pytest.raises(StorageConflict, match="temporary model operation"):
+            await service.cleanup(StorageCleanupRequest(action="clear_compiled_cache"))
+
+        engine.close()
+        assert engine.closed is True
+        assert service._state._temporary_models == {}
+
+        # close() is idempotent with respect to the guard release.
+        engine.close()
+        assert service._state._temporary_models == {}
+        with service._state.cleanup_scope(model_ids=("first",)):
+            pass
+        with service._state.cleanup_scope(global_cleanup=True):
+            pass
 
     asyncio.run(scenario())
 

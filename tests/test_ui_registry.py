@@ -61,6 +61,7 @@ SERVER_ORDER = (
     "ovllm-ui-polish-extension",
     "ovllm-ui-quality-extension",
     "ovllm-system-doctor-extension",
+    "inferbridge-support-extension",
     "ovllm-header-overflow-extension",
     "ovllm-status-split-extension",
     "ovllm-progress-operation-extension",

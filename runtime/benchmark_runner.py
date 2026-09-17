@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import json
 import re
+import threading
+import time
 from typing import Any
 
 from app.file_locks import path_lock
-from runtime import benchmark_runner_core as _core
+from runtime import benchmark_runner_core as _core, device_check
 from runtime.benchmark_runner_core import *  # noqa: F401,F403 - preserve public API
 
 _SECRET_RE = re.compile(
@@ -16,6 +19,18 @@ _SECRET_RE = re.compile(
     re.IGNORECASE,
 )
 _BENCHMARK_SCHEMA_VERSION = 1
+_MAX_BENCHMARK_MEASURED_TOKEN_BUDGET = 65_536
+_CORE_BENCHMARK_MODEL_DEVICE = _core.benchmark_model_device
+_CORE_RUN_BENCHMARK_SUITE = _core.run_benchmark_suite
+
+
+class BenchmarkWorkLimitError(device_check.DeviceValidationError):
+    """A benchmark request exceeds the local execution-safety budget.
+
+    The benchmark API already maps ``DeviceValidationError`` to a sanitized HTTP 400.
+    Keeping this compatibility error in that family preserves the existing public error
+    boundary without coupling the runtime benchmark layer to FastAPI.
+    """
 
 
 def _safe_error(value: Any, *, limit: int = 500) -> str | None:
@@ -84,19 +99,530 @@ class BenchmarkStore(_core.BenchmarkStore):
         super().append(_sanitize_run(run))
 
 
-# Functions defined in the retained implementation resolve this global at runtime.
+# Functions defined in the retained implementation resolve these globals at runtime.
 _core.BenchmarkStore = BenchmarkStore
 
 
+def _loaded_engine_matches_request(loaded_device: str, requested_device: str) -> bool:
+    """Return whether a loaded engine represents the requested benchmark target."""
+
+    try:
+        loaded = device_check.parse_device_expression(loaded_device)
+        requested = device_check.parse_device_expression(requested_device)
+    except device_check.DeviceValidationError:
+        return False
+    direct = {"CPU", "GPU", "NPU"}
+    if loaded.kind in direct and requested.kind in direct:
+        return loaded.kind == requested.kind
+    return device_check.normalize_device(loaded_device) == device_check.normalize_device(
+        requested_device
+    )
+
+
+async def _await_resilient_stream_waiter(waiter):
+    """Wait for native stream cleanup while retaining repeated cancellation requests."""
+
+    pending_cancellation: asyncio.CancelledError | None = None
+    while True:
+        try:
+            return await asyncio.shield(waiter), pending_cancellation
+        except asyncio.CancelledError as exc:
+            pending_cancellation = pending_cancellation or exc
+
+
+def _defer_engine_close_until_stream_finishes(engine: Any, handle: Any) -> bool:
+    """Keep a timed-out temporary engine alive until its native worker really exits.
+
+    Temporary benchmark engines carry a storage-cleanup lease on ``close()``. If the
+    worker does not acknowledge stop within the normal 30-second handle deadline, an
+    immediate close would release that lease while native generation is still active.
+    Replace close with a no-op and transfer ownership to one daemon cleanup thread that
+    waits for the already-running worker; no new inference work is started here.
+    """
+
+    original_close = getattr(engine, "close", None)
+    if not callable(original_close):
+        return False
+
+    def deferred_close() -> None:
+        return None
+
+    try:
+        engine.close = deferred_close
+    except Exception:
+        return False
+
+    def cleanup() -> None:
+        closed = handle.wait_closed(None)
+        if not closed:
+            return
+        try:
+            original_close()
+        except Exception:
+            pass
+
+    threading.Thread(
+        target=cleanup,
+        name=f"inferbridge-benchmark-cleanup-{getattr(engine, 'model_id', 'model')}",
+        daemon=True,
+    ).start()
+    return True
+
+
+async def _stream_generation_once(
+    engine: Any,
+    prompt: str,
+    params: Any,
+    *,
+    on_first_token=None,
+) -> dict[str, Any]:
+    """Run one temporary-engine stream without closing over an active native worker."""
+
+    loop = asyncio.get_running_loop()
+    started = time.perf_counter()
+    first_token_at: float | None = None
+    pieces: list[str] = []
+    pending_cancellation: asyncio.CancelledError | None = None
+    cleanup_error: RuntimeError | None = None
+    handle = engine.stream(prompt, params)
+
+    try:
+        while True:
+            piece = await loop.run_in_executor(None, handle.next_chunk)
+            if piece is None:
+                break
+            if first_token_at is None and piece:
+                first_token_at = time.perf_counter()
+                if on_first_token is not None:
+                    on_first_token()
+            pieces.append(piece)
+        if handle.error is not None:
+            raise handle.error
+    except asyncio.CancelledError as exc:
+        pending_cancellation = exc
+        raise
+    finally:
+        handle.request_stop()
+        waiter = loop.run_in_executor(None, handle.wait_closed)
+        closed, cleanup_cancellation = await _await_resilient_stream_waiter(waiter)
+        pending_cancellation = pending_cancellation or cleanup_cancellation
+        if not closed:
+            if not _defer_engine_close_until_stream_finishes(engine, handle):
+                # An exotic engine that forbids replacing ``close`` cannot safely be
+                # released while its worker is live. Preserve correctness by waiting for
+                # the worker rather than allowing the caller's finally block to close it.
+                final_waiter = loop.run_in_executor(None, handle.wait_closed, None)
+                _closed, final_cancellation = await _await_resilient_stream_waiter(final_waiter)
+                pending_cancellation = pending_cancellation or final_cancellation
+            cleanup_error = RuntimeError(
+                "Benchmark generation did not stop within 30 seconds; temporary engine "
+                "cleanup was deferred until the native worker exits."
+            )
+        if pending_cancellation is not None:
+            raise pending_cancellation
+        if cleanup_error is not None:
+            raise cleanup_error
+
+    latency_s = time.perf_counter() - started
+    text = "".join(pieces)
+    completion_tokens = await loop.run_in_executor(None, engine.count_tokens, text)
+    ttft_s = None if first_token_at is None else first_token_at - started
+    return {
+        "ttft_s": ttft_s,
+        "latency_s": latency_s,
+        "completion_tokens": completion_tokens,
+        "tokens_sec": (
+            completion_tokens / latency_s if completion_tokens > 0 and latency_s > 0 else None
+        ),
+        "decode_tokens_sec": _core._decode_tokens_sec(
+            completion_tokens,
+            latency_s,
+            ttft_s,
+        ),
+    }
+
+
+# The retained core benchmark function resolves this helper by module global at runtime.
+_core._stream_generation_once = _stream_generation_once
+
+
+async def _stream_loaded_generation_once(
+    manager: Any,
+    engine: Any,
+    prompt: str,
+    params: Any,
+    *,
+    on_first_token=None,
+) -> dict[str, Any]:
+    """Measure a registered engine through the manager's normal generation locks."""
+
+    started = time.perf_counter()
+    first_token_at: float | None = None
+    pieces: list[str] = []
+    stream = manager.stream(engine, prompt, params)
+    try:
+        async for piece in stream:
+            if first_token_at is None and piece:
+                first_token_at = time.perf_counter()
+                if on_first_token is not None:
+                    on_first_token()
+            pieces.append(piece)
+    finally:
+        await stream.aclose()
+
+    latency_s = time.perf_counter() - started
+    text = "".join(pieces)
+    completion_tokens = await asyncio.to_thread(engine.count_tokens, text)
+    ttft_s = None if first_token_at is None else first_token_at - started
+    return {
+        "ttft_s": ttft_s,
+        "latency_s": latency_s,
+        "completion_tokens": completion_tokens,
+        "tokens_sec": (
+            completion_tokens / latency_s if completion_tokens > 0 and latency_s > 0 else None
+        ),
+        "decode_tokens_sec": _core._decode_tokens_sec(
+            completion_tokens,
+            latency_s,
+            ttft_s,
+        ),
+    }
+
+
+async def _benchmark_loaded_model_device(
+    manager: Any,
+    *,
+    run_id: str,
+    model_id: str,
+    device: str,
+    prompt: str,
+    max_tokens: int,
+    runs: int,
+    warmup_runs: int = 0,
+    combination_index: int = 1,
+    combination_total: int = 1,
+):
+    """Benchmark an already-loaded model without constructing a duplicate engine."""
+
+    timestamp = _core._utc_now()
+    engine = manager.engines.get(model_id)
+    cfg = manager.config_for(model_id)
+    prompt_tokens = 0
+    peak_process_ram_mb: float | None = None
+    identity = _core._model_identity(manager, cfg)
+    memory_sampler = _core._ProcessMemorySampler()
+
+    try:
+        if engine is None or cfg is None:
+            return await _CORE_BENCHMARK_MODEL_DEVICE(
+                manager,
+                run_id=run_id,
+                model_id=model_id,
+                device=device,
+                prompt=prompt,
+                max_tokens=max_tokens,
+                runs=runs,
+                warmup_runs=warmup_runs,
+                combination_index=combination_index,
+                combination_total=combination_total,
+            )
+        if "embedding" in str(getattr(cfg, "backend", "")).lower():
+            raise ValueError("Embedding models cannot be benchmarked as generation models.")
+
+        loaded_device = str(manager.devices.get(model_id) or getattr(engine, "device", ""))
+        requested_device = device_check.validate_device_expression(device)
+        if not _loaded_engine_matches_request(loaded_device, requested_device):
+            raise ValueError(
+                f"Model '{model_id}' is already loaded on {loaded_device or 'an unknown target'}. "
+                f"To avoid duplicating model memory, benchmark that target or unload the model "
+                f"before benchmarking on {requested_device}."
+            )
+
+        model_label = getattr(cfg, "name", model_id)
+        prefix = _core._combination_prefix(
+            combination_index,
+            combination_total,
+            model_label,
+            requested_device,
+        )
+        _core._emit_benchmark_progress(manager, f"{prefix} · using loaded engine")
+        memory_sampler.start()
+
+        loop = asyncio.get_running_loop()
+        _core._emit_benchmark_progress(manager, f"{prefix} · preparing prompt")
+        prompt_text, prompt_tokens = await loop.run_in_executor(
+            None,
+            _core._build_benchmark_prompt,
+            engine,
+            prompt,
+            cfg.max_prompt_len,
+        )
+        max_new_tokens = min(
+            int(max_tokens),
+            max(cfg.max_context_len - prompt_tokens - 8, 1),
+        )
+        params = _core.GenParams(
+            max_new_tokens=max_new_tokens,
+            temperature=0.0,
+            top_p=1.0,
+            do_sample=False,
+        )
+
+        for warmup_index in range(max(int(warmup_runs), 0)):
+            _core._emit_benchmark_progress(
+                manager,
+                f"{prefix} · warming up {warmup_index + 1}/{warmup_runs}",
+            )
+            await _stream_loaded_generation_once(manager, engine, prompt_text, params)
+
+        samples: list[dict[str, Any]] = []
+        for run_index in range(max(int(runs), 1)):
+            _core._emit_benchmark_progress(
+                manager,
+                f"{prefix} · prefill · run {run_index + 1}/{runs}",
+            )
+
+            def on_first_token(
+                *,
+                _prefix: str = prefix,
+                _run_index: int = run_index,
+                _runs: int = runs,
+            ) -> None:
+                _core._emit_benchmark_progress(
+                    manager,
+                    f"{_prefix} · generating · run {_run_index + 1}/{_runs}",
+                )
+
+            generation = await _stream_loaded_generation_once(
+                manager,
+                engine,
+                prompt_text,
+                params,
+                on_first_token=on_first_token,
+            )
+            samples.append(_core._sample_payload(run_index + 1, generation))
+
+        _core._emit_benchmark_progress(manager, f"{prefix} · finalizing")
+        peak_process_ram_mb = memory_sampler.stop()
+        aggregate = _core._aggregate_samples(samples)
+        actual_device = _core._reported_actual_device(engine, requested_device)
+        _core._emit_benchmark_progress(manager, f"{prefix} · complete")
+        return _core.BenchmarkResult(
+            run_id=run_id,
+            model_id=model_id,
+            **identity,
+            requested_device=requested_device,
+            actual_device=actual_device,
+            load_time_ms=None,
+            time_to_first_token_ms=aggregate["time_to_first_token_ms"],
+            total_latency_ms=aggregate["total_latency_ms"],
+            prompt_tokens=prompt_tokens,
+            completion_tokens=aggregate["completion_tokens"],
+            tokens_sec=aggregate["tokens_sec"],
+            decode_tokens_sec=aggregate["decode_tokens_sec"],
+            prefill_tokens_sec=None,
+            peak_process_ram_mb=peak_process_ram_mb,
+            success=True,
+            error=None,
+            timestamp=timestamp,
+            runs=max(int(runs), 1),
+            warmup_runs=max(int(warmup_runs), 0),
+            samples=samples,
+            statistics=aggregate["statistics"],
+            stability=aggregate["stability"],
+            synthetic=manager.force_mock,
+        )
+    except Exception as exc:  # noqa: BLE001 - preserve per-combination failure isolation
+        peak_process_ram_mb = peak_process_ram_mb or memory_sampler.stop()
+        _core._emit_benchmark_progress(
+            manager,
+            (
+                f"{_core._combination_prefix(combination_index, combination_total, model_id, device)} "
+                "· failed"
+            ),
+            level="warning",
+        )
+        return _core.BenchmarkResult(
+            run_id=run_id,
+            model_id=model_id,
+            **identity,
+            requested_device=device,
+            actual_device=_core._reported_actual_device(engine, device) if engine else None,
+            load_time_ms=None,
+            time_to_first_token_ms=None,
+            total_latency_ms=None,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=0,
+            tokens_sec=None,
+            decode_tokens_sec=None,
+            prefill_tokens_sec=None,
+            peak_process_ram_mb=peak_process_ram_mb,
+            success=False,
+            error=_safe_error(exc),
+            timestamp=timestamp,
+            runs=max(int(runs), 1),
+            warmup_runs=max(int(warmup_runs), 0),
+            samples=[],
+            statistics={},
+            stability=None,
+            score=-25.0,
+            synthetic=manager.force_mock,
+        )
+    finally:
+        if peak_process_ram_mb is None:
+            memory_sampler.stop()
+
+
 async def benchmark_model_device(*args: Any, **kwargs: Any):
-    result = await _core.benchmark_model_device(*args, **kwargs)
+    manager = args[0] if args else kwargs.get("manager")
+    model_id = kwargs.get("model_id")
+    if manager is not None and model_id in getattr(manager, "engines", {}):
+        result = await _benchmark_loaded_model_device(*args, **kwargs)
+    else:
+        result = await _CORE_BENCHMARK_MODEL_DEVICE(*args, **kwargs)
     if result.error is not None:
         result.error = _safe_error(result.error)
     return result
 
 
+# Make the core suite use the safety wrapper above. The original function is retained in
+# _CORE_BENCHMARK_MODEL_DEVICE so unloaded models continue through the established path.
+_core.benchmark_model_device = benchmark_model_device
+
+
+def score_benchmark_results(
+    results: list[dict[str, Any]],
+    *,
+    mock: bool = False,
+) -> dict[str, Any]:
+    """Score measured dimensions without treating unavailable load time as instant."""
+
+    successes = [row for row in results if row.get("success")]
+    if not successes:
+        for result in results:
+            result["score"] = float(result.get("score") or -25.0)
+        return {
+            "model_id": None,
+            "requested_device": None,
+            "actual_device": None,
+            "score": 0.0,
+            "summary": "No successful benchmark run completed.",
+            "rationale": ["Every requested model/device combination returned an error."],
+            "caveat": _core.BENCHMARK_CAVEAT,
+        }
+
+    max_tps = max(_core._benchmark_speed(row) for row in successes) or 1.0
+    min_ttft = min(_core._latency_for_ttft(row) for row in successes)
+    min_total = min(_core._positive(row.get("total_latency_ms")) for row in successes) or 1.0
+    measured_loads = [
+        value
+        for row in successes
+        if (value := _core._positive_or_none(row.get("load_time_ms"))) is not None and value > 0
+    ]
+    min_load = min(measured_loads) if measured_loads else None
+
+    for result in results:
+        if not result.get("success"):
+            result["score"] = -25.0
+            continue
+
+        components = [
+            (0.50, _core._benchmark_speed(result) / max_tps),
+            (0.30, min_ttft / _core._latency_for_ttft(result)),
+            (
+                0.10,
+                min_total / (_core._positive(result.get("total_latency_ms")) or min_total),
+            ),
+        ]
+        load_ms = _core._positive_or_none(result.get("load_time_ms"))
+        high_load_penalty = 0.0
+        if min_load is not None and load_ms is not None and load_ms > 0:
+            components.append((0.10, min_load / load_ms))
+            if load_ms > 30_000:
+                high_load_penalty = min((load_ms - 30_000) / 90_000, 1.0) * 0.20
+
+        total_weight = sum(weight for weight, _value in components)
+        raw_score = sum(weight * value for weight, value in components) / total_weight
+        result["score"] = round(max(0.0, (raw_score - high_load_penalty) * 100), 2)
+
+    best = max(successes, key=lambda item: float(item.get("score") or 0.0))
+    best_speed = _core._benchmark_speed(best)
+    summary = (
+        "Synthetic mock benchmark completed; rerun on Windows with OpenVINO hardware "
+        "for real performance evidence."
+        if mock
+        else (
+            f"Recommended {best['model_id']} on {best['requested_device']} "
+            "from this measured benchmark run."
+        )
+    )
+    return {
+        "model_id": best["model_id"],
+        "requested_device": best["requested_device"],
+        "actual_device": best.get("actual_device"),
+        "score": best.get("score"),
+        "summary": summary,
+        "rationale": [
+            f"{best_speed:.2f} decode tokens/sec"
+            if best_speed
+            else "Decode throughput was unavailable.",
+            (
+                f"{best['time_to_first_token_ms']:.1f} ms first-token latency"
+                if best.get("time_to_first_token_ms") is not None
+                else "First-token latency was not measurable for this backend."
+            ),
+            (
+                f"{best['load_time_ms']:.1f} ms load time"
+                if best.get("load_time_ms") is not None
+                else "Load time was not measured because the existing loaded engine was reused."
+            ),
+        ],
+        "caveat": _core.BENCHMARK_CAVEAT,
+    }
+
+
+# Core suite functions resolve the scorer by module global at runtime.
+_core.score_benchmark_results = score_benchmark_results
+
+
+def _validate_benchmark_work(
+    *,
+    model_ids: list[Any],
+    devices: list[Any],
+    runs: int,
+    max_tokens: int,
+) -> None:
+    """Reject pathological custom matrices while preserving all built-in presets."""
+
+    model_count = len({str(value).strip() for value in model_ids if str(value).strip()})
+    device_count = len({str(value).strip().upper() for value in devices if str(value).strip()})
+    measured_token_budget = model_count * device_count * max(int(runs), 1) * max(int(max_tokens), 1)
+    if measured_token_budget > _MAX_BENCHMARK_MEASURED_TOKEN_BUDGET:
+        raise BenchmarkWorkLimitError(
+            "Benchmark request exceeds the measured output-token budget "
+            f"({_MAX_BENCHMARK_MEASURED_TOKEN_BUDGET:,} token-units). Reduce models, "
+            "devices, measured runs, or output tokens."
+        )
+
+
 async def run_benchmark_suite(*args: Any, **kwargs: Any) -> dict[str, Any]:
-    return _sanitize_run(await _core.run_benchmark_suite(*args, **kwargs))
+    _validate_benchmark_work(
+        model_ids=list(kwargs.get("model_ids") or []),
+        devices=list(kwargs.get("devices") or []),
+        runs=int(kwargs.get("runs", 1)),
+        max_tokens=int(kwargs.get("max_tokens", 64)),
+    )
+    # Normal runtime/CLI calls route the core global back to this wrapper. Tests and
+    # integrators may replace the core seam deliberately; preserve that seam instead of
+    # pinning the implementation at import time.
+    runner = _core.run_benchmark_suite
+    if runner is run_benchmark_suite:
+        runner = _CORE_RUN_BENCHMARK_SUITE
+    return _sanitize_run(await runner(*args, **kwargs))
+
+
+# Preserve the work budget for retained CLI/service callers that resolve the core global.
+_core.run_benchmark_suite = run_benchmark_suite
 
 
 async def certify_context_depth(*args: Any, **kwargs: Any):

@@ -195,7 +195,9 @@ def test_restart_download_removes_cache_and_incomplete_output(monkeypatch, tmp_p
     assert not Path(manager.catalog[MODEL_ID].model_path).exists()
 
 
-def test_remove_incomplete_files_preserves_reusable_download(monkeypatch, tmp_path) -> None:
+def test_remove_incomplete_files_preserves_download_and_clears_recovery(
+    monkeypatch, tmp_path
+) -> None:
     cache = _prepare_cache(monkeypatch, tmp_path)
     manager = _manager(tmp_path)
     recovery = _prepare_interrupted_conversion(manager, tmp_path)
@@ -211,8 +213,8 @@ def test_remove_incomplete_files_preserves_reusable_download(monkeypatch, tmp_pa
     assert result["status"] == "cleaned"
     assert result["removed_incomplete_output"] is True
     assert cache.is_dir()
-    assert result["recovery"]["downloaded_files"] == "reusable"
-    assert result["recovery"]["conversion_output"] == "missing"
+    assert result["recovery"] is None
+    assert manager.model_recovery(MODEL_ID) is None
 
 
 def test_recovery_routes_use_existing_security_and_stale_state_contract(

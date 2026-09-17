@@ -11,6 +11,7 @@ param(
 $ErrorActionPreference = "Stop"
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Set-Location $Root
+$ReleaseRepository = "Quazmoz/InferBridge"
 if (-not $ArtifactDirectory) { $ArtifactDirectory = Join-Path $Root "artifacts\release-$Version" }
 $ArtifactDirectory = (Resolve-Path $ArtifactDirectory).Path
 
@@ -19,6 +20,24 @@ if ($LASTEXITCODE -ne 0) { throw "Invalid version or channel." }
 & $Python scripts/release_tools.py verify-version-consistency --root $Root --version $Version
 if ($LASTEXITCODE -ne 0) { throw "Version consistency check failed." }
 if (-not [string]::IsNullOrWhiteSpace((git status --porcelain))) { throw "Publishing requires a clean working tree." }
+
+$ExpectedBranch = switch ($Channel) {
+    "stable" { "main" }
+    "beta" { "beta" }
+    "nightly" { "dev" }
+    default { throw "Unsupported release channel: $Channel" }
+}
+$CurrentBranch = (& git branch --show-current).Trim()
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($CurrentBranch)) {
+    throw "Publishing requires an attached release branch. Expected '$ExpectedBranch' for channel '$Channel'."
+}
+if ($CurrentBranch -ne $ExpectedBranch) {
+    throw "Publishing channel '$Channel' requires branch '$ExpectedBranch'; current branch is '$CurrentBranch'. Promote dev -> beta -> main before publishing."
+}
+if ($Channel -eq "stable" -and $AllowUnsigned) {
+    throw "-AllowUnsigned is not permitted for stable publication. Stable releases require verified Authenticode signatures."
+}
+
 $HeadCommit = (& git rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0 -or $HeadCommit -notmatch '^[0-9a-f]{40}$') { throw "Could not resolve the source commit." }
 
@@ -43,7 +62,7 @@ if ($LASTEXITCODE -ne 0) { throw "Model library manifest validation failed." }
 & $Python scripts/verify_release_provenance.py --artifact-directory $ArtifactDirectory --version $Version --channel $Channel --expected-commit $HeadCommit --source-model-manifest $LibraryManifestSource
 if ($LASTEXITCODE -ne 0) { throw "Release provenance validation failed. Rebuild from the current clean commit." }
 $SigningGate = @("scripts/verify_release_signing.py", "--artifact-directory", $ArtifactDirectory, "--version", $Version)
-if ($Channel -eq "stable" -and -not $AllowUnsigned) { $SigningGate += "--require-signed" }
+if ($Channel -eq "stable") { $SigningGate += "--require-signed" }
 & $Python @SigningGate
 if ($LASTEXITCODE -ne 0) {
     throw "Release signatures were not independently verified. Stable releases require signed installer and launcher artifacts."
@@ -51,7 +70,7 @@ if ($LASTEXITCODE -ne 0) {
 
 & git rev-parse --verify --quiet "refs/tags/$Tag" | Out-Null
 if ($LASTEXITCODE -eq 0) { throw "Tag $Tag already exists." }
-$null = cmd /c "gh release view $Tag --repo Quazmoz/openvino-windows-llm >NUL 2>NUL"
+$null = cmd /c "gh release view $Tag --repo $ReleaseRepository >NUL 2>NUL"
 if ($LASTEXITCODE -eq 0) { throw "GitHub release $Tag already exists." }
 
 $Notes = Join-Path $ArtifactDirectory "InferBridge-$Version-release-notes.md"
@@ -68,12 +87,12 @@ if ((git rev-list -n 1 $Tag).Trim() -ne $HeadCommit) { throw "Created tag does n
 git push origin $Tag
 if ($LASTEXITCODE -ne 0) { throw "Tag push failed." }
 
-$Arguments = @("release", "create", $Tag, "--repo", "Quazmoz/openvino-windows-llm", "--verify-tag", "--title", "InferBridge $Version", "--notes-file", $Notes)
+$Arguments = @("release", "create", $Tag, "--repo", $ReleaseRepository, "--verify-tag", "--title", "InferBridge $Version", "--notes-file", $Notes)
 if ($Channel -ne "stable") { $Arguments += "--prerelease" }
 $Arguments += $Upload
 & gh @Arguments
 if ($LASTEXITCODE -ne 0) { throw "GitHub release creation or upload failed." }
-$AssetJson = & gh release view $Tag --repo Quazmoz/openvino-windows-llm --json assets
+$AssetJson = & gh release view $Tag --repo $ReleaseRepository --json assets
 if ($LASTEXITCODE -ne 0) { throw "Published release could not be re-read for artifact verification." }
 $PublishedNames = @((($AssetJson | ConvertFrom-Json).assets) | ForEach-Object { $_.name })
 foreach ($Name in $Expected) {

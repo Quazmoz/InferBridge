@@ -44,7 +44,7 @@ def test_wizard_has_accessible_stages_and_real_connection_configuration():
     assert "aria-live" in rendered
     assert "role','progressbar" in rendered
     assert "opener.hidden=false" in rendered
-    assert "https://" not in rendered
+    assert "https://consultant.quinnfavo.com/apps/inferbridge#feedback" in rendered
 
 
 def test_wizard_auto_opens_once_and_keeps_manual_onboarding_access():

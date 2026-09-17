@@ -436,7 +436,11 @@ def export_model(
     try:
         _run_model_export_command(command, progress_emitter=progress)
     except BaseException as exc:
-        progress.emit("error", f"Conversion failed: {exc}")
+        # Third-party exceptions can contain multi-line command output longer than the
+        # protocol's 500-character message limit. Keep that diagnostic from masking the
+        # original conversion failure with a progress-schema error.
+        detail = " ".join(str(exc).split())
+        progress.emit("error", f"Conversion failed: {detail}"[:500])
         raise
 
     print(f"Saving OpenVINO IR for {source_model}", file=sys.stderr, flush=True)
