@@ -36,12 +36,11 @@ def test_dependabot_targets_dev_with_conservative_dependency_domains() -> None:
     assert '"ruff"' in config
 
 
-def test_ci_pr_filters_cover_main_and_dev_without_expanding_beta() -> None:
+def test_ci_pr_filters_cover_all_promotion_branches() -> None:
     ci = _read(".github/workflows/ci.yml")
 
     assert 'push:\n    branches: ["main", "dev", "beta"]' in ci
-    assert 'pull_request:\n    branches: ["main", "dev"]' in ci
-    assert 'pull_request:\n    branches: ["main", "dev", "beta"]' not in ci
+    assert 'pull_request:\n    branches: ["main", "dev", "beta"]' in ci
 
 
 def test_ci_distinguishes_qualified_baseline_from_latest_canary() -> None:
@@ -57,11 +56,11 @@ def test_ci_distinguishes_qualified_baseline_from_latest_canary() -> None:
     assert "github.base_ref == 'dev'" in ci
 
 
-def test_windows_lifecycle_covers_dev_dependency_prs_with_release_pins() -> None:
+def test_windows_lifecycle_covers_promotion_prs_with_release_pins() -> None:
     lifecycle = _read(".github/workflows/model-lifecycle-windows.yml")
 
     assert 'push:\n    branches: ["main", "dev", "beta"]' in lifecycle
-    assert 'pull_request:\n    branches: ["main", "dev"]' in lifecycle
+    assert 'pull_request:\n    branches: ["main", "dev", "beta"]' in lifecycle
     assert '- "pyproject.toml"' in lifecycle
     assert '- "requirements/release.txt"' in lifecycle
     assert "requirements/release.txt\n            pyproject.toml" in lifecycle
