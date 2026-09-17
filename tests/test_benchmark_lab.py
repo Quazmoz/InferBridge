@@ -87,6 +87,22 @@ def test_benchmark_lab_history_round_trip_and_mock_evidence_is_not_advisor_evide
     assert listed[0]["synthetic"] is True
 
 
+def test_benchmark_lab_rejects_pathological_work_budget_before_execution(tmp_path):
+    with _client(tmp_path) as client:
+        response = client.post(
+            "/v1/benchmarks/run",
+            json={
+                "models": MODELS,
+                "devices": ["CPU", "GPU", "NPU", "AUTO"],
+                "runs": 10,
+                "max_tokens": 4096,
+            },
+        )
+
+    assert response.status_code == 400
+    assert "measured output-token budget" in response.json()["detail"]
+
+
 def test_decode_throughput_excludes_ttft_and_first_output_token():
     assert _decode_tokens_sec(5, 1.0, 0.2) == 5.0
     assert _decode_tokens_sec(1, 1.0, 0.2) is None
