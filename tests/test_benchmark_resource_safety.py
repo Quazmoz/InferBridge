@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 import asyncio
+import threading
+
+import pytest
 
 from app.config import BASE_DIR, Settings
 from app.model_manager import ModelManager
-from runtime.benchmark_runner import benchmark_model_device, score_benchmark_results
-from runtime.openvino_engine import MockEngine
+from runtime.benchmark_runner import (
+    _stream_generation_once,
+    _validate_benchmark_work,
+    benchmark_model_device,
+    score_benchmark_results,
+)
+from runtime.openvino_engine import GenParams, MockEngine
 
 MODEL_ID = "tinyllama-1.1b-chat-fp16"
 
@@ -17,6 +25,41 @@ class _TrackingMockEngine(MockEngine):
 
     def close(self) -> None:
         self.closed = True
+
+
+class _TimeoutHandle:
+    def __init__(self) -> None:
+        self.error = None
+        self.done = threading.Event()
+        self.stop_requested = False
+
+    def next_chunk(self):
+        return None
+
+    def request_stop(self) -> None:
+        self.stop_requested = True
+
+    def wait_closed(self, timeout: float | None = 30.0) -> bool:
+        if timeout is None:
+            return self.done.wait(2.0)
+        return False
+
+
+class _TimeoutEngine:
+    model_id = MODEL_ID
+
+    def __init__(self) -> None:
+        self.handle = _TimeoutHandle()
+        self.closed = threading.Event()
+
+    def stream(self, _prompt, _params):
+        return self.handle
+
+    def count_tokens(self, _text: str) -> int:
+        return 1
+
+    def close(self) -> None:
+        self.closed.set()
 
 
 def _manager(tmp_path) -> ModelManager:
@@ -114,3 +157,43 @@ def test_missing_load_time_is_excluded_from_balanced_score_instead_of_treated_as
 
     assert results[0]["score"] == 100.0
     assert results[1]["score"] == 100.0
+
+
+def test_temporary_stream_timeout_defers_close_until_native_worker_exits():
+    engine = _TimeoutEngine()
+    params = GenParams(max_new_tokens=1, temperature=0.0, top_p=1.0, do_sample=False)
+
+    async def scenario() -> None:
+        with pytest.raises(RuntimeError, match="cleanup was deferred"):
+            await _stream_generation_once(engine, "prompt", params)
+        assert engine.handle.stop_requested is True
+        assert engine.closed.is_set() is False
+
+        # The retained benchmark caller will close in its own finally block. Once the
+        # stream helper transfers ownership, that close must remain a no-op until the
+        # native worker actually reports completion.
+        engine.close()
+        assert engine.closed.is_set() is False
+
+    asyncio.run(scenario())
+    engine.handle.done.set()
+    assert engine.closed.wait(1.0) is True
+
+
+def test_benchmark_work_budget_allows_builtin_thorough_matrix():
+    _validate_benchmark_work(
+        model_ids=[f"model-{index}" for index in range(8)],
+        devices=["CPU", "GPU", "NPU", "AUTO"],
+        runs=8,
+        max_tokens=128,
+    )
+
+
+def test_benchmark_work_budget_rejects_pathological_custom_matrix():
+    with pytest.raises(ValueError, match="measured output-token budget"):
+        _validate_benchmark_work(
+            model_ids=[f"model-{index}" for index in range(8)],
+            devices=["CPU", "GPU", "NPU", "AUTO"],
+            runs=10,
+            max_tokens=4096,
+        )
