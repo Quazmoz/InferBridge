@@ -6,6 +6,11 @@ def _publisher_script() -> str:
     return (root / "scripts" / "publish_release.ps1").read_text(encoding="utf-8")
 
 
+def _workflow(path: str) -> str:
+    root = Path(__file__).resolve().parents[1]
+    return (root / ".github" / "workflows" / path).read_text(encoding="utf-8")
+
+
 def test_publisher_enforces_channel_branch_mapping():
     script = _publisher_script()
 
@@ -30,3 +35,11 @@ def test_publisher_never_allows_unsigned_stable_publication():
     assert 'if ($Channel -eq "stable" -and $AllowUnsigned)' in script
     assert "-AllowUnsigned is not permitted for stable publication" in script
     assert 'if ($Channel -eq "stable") { $SigningGate += "--require-signed" }' in script
+
+
+def test_beta_promotion_pull_requests_run_release_and_lifecycle_ci():
+    for workflow_name in ("ci.yml", "model-lifecycle-windows.yml"):
+        workflow = _workflow(workflow_name)
+        pull_request_section = workflow.split("  pull_request:", 1)[1].split("\n\n", 1)[0]
+
+        assert 'branches: ["main", "dev", "beta"]' in pull_request_section
