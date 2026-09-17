@@ -6,6 +6,7 @@ import asyncio
 import copy
 import json
 import re
+import threading
 import time
 from typing import Any
 
@@ -18,7 +19,9 @@ _SECRET_RE = re.compile(
     re.IGNORECASE,
 )
 _BENCHMARK_SCHEMA_VERSION = 1
+_MAX_BENCHMARK_MEASURED_TOKEN_BUDGET = 65_536
 _CORE_BENCHMARK_MODEL_DEVICE = _core.benchmark_model_device
+_CORE_RUN_BENCHMARK_SUITE = _core.run_benchmark_suite
 
 
 def _safe_error(value: Any, *, limit: int = 500) -> str | None:
@@ -105,6 +108,135 @@ def _loaded_engine_matches_request(loaded_device: str, requested_device: str) ->
     return device_check.normalize_device(loaded_device) == device_check.normalize_device(
         requested_device
     )
+
+
+async def _await_resilient_stream_waiter(waiter):
+    """Wait for native stream cleanup while retaining repeated cancellation requests."""
+
+    pending_cancellation: asyncio.CancelledError | None = None
+    while True:
+        try:
+            return await asyncio.shield(waiter), pending_cancellation
+        except asyncio.CancelledError as exc:
+            pending_cancellation = pending_cancellation or exc
+
+
+def _defer_engine_close_until_stream_finishes(engine: Any, handle: Any) -> bool:
+    """Keep a timed-out temporary engine alive until its native worker really exits.
+
+    Temporary benchmark engines carry a storage-cleanup lease on ``close()``. If the
+    worker does not acknowledge stop within the normal 30-second handle deadline, an
+    immediate close would release that lease while native generation is still active.
+    Replace close with a no-op and transfer ownership to one daemon cleanup thread that
+    waits for the already-running worker; no new inference work is started here.
+    """
+
+    original_close = getattr(engine, "close", None)
+    if not callable(original_close):
+        return False
+
+    try:
+        engine.close = lambda: None
+    except Exception:
+        return False
+
+    def cleanup() -> None:
+        try:
+            closed = handle.wait_closed(None)
+            if not closed:
+                return
+            try:
+                original_close()
+            except Exception:
+                pass
+        finally:
+            # The worker/engine references are intentionally owned by this closure until
+            # the native request ends, then become collectible with the thread itself.
+            pass
+
+    threading.Thread(
+        target=cleanup,
+        name=f"inferbridge-benchmark-cleanup-{getattr(engine, 'model_id', 'model')}",
+        daemon=True,
+    ).start()
+    return True
+
+
+async def _stream_generation_once(
+    engine: Any,
+    prompt: str,
+    params: Any,
+    *,
+    on_first_token=None,
+) -> dict[str, Any]:
+    """Run one temporary-engine stream without closing over an active native worker."""
+
+    loop = asyncio.get_running_loop()
+    started = time.perf_counter()
+    first_token_at: float | None = None
+    pieces: list[str] = []
+    pending_cancellation: asyncio.CancelledError | None = None
+    cleanup_error: RuntimeError | None = None
+    handle = engine.stream(prompt, params)
+
+    try:
+        while True:
+            piece = await loop.run_in_executor(None, handle.next_chunk)
+            if piece is None:
+                break
+            if first_token_at is None and piece:
+                first_token_at = time.perf_counter()
+                if on_first_token is not None:
+                    on_first_token()
+            pieces.append(piece)
+        if handle.error is not None:
+            raise handle.error
+    except asyncio.CancelledError as exc:
+        pending_cancellation = exc
+        raise
+    finally:
+        handle.request_stop()
+        waiter = loop.run_in_executor(None, handle.wait_closed)
+        closed, cleanup_cancellation = await _await_resilient_stream_waiter(waiter)
+        pending_cancellation = pending_cancellation or cleanup_cancellation
+        if not closed:
+            if not _defer_engine_close_until_stream_finishes(engine, handle):
+                # An exotic engine that forbids replacing ``close`` cannot safely be
+                # released while its worker is live. Preserve correctness by waiting for
+                # the worker rather than allowing the caller's finally block to close it.
+                final_waiter = loop.run_in_executor(None, handle.wait_closed, None)
+                _closed, final_cancellation = await _await_resilient_stream_waiter(final_waiter)
+                pending_cancellation = pending_cancellation or final_cancellation
+            cleanup_error = RuntimeError(
+                "Benchmark generation did not stop within 30 seconds; temporary engine "
+                "cleanup was deferred until the native worker exits."
+            )
+        if pending_cancellation is not None:
+            raise pending_cancellation
+        if cleanup_error is not None:
+            raise cleanup_error
+
+    latency_s = time.perf_counter() - started
+    text = "".join(pieces)
+    completion_tokens = await loop.run_in_executor(None, engine.count_tokens, text)
+    ttft_s = None if first_token_at is None else first_token_at - started
+    return {
+        "ttft_s": ttft_s,
+        "latency_s": latency_s,
+        "completion_tokens": completion_tokens,
+        "tokens_sec": (
+            completion_tokens / latency_s if completion_tokens > 0 and latency_s > 0 else None
+        ),
+        "decode_tokens_sec": _core._decode_tokens_sec(
+            completion_tokens,
+            latency_s,
+            ttft_s,
+        ),
+    }
+
+
+# The retained core benchmark function resolves this helper by module global at runtime.
+_core._stream_generation_once = _stream_generation_once
 
 
 async def _stream_loaded_generation_once(
@@ -446,8 +578,40 @@ def score_benchmark_results(
 _core.score_benchmark_results = score_benchmark_results
 
 
+def _validate_benchmark_work(
+    *,
+    model_ids: list[Any],
+    devices: list[Any],
+    runs: int,
+    max_tokens: int,
+) -> None:
+    """Reject pathological custom matrices while preserving all built-in presets."""
+
+    model_count = len({str(value).strip() for value in model_ids if str(value).strip()})
+    device_count = len({str(value).strip().upper() for value in devices if str(value).strip()})
+    measured_token_budget = (
+        model_count * device_count * max(int(runs), 1) * max(int(max_tokens), 1)
+    )
+    if measured_token_budget > _MAX_BENCHMARK_MEASURED_TOKEN_BUDGET:
+        raise ValueError(
+            "Benchmark request exceeds the measured output-token budget "
+            f"({_MAX_BENCHMARK_MEASURED_TOKEN_BUDGET:,} token-units). Reduce models, "
+            "devices, measured runs, or output tokens."
+        )
+
+
 async def run_benchmark_suite(*args: Any, **kwargs: Any) -> dict[str, Any]:
-    return _sanitize_run(await _core.run_benchmark_suite(*args, **kwargs))
+    _validate_benchmark_work(
+        model_ids=list(kwargs.get("model_ids") or []),
+        devices=list(kwargs.get("devices") or []),
+        runs=int(kwargs.get("runs", 1)),
+        max_tokens=int(kwargs.get("max_tokens", 64)),
+    )
+    return _sanitize_run(await _CORE_RUN_BENCHMARK_SUITE(*args, **kwargs))
+
+
+# Preserve the work budget for retained CLI/service callers that resolve the core global.
+_core.run_benchmark_suite = run_benchmark_suite
 
 
 async def certify_context_depth(*args: Any, **kwargs: Any):
