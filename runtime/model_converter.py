@@ -173,6 +173,11 @@ class ConsoleLineWriter(io.TextIOBase):
     def writable(self) -> bool:
         return True
 
+    def isatty(self) -> bool:
+        # Hugging Face auto-disables download bars on non-TTY streams. These
+        # redraws feed the preparation watchdog, even in the windowed bundle.
+        return True
+
     def write(self, text: str) -> int:
         chunk = str(text or "")
         lines, self._pending = _split_console_lines(self._pending + chunk)
@@ -323,6 +328,8 @@ def _run_streaming_command(
     environment.setdefault("PYTHONUNBUFFERED", "1")
     environment.setdefault("PYTHONIOENCODING", "utf-8")
     environment.setdefault("COLUMNS", "120")
+    # Hugging Face supports line-oriented progress on captured non-TTY output.
+    environment["TQDM_POSITION"] = "-1"
 
     process = subprocess.Popen(
         command,
