@@ -39,7 +39,7 @@ on:
       - "tests/test_storage_root_safety.py"
       - ".github/workflows/model-lifecycle-windows.yml"
   pull_request:
-    branches: ["main", "dev"]
+    branches: ["main", "dev", "beta"]
     paths:
       - "pyproject.toml"
       - "requirements/release.txt"
