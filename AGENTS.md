@@ -71,8 +71,27 @@ Rules:
 - Mark deliberate simplifications that cut a real corner with a known ceiling (global lock, O(n²) scan, naive heuristic) with a `ponytail:` comment naming the ceiling and upgrade path.
 
 Not lazy about: understanding the problem (read it fully and trace the real flow before picking a rung, a small diff you don't understand is just laziness dressed up as efficiency), input validation at trust boundaries, error handling that prevents data loss, security, accessibility, the calibration real hardware needs (the platform is never the spec ideal, a clock drifts, a sensor reads off), anything explicitly requested. Lazy code without its check is unfinished: non-trivial logic leaves ONE runnable check behind, the smallest thing that fails if the logic breaks (an assert-based demo/self-check or one small test file; no frameworks, no fixtures). Trivial one-liners need no test.
+
+> **Ponytail + Graft precedence.** Ponytail governs how much code to write,
+> never whether to keep a safeguard. Repository-specific instructions win over
+> Ponytail defaults. No Ponytail rule authorizes weakening security,
+> trust-boundary validation, error handling that prevents data loss,
+> accessibility, or anything explicitly requested. Before writing new code,
+> answer ladder rung 2 by querying this repository's locked Graft launcher.
 <!-- ponytail:end -->
 
 ## Tool precedence
 
 Ponytail governs how much code to write, never whether to keep a safeguard. Repo-specific rules win. For Ponytail's second ladder rung, use Graft's repository graph to answer whether a helper or pattern already exists.
+
+<!-- ponytail-graft-local:start -->
+## Repository-local agent tools
+
+This repository pins Ponytail and Graft under
+`.agent-tools/ponytail-graft/`. Run every Graft command as
+`node .agent-tools/ponytail-graft/bin/graft.cjs ...`; any bare `graft ...`
+example in generated Graft guidance is shorthand for that repository-local
+launcher. Never substitute a global `graft` or an unpinned `npx` invocation.
+Ponytail governs implementation economy; Graft supplies repository evidence,
+especially for Ponytail ladder rung 2 (reuse what already exists).
+<!-- ponytail-graft-local:end -->
