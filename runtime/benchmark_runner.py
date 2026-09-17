@@ -587,9 +587,7 @@ def _validate_benchmark_work(
 
     model_count = len({str(value).strip() for value in model_ids if str(value).strip()})
     device_count = len({str(value).strip().upper() for value in devices if str(value).strip()})
-    measured_token_budget = (
-        model_count * device_count * max(int(runs), 1) * max(int(max_tokens), 1)
-    )
+    measured_token_budget = model_count * device_count * max(int(runs), 1) * max(int(max_tokens), 1)
     if measured_token_budget > _MAX_BENCHMARK_MEASURED_TOKEN_BUDGET:
         raise ValueError(
             "Benchmark request exceeds the measured output-token budget "
