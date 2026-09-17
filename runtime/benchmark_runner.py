@@ -24,6 +24,15 @@ _CORE_BENCHMARK_MODEL_DEVICE = _core.benchmark_model_device
 _CORE_RUN_BENCHMARK_SUITE = _core.run_benchmark_suite
 
 
+class BenchmarkWorkLimitError(device_check.DeviceValidationError):
+    """A benchmark request exceeds the local execution-safety budget.
+
+    The benchmark API already maps ``DeviceValidationError`` to a sanitized HTTP 400.
+    Keeping this compatibility error in that family preserves the existing public error
+    boundary without coupling the runtime benchmark layer to FastAPI.
+    """
+
+
 def _safe_error(value: Any, *, limit: int = 500) -> str | None:
     if value in (None, ""):
         return None
@@ -589,7 +598,7 @@ def _validate_benchmark_work(
     device_count = len({str(value).strip().upper() for value in devices if str(value).strip()})
     measured_token_budget = model_count * device_count * max(int(runs), 1) * max(int(max_tokens), 1)
     if measured_token_budget > _MAX_BENCHMARK_MEASURED_TOKEN_BUDGET:
-        raise ValueError(
+        raise BenchmarkWorkLimitError(
             "Benchmark request exceeds the measured output-token budget "
             f"({_MAX_BENCHMARK_MEASURED_TOKEN_BUDGET:,} token-units). Reduce models, "
             "devices, measured runs, or output tokens."
@@ -603,7 +612,13 @@ async def run_benchmark_suite(*args: Any, **kwargs: Any) -> dict[str, Any]:
         runs=int(kwargs.get("runs", 1)),
         max_tokens=int(kwargs.get("max_tokens", 64)),
     )
-    return _sanitize_run(await _CORE_RUN_BENCHMARK_SUITE(*args, **kwargs))
+    # Normal runtime/CLI calls route the core global back to this wrapper. Tests and
+    # integrators may replace the core seam deliberately; preserve that seam instead of
+    # pinning the implementation at import time.
+    runner = _core.run_benchmark_suite
+    if runner is run_benchmark_suite:
+        runner = _CORE_RUN_BENCHMARK_SUITE
+    return _sanitize_run(await runner(*args, **kwargs))
 
 
 # Preserve the work budget for retained CLI/service callers that resolve the core global.
