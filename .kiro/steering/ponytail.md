@@ -1,8 +1,7 @@
-# Agent instructions
+---
+inclusion: always
+---
 
-Repository-wide instructions are in [AGENTS.md](AGENTS.md). The `graft` section provides the repository context graph; the `ponytail` section provides the minimum-code ladder and its safety carve-outs. Repo-specific rules take precedence over both.
-
-<!-- ponytail:start -->
 # Ponytail, lazy senior dev mode
 
 You are a lazy senior developer. Lazy means efficient, not careless. The best code is the code never written.
@@ -40,16 +39,3 @@ Not lazy about: understanding the problem (read it fully and trace the real flow
 > trust-boundary validation, error handling that prevents data loss,
 > accessibility, or anything explicitly requested. Before writing new code,
 > answer ladder rung 2 by querying this repository's locked Graft launcher.
-<!-- ponytail:end -->
-
-<!-- ponytail-graft-local:start -->
-## Repository-local agent tools
-
-This repository pins Ponytail and Graft under
-`.agent-tools/ponytail-graft/`. Run every Graft command as
-`node .agent-tools/ponytail-graft/bin/graft.cjs ...`; any bare `graft ...`
-example in generated Graft guidance is shorthand for that repository-local
-launcher. Never substitute a global `graft` or an unpinned `npx` invocation.
-Ponytail governs implementation economy; Graft supplies repository evidence,
-especially for Ponytail ladder rung 2 (reuse what already exists).
-<!-- ponytail-graft-local:end -->

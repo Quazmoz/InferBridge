@@ -39,6 +39,16 @@
             "timeout": 15000
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.agent-tools/ponytail-graft/bin/ponytail-hook.cjs\" track",
+            "timeout": 5,
+            "statusMessage": "Tracking ponytail mode..."
+          }
+        ]
       }
     ],
     "SessionStart": [
@@ -50,6 +60,17 @@
             "timeout": 8000
           }
         ]
+      },
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.agent-tools/ponytail-graft/bin/ponytail-hook.cjs\" activate",
+            "timeout": 5,
+            "statusMessage": "Loading ponytail mode..."
+          }
+        ]
       }
     ],
     "Stop": [
@@ -59,6 +80,18 @@
             "type": "command",
             "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/graft-hooks.cjs\" stop",
             "timeout": 8000
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.agent-tools/ponytail-graft/bin/ponytail-hook.cjs\" subagent",
+            "timeout": 5,
+            "statusMessage": "Loading ponytail mode..."
           }
         ]
       }
