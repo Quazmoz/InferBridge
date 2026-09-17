@@ -24,7 +24,7 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from functools import lru_cache
+from functools import lru_cache, partial
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
@@ -261,11 +261,18 @@ def _build_normalized_chat_prompt(engine: BaseEngine, dict_messages, max_prompt_
     )
 
 
-async def _build_prompt_off_thread(builder, *args):
-    """Run tokenizer/image prompt work without blocking the event loop."""
+async def _build_prompt_off_thread(manager, builder, engine, *args):
+    """Build with the current engine, retaining its lease until tokenizer work exits."""
+
+    from app.engine_handoff_safety import current_engine_lease
 
     try:
-        return await asyncio.to_thread(builder, *args)
+        async with current_engine_lease(manager, engine) as active_engine:
+            future = asyncio.get_running_loop().run_in_executor(None, builder, active_engine, *args)
+            result, cancellation = await manager._await_resilient_future(future)
+            if cancellation is not None:
+                raise cancellation
+            return result
     except multimodal.VisionCapacityError as exc:
         raise HTTPException(
             status_code=503,
@@ -1074,6 +1081,7 @@ def create_app(settings: Settings) -> FastAPI:
 
         use_tools = bool(request.tools) and request.tool_choice != "none"
         normalized_messages, prompt, prompt_tokens = await _build_prompt_off_thread(
+            manager,
             _normalize_and_build_chat_prompt,
             engine,
             request.messages,
@@ -1148,6 +1156,7 @@ def create_app(settings: Settings) -> FastAPI:
                         {"role": "user", "content": tools.get_retry_prompt()},
                     ]
                     current_prompt, current_prompt_tokens = await _build_prompt_off_thread(
+                        manager,
                         _build_normalized_chat_prompt,
                         engine,
                         retry_messages,
@@ -1388,7 +1397,7 @@ def create_app(settings: Settings) -> FastAPI:
         dependencies=auth,
         resolve_engine=lambda model_id: _resolve_or_400(manager, model_id),
         validate_generation_request=_validate_generation_request,
-        build_prompt_off_thread=_build_prompt_off_thread,
+        build_prompt_off_thread=partial(_build_prompt_off_thread, manager),
         params_for=_params_for,
         record_key_metrics=record_key_metrics,
         request_id_var=request_id_var,

@@ -233,10 +233,11 @@ class Validator:
             entries = data.get("models", {}).get("available", [])
             entry = next((item for item in entries if item.get("id") == model), None)
             require(entry is not None, f"{model} missing from system status")
-            if entry.get("is_loaded"):
-                return f"loaded on {entry.get('device') or 'unknown'}"
             if entry.get("status") == "error" or entry.get("error"):
                 raise ValidationError(entry.get("error") or "Model load failed")
+            target_matches = not device or str(entry.get("device") or "").upper() == device.upper()
+            if entry.get("is_loaded") and not entry.get("is_loading") and target_matches:
+                return f"loaded on {entry.get('device') or 'unknown'}"
             time.sleep(1)
         raise ValidationError(f"Timed out loading {model}")
 
