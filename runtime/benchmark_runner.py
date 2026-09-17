@@ -135,23 +135,21 @@ def _defer_engine_close_until_stream_finishes(engine: Any, handle: Any) -> bool:
     if not callable(original_close):
         return False
 
+    def deferred_close() -> None:
+        return None
+
     try:
-        engine.close = lambda: None
+        engine.close = deferred_close
     except Exception:
         return False
 
     def cleanup() -> None:
+        closed = handle.wait_closed(None)
+        if not closed:
+            return
         try:
-            closed = handle.wait_closed(None)
-            if not closed:
-                return
-            try:
-                original_close()
-            except Exception:
-                pass
-        finally:
-            # The worker/engine references are intentionally owned by this closure until
-            # the native request ends, then become collectible with the thread itself.
+            original_close()
+        except Exception:
             pass
 
     threading.Thread(
