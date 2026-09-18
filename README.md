@@ -8,7 +8,9 @@ OpenVINO GenAI remains the inference runtime. InferBridge does not replace OpenV
 
 ## Video walkthrough
 
-[Watch the InferBridge walkthrough](https://youtu.be/rya6rJhkQrw)
+[![Run Local LLMs on Intel NPU with OpenVINO](https://img.youtube.com/vi/rya6rJhkQrw/0.jpg)](https://www.youtube.com/watch?v=rya6rJhkQrw)
+
+**[Run Local LLMs on Intel NPU with OpenVINO](https://www.youtube.com/watch?v=rya6rJhkQrw)** — a practical walkthrough of local inference on Intel hardware and the Windows AI workflow that became InferBridge.
 
 ## Project and release status
 
