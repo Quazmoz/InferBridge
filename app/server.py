@@ -261,11 +261,19 @@ def _build_normalized_chat_prompt(engine: BaseEngine, dict_messages, max_prompt_
     )
 
 
-async def _build_prompt_off_thread(builder, *args):
+async def _build_prompt_off_thread(builder, engine, *args, manager):
     """Run tokenizer/image prompt work without blocking the event loop."""
 
+    from app.engine_handoff_safety import current_engine_lease
+
     try:
-        return await asyncio.to_thread(builder, *args)
+        async with current_engine_lease(manager, engine) as active_engine:
+            worker = asyncio.create_task(asyncio.to_thread(builder, active_engine, *args))
+            result, cancellation = await manager._await_resilient_future(worker)
+            if cancellation is not None:
+                multimodal.discard_prompt_context(result[-2])
+                raise cancellation
+            return result
     except multimodal.VisionCapacityError as exc:
         raise HTTPException(
             status_code=503,
@@ -1081,6 +1089,7 @@ def create_app(settings: Settings) -> FastAPI:
             request.tools,
             request.tool_choice,
             use_tools,
+            manager=manager,
         )
         try:
             params = _params_for(
@@ -1152,6 +1161,7 @@ def create_app(settings: Settings) -> FastAPI:
                         engine,
                         retry_messages,
                         max_prompt_len,
+                        manager=manager,
                     )
                     normalized_messages = retry_messages
                     params = _params_for(

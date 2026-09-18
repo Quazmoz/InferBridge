@@ -30,6 +30,13 @@ def test_benchmark_lab_runs_in_mock_mode_and_keeps_legacy_panel_hidden(
     # styled label, so drive it the way a user does rather than checking the input.
     page.locator('label.benchmark-preset:has(input[value="quick"])').click()
     expect(page.locator('input[name="benchmark-preset"][value="quick"]')).to_be_checked()
+    # Default selections include every detected device on the local machine.
+    while page.locator(
+        '[data-benchmark-device]:checked:not([data-benchmark-device="CPU"])'
+    ).count():
+        page.locator(
+            '[data-benchmark-device]:checked:not([data-benchmark-device="CPU"])'
+        ).first.locator("..").click()
     page.locator("#benchmark-run-lab-btn").click()
 
     expect(page.locator(".benchmark-progress")).to_be_visible()

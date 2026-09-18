@@ -254,6 +254,7 @@ def install_responses_api(
                     engine,
                     retry_messages,
                     max_prompt_len,
+                    manager=manager,
                 )
                 multimodal.discard_prompt_context(current_prompt)
                 current_prompt = new_prompt
@@ -619,6 +620,7 @@ def install_responses_api(
             response_tools,
             tool_choice,
             use_tools,
+            manager=manager,
         )
         try:
             params = params_for(

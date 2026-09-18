@@ -371,7 +371,7 @@ print(json.dumps(versions))
         "|---|---:|---:|---:|---:|---:|---:|---:|---:|---|"
     )
     foreach ($result in $results) {
-        $context = $result.context_depth
+        $context = if ($result.Contains("context_depth")) { $result.context_depth } else { $null }
         $contextRequested = if ($context) { $context.requested_context } else { "-" }
         $promptTokens = if ($context) { $context.prompt_tokens } else { "-" }
         $tokensGenerated = if ($context) { $context.tokens_generated } else { "-" }

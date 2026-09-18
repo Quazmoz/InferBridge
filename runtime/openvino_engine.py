@@ -336,6 +336,8 @@ class OpenVINOEngine(BaseEngine):
 
     def _build_config(self, params: GenParams):
         cfg = self._ov.GenerationConfig()
+        # Prompts already contain the model's chat template before token budgeting.
+        cfg.apply_chat_template = False
         cfg.max_new_tokens = int(params.max_new_tokens)
         if params.do_sample and params.temperature and params.temperature > 0:
             cfg.do_sample = True

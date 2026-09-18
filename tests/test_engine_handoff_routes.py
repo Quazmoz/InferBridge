@@ -6,6 +6,7 @@ from app.engine_handoff_routes import (
     register_engine_handoff_handlers,
 )
 from app.engine_handoff_safety import ModelBusyError
+from app.model_manager_core import ModelNotLoaded
 
 
 def test_busy_model_error_is_returned_as_http_conflict() -> None:
@@ -31,3 +32,16 @@ def test_openvino_app_registration_is_automatic_and_idempotent() -> None:
 
     assert app.exception_handlers[ModelBusyError]
     assert app.state.engine_handoff_handler_registered is True
+
+
+def test_unload_during_prompt_preparation_returns_conflict() -> None:
+    app = FastAPI()
+    register_engine_handoff_handlers(app)
+
+    @app.get("/prompt")
+    async def prompt():
+        raise ModelNotLoaded("Model is no longer loaded")
+
+    with TestClient(app) as client:
+        response = client.get("/prompt")
+    assert response.status_code == 409

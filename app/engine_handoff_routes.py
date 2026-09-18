@@ -17,10 +17,13 @@ _INSTALL_FLAG = "_ovllm_engine_handoff_routes_installed"
 def register_engine_handoff_handlers(app: FastAPI) -> None:
     """Return a recoverable conflict when an unload loses a lock race."""
 
+    from app.model_manager_core import ModelNotLoaded
+
     if getattr(app.state, "engine_handoff_handler_registered", False):
         return
 
     @app.exception_handler(ModelBusyError)
+    @app.exception_handler(ModelNotLoaded)
     async def model_busy_error(_request: Request, exc: ModelBusyError) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": str(exc)[:300]})
 

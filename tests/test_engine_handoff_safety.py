@@ -1,4 +1,5 @@
 import asyncio
+import threading
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
@@ -7,6 +8,7 @@ import pytest
 from app.engine_handoff_safety import install_engine_handoff_safety
 from app.model_manager import ModelManager
 from app.model_manager_core import ModelNotLoaded
+from app.server import _build_prompt_off_thread
 
 install_engine_handoff_safety()
 
@@ -50,6 +52,8 @@ class FakeEngine:
 
 
 class FakeManager:
+    _await_resilient_future = staticmethod(ModelManager._await_resilient_future)
+
     def __init__(self, engine: FakeEngine | None, *, managed: bool = True):
         self.engines = {engine.model_id: engine} if engine is not None else {}
         self.catalog = {"demo": SimpleNamespace(name="Demo")} if managed else {}
@@ -107,6 +111,58 @@ def test_queued_generation_rebinds_to_replacement_engine():
         assert await task == "new"
         assert old_engine.generate_calls == []
         assert len(new_engine.generate_calls) == 1
+
+    asyncio.run(scenario())
+
+
+def test_prompt_waits_for_recovery_and_uses_replacement_engine():
+    async def scenario():
+        old = FakeEngine("demo", "old")
+        replacement = FakeEngine("demo", "new")
+        manager = FakeManager(old)
+        lock = manager.get_lock("demo")
+        await lock.acquire()
+
+        def build(engine):
+            assert not engine.closed
+            return engine.label, 1
+
+        task = asyncio.create_task(_build_prompt_off_thread(build, old, manager=manager))
+        await asyncio.sleep(0)
+        assert not task.done()
+        old.close()
+        manager.engines["demo"] = replacement
+        lock.release()
+        assert await task == ("new", 1)
+
+    asyncio.run(scenario())
+
+
+def test_cancelled_prompt_keeps_engine_locked_until_worker_finishes():
+    async def scenario():
+        engine = FakeEngine("demo", "old")
+        manager = FakeManager(engine)
+        started = threading.Event()
+        finish = threading.Event()
+
+        def build(engine):
+            started.set()
+            assert finish.wait(5)
+            assert not engine.closed
+            return "prompt", 1
+
+        task = asyncio.create_task(_build_prompt_off_thread(build, engine, manager=manager))
+        try:
+            assert await asyncio.to_thread(started.wait, 5)
+            task.cancel()
+            await asyncio.sleep(0)
+            assert manager.get_lock("demo").locked()
+            assert not task.done()
+        finally:
+            finish.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert not manager.get_lock("demo").locked()
 
     asyncio.run(scenario())
 
