@@ -277,9 +277,21 @@ def test_packaged_converter_forwards_in_process_progress_and_restores_streams(
     human_stream = io.StringIO()
 
     def fake_optimum_main():
-        # tqdm redraws with carriage returns and no newline, and Optimum prints to stdout.
-        sys.stderr.write("model.safetensors:  10%|# | 1.0MiB/10MiB\r")
-        sys.stderr.write("model.safetensors: 100%|##| 10MiB/10MiB\r")
+        from huggingface_hub.utils import tqdm
+
+        # Match Hub's disable=None TTY detection; raw writes missed this failure.
+        with tqdm(
+            total=10 * 1024 * 1024,
+            desc="model.safetensors",
+            unit="B",
+            unit_scale=True,
+            disable=None,
+            mininterval=0,
+            miniters=1,
+        ) as bar:
+            assert not bar.disable
+            bar.update(1024 * 1024)
+            bar.update(9 * 1024 * 1024)
         print("Exporting OpenVINO model")
         _write_ready_model(Path(sys.argv[-1]), b"new")
         return 0
