@@ -24,6 +24,7 @@ Also corrected the Benchmark Lab browser test's assumption that every machine ex
 | Real GPU HTTP contract with authentication | 13 passed, 1 embedding skip, 0 failed |
 | Real NPU HTTP contract with authentication | 13 passed, 1 embedding skip, 0 failed |
 | CPU, GPU, and NPU prompt capacity | Exact 1,536-token generation and rejection beyond the configured prompt limit passed |
+| Full Windows harness | CPU and NPU passed; GPU failed the compiled-cache fingerprint reuse criterion despite passing all inference and context checks |
 
 Real HTTP contracts exercise model discovery/load, OpenAI chat, SSE streaming, interrupted-stream recovery, tools and strict JSON, metrics, Responses streaming/non-streaming, benchmarking, and unload/reload.
 
@@ -31,4 +32,4 @@ Local evidence is retained under `.tmp/audit-final-hardware2/`, `.tmp/audit-mock
 
 ## Limits
 
-Qualification applies to this machine and these model artifacts. It does not certify every model, precision, Intel device, or driver. The 20 skipped tests are not claimed as passes. Conversion of new model downloads, clean-machine installer upgrade/downgrade/uninstall, signing, and SmartScreen trust are not established by these source and hardware checks. The release remains unsigned.
+Qualification applies to this machine and these model artifacts. It does not certify every model, precision, Intel device, or driver. GPU compiled-cache entries increased from 50 to 52 across the two context-check restarts, changing the fingerprint. Cache reuse is therefore unverified on GPU; the harness failure is retained rather than relaxed. The 20 skipped tests are not claimed as passes. Conversion of new model downloads, clean-machine installer upgrade/downgrade/uninstall, signing, and SmartScreen trust are not established by these source and hardware checks. The release remains unsigned.
