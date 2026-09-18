@@ -5,7 +5,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.engine_handoff_safety import install_engine_handoff_safety
+from app.engine_handoff_safety import (
+    count_tokens_with_current_engine,
+    install_engine_handoff_safety,
+)
 from app.model_manager import ModelManager
 from app.model_manager_core import ModelNotLoaded
 from app.server import _build_prompt_off_thread
@@ -163,6 +166,19 @@ def test_cancelled_prompt_keeps_engine_locked_until_worker_finishes():
         with pytest.raises(asyncio.CancelledError):
             await task
         assert not manager.get_lock("demo").locked()
+
+    asyncio.run(scenario())
+
+
+def test_token_accounting_rebinds_after_recovery():
+    async def scenario():
+        old = FakeEngine("demo", "old")
+        replacement = FakeEngine("demo", "new")
+        old.close()
+        old.count_tokens = lambda text: pytest.fail("Accounting used the closed engine")
+        replacement.count_tokens = lambda text: len(text)
+        manager = FakeManager(replacement)
+        assert await count_tokens_with_current_engine(manager, old, "reply") == 5
 
     asyncio.run(scenario())
 

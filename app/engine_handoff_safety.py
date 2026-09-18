@@ -100,6 +100,16 @@ async def current_engine_lease(manager: Any, requested_engine: Any) -> AsyncIter
         return
 
 
+async def count_tokens_with_current_engine(manager: Any, engine: Any, text: str) -> int:
+    """Keep post-generation token accounting off engines closed by recovery."""
+    async with current_engine_lease(manager, engine) as active_engine:
+        worker = asyncio.create_task(asyncio.to_thread(active_engine.count_tokens, text))
+        result, cancellation = await manager._await_resilient_future(worker)
+        if cancellation is not None:
+            raise cancellation
+        return result
+
+
 def install_engine_handoff_safety() -> None:
     """Install stale-engine prevention and busy-unload protection."""
 

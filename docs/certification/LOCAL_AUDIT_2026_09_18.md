@@ -4,7 +4,7 @@ Candidate: InferBridge 0.11.0-beta.1. Windows x64, Python 3.12.10, OpenVINO GenA
 
 ## Major issues reproduced and fixed
 
-1. After disconnecting an NPU stream, recovery closes and rebuilds the native engine. The following HTTP request previously rendered its prompt against the closed engine before acquiring the generation lock, producing HTTP 500. Prompt workers now acquire the existing current-engine lease, wait for recovery, and select the replacement. Chat, Responses, tool retries, and context-budget inspection use this safeguard. Cancellation retains the lease until the tokenizer worker exits. A concurrent unload returns HTTP 409.
+1. After disconnecting an NPU stream, recovery closes and rebuilds the native engine. The following HTTP request previously rendered its prompt against the closed engine before acquiring the generation lock, producing HTTP 500. Prompt workers and post-generation token accounting now acquire the existing current-engine lease, wait for recovery, and select the replacement. Chat, Responses, tool retries, and context-budget inspection use this safeguard. Cancellation retains the lease until the tokenizer worker exits. A concurrent unload returns HTTP 409.
 2. GenAI's default generation configuration reapplied the chat template to already rendered prompts. The exact 1,536-token NPU context check became 1,551 tokens inside the native pipeline and failed. The shared generation configuration now disables this second formatting pass. The regression exercises both synchronous generation and streaming.
 
 Also corrected the Benchmark Lab browser test's assumption that every machine exposes CPU alone, removed live Hugging Face access from the embedding-registration regression, and made the Windows certification report tolerate device rows without context results.
@@ -13,7 +13,7 @@ Also corrected the Benchmark Lab browser test's assumption that every machine ex
 
 | Check | Result |
 |---|---|
-| Complete local unit suite | 1,332 passed, 20 skipped |
+| Complete local unit suite | 1,333 passed, 20 skipped |
 | Chromium browser suite | 39 passed |
 | Ruff lint and formatting | Passed |
 | Injected browser JavaScript | All 37 blocks parse |

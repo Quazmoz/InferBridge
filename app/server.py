@@ -37,6 +37,7 @@ from app import __version__, chat_format, model_manager, multimodal, responses_a
 from app.body_limit import RequestBodyLimitMiddleware
 from app.brand import DISPLAY_NAME
 from app.config import BASE_DIR, Settings
+from app.engine_handoff_safety import count_tokens_with_current_engine
 from app.openai_api import (
     BenchmarkRunRequest,
     ChatCompletionMessage,
@@ -1192,9 +1193,8 @@ def create_app(settings: Settings) -> FastAPI:
                 truncated, hit = chat_format.truncate_at_stop(text, params.stop)
                 if hit:
                     content = truncated
-                    loop = asyncio.get_running_loop()
-                    completion_tokens = await loop.run_in_executor(
-                        None, engine.count_tokens, truncated
+                    completion_tokens = await count_tokens_with_current_engine(
+                        manager, engine, truncated
                     )
 
             latency = time.perf_counter() - start
@@ -1309,8 +1309,9 @@ def create_app(settings: Settings) -> FastAPI:
             yield chunk({}, finish_reason=finish_reason)
 
             if not generation_failed:
-                loop = asyncio.get_running_loop()
-                completion_tokens = await loop.run_in_executor(None, engine.count_tokens, full_text)
+                completion_tokens = await count_tokens_with_current_engine(
+                    manager, engine, full_text
+                )
                 latency = time.perf_counter() - start
                 manager.record_request(engine.model_id, prompt_tokens, completion_tokens, latency)
                 record_key_metrics(prompt_tokens, completion_tokens, latency)
