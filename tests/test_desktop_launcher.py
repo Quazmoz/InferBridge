@@ -266,6 +266,8 @@ def test_packaged_converter_forwards_in_process_progress_and_restores_streams(
     converter's line emitter and restores them afterwards.
     """
 
+    pytest.importorskip("huggingface_hub.utils", reason="Requires optional conversion dependencies")
+
     from runtime import model_converter
     from runtime.progress_protocol import decode_progress_event
 
