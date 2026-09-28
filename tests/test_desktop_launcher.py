@@ -423,7 +423,10 @@ def test_failure_detail_bounds_and_flattens_large_messages():
     assert "\n" not in detail
     assert "\x00" not in detail
     assert "tail" not in detail
-    assert len(detail) <= desktop_launcher._MAX_HELPER_FAILURE_DETAIL_CHARS + len("RuntimeError: ") + 1
+    assert (
+        len(detail)
+        <= desktop_launcher._MAX_HELPER_FAILURE_DETAIL_CHARS + len("RuntimeError: ") + 1
+    )
 
 
 def test_failure_detail_falls_back_to_the_exception_class_without_a_message():
