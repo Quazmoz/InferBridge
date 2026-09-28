@@ -297,9 +297,7 @@ def _system_exit_code(value: object) -> int:
 
 def _bounded_helper_diagnostic(value: object) -> str:
     raw = str(value)
-    flattened = "".join(
-        " " if ord(char) < 32 or ord(char) == 127 else char for char in raw
-    )
+    flattened = "".join(" " if ord(char) < 32 or ord(char) == 127 else char for char in raw)
     detail = " ".join(flattened.split())
     if len(detail) > _MAX_HELPER_FAILURE_DETAIL_CHARS:
         return detail[: _MAX_HELPER_FAILURE_DETAIL_CHARS - 1].rstrip() + "…"
