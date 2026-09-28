@@ -414,6 +414,18 @@ def test_failure_detail_names_the_exception_type_without_leaking_paths():
     assert "\\" not in detail and "/" not in detail
 
 
+def test_failure_detail_bounds_and_flattens_large_messages():
+    detail = desktop_launcher._failure_detail(
+        RuntimeError("line one\n" + ("x" * 10000) + "\x00tail")
+    )
+
+    assert detail.startswith("RuntimeError: line one ")
+    assert "\n" not in detail
+    assert "\x00" not in detail
+    assert "tail" not in detail
+    assert len(detail) <= desktop_launcher._MAX_HELPER_FAILURE_DETAIL_CHARS + len("RuntimeError: ") + 1
+
+
 def test_failure_detail_falls_back_to_the_exception_class_without_a_message():
     detail = desktop_launcher._failure_detail(RuntimeError())
     assert detail == "RuntimeError: RuntimeError"

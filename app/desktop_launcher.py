@@ -21,6 +21,7 @@ from app.brand import DISPLAY_NAME
 _APP_TITLE = DISPLAY_NAME
 _STARTUP_TIMEOUT_SECONDS = 90
 _POLL_INTERVAL_SECONDS = 0.35
+_MAX_HELPER_FAILURE_DETAIL_CHARS = 2000
 
 
 @dataclass(frozen=True)
@@ -305,7 +306,13 @@ def _failure_detail(error: BaseException) -> str:
 
     import traceback
 
-    detail = str(error).strip() or error.__class__.__name__
+    raw_detail = str(error)
+    flattened = "".join(
+        " " if ord(char) < 32 or ord(char) == 127 else char for char in raw_detail
+    )
+    detail = " ".join(flattened.split()) or error.__class__.__name__
+    if len(detail) > _MAX_HELPER_FAILURE_DETAIL_CHARS:
+        detail = detail[: _MAX_HELPER_FAILURE_DETAIL_CHARS - 1].rstrip() + "…"
     frames = traceback.extract_tb(error.__traceback__)
     origin = f" at {Path(frames[-1].filename).name}:{frames[-1].lineno}" if frames else ""
     return f"{error.__class__.__name__}: {detail}{origin}"
