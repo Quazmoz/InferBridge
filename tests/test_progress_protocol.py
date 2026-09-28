@@ -35,6 +35,24 @@ def test_emitter_writes_ordered_compact_json_lines() -> None:
     assert json.loads(lines[0])["type"] == EVENT_TYPE
 
 
+def test_emitter_normalizes_long_multiline_diagnostics_before_writing() -> None:
+    stream = io.StringIO()
+    emitter = ProgressEventEmitter(operation_id="producer-1", stream=stream)
+    diagnostic = (
+        "TracerWarning: torch.tensor results are registered as constants.\n"
+        "transformers\\integrations\\sdpa_attention.py:77: warning\x00 "
+    ) * 12
+
+    event = emitter.emit("error", diagnostic)
+
+    assert len(event.message) == 500
+    assert "\n" not in event.message
+    assert "\x00" not in event.message
+    [encoded] = stream.getvalue().splitlines()
+    decoded = decode_progress_event(encoded)
+    assert decoded == event
+
+
 def test_decoder_distinguishes_human_output_from_protocol_records() -> None:
     assert decode_progress_event("Downloading model.safetensors: 50%") is None
     assert decode_progress_event('{"message":"ordinary json"}') is None
@@ -60,6 +78,7 @@ def test_decoder_rejects_claimed_events_with_invalid_schema() -> None:
         {**base, "operation_id": "bad operation id"},
         {**base, "revision": 0},
         {**base, "phase": "invented"},
+        {**base, "message": "x" * 501},
         {**base, "percent": 101},
         {**base, "completed": 3, "total": 2},
         {**base, "timestamp": 0},
