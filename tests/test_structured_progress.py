@@ -7,6 +7,20 @@ from app.model_manager import ModelManager
 from runtime.progress_protocol import ProgressEventEmitter
 
 
+class _OverflowThenStream:
+    def __init__(self, line: str) -> None:
+        self._line = line.encode("utf-8")
+        self._calls = 0
+
+    async def readline(self) -> bytes:
+        self._calls += 1
+        if self._calls == 1:
+            raise ValueError("Separator is not found, and chunk exceed the limit")
+        if self._calls == 2:
+            return self._line
+        return b""
+
+
 class _Stream:
     def __init__(self, text: str) -> None:
         self._lines = [line.encode("utf-8") for line in text.splitlines(keepends=True)]
@@ -177,6 +191,34 @@ def test_malformed_claimed_event_and_wrong_model_are_rejected(tmp_path) -> None:
 
     assert lines == ["Ignored malformed structured progress event."]
     assert "model-1" not in manager.progress
+
+
+def test_overlong_converter_line_is_dropped_without_losing_later_progress(tmp_path) -> None:
+    manager = _manager(tmp_path)
+    manager._set_status("model-1", "converting")
+
+    stream = io.StringIO()
+    producer = ProgressEventEmitter(
+        operation_id="producer-overflow",
+        model_id="model-1",
+        stream=stream,
+    )
+    producer.emit("converting", "Converting model to OpenVINO IR…", percent=50)
+
+    lines = asyncio.run(
+        manager._read_conversion_stream(
+            "model-1",
+            manager.catalog["model-1"],
+            _OverflowThenStream(stream.getvalue()),
+        )
+    )
+
+    assert lines == [
+        "Ignored overlong converter diagnostic.",
+        "Converting model to OpenVINO IR…",
+    ]
+    assert manager.progress["model-1"]["phase"] == "converting"
+    assert manager.progress["model-1"]["percent"] == 50
 
 
 def test_late_output_cannot_overwrite_terminal_state(tmp_path) -> None:

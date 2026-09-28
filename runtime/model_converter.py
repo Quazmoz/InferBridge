@@ -594,7 +594,9 @@ def main(argv: list[str] | None = None) -> int:
         )
     except (RuntimeError, subprocess.CalledProcessError) as exc:
         prefix = "Conversion failed: "
-        detail = _safe_console_diagnostic(exc, limit=_MAX_CONSOLE_LINE_CHARS - len(prefix))
+        detail = _safe_console_diagnostic(
+            exc, limit=_MAX_CONSOLE_LINE_CHARS - len(prefix)
+        ) or type(exc).__name__
         print(f"{prefix}{detail}", file=sys.stderr)
         return 1
     return 0

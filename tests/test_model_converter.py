@@ -127,6 +127,16 @@ def test_main_bounds_large_conversion_failure(monkeypatch, tmp_path, capsys):
     assert len(error_lines[0]) <= mc._MAX_CONSOLE_LINE_CHARS
 
 
+def test_main_names_empty_conversion_failure(monkeypatch, tmp_path, capsys):
+    def fail_export(*_args, **_kwargs):
+        raise RuntimeError()
+
+    monkeypatch.setattr(mc, "export_model", fail_export)
+
+    assert mc.main(["--model", "org/model", "--output", str(tmp_path / "model")]) == 1
+    assert capsys.readouterr().err.strip() == "Conversion failed: RuntimeError"
+
+
 def test_model_export_command_publishes_complete_staged_output(tmp_path):
     final = tmp_path / "model"
     script = (

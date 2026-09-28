@@ -183,7 +183,15 @@ def install_structured_progress_protocol() -> None:
 
         lines: collections.deque[str] = collections.deque(maxlen=_CONVERTER_DIAGNOSTIC_TAIL_LINES)
         while True:
-            raw = await stream.readline()
+            try:
+                raw = await stream.readline()
+            except ValueError:
+                # asyncio.StreamReader.readline raises ValueError after consuming an
+                # over-limit line. Treat third-party diagnostic overflow as malformed
+                # telemetry rather than turning a successful conversion into failure.
+                logger.warning("Ignored overlong converter output for '%s'", model_id)
+                lines.append("Ignored overlong converter diagnostic.")
+                continue
             if not raw:
                 break
             decoded = raw.decode(errors="replace")
