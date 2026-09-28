@@ -193,6 +193,28 @@ def test_console_progress_splits_carriage_returns_and_strips_ansi():
     ]
 
 
+def test_subprocess_console_output_is_bounded_without_line_separators(monkeypatch):
+    """A third-party tool cannot overflow the parent's 64 KiB readline buffer."""
+
+    human_stream = io.StringIO()
+    monkeypatch.setattr(mc.sys, "stderr", human_stream)
+    payload_size = mc._MAX_CONSOLE_LINE_CHARS * 20 + 17
+
+    mc._run_streaming_command(
+        [
+            sys.executable,
+            "-c",
+            f"import sys; sys.stdout.write('x' * {payload_size}); sys.stdout.flush()",
+        ]
+    )
+
+    lines = human_stream.getvalue().splitlines()
+    assert lines
+    assert max(len(line) for line in lines) <= mc._MAX_CONSOLE_LINE_CHARS
+    assert "".join(lines) == "x" * payload_size
+    assert mc._MAX_CONSOLE_LINE_CHARS < 65536
+
+
 def test_console_line_writer_splits_in_process_terminal_redraws():
     """The packaged converter runs Optimum in-process, so tqdm redraws land here.
 

@@ -44,6 +44,7 @@ _CONVERT_PROGRESS_RE = re.compile(
 )
 _FINALIZE_PROGRESS_RE = re.compile(r"(?:save|write|serializ|finaliz)", re.IGNORECASE)
 _PHASE_RANK = {"resolving": 0, "downloading": 1, "converting": 2, "finalizing": 3}
+_MAX_CONSOLE_LINE_CHARS = 4096
 
 
 def _ensure_utf8_stdio() -> None:
@@ -119,10 +120,21 @@ def _split_console_lines(pending: str) -> tuple[list[str], str]:
         match = re.search(r"[\r\n]", pending)
         if match is None:
             break
-        line = _clean_console_line(pending[: match.start()])
+        complete = pending[: match.start()]
         pending = pending[match.end() :]
         while pending.startswith(("\r", "\n")):
             pending = pending[1:]
+        while len(complete) > _MAX_CONSOLE_LINE_CHARS:
+            line = _clean_console_line(complete[:_MAX_CONSOLE_LINE_CHARS])
+            complete = complete[_MAX_CONSOLE_LINE_CHARS:]
+            if line:
+                lines.append(line)
+        line = _clean_console_line(complete)
+        if line:
+            lines.append(line)
+    while len(pending) > _MAX_CONSOLE_LINE_CHARS:
+        line = _clean_console_line(pending[:_MAX_CONSOLE_LINE_CHARS])
+        pending = pending[_MAX_CONSOLE_LINE_CHARS:]
         if line:
             lines.append(line)
     return lines, pending
@@ -157,8 +169,8 @@ class ConsoleLineWriter(io.TextIOBase):
     line-oriented progress the subprocess path already produces.
     """
 
-    # Emit well below asyncio's 64 KiB readline limit so the parent never overruns.
-    _MAX_PENDING_CHARS = 4096
+    # Keep the in-process writer on the same bound as subprocess console output.
+    _MAX_PENDING_CHARS = _MAX_CONSOLE_LINE_CHARS
 
     def __init__(self, emit: Callable[[str], None]) -> None:
         self._emit = emit
