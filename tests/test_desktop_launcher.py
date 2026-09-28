@@ -424,15 +424,12 @@ def test_failure_detail_bounds_and_flattens_large_messages():
     assert "\x00" not in detail
     assert "tail" not in detail
     assert (
-        len(detail)
-        <= desktop_launcher._MAX_HELPER_FAILURE_DETAIL_CHARS + len("RuntimeError: ") + 1
+        len(detail) <= desktop_launcher._MAX_HELPER_FAILURE_DETAIL_CHARS + len("RuntimeError: ") + 1
     )
 
 
 def test_bounded_helper_diagnostic_flattens_and_limits_untrusted_text():
-    detail = desktop_launcher._bounded_helper_diagnostic(
-        "line one\n" + ("x" * 10000) + "\x00tail"
-    )
+    detail = desktop_launcher._bounded_helper_diagnostic("line one\n" + ("x" * 10000) + "\x00tail")
 
     assert detail.startswith("line one ")
     assert "\n" not in detail
