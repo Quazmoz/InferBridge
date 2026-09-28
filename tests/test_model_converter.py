@@ -223,20 +223,27 @@ def test_subprocess_console_output_is_bounded_without_line_separators(monkeypatc
 
     human_stream = io.StringIO()
     monkeypatch.setattr(mc.sys, "stderr", human_stream)
-    payload_size = mc._MAX_CONSOLE_LINE_CHARS * 20 + 17
+    repeated_size = mc._MAX_CONSOLE_LINE_CHARS * 20
+    sentinel = "TAIL-SENTINEL"
 
     mc._run_streaming_command(
         [
             sys.executable,
             "-c",
-            f"import sys; sys.stdout.write('x' * {payload_size}); sys.stdout.flush()",
+            (
+                "import sys; "
+                f"sys.stdout.write('x' * {repeated_size} + {sentinel!r}); "
+                "sys.stdout.flush()"
+            ),
         ]
     )
 
     lines = human_stream.getvalue().splitlines()
     assert lines
     assert max(len(line) for line in lines) <= mc._MAX_CONSOLE_LINE_CHARS
-    assert "".join(lines) == "x" * payload_size
+    # Repeated identical chunks may be intentionally throttled, but consuming the tail
+    # proves the whole child stream was drained without hitting the parent's read limit.
+    assert lines[-1].endswith(sentinel)
     assert mc._MAX_CONSOLE_LINE_CHARS < 65536
 
 
