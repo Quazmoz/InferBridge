@@ -74,6 +74,20 @@ def _bounded_text(value: object, *, limit: int) -> str | None:
     return text
 
 
+def _normalize_emitted_message(value: str, *, limit: int = 500) -> str:
+    """Keep internal diagnostics from breaking the strict wire protocol."""
+
+    if not isinstance(value, str):
+        raise ValueError("invalid progress message")
+    without_controls = "".join(
+        " " if ord(char) < 32 or ord(char) == 127 else char for char in value
+    )
+    message = " ".join(without_controls.split())
+    if not message:
+        raise ValueError("invalid progress message")
+    return message[:limit]
+
+
 def _optional_count(value: object) -> int | None:
     if value is None:
         return None
@@ -192,7 +206,7 @@ class ProgressEventEmitter:
             operation_id=self.operation_id,
             revision=next_revision,
             phase=phase,
-            message=message,
+            message=_normalize_emitted_message(message),
             percent=percent,
             model_id=self.model_id,
             completed=completed,
