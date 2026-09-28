@@ -113,9 +113,7 @@ def _safe_console_diagnostic(value: object, *, limit: int = _MAX_CONSOLE_LINE_CH
     """Return one bounded line suitable for the parent process's readline consumer."""
 
     raw = str(value)
-    flattened = "".join(
-        " " if ord(char) < 32 or ord(char) == 127 else char for char in raw
-    )
+    flattened = "".join(" " if ord(char) < 32 or ord(char) == 127 else char for char in raw)
     detail = " ".join(_ANSI_ESCAPE_RE.sub("", flattened).split())
     if len(detail) > limit:
         return detail[: limit - 1].rstrip() + "…"
@@ -594,9 +592,10 @@ def main(argv: list[str] | None = None) -> int:
         )
     except (RuntimeError, subprocess.CalledProcessError) as exc:
         prefix = "Conversion failed: "
-        detail = _safe_console_diagnostic(
-            exc, limit=_MAX_CONSOLE_LINE_CHARS - len(prefix)
-        ) or type(exc).__name__
+        detail = (
+            _safe_console_diagnostic(exc, limit=_MAX_CONSOLE_LINE_CHARS - len(prefix))
+            or type(exc).__name__
+        )
         print(f"{prefix}{detail}", file=sys.stderr)
         return 1
     return 0
