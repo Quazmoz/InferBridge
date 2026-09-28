@@ -112,6 +112,21 @@ def test_export_model_preserves_long_conversion_failure(monkeypatch, tmp_path, c
     assert len(events[-1].message) == 500
 
 
+def test_main_bounds_large_conversion_failure(monkeypatch, tmp_path, capsys):
+    def fail_export(*_args, **_kwargs):
+        raise RuntimeError("line one\n" + ("x" * 10000) + "\x00tail")
+
+    monkeypatch.setattr(mc, "export_model", fail_export)
+
+    assert mc.main(["--model", "org/model", "--output", str(tmp_path / "model")]) == 1
+    error_lines = capsys.readouterr().err.splitlines()
+    assert len(error_lines) == 1
+    assert error_lines[0].startswith("Conversion failed: line one ")
+    assert "\x00" not in error_lines[0]
+    assert "tail" not in error_lines[0]
+    assert len(error_lines[0]) <= mc._MAX_CONSOLE_LINE_CHARS
+
+
 def test_model_export_command_publishes_complete_staged_output(tmp_path):
     final = tmp_path / "model"
     script = (

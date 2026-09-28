@@ -109,6 +109,19 @@ def _clean_console_line(text: str) -> str:
     return _ANSI_ESCAPE_RE.sub("", str(text or "")).replace("\x00", "").strip()
 
 
+def _safe_console_diagnostic(value: object, *, limit: int = _MAX_CONSOLE_LINE_CHARS) -> str:
+    """Return one bounded line suitable for the parent process's readline consumer."""
+
+    raw = str(value)
+    flattened = "".join(
+        " " if ord(char) < 32 or ord(char) == 127 else char for char in raw
+    )
+    detail = " ".join(_ANSI_ESCAPE_RE.sub("", flattened).split())
+    if len(detail) > limit:
+        return detail[: limit - 1].rstrip() + "…"
+    return detail
+
+
 def _split_console_lines(pending: str) -> tuple[list[str], str]:
     """Split buffered terminal output on newlines or carriage returns.
 
@@ -580,7 +593,9 @@ def main(argv: list[str] | None = None) -> int:
             model_id=resolved_model_id,
         )
     except (RuntimeError, subprocess.CalledProcessError) as exc:
-        print(f"Conversion failed: {exc}", file=sys.stderr)
+        prefix = "Conversion failed: "
+        detail = _safe_console_diagnostic(exc, limit=_MAX_CONSOLE_LINE_CHARS - len(prefix))
+        print(f"{prefix}{detail}", file=sys.stderr)
         return 1
     return 0
 
