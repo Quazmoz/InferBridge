@@ -111,6 +111,9 @@ async function api(url, options = {}) {
 function resetImportPanel() {
   panel.dataset.adoptDirectory = '';
   $('#ml-import-title').textContent = 'Import local / pre-converted OpenVINO model';
+  $('#ml-import-id').value = '';
+  $('#ml-import-name').value = '';
+  $('#ml-import-path').value = '';
   $('#ml-import-path').disabled = false;
   $('#ml-import-path').placeholder = 'Absolute Windows directory containing OpenVINO IR';
 }
@@ -445,6 +448,7 @@ $('#ml-import-submit').onclick = async event => {
     panel.classList.remove('open');
     resetImportPanel();
     await load();
+    close();
     await selectImportedModel(result);
   } catch (err) {
     showError(err.message);
