@@ -10,6 +10,7 @@ from app import model_library as library
 from app.config import Settings
 from app.model_library import (
     ConvertedModelImportRequest,
+    ManagedModelAdoptRequest,
     ManifestValidationError,
     ModelDefinitionImportRequest,
     ModelLibraryService,
@@ -327,6 +328,80 @@ def test_converted_import_rolls_back_files_when_catalog_save_fails(tmp_path, mon
 
     assert not (settings.models_dir / "rollback-model").exists()
     assert "rollback-model" not in manager.catalog
+
+
+
+def test_unregistered_managed_models_detects_only_safe_direct_openvino_dirs(tmp_path):
+    settings = _settings(tmp_path)
+    manager = ModelManager(settings)
+    service = ModelLibraryService(settings, manager)
+    valid = _converted_dir(settings.models_dir / "Qwen 2.5 14B INT4")
+    incomplete = settings.models_dir / "incomplete"
+    incomplete.mkdir()
+    (incomplete / "config.json").write_text("{}", encoding="utf-8")
+
+    discovered = service.unregistered_managed_models()
+
+    assert [item["directory_name"] for item in discovered] == [valid.name]
+    assert discovered[0]["suggested_model_id"] == "Qwen-2.5-14B-INT4"
+    assert discovered[0]["size_bytes"] > 0
+
+
+def test_adopt_managed_registers_in_place_without_fabricating_conversion_metadata(tmp_path):
+    settings = _settings(tmp_path)
+    manager = ModelManager(settings)
+    service = ModelLibraryService(settings, manager)
+    source = _converted_dir(settings.models_dir / "qwen-local-64k")
+
+    result = service.adopt_managed(
+        ManagedModelAdoptRequest(
+            directory_name=source.name,
+            model_id="qwen-local-64k",
+            name="Qwen Local 64K",
+            weight_format="int4",
+            max_context_len=65536,
+        )
+    )
+
+    assert result["managed_in_place"] is True
+    assert result["conversion_health"]["status"] == "legacy_untracked"
+    assert Path(manager.catalog["qwen-local-64k"].model_path).resolve() == source.resolve()
+    assert not (source / ".ovllm-conversion.json").exists()
+    assert service.unregistered_managed_models() == []
+
+
+def test_adopt_managed_rejects_traversal_and_nested_reparse_points(tmp_path):
+    settings = _settings(tmp_path)
+    manager = ModelManager(settings)
+    service = ModelLibraryService(settings, manager)
+
+    with pytest.raises(ValueError, match="direct child"):
+        service.adopt_managed(
+            ManagedModelAdoptRequest(
+                directory_name="../outside",
+                model_id="outside",
+                name="Outside",
+            )
+        )
+
+    source = _converted_dir(settings.models_dir / "linked-content")
+    outside = tmp_path / "outside-file"
+    outside.write_text("secret", encoding="utf-8")
+    link = source / "linked.bin"
+    try:
+        link.symlink_to(outside)
+    except OSError:
+        pytest.skip("File symlinks are unavailable in this test environment")
+
+    with pytest.raises(ValueError, match="symbolic links"):
+        service.adopt_managed(
+            ManagedModelAdoptRequest(
+                directory_name=source.name,
+                model_id="linked-content",
+                name="Linked Content",
+            )
+        )
+    assert "linked-content" not in manager.catalog
 
 
 def test_failed_requantization_does_not_relabel_existing_conversion(tmp_path, monkeypatch):
