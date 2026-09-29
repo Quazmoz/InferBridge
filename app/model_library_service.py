@@ -764,7 +764,11 @@ class ModelLibraryService:
                 resolved = candidate.resolve()
             except OSError:
                 continue
-            if resolved.parent != models_root or resolved in registered_paths or not resolved.is_dir():
+            if (
+                resolved.parent != models_root
+                or resolved in registered_paths
+                or not resolved.is_dir()
+            ):
                 continue
             if not registry.is_openvino_model_dir(resolved):
                 continue
