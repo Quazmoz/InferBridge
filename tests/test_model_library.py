@@ -144,6 +144,39 @@ def test_model_library_routes_and_converted_import(tmp_path):
         assert refreshed.status_code == 200
         assert any(item["id"] == "imported-openvino" for item in refreshed.json()["items"])
 
+        dropped = settings.models_dir / "qwen-local-64k"
+        dropped.mkdir(parents=True)
+        (dropped / "openvino_model.xml").write_text(
+            "<net name='model' version='11'></net>",
+            encoding="utf-8",
+        )
+        (dropped / "openvino_model.bin").write_bytes(b"openvino")
+        (dropped / "config.json").write_text("{}", encoding="utf-8")
+
+        discovered = client.get("/v1/model-library/unregistered-managed")
+        assert discovered.status_code == 200, discovered.text
+        assert discovered.json()["count"] == 1
+        assert discovered.json()["models"][0]["directory_name"] == "qwen-local-64k"
+
+        adopted = client.post(
+            "/v1/model-library/adopt-managed",
+            json={
+                "directory_name": "qwen-local-64k",
+                "model_id": "qwen-local-64k",
+                "name": "Qwen Local 64K",
+                "backend": "openvino-genai",
+                "weight_format": "int4",
+                "recommended_device": "CPU",
+                "max_context_len": 65536,
+                "max_output_tokens": 512,
+            },
+        )
+        assert adopted.status_code == 200, adopted.text
+        assert adopted.json()["managed_in_place"] is True
+        assert adopted.json()["conversion_health"]["status"] == "legacy_untracked"
+        assert Path(adopted.json()["target_path"]).resolve() == dropped.resolve()
+        assert client.get("/v1/model-library/unregistered-managed").json()["count"] == 0
+
 
 def test_model_library_ui_is_composed_once():
     _index_html.cache_clear()
