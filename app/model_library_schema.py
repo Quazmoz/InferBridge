@@ -51,6 +51,27 @@ class ConvertedModelImportRequest(BaseModel):
         return device_check.validate_device_expression(value)
 
 
+class ManagedModelAdoptRequest(BaseModel):
+    directory_name: str = Field(min_length=1, max_length=255)
+    model_id: str = Field(min_length=1, max_length=128, pattern=MODEL_ID_RE.pattern)
+    name: str = Field(min_length=1, max_length=160)
+    source_model: str = Field(default="", max_length=240)
+    description: str = Field(default="Adopted pre-converted OpenVINO model.", max_length=2000)
+    backend: str = Field(
+        default="openvino-genai",
+        pattern=r"^(openvino-genai|openvino-embeddings|openvino-vlm)$",
+    )
+    weight_format: str = Field(default="fp16", pattern=r"^(int4|int8|fp16)$")
+    recommended_device: str = Field(default="CPU", min_length=1, max_length=64)
+    max_context_len: int = Field(default=2048, ge=128, le=262144)
+    max_output_tokens: int = Field(default=512, ge=0, le=65536)
+
+    @field_validator("recommended_device")
+    @classmethod
+    def validate_device(cls, value: str) -> str:
+        return device_check.validate_device_expression(value)
+
+
 class ManifestValidationError(ValueError):
     """Raised when a remote or cached model-library manifest is invalid."""
 
