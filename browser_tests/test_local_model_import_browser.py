@@ -131,6 +131,7 @@ def test_detected_local_model_can_be_registered_and_selected(
         ),
     )
     page.route("**/v1/model-library/adopt-managed", adopt)
+    page.route("**/v1/models/status", status)
     page.route("**/v1/system/status", status)
 
     page.goto(inferbridge_url, wait_until="networkidle")
