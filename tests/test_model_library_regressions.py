@@ -330,7 +330,6 @@ def test_converted_import_rolls_back_files_when_catalog_save_fails(tmp_path, mon
     assert "rollback-model" not in manager.catalog
 
 
-
 def test_unregistered_managed_models_detects_only_safe_direct_openvino_dirs(tmp_path):
     settings = _settings(tmp_path)
     manager = ModelManager(settings)
