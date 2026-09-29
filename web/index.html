@@ -2642,12 +2642,23 @@
                     </button>
                 </div>
                 <span class="header-divider"></span>
-                <button class="icon-btn" id="new-chat-btn" title="New chat (Ctrl+L)" aria-label="Start new chat">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 5v14" />
-                        <path d="M5 12h14" />
-                    </svg>
-                </button>
+                <div class="btn-group chat-action-group" aria-label="Conversation actions">
+                    <button class="icon-btn" id="new-chat-btn" title="New chat (Ctrl+L)" aria-label="Start new chat">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 5v14" />
+                            <path d="M5 12h14" />
+                        </svg>
+                    </button>
+                    <button class="icon-btn" id="export-chat-btn" title="Export conversation as Markdown"
+                        aria-label="Export conversation" disabled>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="7 10 12 15 17 10" />
+                            <line x1="12" y1="15" x2="12" y2="3" />
+                        </svg>
+                    </button>
+                </div>
                 <button class="icon-btn" id="add-model-btn" title="Add custom model from Hugging Face"
                     aria-label="Add custom model">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -2655,15 +2666,6 @@
                         <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
                         <path d="M12 22V12" />
                         <path d="m3.3 7 8.7 5 8.7-5" />
-                    </svg>
-                </button>
-                <button class="icon-btn" id="export-chat-btn" title="Export conversation as Markdown"
-                    aria-label="Export conversation" disabled>
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                        <polyline points="7 10 12 15 17 10" />
-                        <line x1="12" y1="15" x2="12" y2="3" />
                     </svg>
                 </button>
                 <button class="icon-btn" id="theme-toggle-btn" title="Toggle light/dark theme"
