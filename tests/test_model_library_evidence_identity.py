@@ -284,6 +284,56 @@ def test_metrics_use_certification_for_selected_device(tmp_path, monkeypatch):
     assert entry["metrics"]["tested_driver_version"] == "CPU-driver"
 
 
+def test_local_metrics_do_not_inherit_certification_from_another_device(
+    tmp_path, monkeypatch
+):
+    cfg = _config("cross-device-evidence-model")
+    service = _prepare_service(tmp_path, monkeypatch, cfg)
+    monkeypatch.setattr(
+        service,
+        "_local_evidence",
+        lambda _model_id: {
+            "CPU": {
+                "status": "locally_verified",
+                "actual_device": "CPU",
+                "openvino_version": "2026.2.0",
+                "driver_version": "CPU-local-driver",
+                "load_time_ms": None,
+                "tokens_sec": 7.5,
+                "time_to_first_token_ms": None,
+                "tested_at": "2026-09-30T12:00:00Z",
+            }
+        },
+    )
+
+    entry = service._entry(
+        cfg.id,
+        {
+            "definition": _definition(cfg.id),
+            "metadata": {
+                "curated": True,
+                "max_tested_context": 2048,
+                "certifications": {
+                    "CPU": [],
+                    "GPU": [_certification("GPU", date="2026-07-01", tokens_sec=20.0)],
+                    "NPU": [],
+                },
+            },
+        },
+    )
+
+    assert entry is not None
+    assert entry["verification"]["GPU"]["status"] == "verified"
+    assert entry["metrics"]["measurement_source"] == "local"
+    assert entry["metrics"]["measurement_device"] == "CPU"
+    assert entry["metrics"]["tokens_sec"] == 7.5
+    assert entry["metrics"]["time_to_first_load_ms"] is None
+    assert entry["metrics"]["time_to_first_token_ms"] is None
+    assert entry["metrics"]["maximum_tested_context"] is None
+    assert entry["metrics"]["last_certification_date"] is None
+    assert entry["metrics"]["tested_driver_version"] == "CPU-local-driver"
+
+
 def test_browser_displays_measurement_device():
     source = (ROOT / "app" / "model_library_ui.py").read_text(encoding="utf-8")
 

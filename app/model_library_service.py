@@ -494,13 +494,19 @@ class ModelLibraryService:
             measured.get(field) is not None
             for field in ("load_time_ms", "tokens_sec", "time_to_first_token_ms")
         )
+        # A local benchmark and bundled certification are comparable only when they
+        # describe the same direct device. Do not fill missing local CPU metrics with
+        # GPU/NPU certification data and then label the combined row as local evidence.
+        if local_measurement and official_device != local_device:
+            latest_official = {}
+            official_device = None
 
         def metric(field: str) -> Any:
             value = measured.get(field)
             return value if value is not None else latest_official.get(field)
 
         maximum_tested_context = latest_official.get("max_tested_context")
-        if maximum_tested_context is None:
+        if maximum_tested_context is None and not local_measurement:
             maximum_tested_context = metadata.get("max_tested_context") or None
         min_ram = safe_float(metadata.get("minimum_ram_gb"))
         min_disk = safe_float(metadata.get("minimum_disk_gb"))
