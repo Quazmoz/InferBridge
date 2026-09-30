@@ -756,6 +756,7 @@ class ModelLibraryService:
             except OSError:
                 continue
 
+        reserved_ids = set(self.manager.catalog)
         discovered: list[dict[str, Any]] = []
         for candidate in sorted(models_root.iterdir(), key=lambda item: item.name.lower()):
             if candidate.name.startswith(".") or is_reparse_point(candidate):
@@ -785,10 +786,11 @@ class ModelLibraryService:
                 suggested_id = f"local-{suggested_id}"[:128]
             base_id = suggested_id
             suffix = 2
-            while suggested_id in self.manager.catalog:
+            while suggested_id in reserved_ids:
                 tail = f"-{suffix}"
                 suggested_id = f"{base_id[: 128 - len(tail)]}{tail}"
                 suffix += 1
+            reserved_ids.add(suggested_id)
 
             discovered.append(
                 {

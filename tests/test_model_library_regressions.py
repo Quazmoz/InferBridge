@@ -346,6 +346,19 @@ def test_unregistered_managed_models_detects_only_safe_direct_openvino_dirs(tmp_
     assert discovered[0]["size_bytes"] > 0
 
 
+def test_unregistered_managed_models_reserves_normalized_ids_within_discovery(tmp_path):
+    settings = _settings(tmp_path)
+    manager = ModelManager(settings)
+    service = ModelLibraryService(settings, manager)
+    _converted_dir(settings.models_dir / "foo bar")
+    _converted_dir(settings.models_dir / "foo-bar")
+
+    discovered = service.unregistered_managed_models()
+
+    assert [item["suggested_model_id"] for item in discovered] == ["foo-bar", "foo-bar-2"]
+    assert len({item["suggested_model_id"] for item in discovered}) == len(discovered)
+
+
 def test_adopt_managed_registers_in_place_without_fabricating_conversion_metadata(tmp_path):
     settings = _settings(tmp_path)
     manager = ModelManager(settings)
