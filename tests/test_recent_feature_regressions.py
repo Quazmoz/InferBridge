@@ -88,7 +88,11 @@ def test_embedding_model_cannot_be_used_as_speculative_draft(tmp_path: Path) -> 
         assert MODEL_ID not in client.app.state.manager.load_tasks
 
 
-def test_custom_embedding_registration_preserves_backend(tmp_path: Path) -> None:
+def test_custom_embedding_registration_preserves_backend(tmp_path: Path, monkeypatch) -> None:
+    async def granted_access(self, source_model, **kwargs):
+        return {"code": "hf_access_granted"}
+
+    monkeypatch.setattr("app.huggingface_access.HuggingFaceAccessService.preflight", granted_access)
     with _client(tmp_path) as client:
         manager = client.app.state.manager
 

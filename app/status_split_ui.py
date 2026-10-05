@@ -26,6 +26,7 @@ STATUS_SPLIT_JS = r"""
         '/v1/models/delete',
         '/v1/model-library/import-definitions',
         '/v1/model-library/import-converted',
+        '/v1/model-library/adopt-managed',
     ]);
     const ACTIVE_MODEL_TTL_MS = 800;
     const IDLE_MODEL_TTL_MS = 3000;

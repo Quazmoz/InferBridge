@@ -23,6 +23,7 @@ from app.local_request_security import (
 )
 from app.model_library import (
     ConvertedModelImportRequest,
+    ManagedModelAdoptRequest,
     ManifestValidationError,
     ModelDefinitionImportRequest,
     ModelLibraryService,
@@ -164,6 +165,34 @@ def register_model_library_routes(app: FastAPI) -> None:
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)[:300]) from exc
         return {"status": "imported", **result}
+
+    @router.get("/unregistered-managed")
+    async def unregistered_managed_models(request: Request):
+        try:
+            models = await asyncio.to_thread(_service(request).unregistered_managed_models)
+        except OSError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)[:300]) from exc
+        return {"models": models, "count": len(models)}
+
+    @router.post("/adopt-managed")
+    async def adopt_managed_model(request: Request, body: ManagedModelAdoptRequest):
+        manager = request.app.state.manager
+        model_id = body.model_id
+        if model_id in manager.engines:
+            raise HTTPException(status_code=409, detail="Unload the model before replacing it.")
+        for tasks, label in (
+            (manager.load_tasks, "loading"),
+            (manager.convert_tasks, "converting"),
+        ):
+            task = tasks.get(model_id)
+            if task is not None and not task.done():
+                raise HTTPException(status_code=409, detail=f"Model is still {label}.")
+        try:
+            result = await asyncio.to_thread(_service(request).adopt_managed, body)
+        except (OSError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)[:300]) from exc
+        manager.emit_event("info", f"Registered existing managed OpenVINO model: {model_id}")
+        return {"status": "imported", **result, "model": manager.catalog_entry(model_id)}
 
     @router.post("/import-converted")
     async def import_converted_model(request: Request, body: ConvertedModelImportRequest):

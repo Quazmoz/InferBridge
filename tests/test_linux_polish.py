@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import os
 import shutil
 import subprocess
+import sys
 import threading
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,7 +14,9 @@ from app.tray_runtime import TrayRuntimeMixin
 from app.tray_state import TrayPhase, TraySnapshot, menu_state
 
 ROOT = Path(__file__).resolve().parents[1]
-LINUX_ONLY = pytest.mark.skipif(os.name == "nt", reason="Linux/Unix behavior")
+LINUX_ONLY = pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Linux desktop integration behavior"
+)
 
 
 @LINUX_ONLY

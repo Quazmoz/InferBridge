@@ -139,6 +139,18 @@ sequence expected by OpenAI-compatible automation clients.
 
 Record the n8n version and node type in any published compatibility note.
 
+## Hermes Agent
+
+Hermes Agent can use InferBridge as a custom OpenAI-compatible endpoint. See the
+[Hermes Agent integration guide](HERMES.md) for setup, validation, tool-calling notes,
+and the current context-window constraint.
+
+The API layer is compatible, but Hermes Agent currently requires at least a 64,000-token
+context window for its main agent model. InferBridge's bundled local catalog is configured
+with much smaller practical context budgets, so do not describe every bundled NPU model
+as Hermes-ready. A custom/qualified model must genuinely support the context configured in
+both InferBridge and Hermes.
+
 ## Direct SDK and agent clients
 
 Any client that allows a custom OpenAI base URL can start with the active values from

@@ -266,6 +266,8 @@ def test_packaged_converter_forwards_in_process_progress_and_restores_streams(
     converter's line emitter and restores them afterwards.
     """
 
+    pytest.importorskip("huggingface_hub.utils", reason="Requires optional conversion dependencies")
+
     from runtime import model_converter
     from runtime.progress_protocol import decode_progress_event
 
@@ -277,9 +279,21 @@ def test_packaged_converter_forwards_in_process_progress_and_restores_streams(
     human_stream = io.StringIO()
 
     def fake_optimum_main():
-        # tqdm redraws with carriage returns and no newline, and Optimum prints to stdout.
-        sys.stderr.write("model.safetensors:  10%|# | 1.0MiB/10MiB\r")
-        sys.stderr.write("model.safetensors: 100%|##| 10MiB/10MiB\r")
+        from huggingface_hub.utils import tqdm
+
+        # Match Hub's disable=None TTY detection; raw writes missed this failure.
+        with tqdm(
+            total=10 * 1024 * 1024,
+            desc="model.safetensors",
+            unit="B",
+            unit_scale=True,
+            disable=None,
+            mininterval=0,
+            miniters=1,
+        ) as bar:
+            assert not bar.disable
+            bar.update(1024 * 1024)
+            bar.update(9 * 1024 * 1024)
         print("Exporting OpenVINO model")
         _write_ready_model(Path(sys.argv[-1]), b"new")
         return 0
@@ -398,6 +412,30 @@ def test_failure_detail_names_the_exception_type_without_leaking_paths():
 
     assert detail.startswith("OSError: could not get source code at test_desktop_launcher.py:")
     assert "\\" not in detail and "/" not in detail
+
+
+def test_failure_detail_bounds_and_flattens_large_messages():
+    detail = desktop_launcher._failure_detail(
+        RuntimeError("line one\n" + ("x" * 10000) + "\x00tail")
+    )
+
+    assert detail.startswith("RuntimeError: line one ")
+    assert "\n" not in detail
+    assert "\x00" not in detail
+    assert "tail" not in detail
+    assert (
+        len(detail) <= desktop_launcher._MAX_HELPER_FAILURE_DETAIL_CHARS + len("RuntimeError: ") + 1
+    )
+
+
+def test_bounded_helper_diagnostic_flattens_and_limits_untrusted_text():
+    detail = desktop_launcher._bounded_helper_diagnostic("line one\n" + ("x" * 10000) + "\x00tail")
+
+    assert detail.startswith("line one ")
+    assert "\n" not in detail
+    assert "\x00" not in detail
+    assert "tail" not in detail
+    assert len(detail) == desktop_launcher._MAX_HELPER_FAILURE_DETAIL_CHARS
 
 
 def test_failure_detail_falls_back_to_the_exception_class_without_a_message():

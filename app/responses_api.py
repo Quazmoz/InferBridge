@@ -24,6 +24,7 @@ from fastapi.responses import StreamingResponse
 from starlette.background import BackgroundTask
 
 from app import chat_format, multimodal, tools
+from app.engine_handoff_safety import count_tokens_with_current_engine
 from app.openai_api import (
     ResponseFunctionCall,
     ResponseObject,
@@ -254,6 +255,7 @@ def install_responses_api(
                     engine,
                     retry_messages,
                     max_prompt_len,
+                    manager=manager,
                 )
                 multimodal.discard_prompt_context(current_prompt)
                 current_prompt = new_prompt
@@ -279,8 +281,9 @@ def install_responses_api(
                 )
                 if hit_stop:
                     text = visible_text
-                    completion_tokens = await asyncio.to_thread(
-                        engine.count_tokens,
+                    completion_tokens = await count_tokens_with_current_engine(
+                        manager,
+                        engine,
                         text,
                     )
 
@@ -555,10 +558,7 @@ def install_responses_api(
                 yield "data: [DONE]\n\n"
                 return
 
-            completion_tokens = await asyncio.to_thread(
-                engine.count_tokens,
-                full_text,
-            )
+            completion_tokens = await count_tokens_with_current_engine(manager, engine, full_text)
             latency = time.perf_counter() - started
             manager.record_request(
                 engine.model_id,
@@ -619,6 +619,7 @@ def install_responses_api(
             response_tools,
             tool_choice,
             use_tools,
+            manager=manager,
         )
         try:
             params = params_for(

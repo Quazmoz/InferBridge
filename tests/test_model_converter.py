@@ -93,6 +93,50 @@ def test_export_model_runs_transactional_command_and_makes_parent(
     assert "Saving OpenVINO IR" in console
 
 
+def test_export_model_preserves_long_conversion_failure(monkeypatch, tmp_path, capsys):
+    original = RuntimeError("failure detail " * 100)
+
+    def fail_export(*_args, **_kwargs):
+        raise original
+
+    monkeypatch.setattr(mc.shutil, "which", lambda _name: "/usr/bin/optimum-cli")
+    monkeypatch.setattr(mc, "_run_model_export_command", fail_export)
+
+    with pytest.raises(RuntimeError) as captured:
+        mc.export_model("org/model", tmp_path / "model")
+
+    assert captured.value is original
+    events = [decode_progress_event(line) for line in capsys.readouterr().out.splitlines()]
+    assert events[-1] is not None
+    assert events[-1].phase == "error"
+    assert len(events[-1].message) == 500
+
+
+def test_main_bounds_large_conversion_failure(monkeypatch, tmp_path, capsys):
+    def fail_export(*_args, **_kwargs):
+        raise RuntimeError("line one\n" + ("x" * 10000) + "\x00tail")
+
+    monkeypatch.setattr(mc, "export_model", fail_export)
+
+    assert mc.main(["--model", "org/model", "--output", str(tmp_path / "model")]) == 1
+    error_lines = capsys.readouterr().err.splitlines()
+    assert len(error_lines) == 1
+    assert error_lines[0].startswith("Conversion failed: line one ")
+    assert "\x00" not in error_lines[0]
+    assert "tail" not in error_lines[0]
+    assert len(error_lines[0]) <= mc._MAX_CONSOLE_LINE_CHARS
+
+
+def test_main_names_empty_conversion_failure(monkeypatch, tmp_path, capsys):
+    def fail_export(*_args, **_kwargs):
+        raise RuntimeError()
+
+    monkeypatch.setattr(mc, "export_model", fail_export)
+
+    assert mc.main(["--model", "org/model", "--output", str(tmp_path / "model")]) == 1
+    assert capsys.readouterr().err.strip() == "Conversion failed: RuntimeError"
+
+
 def test_model_export_command_publishes_complete_staged_output(tmp_path):
     final = tmp_path / "model"
     script = (
@@ -172,6 +216,35 @@ def test_console_progress_splits_carriage_returns_and_strips_ansi():
         "Exporting OpenVINO model",
         "Done",
     ]
+
+
+def test_subprocess_console_output_is_bounded_without_line_separators(monkeypatch):
+    """A third-party tool cannot overflow the parent's 64 KiB readline buffer."""
+
+    human_stream = io.StringIO()
+    monkeypatch.setattr(mc.sys, "stderr", human_stream)
+    repeated_size = mc._MAX_CONSOLE_LINE_CHARS * 20
+    sentinel = "TAIL-SENTINEL"
+
+    mc._run_streaming_command(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys; "
+                f"sys.stdout.write('x' * {repeated_size} + {sentinel!r}); "
+                "sys.stdout.flush()"
+            ),
+        ]
+    )
+
+    lines = human_stream.getvalue().splitlines()
+    assert lines
+    assert max(len(line) for line in lines) <= mc._MAX_CONSOLE_LINE_CHARS
+    # Repeated identical chunks may be intentionally throttled, but consuming the tail
+    # proves the whole child stream was drained without hitting the parent's read limit.
+    assert lines[-1].endswith(sentinel)
+    assert mc._MAX_CONSOLE_LINE_CHARS < 65536
 
 
 def test_console_line_writer_splits_in_process_terminal_redraws():

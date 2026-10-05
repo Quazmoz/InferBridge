@@ -12,9 +12,57 @@ updates:
     labels:
       - "dependencies"
     groups:
-      python-runtime:
+      openvino-inference-stack:
         patterns:
-          - "*"
+          - "openvino"
+          - "openvino-genai"
+          - "openvino-tokenizers"
+      conversion-model-toolchain:
+        patterns:
+          - "optimum-intel"
+          - "optimum"
+          - "nncf"
+          - "transformers"
+          - "tokenizers"
+          - "torch"
+          - "huggingface*"
+          - "safetensors"
+          - "numpy"
+        update-types:
+          - "minor"
+          - "patch"
+      server-runtime:
+        patterns:
+          - "fastapi"
+          - "uvicorn"
+          - "pydantic"
+          - "httpx"
+          - "psutil"
+          - "pillow"
+          - "python-dotenv"
+          - "pystray"
+          - "python-certifi-win32"
+        update-types:
+          - "minor"
+          - "patch"
+      build-release-tooling:
+        patterns:
+          - "pyinstaller"
+          - "pip-licenses"
+          - "pip"
+          - "setuptools"
+          - "wheel"
+        update-types:
+          - "minor"
+          - "patch"
+      developer-test-tooling:
+        patterns:
+          - "pytest"
+          - "ruff"
+          - "playwright"
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "github-actions"
     directory: "/"

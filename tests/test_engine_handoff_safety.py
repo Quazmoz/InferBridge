@@ -1,12 +1,19 @@
 import asyncio
+import threading
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
 import pytest
 
-from app.engine_handoff_safety import install_engine_handoff_safety
+from app.config import Settings
+from app.engine_handoff_safety import (
+    count_tokens_with_current_engine,
+    install_engine_handoff_safety,
+)
 from app.model_manager import ModelManager
 from app.model_manager_core import ModelNotLoaded
+from app.openai_api import EmbeddingRequest
+from app.server import _build_prompt_off_thread, create_app
 
 install_engine_handoff_safety()
 
@@ -50,6 +57,8 @@ class FakeEngine:
 
 
 class FakeManager:
+    _await_resilient_future = staticmethod(ModelManager._await_resilient_future)
+
     def __init__(self, engine: FakeEngine | None, *, managed: bool = True):
         self.engines = {engine.model_id: engine} if engine is not None else {}
         self.catalog = {"demo": SimpleNamespace(name="Demo")} if managed else {}
@@ -107,6 +116,241 @@ def test_queued_generation_rebinds_to_replacement_engine():
         assert await task == "new"
         assert old_engine.generate_calls == []
         assert len(new_engine.generate_calls) == 1
+
+    asyncio.run(scenario())
+
+
+def test_prompt_waits_for_recovery_and_uses_replacement_engine():
+    async def scenario():
+        old = FakeEngine("demo", "old")
+        replacement = FakeEngine("demo", "new")
+        manager = FakeManager(old)
+        lock = manager.get_lock("demo")
+        await lock.acquire()
+
+        def build(engine):
+            assert not engine.closed
+            return engine.label, 1
+
+        task = asyncio.create_task(_build_prompt_off_thread(build, old, manager=manager))
+        await asyncio.sleep(0)
+        assert not task.done()
+        old.close()
+        manager.engines["demo"] = replacement
+        lock.release()
+        assert await task == ("new", 1)
+
+    asyncio.run(scenario())
+
+
+def test_cancelled_prompt_keeps_engine_locked_until_worker_finishes():
+    async def scenario():
+        engine = FakeEngine("demo", "old")
+        manager = FakeManager(engine)
+        started = threading.Event()
+        finish = threading.Event()
+
+        def build(engine):
+            started.set()
+            assert finish.wait(5)
+            assert not engine.closed
+            return "prompt", 1
+
+        task = asyncio.create_task(_build_prompt_off_thread(build, engine, manager=manager))
+        try:
+            assert await asyncio.to_thread(started.wait, 5)
+            task.cancel()
+            await asyncio.sleep(0)
+            assert manager.get_lock("demo").locked()
+            assert not task.done()
+        finally:
+            finish.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert not manager.get_lock("demo").locked()
+
+    asyncio.run(scenario())
+
+
+def test_cancelled_generation_keeps_engine_locked_until_worker_finishes():
+    async def scenario():
+        engine = FakeEngine("demo", "old")
+        manager = FakeManager(engine)
+        started = threading.Event()
+        finish = threading.Event()
+
+        def generate(_prompt, _params):
+            started.set()
+            assert finish.wait(5)
+            return "reply"
+
+        engine.generate = generate
+        task = asyncio.create_task(ModelManager.generate(manager, engine, "hello", object()))
+        try:
+            assert await asyncio.to_thread(started.wait, 5)
+            for _ in range(2):
+                task.cancel()
+                await asyncio.sleep(0)
+                assert manager.get_lock("demo").locked()
+                assert not task.done()
+        finally:
+            finish.set()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        assert not manager.get_lock("demo").locked()
+
+    asyncio.run(scenario())
+
+
+def test_cancelled_stream_startup_stops_handle_before_releasing_engine():
+    async def scenario():
+        engine = FakeEngine("demo", "old")
+        manager = FakeManager(engine)
+        started = threading.Event()
+        finish = threading.Event()
+        stopped = threading.Event()
+        handle = FakeHandle(["must not be emitted"])
+        handle.request_stop = stopped.set
+
+        def start_stream(_prompt, _params):
+            started.set()
+            assert finish.wait(5)
+            return handle
+
+        engine.stream = start_stream
+        stream = ModelManager.stream(manager, engine, "hello", object())
+        task = asyncio.create_task(anext(stream))
+        try:
+            assert await asyncio.to_thread(started.wait, 5)
+            task.cancel()
+            await asyncio.sleep(0)
+            assert manager.get_lock("demo").locked()
+            assert not task.done()
+        finally:
+            finish.set()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            await stream.aclose()
+        assert stopped.is_set()
+        assert not manager.get_lock("demo").locked()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("cancelled_exception", [False, True])
+def test_resilient_wait_propagates_worker_cancellation(cancelled_exception):
+    async def scenario():
+        worker = asyncio.get_running_loop().create_future()
+        if cancelled_exception:
+            worker.set_exception(asyncio.CancelledError())
+        else:
+            worker.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await ModelManager._await_resilient_future(worker)
+
+    asyncio.run(scenario())
+
+
+def test_resilient_wait_retains_completed_result_when_request_is_cancelled():
+    async def scenario():
+        worker = asyncio.get_running_loop().create_future()
+        task = asyncio.create_task(ModelManager._await_resilient_future(worker))
+        await asyncio.sleep(0)
+        task.cancel()
+        worker.set_result("reply")
+        result, cancellation = await task
+        assert result == "reply"
+        assert isinstance(cancellation, asyncio.CancelledError)
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("worker_stage", ["embed", "count_tokens"])
+def test_embedding_cancellation_keeps_model_busy_until_worker_finishes(tmp_path, worker_stage):
+    async def scenario():
+        app = create_app(Settings(force_mock=True, default_model=None, models_dir=tmp_path))
+        manager = app.state.manager
+        engine = FakeEngine("bge-small-en-v1.5", "embedding")
+        engine.backend = "openvino-embedding"
+        engine.embed = lambda _inputs: [[1.0]]
+        engine.count_tokens = lambda _text: 1
+        manager.engines[engine.model_id] = engine
+        started = threading.Event()
+        finish = threading.Event()
+        original = getattr(engine, worker_stage)
+
+        def blocking_worker(value):
+            started.set()
+            assert finish.wait(5)
+            assert not engine.closed
+            return original(value)
+
+        setattr(engine, worker_stage, blocking_worker)
+        endpoint = next(
+            route.endpoint
+            for route in app.routes
+            if getattr(route, "path", None) == "/v1/embeddings"
+        )
+        task = asyncio.create_task(endpoint(EmbeddingRequest(model=engine.model_id, input="hello")))
+        try:
+            assert await asyncio.to_thread(started.wait, 5)
+            task.cancel()
+            await asyncio.sleep(0)
+            assert manager.get_lock(engine.model_id).locked()
+            assert manager._active_generations == 1
+            assert not task.done()
+            with pytest.raises(ValueError, match="request"):
+                manager.unload(engine.model_id)
+        finally:
+            finish.set()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        assert manager._active_generations == 0
+        assert not manager.get_lock(engine.model_id).locked()
+        assert manager.metrics_summary()["totals"]["requests"] == 0
+
+    asyncio.run(scenario())
+
+
+def test_queued_embedding_rebinds_to_replacement_engine(tmp_path):
+    async def scenario():
+        app = create_app(Settings(force_mock=True, default_model=None, models_dir=tmp_path))
+        manager = app.state.manager
+        old = FakeEngine("bge-small-en-v1.5", "old")
+        new = FakeEngine(old.model_id, "new")
+        old.backend = new.backend = "openvino-embedding"
+        old.embed = lambda _inputs: pytest.fail("embedding used a replaced engine")
+        new.embed = lambda _inputs: [[2.0]]
+        new.count_tokens = lambda _text: 3
+        manager.engines[old.model_id] = old
+        lock = manager.get_lock(old.model_id)
+        await lock.acquire()
+        endpoint = next(
+            route.endpoint
+            for route in app.routes
+            if getattr(route, "path", None) == "/v1/embeddings"
+        )
+        task = asyncio.create_task(endpoint(EmbeddingRequest(model=old.model_id, input="hello")))
+        await asyncio.sleep(0)
+        old.close()
+        manager.engines[old.model_id] = new
+        lock.release()
+        response = await task
+        assert response.data[0].embedding == [2.0]
+        assert response.usage.prompt_tokens == 3
+
+    asyncio.run(scenario())
+
+
+def test_token_accounting_rebinds_after_recovery():
+    async def scenario():
+        old = FakeEngine("demo", "old")
+        replacement = FakeEngine("demo", "new")
+        old.close()
+        old.count_tokens = lambda text: pytest.fail("Accounting used the closed engine")
+        replacement.count_tokens = lambda text: len(text)
+        manager = FakeManager(replacement)
+        assert await count_tokens_with_current_engine(manager, old, "reply") == 5
 
     asyncio.run(scenario())
 

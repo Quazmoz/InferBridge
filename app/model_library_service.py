@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import secrets
 import shutil
 import threading
@@ -30,6 +31,7 @@ from app.model_library_schema import (
     MAX_MANIFEST_BYTES,
     MODEL_ID_RE,
     ConvertedModelImportRequest,
+    ManagedModelAdoptRequest,
     ManifestValidationError,
     ModelDefinitionImportRequest,
     catalog_checksum,
@@ -492,13 +494,19 @@ class ModelLibraryService:
             measured.get(field) is not None
             for field in ("load_time_ms", "tokens_sec", "time_to_first_token_ms")
         )
+        # A local benchmark and bundled certification are comparable only when they
+        # describe the same direct device. Do not fill missing local CPU metrics with
+        # GPU/NPU certification data and then label the combined row as local evidence.
+        if local_measurement and official_device != local_device:
+            latest_official = {}
+            official_device = None
 
         def metric(field: str) -> Any:
             value = measured.get(field)
             return value if value is not None else latest_official.get(field)
 
         maximum_tested_context = latest_official.get("max_tested_context")
-        if maximum_tested_context is None:
+        if maximum_tested_context is None and not local_measurement:
             maximum_tested_context = metadata.get("max_tested_context") or None
         min_ram = safe_float(metadata.get("minimum_ram_gb"))
         min_disk = safe_float(metadata.get("minimum_disk_gb"))
@@ -739,6 +747,140 @@ class ModelLibraryService:
         else:
             self._write_user_ids(user_ids)
         return {"added": added, "updated": updated, "unchanged": unchanged}
+
+    def unregistered_managed_models(self) -> list[dict[str, Any]]:
+        """Return valid OpenVINO model folders under models_dir that are absent from the catalog."""
+
+        models_root = Path(self.settings.models_dir)
+        if not models_root.is_dir():
+            return []
+        models_root = models_root.resolve()
+        registered_paths: set[Path] = set()
+        for cfg in self.manager.catalog.values():
+            try:
+                registered_paths.add(cfg.abs_path(packaged_resource_root()).resolve())
+            except OSError:
+                continue
+
+        reserved_ids = set(self.manager.catalog)
+        discovered: list[dict[str, Any]] = []
+        for candidate in sorted(models_root.iterdir(), key=lambda item: item.name.lower()):
+            if candidate.name.startswith(".") or is_reparse_point(candidate):
+                continue
+            try:
+                resolved = candidate.resolve()
+            except OSError:
+                continue
+            if (
+                resolved.parent != models_root
+                or resolved in registered_paths
+                or not resolved.is_dir()
+            ):
+                continue
+            if not registry.is_openvino_model_dir(resolved):
+                continue
+            try:
+                size_bytes = directory_size_bytes(resolved)
+            except (OSError, ValueError):
+                continue
+
+            suggested_id = re.sub(r"[^A-Za-z0-9_.-]+", "-", candidate.name).strip(".-_")
+            if not suggested_id:
+                suggested_id = "local-model"
+            suggested_id = suggested_id[:128]
+            if not MODEL_ID_RE.fullmatch(suggested_id):
+                suggested_id = f"local-{suggested_id}"[:128]
+            base_id = suggested_id
+            suffix = 2
+            while suggested_id in reserved_ids:
+                tail = f"-{suffix}"
+                suggested_id = f"{base_id[: 128 - len(tail)]}{tail}"
+                suffix += 1
+            reserved_ids.add(suggested_id)
+
+            discovered.append(
+                {
+                    "directory_name": candidate.name,
+                    "suggested_model_id": suggested_id,
+                    "suggested_name": candidate.name.replace("_", " ").replace("-", " ").strip()
+                    or suggested_id,
+                    "size_bytes": size_bytes,
+                }
+            )
+        return discovered
+
+    def adopt_managed(self, request: ManagedModelAdoptRequest) -> dict[str, Any]:
+        """Register a valid untracked model already stored as one direct child of models_dir."""
+
+        directory_name = request.directory_name.strip()
+        if (
+            not directory_name
+            or directory_name in {".", ".."}
+            or "/" in directory_name
+            or "\\" in directory_name
+        ):
+            raise ValueError("Managed model directory_name must be one direct child directory.")
+
+        models_root = Path(self.settings.models_dir)
+        models_root.mkdir(parents=True, exist_ok=True)
+        models_root = models_root.resolve()
+        source_input = models_root / directory_name
+        if is_reparse_point(source_input):
+            raise ValueError("Managed model directories may not be symbolic links or junctions.")
+        source = source_input.resolve()
+        if source.parent != models_root:
+            raise ValueError("Managed model directory escaped the configured model directory.")
+        if not source.is_dir() or not registry.is_openvino_model_dir(source):
+            raise ValueError("Managed directory is not a converted OpenVINO model directory.")
+        size_bytes = directory_size_bytes(source)
+
+        with self._catalog_lock:
+            if request.model_id in self.manager.catalog:
+                raise ValueError(f"Model ID '{request.model_id}' is already registered.")
+            for existing in self.manager.catalog.values():
+                try:
+                    existing_path = existing.abs_path(packaged_resource_root()).resolve()
+                except OSError:
+                    continue
+                if existing_path == source:
+                    raise ValueError("This managed model directory is already registered.")
+
+            previous_user_ids = self._read_user_ids()
+            previous_user_snapshot = self._snapshot_user_file()
+            original_catalog = dict(self.manager.catalog)
+            definition = {
+                "model_id": request.model_id,
+                "name": request.name,
+                "description": request.description,
+                "source_model": request.source_model or f"local-openvino:{source.name}",
+                "backend": request.backend,
+                "weight_format": request.weight_format,
+                "recommended_device": request.recommended_device,
+                "max_context_len": request.max_context_len,
+                "max_output_tokens": request.max_output_tokens,
+                "trust_remote_code": False,
+            }
+            cfg = definition_to_config(definition, source)
+            try:
+                user_ids = set(previous_user_ids)
+                user_ids.add(request.model_id)
+                self._write_user_ids(user_ids)
+                staged_catalog = dict(self.manager.catalog)
+                staged_catalog[request.model_id] = cfg
+                registry.save_catalog(self.settings.models_file, staged_catalog)
+                self.manager.reload_catalog()
+            except Exception:
+                self._restore_user_file(previous_user_snapshot)
+                self._restore_catalog(original_catalog)
+                raise
+
+        return {
+            "model_id": request.model_id,
+            "target_path": str(source),
+            "size_bytes": size_bytes,
+            "managed_in_place": True,
+            "conversion_health": conversion_health(cfg),
+        }
 
     def import_converted(self, request: ConvertedModelImportRequest) -> dict[str, Any]:
         if request.overwrite:

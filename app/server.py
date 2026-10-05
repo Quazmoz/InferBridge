@@ -37,6 +37,7 @@ from app import __version__, chat_format, model_manager, multimodal, responses_a
 from app.body_limit import RequestBodyLimitMiddleware
 from app.brand import DISPLAY_NAME
 from app.config import BASE_DIR, Settings
+from app.engine_handoff_safety import count_tokens_with_current_engine, current_engine_lease
 from app.openai_api import (
     BenchmarkRunRequest,
     ChatCompletionMessage,
@@ -261,11 +262,19 @@ def _build_normalized_chat_prompt(engine: BaseEngine, dict_messages, max_prompt_
     )
 
 
-async def _build_prompt_off_thread(builder, *args):
+async def _build_prompt_off_thread(builder, engine, *args, manager):
     """Run tokenizer/image prompt work without blocking the event loop."""
 
+    from app.engine_handoff_safety import current_engine_lease
+
     try:
-        return await asyncio.to_thread(builder, *args)
+        async with current_engine_lease(manager, engine) as active_engine:
+            worker = asyncio.create_task(asyncio.to_thread(builder, active_engine, *args))
+            result, cancellation = await manager._await_resilient_future(worker)
+            if cancellation is not None:
+                multimodal.discard_prompt_context(result[-2])
+                raise cancellation
+            return result
     except multimodal.VisionCapacityError as exc:
         raise HTTPException(
             status_code=503,
@@ -1081,6 +1090,7 @@ def create_app(settings: Settings) -> FastAPI:
             request.tools,
             request.tool_choice,
             use_tools,
+            manager=manager,
         )
         try:
             params = _params_for(
@@ -1152,6 +1162,7 @@ def create_app(settings: Settings) -> FastAPI:
                         engine,
                         retry_messages,
                         max_prompt_len,
+                        manager=manager,
                     )
                     normalized_messages = retry_messages
                     params = _params_for(
@@ -1182,9 +1193,8 @@ def create_app(settings: Settings) -> FastAPI:
                 truncated, hit = chat_format.truncate_at_stop(text, params.stop)
                 if hit:
                     content = truncated
-                    loop = asyncio.get_running_loop()
-                    completion_tokens = await loop.run_in_executor(
-                        None, engine.count_tokens, truncated
+                    completion_tokens = await count_tokens_with_current_engine(
+                        manager, engine, truncated
                     )
 
             latency = time.perf_counter() - start
@@ -1299,8 +1309,9 @@ def create_app(settings: Settings) -> FastAPI:
             yield chunk({}, finish_reason=finish_reason)
 
             if not generation_failed:
-                loop = asyncio.get_running_loop()
-                completion_tokens = await loop.run_in_executor(None, engine.count_tokens, full_text)
+                completion_tokens = await count_tokens_with_current_engine(
+                    manager, engine, full_text
+                )
                 latency = time.perf_counter() - start
                 manager.record_request(engine.model_id, prompt_tokens, completion_tokens, latency)
                 record_key_metrics(prompt_tokens, completion_tokens, latency)
@@ -1341,19 +1352,25 @@ def create_app(settings: Settings) -> FastAPI:
             raise HTTPException(status_code=400, detail="Input cannot be empty.")
 
         start = time.perf_counter()
-        loop = asyncio.get_running_loop()
-        try:
-            embeddings_list = await loop.run_in_executor(None, engine.embed, inputs)
-        except Exception as exc:
-            logger.exception("Embedding generation failed: %s", exc)
-            raise HTTPException(
-                status_code=500,
-                detail="Embedding inference failed; see server logs for the request ID.",
-            ) from exc
+        async with manager._track_generation():
+            async with current_engine_lease(manager, engine) as active_engine:
 
-        prompt_tokens = await asyncio.to_thread(
-            lambda: sum(engine.count_tokens(text) for text in inputs)
-        )
+                def embed_and_count():
+                    embeddings = active_engine.embed(inputs)
+                    return embeddings, sum(active_engine.count_tokens(text) for text in inputs)
+
+                try:
+                    worker = asyncio.create_task(asyncio.to_thread(embed_and_count))
+                    result, cancellation = await manager._await_resilient_future(worker)
+                    if cancellation is not None:
+                        raise cancellation
+                    embeddings_list, prompt_tokens = result
+                except Exception as exc:
+                    logger.exception("Embedding generation failed: %s", exc)
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Embedding inference failed; see server logs for the request ID.",
+                    ) from exc
 
         latency = time.perf_counter() - start
         manager.record_request(engine.model_id, prompt_tokens, 0, latency)

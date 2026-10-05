@@ -22,16 +22,29 @@ class DeviceProfileMixin:
             score += 3.0
         if "embedding" in str(getattr(cfg, "backend", "")).lower():
             return 0.0
-        # Precision is a ranking prior only. Actual quality must come from explicit
-        # model-specific validation; compressed variants are not assumed lossless.
         score -= estimated_quality_penalty(getattr(cfg, "weight_format", "fp16"))
         return clamp(score / 100.0) * 100.0
 
+    @staticmethod
+    def _benchmark_tokens_sec(benchmark: Mapping[str, Any] | None) -> float | None:
+        if not benchmark:
+            return None
+        value = benchmark.get("decode_tokens_sec")
+        if value is None:
+            value = benchmark.get("tokens_sec")
+        if value is None:
+            return None
+        return safe_float(value)
+
     def _estimated_speed_score(
-        self, cfg: Any, device: str, benchmark: Mapping[str, Any] | None
+        self,
+        cfg: Any,
+        device: str,
+        benchmark: Mapping[str, Any] | None,
     ) -> float:
-        if benchmark and benchmark.get("tokens_sec") is not None:
-            return min(safe_float(benchmark.get("tokens_sec")) * 4.0, 100.0)
+        measured = self._benchmark_tokens_sec(benchmark)
+        if measured is not None:
+            return min(measured * 4.0, 100.0)
         params = infer_parameter_count_b(cfg.id, cfg.name, cfg.source_model)
         device_factor = {"NPU": 1.35, "GPU": 1.2, "CPU": 1.0}.get(base_device(device), 0.9)
         return clamp(device_factor / math.sqrt(max(params, 0.08)) / 4.0) * 100.0
@@ -72,9 +85,6 @@ class DeviceProfileMixin:
                 if base == "NPU" and params > 4.5:
                     value -= 35
 
-            # InferBridge's explicit NPU compatibility profile is for symmetric INT4.
-            # Keep FP16 compatibility behavior intact, prefer INT4 on NPU, and avoid
-            # turning unverified INT8/NPU combinations into the default recommendation.
             if base == "NPU":
                 if precision == "int4":
                     value += 10
@@ -82,8 +92,9 @@ class DeviceProfileMixin:
                     value -= 30
 
             benchmark = self._latest_benchmark(cfg.id, device)
-            if benchmark:
-                value += min(safe_float(benchmark.get("tokens_sec")), 40.0)
+            measured = self._benchmark_tokens_sec(benchmark)
+            if measured is not None:
+                value += min(measured, 40.0)
             if base == "GPU" and gpu_total and gpu_total < runtime_estimate * 0.75:
                 value -= 35
             return value
@@ -111,7 +122,9 @@ class DeviceProfileMixin:
         params = safe_float(evaluation.get("parameter_count_b"), 1.0)
         base = base_device(device)
         precision_prior = profile_precision_bonus(
-            getattr(cfg, "weight_format", "fp16"), profile, device=device
+            getattr(cfg, "weight_format", "fp16"),
+            profile,
+            device=device,
         )
 
         if profile == "fastest":

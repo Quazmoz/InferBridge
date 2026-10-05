@@ -21,6 +21,7 @@ from app.brand import DISPLAY_NAME
 _APP_TITLE = DISPLAY_NAME
 _STARTUP_TIMEOUT_SECONDS = 90
 _POLL_INTERVAL_SECONDS = 0.35
+_MAX_HELPER_FAILURE_DETAIL_CHARS = 2000
 
 
 @dataclass(frozen=True)
@@ -294,6 +295,15 @@ def _system_exit_code(value: object) -> int:
     return 2
 
 
+def _bounded_helper_diagnostic(value: object) -> str:
+    raw = str(value)
+    flattened = "".join(" " if ord(char) < 32 or ord(char) == 127 else char for char in raw)
+    detail = " ".join(flattened.split())
+    if len(detail) > _MAX_HELPER_FAILURE_DETAIL_CHARS:
+        return detail[: _MAX_HELPER_FAILURE_DETAIL_CHARS - 1].rstrip() + "…"
+    return detail
+
+
 def _failure_detail(error: BaseException) -> str:
     """Describe a frozen helper failure with its type and originating frame.
 
@@ -305,7 +315,7 @@ def _failure_detail(error: BaseException) -> str:
 
     import traceback
 
-    detail = str(error).strip() or error.__class__.__name__
+    detail = _bounded_helper_diagnostic(error) or error.__class__.__name__
     frames = traceback.extract_tb(error.__traceback__)
     origin = f" at {Path(frames[-1].filename).name}:{frames[-1].lineno}" if frames else ""
     return f"{error.__class__.__name__}: {detail}{origin}"
@@ -362,7 +372,7 @@ def _run_packaged_converter(arguments: list[str]) -> int:
             except SystemExit as exc:
                 code = _system_exit_code(exc.code)
                 if exc.code is not None and not isinstance(exc.code, int):
-                    print(str(exc.code), file=sys.stderr, flush=True)
+                    print(_bounded_helper_diagnostic(exc.code), file=sys.stderr, flush=True)
                 if code:
                     raise subprocess.CalledProcessError(code, command) from exc
                 result = 0
@@ -382,7 +392,7 @@ def _run_packaged_converter(arguments: list[str]) -> int:
                 return model_converter.main(arguments)
             except SystemExit as exc:
                 if exc.code is not None and not isinstance(exc.code, int):
-                    print(str(exc.code), file=sys.stderr, flush=True)
+                    print(_bounded_helper_diagnostic(exc.code), file=sys.stderr, flush=True)
                 return _system_exit_code(exc.code)
             except KeyboardInterrupt:
                 print("Packaged model conversion cancelled.", file=sys.stderr, flush=True)
@@ -414,7 +424,11 @@ def _native_runtime_smoke() -> int:
         if not callable(LLMPipeline):
             raise RuntimeError("OpenVINO GenAI LLMPipeline binding is unavailable.")
     except Exception as exc:  # noqa: BLE001 - packaged native boundary
-        print(f"Packaged OpenVINO native smoke test failed: {exc}", file=sys.stderr, flush=True)
+        print(
+            f"Packaged OpenVINO native smoke test failed: {_bounded_helper_diagnostic(exc)}",
+            file=sys.stderr,
+            flush=True,
+        )
         return 2
     return 0
 
@@ -438,7 +452,7 @@ def _conversion_import_smoke() -> int:
         except Exception as exc:  # noqa: BLE001 - packaged conversion import boundary
             print(
                 f"Packaged model conversion smoke test failed importing {module}: "
-                f"{type(exc).__name__}: {exc}",
+                f"{type(exc).__name__}: {_bounded_helper_diagnostic(exc)}",
                 file=sys.stderr,
                 flush=True,
             )

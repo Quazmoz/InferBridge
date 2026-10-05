@@ -280,13 +280,22 @@ def register_context_budget_routes(app: FastAPI) -> None:
         def count_with_pending_images(prompt: str) -> int:
             return engine.count_tokens(prompt) + synthetic_images * image_reserve
 
-        analysis = await asyncio.to_thread(
-            analyze_prompt_budget,
-            normalized,
-            engine.apply_chat_template,
-            count_with_pending_images,
-            max_prompt_len,
-        )
+        from app.engine_handoff_safety import current_engine_lease
+
+        async with current_engine_lease(manager, engine) as engine:
+            worker = asyncio.create_task(
+                asyncio.to_thread(
+                    analyze_prompt_budget,
+                    normalized,
+                    engine.apply_chat_template,
+                    count_with_pending_images,
+                    max_prompt_len,
+                )
+            )
+            analysis, cancellation = await manager._await_resilient_future(worker)
+            if cancellation is not None:
+                multimodal.discard_prompt_context(analysis.prompt)
+                raise cancellation
         try:
             requested_output = int(body.max_tokens or 512)
             available_output = max(0, max_context_len - analysis.prompt_tokens - _SAFETY_TOKENS)

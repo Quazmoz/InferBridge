@@ -120,3 +120,14 @@ def test_model_library_browser_guards_actions_and_token_budget():
     assert "Local benchmarks describe only this PC" in source
     assert "Math.min(512, maxContext - 1)" in source
     assert "Model ID, display name, and source directory are required." in source
+    assert "Import local / pre-converted OpenVINO model" in source
+    assert "/v1/model-library/unregistered-managed" in source
+    assert "/v1/model-library/adopt-managed" in source
+    assert "imported and selected — ready to load." in source
+
+    html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+    chat_group = html.index('class="btn-group chat-action-group"')
+    new_chat = html.index('id="new-chat-btn"', chat_group)
+    export_chat = html.index('id="export-chat-btn"', chat_group)
+    add_model = html.index('id="add-model-btn"', chat_group)
+    assert chat_group < new_chat < export_chat < add_model

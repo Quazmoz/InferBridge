@@ -80,3 +80,10 @@ mcp.*.json
 
 # graft's local graph cache — regenerable, not committed (run `graft build`).
 graft/
+
+# repo-local agent tooling (ponytail + graft)
+.agent-tools/node22/
+.agent-tools/ponytail-graft/node_modules/
+.agent-tools/ponytail-graft/state/
+.claude/.ponytail-active
+.claude/.ponytail-statusline-nudged

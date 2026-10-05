@@ -44,6 +44,7 @@ _CONVERT_PROGRESS_RE = re.compile(
 )
 _FINALIZE_PROGRESS_RE = re.compile(r"(?:save|write|serializ|finaliz)", re.IGNORECASE)
 _PHASE_RANK = {"resolving": 0, "downloading": 1, "converting": 2, "finalizing": 3}
+_MAX_CONSOLE_LINE_CHARS = 4096
 
 
 def _ensure_utf8_stdio() -> None:
@@ -108,6 +109,17 @@ def _clean_console_line(text: str) -> str:
     return _ANSI_ESCAPE_RE.sub("", str(text or "")).replace("\x00", "").strip()
 
 
+def _safe_console_diagnostic(value: object, *, limit: int = _MAX_CONSOLE_LINE_CHARS) -> str:
+    """Return one bounded line suitable for the parent process's readline consumer."""
+
+    raw = str(value)
+    flattened = "".join(" " if ord(char) < 32 or ord(char) == 127 else char for char in raw)
+    detail = " ".join(_ANSI_ESCAPE_RE.sub("", flattened).split())
+    if len(detail) > limit:
+        return detail[: limit - 1].rstrip() + "…"
+    return detail
+
+
 def _split_console_lines(pending: str) -> tuple[list[str], str]:
     """Split buffered terminal output on newlines or carriage returns.
 
@@ -119,10 +131,21 @@ def _split_console_lines(pending: str) -> tuple[list[str], str]:
         match = re.search(r"[\r\n]", pending)
         if match is None:
             break
-        line = _clean_console_line(pending[: match.start()])
+        complete = pending[: match.start()]
         pending = pending[match.end() :]
         while pending.startswith(("\r", "\n")):
             pending = pending[1:]
+        while len(complete) > _MAX_CONSOLE_LINE_CHARS:
+            line = _clean_console_line(complete[:_MAX_CONSOLE_LINE_CHARS])
+            complete = complete[_MAX_CONSOLE_LINE_CHARS:]
+            if line:
+                lines.append(line)
+        line = _clean_console_line(complete)
+        if line:
+            lines.append(line)
+    while len(pending) > _MAX_CONSOLE_LINE_CHARS:
+        line = _clean_console_line(pending[:_MAX_CONSOLE_LINE_CHARS])
+        pending = pending[_MAX_CONSOLE_LINE_CHARS:]
         if line:
             lines.append(line)
     return lines, pending
@@ -157,8 +180,8 @@ class ConsoleLineWriter(io.TextIOBase):
     line-oriented progress the subprocess path already produces.
     """
 
-    # Emit well below asyncio's 64 KiB readline limit so the parent never overruns.
-    _MAX_PENDING_CHARS = 4096
+    # Keep the in-process writer on the same bound as subprocess console output.
+    _MAX_PENDING_CHARS = _MAX_CONSOLE_LINE_CHARS
 
     def __init__(self, emit: Callable[[str], None]) -> None:
         self._emit = emit
@@ -171,6 +194,11 @@ class ConsoleLineWriter(io.TextIOBase):
         return "utf-8"
 
     def writable(self) -> bool:
+        return True
+
+    def isatty(self) -> bool:
+        # Hugging Face auto-disables download bars on non-TTY streams. These
+        # redraws feed the preparation watchdog, even in the windowed bundle.
         return True
 
     def write(self, text: str) -> int:
@@ -323,6 +351,8 @@ def _run_streaming_command(
     environment.setdefault("PYTHONUNBUFFERED", "1")
     environment.setdefault("PYTHONIOENCODING", "utf-8")
     environment.setdefault("COLUMNS", "120")
+    # Hugging Face supports line-oriented progress on captured non-TTY output.
+    environment["TQDM_POSITION"] = "-1"
 
     process = subprocess.Popen(
         command,
@@ -436,7 +466,11 @@ def export_model(
     try:
         _run_model_export_command(command, progress_emitter=progress)
     except BaseException as exc:
-        progress.emit("error", f"Conversion failed: {exc}")
+        # Third-party exceptions can contain multi-line command output longer than the
+        # protocol's 500-character message limit. Keep that diagnostic from masking the
+        # original conversion failure with a progress-schema error.
+        detail = " ".join(str(exc).split())
+        progress.emit("error", f"Conversion failed: {detail}"[:500])
         raise
 
     print(f"Saving OpenVINO IR for {source_model}", file=sys.stderr, flush=True)
@@ -557,7 +591,12 @@ def main(argv: list[str] | None = None) -> int:
             model_id=resolved_model_id,
         )
     except (RuntimeError, subprocess.CalledProcessError) as exc:
-        print(f"Conversion failed: {exc}", file=sys.stderr)
+        prefix = "Conversion failed: "
+        detail = (
+            _safe_console_diagnostic(exc, limit=_MAX_CONSOLE_LINE_CHARS - len(prefix))
+            or type(exc).__name__
+        )
+        print(f"{prefix}{detail}", file=sys.stderr)
         return 1
     return 0
 

@@ -249,6 +249,16 @@
             min-width: 0;
         }
 
+        /* Fixed-width device control; the model select absorbs header squeeze instead. */
+        .device-select-wrap {
+            flex-shrink: 0;
+        }
+
+        /* Fill the wrapper so a shrunken wrapper can't let the select paint over its neighbors. */
+        #model-select {
+            width: 100%;
+        }
+
         #model-select,
         #device-select {
             appearance: none;
@@ -2642,12 +2652,23 @@
                     </button>
                 </div>
                 <span class="header-divider"></span>
-                <button class="icon-btn" id="new-chat-btn" title="New chat (Ctrl+L)" aria-label="Start new chat">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 5v14" />
-                        <path d="M5 12h14" />
-                    </svg>
-                </button>
+                <div class="btn-group chat-action-group" aria-label="Conversation actions">
+                    <button class="icon-btn" id="new-chat-btn" title="New chat (Ctrl+L)" aria-label="Start new chat">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 5v14" />
+                            <path d="M5 12h14" />
+                        </svg>
+                    </button>
+                    <button class="icon-btn" id="export-chat-btn" title="Export conversation as Markdown"
+                        aria-label="Export conversation" disabled>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="7 10 12 15 17 10" />
+                            <line x1="12" y1="15" x2="12" y2="3" />
+                        </svg>
+                    </button>
+                </div>
                 <button class="icon-btn" id="add-model-btn" title="Add custom model from Hugging Face"
                     aria-label="Add custom model">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -2655,15 +2676,6 @@
                         <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
                         <path d="M12 22V12" />
                         <path d="m3.3 7 8.7 5 8.7-5" />
-                    </svg>
-                </button>
-                <button class="icon-btn" id="export-chat-btn" title="Export conversation as Markdown"
-                    aria-label="Export conversation" disabled>
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                        <polyline points="7 10 12 15 17 10" />
-                        <line x1="12" y1="15" x2="12" y2="3" />
                     </svg>
                 </button>
                 <button class="icon-btn" id="theme-toggle-btn" title="Toggle light/dark theme"
@@ -4738,6 +4750,8 @@
             let lastUsage = null;
             let fullText = '';
             let streamDone = false;
+            let receivedDone = false;
+            let reader = null;
 
             // Throttle markdown re-rendering to animation frames so fast token
             // streams don't thrash the DOM.
@@ -4760,9 +4774,16 @@
 
             // Parse one SSE line and update the UI (token counter, content, tool calls).
             const processLine = (line) => {
-                if (!line.startsWith('data: ') || line === 'data: [DONE]') return;
+                if (!line.startsWith('data:')) return;
+                const payload = line.slice(5).trim();
+                if (payload === '[DONE]') { receivedDone = true; return; }
                 let data;
-                try { data = JSON.parse(line.slice(6)); } catch { return; }
+                try { data = JSON.parse(payload); }
+                catch { throw new Error('The server sent an invalid stream response.'); }
+                if (!data || typeof data !== 'object' || Array.isArray(data)) {
+                    throw new Error('The server sent an invalid stream response.');
+                }
+                if (data.error) throw new Error(data.error.message || 'Generation failed.');
                 if (data.usage) {
                     lastUsage = data.usage;
                 }
@@ -4810,7 +4831,8 @@
                 if (resp.status === 401) { handleAuthRequired(); throw new Error('API key required'); }
                 if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
-                const reader = resp.body.getReader();
+                if (!resp.body) throw new Error('The server returned no response stream.');
+                reader = resp.body.getReader();
                 const decoder = new TextDecoder();
                 aiBubbleContent.innerHTML = '';
 
@@ -4827,16 +4849,20 @@
                 }
                 buffer += decoder.decode();
                 if (buffer) processLine(buffer);
+                if (!receivedDone) throw new Error('The connection ended before the reply completed.');
 
                 finalize();
             } catch (err) {
                 if (err.name === 'AbortError') {
                     finalize(true);  // keep whatever streamed before the user stopped
                 } else {
-                    streamDone = true;
-                    aiBubbleContent.innerHTML = `<span style="color:var(--red)">⚠ Error: ${escapeHtml(err.message)}</span>`;
+                    currentAbort?.abort();
+                    finalize();
+                    if (!fullText) aiBubbleContent.innerHTML = '';
+                    aiBubbleContent.insertAdjacentHTML('beforeend', `<div role="alert" style="color:var(--red)">⚠ Error: ${escapeHtml(err.message)}</div>`);
                 }
             } finally {
+                reader?.releaseLock();
                 isGenerating = false;
                 currentAbort = null;
                 clearInterval(genTimer);

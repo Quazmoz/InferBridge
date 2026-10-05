@@ -60,6 +60,7 @@ def test_lifecycle_mutations_invalidate_only_the_matching_auth_cache() -> None:
     assert "'/v1/models/cancel'" in script
     assert "'/v1/models/delete'" in script
     assert "'/v1/model-library/import-converted'" in script
+    assert "'/v1/model-library/adopt-managed'" in script
     assert "function invalidateModels(headers = null)" in script
     assert "stateFor(headers).modelsAt = 0" in script
     assert "MODEL_MUTATION_PATHS.has(target.path)" in script

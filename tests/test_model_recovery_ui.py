@@ -23,7 +23,7 @@ def test_model_recovery_ui_exposes_all_requested_actions() -> None:
     assert "Resume preparation" in script
     assert "Retry failed stage" in script
     assert "Restart from download" in script
-    assert "Remove incomplete files" in script
+    assert "Delete failed model files" in script
     assert "View sanitized failure details" in script
     assert "downloaded_files" in script
     assert "conversion_output" in script
@@ -51,6 +51,8 @@ def test_model_recovery_ui_is_accessible_and_avoids_unsafe_html() -> None:
     assert "aria-labelledby" in script
     assert "event.key === 'Escape'" in script
     assert "window.confirm(confirmation)" in script
+    assert "Dismiss recovery reminder" in script
+    assert "DISMISSED_PREFIX" in script
     assert "textContent" in script
     assert "replaceChildren" in script
     assert "innerHTML" not in script

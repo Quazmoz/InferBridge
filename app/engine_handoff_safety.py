@@ -100,6 +100,16 @@ async def current_engine_lease(manager: Any, requested_engine: Any) -> AsyncIter
         return
 
 
+async def count_tokens_with_current_engine(manager: Any, engine: Any, text: str) -> int:
+    """Keep post-generation token accounting off engines closed by recovery."""
+    async with current_engine_lease(manager, engine) as active_engine:
+        worker = asyncio.create_task(asyncio.to_thread(active_engine.count_tokens, text))
+        result, cancellation = await manager._await_resilient_future(worker)
+        if cancellation is not None:
+            raise cancellation
+        return result
+
+
 def install_engine_handoff_safety() -> None:
     """Install stale-engine prevention and busy-unload protection."""
 
@@ -117,27 +127,33 @@ def install_engine_handoff_safety() -> None:
         async with self._track_generation():
             loop = asyncio.get_running_loop()
             async with current_engine_lease(self, engine) as active_engine:
-                return await loop.run_in_executor(
+                worker = loop.run_in_executor(
                     None,
                     active_engine.generate,
                     prompt,
                     params,
                 )
+                result, cancellation = await self._await_resilient_future(worker)
+                if cancellation is not None:
+                    raise cancellation
+                return result
 
     async def stream_with_current_engine(self, engine, prompt, params):
         async with self._track_generation():
             loop = asyncio.get_running_loop()
             async with current_engine_lease(self, engine) as active_engine:
-                handle = await loop.run_in_executor(
+                worker = loop.run_in_executor(
                     None,
                     active_engine.stream,
                     prompt,
                     params,
                 )
+                handle, pending_cancellation = await self._await_resilient_future(worker)
                 completed = False
                 generation_failed = False
-                pending_cancellation: asyncio.CancelledError | None = None
                 try:
+                    if pending_cancellation is not None:
+                        raise pending_cancellation
                     while True:
                         chunk = await loop.run_in_executor(None, handle.next_chunk)
                         if chunk is None:

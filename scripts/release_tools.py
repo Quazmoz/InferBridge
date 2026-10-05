@@ -13,15 +13,10 @@ from pathlib import Path
 # never `scripts`, and script invocation only puts the scripts/ dir on sys.path).
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.release_models import ReleaseManifest, artifact_filename  # noqa: E402
+# `app.release_models` and `scripts.release_manifest` pull in pydantic. CI validates the
+# pinned requirements file *before* installing from it, so the stdlib-only commands
+# (verify-requirements, scan, verify-native, verify-checksums) must import lazily.
 from app.version import __version__  # noqa: E402
-from scripts.release_manifest import (  # noqa: E402
-    build_manifest,
-    validate_version,
-    verify_version_consistency,
-    write_build_info,
-    write_version_info,
-)
 from scripts.release_scan import (  # noqa: E402
     scan_release_path,
     verify_checksums,
@@ -32,6 +27,8 @@ from scripts.release_scan import (  # noqa: E402
 
 
 def write_checksums(output_dir: Path, version: str) -> Path:
+    from app.release_models import artifact_filename
+
     return _write_checksums(output_dir, version, artifact_filename)
 
 
@@ -96,12 +93,20 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "verify-requirements":
             verify_release_requirements(args.path)
         elif args.command == "validate-version":
+            from scripts.release_manifest import validate_version
+
             print(validate_version(args.version, args.channel))
         elif args.command == "verify-version-consistency":
+            from scripts.release_manifest import verify_version_consistency
+
             verify_version_consistency(args.root, args.version)
         elif args.command == "write-version-info":
+            from scripts.release_manifest import write_version_info
+
             write_version_info(args.path, args.version)
         elif args.command == "write-build-info":
+            from scripts.release_manifest import write_build_info
+
             write_build_info(
                 args.path,
                 version=args.version,
@@ -119,6 +124,9 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "verify-checksums":
             verify_checksums(args.path)
         elif args.command == "manifest":
+            from app.release_models import ReleaseManifest, artifact_filename
+            from scripts.release_manifest import build_manifest
+
             value = build_manifest(
                 args.output_dir,
                 version=args.version,
