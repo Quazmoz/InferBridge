@@ -15,15 +15,15 @@ pillow==12.3.0
 httpx==0.28.1
 pystray==0.19.5
 python-certifi-win32==1.6.1; platform_system == "Windows"
-optimum-intel[openvino]==2.0.0
-optimum==2.2.0
-nncf==3.2.0
+optimum-intel[openvino]==2.2.0
+optimum==2.3.0
+nncf==3.4.0
 huggingface_hub==1.19.0
-transformers==5.0.0
-tokenizers==0.22.2
-torch==2.12.0
+transformers==5.18.0
+tokenizers==0.23.2
+torch==2.14.1
 numpy==2.4.6
-safetensors==0.7.0
+safetensors==0.8.0
 pyinstaller==6.21.0
 pip-licenses==5.5.5
 pytest==9.1.0
