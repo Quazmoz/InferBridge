@@ -81,7 +81,12 @@ try {
     if ($Ready.status -ne "ready") { throw "Packaged server did not become ready." }
 
     $Instance = Invoke-RestMethod "$Origin/desktop/instance" -TimeoutSec 10
-    if ($Instance.instance_nonce -ne $Metadata.nonce) { throw "Packaged desktop identity did not match tray metadata." }
+    if ($Instance.instance_nonce -ne $Metadata.nonce) {
+        $NoncePresent = -not [string]::IsNullOrWhiteSpace([string]$Instance.instance_nonce)
+        $NonceLengthMatches = ([string]$Instance.instance_nonce).Length -eq ([string]$Metadata.nonce).Length
+        $PortMatches = $Instance.port -eq $Metadata.port
+        throw "Packaged desktop identity did not match tray metadata (nonce present: $NoncePresent; nonce lengths match: $NonceLengthMatches; ports match: $PortMatches)."
+    }
     $Release = Invoke-RestMethod "$Origin/desktop/release/status" -TimeoutSec 10
     if (-not $Release.build.application_version) { throw "Packaged release metadata is missing." }
     if ($Release.installation_mode -ne $ExpectedMode) {

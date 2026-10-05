@@ -352,6 +352,16 @@ def test_desktop_port_fallback_reserves_listener_compatible_port():
     assert 1 <= selected <= 65535
 
 
+def test_desktop_port_fallback_when_loopback_listener_occupies_preferred_port():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        occupied = listener.getsockname()[1]
+        selected = desktop_controller.choose_available_listener_port(occupied)
+    assert selected != occupied
+    assert 1 <= selected <= 65535
+
+
 def test_internal_launcher_health_probes_remain_loopback(monkeypatch):
     metadata = desktop_launcher.InstanceMetadata(
         pid=os.getpid(), port=8123, nonce="nonce", executable="InferBridge.exe", started_at="now"

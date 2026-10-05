@@ -43,19 +43,23 @@ def _current_process_created_at() -> float:
 def choose_available_port(preferred: int = 8000) -> int:
     """Choose a port available for either loopback or wildcard desktop listeners.
 
-    The socket is never put into listening mode. Binding the wildcard address here is
-    only an availability probe so a later LAN-mode Uvicorn bind cannot collide with a
-    service that owns the preferred port on another local interface.
+    The socket is never put into listening mode. Probe both wildcard and loopback
+    addresses because Windows can allow a wildcard bind beside a loopback listener.
     """
 
     for candidate in (preferred, 0):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
+        for _ in range(10 if candidate == 0 else 1):
+            port = candidate
             try:
-                sock.bind(("0.0.0.0", candidate))
+                for address in ("0.0.0.0", "127.0.0.1"):
+                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
+                        sock.bind((address, port))
+                        if port == 0:
+                            port = int(sock.getsockname()[1])
             except OSError:
                 continue
-            return int(sock.getsockname()[1])
+            return port
     raise RuntimeError("No local TCP port is available for the application server.")
 
 
