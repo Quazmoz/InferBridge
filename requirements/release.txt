@@ -6,10 +6,10 @@ wheel==0.44.0
 openvino==2026.2.1
 openvino-genai==2026.2.1.0
 openvino-tokenizers==2026.2.1.0
-fastapi==0.137.1
-uvicorn[standard]==0.49.0
-pydantic==2.13.4
-python-dotenv==1.2.2
+fastapi==0.142.2
+uvicorn[standard]==0.54.0
+pydantic==2.13.5
+python-dotenv==1.2.4
 psutil==7.2.2
 pillow==12.3.0
 httpx==0.28.1
