@@ -249,6 +249,16 @@
             min-width: 0;
         }
 
+        /* Fixed-width device control; the model select absorbs header squeeze instead. */
+        .device-select-wrap {
+            flex-shrink: 0;
+        }
+
+        /* Fill the wrapper so a shrunken wrapper can't let the select paint over its neighbors. */
+        #model-select {
+            width: 100%;
+        }
+
         #model-select,
         #device-select {
             appearance: none;
