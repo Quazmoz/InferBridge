@@ -29,12 +29,13 @@ def test_publisher_rejects_detached_head_and_wrong_branch():
     assert "Promote dev -> beta -> main before publishing." in script
 
 
-def test_publisher_never_allows_unsigned_stable_publication():
+def test_publisher_allows_unsigned_stable_publication():
     script = _publisher_script()
 
-    assert 'if ($Channel -eq "stable" -and $AllowUnsigned)' in script
-    assert "-AllowUnsigned is not permitted for stable publication" in script
-    assert 'if ($Channel -eq "stable") { $SigningGate += "--require-signed" }' in script
+    assert "[switch]$AllowUnsigned" not in script
+    assert 'if ($Channel -eq "stable") { $SigningGate += "--require-signed" }' not in script
+    assert '"--require-signed"' not in script
+    assert "verify_release_signing.py" in script
 
 
 def test_beta_promotion_pull_requests_run_release_and_lifecycle_ci():
