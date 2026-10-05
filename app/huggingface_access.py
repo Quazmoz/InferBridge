@@ -27,13 +27,14 @@ from urllib.parse import quote
 import httpx
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from app.brand import DISPLAY_NAME, LEGACY_DISPLAY_NAME
 from app.local_request_security import (
     matches_any_secret,
     require_safe_browser_origin,
 )
+from runtime import device_check
 
 _HF_REPO_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}/[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$")
 _HF_TOKEN_RE = re.compile(r"^hf_[A-Za-z0-9]{8,500}$")
@@ -782,7 +783,23 @@ class HuggingFacePreflightMiddleware:
         model_id = str(payload.get("model") or payload.get("model_id") or "").strip() or None
         source_model = str(payload.get("source_model") or "").strip()
         cfg = manager.catalog.get(model_id) if model_id else None
-        if path == "/v1/models/convert" and cfg is not None:
+        if path == "/v1/models/convert":
+            from app.openai_api import ModelConvertRequest
+
+            # Local validation and lifecycle conflicts must remain actionable offline.
+            # Delegate rejected requests to the route's normal error handling.
+            try:
+                request = ModelConvertRequest.model_validate(payload)
+                if request.device is not None:
+                    device_check.normalize_device(request.device)
+            except (ValidationError, ValueError):
+                await self.app(scope, replay_receive, send)
+                return
+            model_id = request.model
+            cfg = manager.catalog.get(model_id)
+            if cfg is None or model_id in getattr(manager, "engines", {}):
+                await self.app(scope, replay_receive, send)
+                return
             source_model = cfg.source_model
         # Only an actual JSON boolean true can opt into the reviewed remote-code path.
         # Truthy strings such as "false" must not bypass the normal access preflight.

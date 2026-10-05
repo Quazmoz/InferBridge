@@ -37,7 +37,7 @@ from app import __version__, chat_format, model_manager, multimodal, responses_a
 from app.body_limit import RequestBodyLimitMiddleware
 from app.brand import DISPLAY_NAME
 from app.config import BASE_DIR, Settings
-from app.engine_handoff_safety import count_tokens_with_current_engine
+from app.engine_handoff_safety import count_tokens_with_current_engine, current_engine_lease
 from app.openai_api import (
     BenchmarkRunRequest,
     ChatCompletionMessage,
@@ -1352,19 +1352,25 @@ def create_app(settings: Settings) -> FastAPI:
             raise HTTPException(status_code=400, detail="Input cannot be empty.")
 
         start = time.perf_counter()
-        loop = asyncio.get_running_loop()
-        try:
-            embeddings_list = await loop.run_in_executor(None, engine.embed, inputs)
-        except Exception as exc:
-            logger.exception("Embedding generation failed: %s", exc)
-            raise HTTPException(
-                status_code=500,
-                detail="Embedding inference failed; see server logs for the request ID.",
-            ) from exc
+        async with manager._track_generation():
+            async with current_engine_lease(manager, engine) as active_engine:
 
-        prompt_tokens = await asyncio.to_thread(
-            lambda: sum(engine.count_tokens(text) for text in inputs)
-        )
+                def embed_and_count():
+                    embeddings = active_engine.embed(inputs)
+                    return embeddings, sum(active_engine.count_tokens(text) for text in inputs)
+
+                try:
+                    worker = asyncio.create_task(asyncio.to_thread(embed_and_count))
+                    result, cancellation = await manager._await_resilient_future(worker)
+                    if cancellation is not None:
+                        raise cancellation
+                    embeddings_list, prompt_tokens = result
+                except Exception as exc:
+                    logger.exception("Embedding generation failed: %s", exc)
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Embedding inference failed; see server logs for the request ID.",
+                    ) from exc
 
         latency = time.perf_counter() - start
         manager.record_request(engine.model_id, prompt_tokens, 0, latency)

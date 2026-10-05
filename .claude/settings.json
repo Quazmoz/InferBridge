@@ -35,32 +35,23 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/graft-hooks.cjs\" prompt",
-            "timeout": 15000
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
             "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.agent-tools/ponytail-graft/bin/ponytail-hook.cjs\" track",
             "timeout": 5,
             "statusMessage": "Tracking ponytail mode..."
           }
         ]
-      }
-    ],
-    "SessionStart": [
+      },
       {
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/graft-hooks.cjs\" session-start",
-            "timeout": 8000
+            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/graft-hooks.cjs\" prompt",
+            "timeout": 15000
           }
         ]
-      },
+      }
+    ],
+    "SessionStart": [
       {
         "matcher": "startup|resume|clear|compact",
         "hooks": [
@@ -69,6 +60,15 @@
             "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.agent-tools/ponytail-graft/bin/ponytail-hook.cjs\" activate",
             "timeout": 5,
             "statusMessage": "Loading ponytail mode..."
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/graft-hooks.cjs\" session-start",
+            "timeout": 8000
           }
         ]
       }

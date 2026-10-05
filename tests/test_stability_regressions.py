@@ -4,6 +4,7 @@ import asyncio
 import threading
 import time
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.config import BASE_DIR, Settings
@@ -52,7 +53,13 @@ def test_stream_handle_cancellation_releases_full_queue() -> None:
     assert handle.wait_closed(timeout=0.1)
 
 
-def test_convert_loaded_model_returns_conflict() -> None:
+def test_convert_loaded_model_returns_conflict(monkeypatch) -> None:
+    async def unexpected_preflight(*_args, **_kwargs):
+        pytest.fail("loaded model conflict must be reported before network access")
+
+    monkeypatch.setattr(
+        "app.huggingface_access.HuggingFaceAccessService.preflight", unexpected_preflight
+    )
     app = create_app(make_settings())
     with TestClient(app) as client:
         manager = client.app.state.manager
@@ -67,6 +74,25 @@ def test_convert_loaded_model_returns_conflict() -> None:
         assert response.status_code == 409
         assert "Unload it before converting" in response.json()["detail"]
         assert MODEL_ID not in manager.convert_tasks
+
+
+@pytest.mark.parametrize(
+    ("payload", "status"),
+    [
+        ({"model": MODEL_ID, "device": "MULTI:NPU,BOGUS"}, 400),
+        ({"model": MODEL_ID, "ratio": 2}, 422),
+        ({"model": "missing", "source_model": "owner/model"}, 404),
+    ],
+)
+def test_conversion_validation_does_not_need_network(monkeypatch, payload, status):
+    async def unexpected_preflight(*_args, **_kwargs):
+        pytest.fail("invalid conversion must be reported before network access")
+
+    monkeypatch.setattr(
+        "app.huggingface_access.HuggingFaceAccessService.preflight", unexpected_preflight
+    )
+    with TestClient(create_app(make_settings())) as client:
+        assert client.post("/v1/models/convert", json=payload).status_code == status
 
 
 def test_invalid_api_keys_are_throttled_and_success_resets_client() -> None:

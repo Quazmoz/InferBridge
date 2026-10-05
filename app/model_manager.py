@@ -360,6 +360,8 @@ class ModelManager(_CoreModelManager):
                 return await asyncio.shield(future), pending_cancellation
             except asyncio.CancelledError as exc:
                 pending_cancellation = pending_cancellation or exc
+                if future.done():
+                    return future.result(), pending_cancellation
 
     async def _finish_stream_handle(
         self,

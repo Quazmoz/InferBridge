@@ -7,6 +7,7 @@ the streaming bridge) without OpenVINO, so they run anywhere — including macOS
 import asyncio
 import json
 import time
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -20,7 +21,11 @@ MODEL_ID = "tinyllama-1.1b-chat-fp16"
 
 
 @pytest.fixture()
-def client():
+def client(monkeypatch):
+    monkeypatch.setattr(
+        "app.huggingface_access.HuggingFaceAccessService.preflight",
+        AsyncMock(return_value={"code": "hf_access_granted"}),
+    )
     settings = Settings(
         host="127.0.0.1",
         port=8000,

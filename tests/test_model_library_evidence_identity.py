@@ -284,9 +284,7 @@ def test_metrics_use_certification_for_selected_device(tmp_path, monkeypatch):
     assert entry["metrics"]["tested_driver_version"] == "CPU-driver"
 
 
-def test_local_metrics_do_not_inherit_certification_from_another_device(
-    tmp_path, monkeypatch
-):
+def test_local_metrics_do_not_inherit_certification_from_another_device(tmp_path, monkeypatch):
     cfg = _config("cross-device-evidence-model")
     service = _prepare_service(tmp_path, monkeypatch, cfg)
     monkeypatch.setattr(
