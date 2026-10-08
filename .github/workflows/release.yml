@@ -56,6 +56,12 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install pinned release dependencies
+        # build_release.ps1 validates the version with the runner's Python before it builds its own venv.
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements/release.txt
+          python -m pip install --disable-pip-version-check --no-deps --no-build-isolation .
+
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
 
