@@ -110,10 +110,14 @@ function Resolve-Iscc([string]$Requested) {
     if ($Requested -and (Test-Path $Requested)) { return (Resolve-Path $Requested).Path }
     $Candidates = @(
         "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
-        "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe",
+        "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
         "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
     )
-    return $Candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+    $Found = $Candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+    if ($Found) { return $Found }
+    $OnPath = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+    if ($OnPath) { return $OnPath.Source }
+    return $null
 }
 
 function Resolve-SignTool() {
