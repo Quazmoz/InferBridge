@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SignPath artifact configuration, slug "installer". The Inno Setup installer already
+  contains the launcher signed by the "launcher" configuration; only the outer setup
+  executable is signed here. Inno Setup writes the numeric x.y.z.0 product version.
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="numeric_version" required="true" />
+  </parameters>
+  <zip-file>
+    <pe-file path="InferBridge-*-windows-x64-installer.exe" product-name="InferBridge" product-version="${numeric_version}">
+      <authenticode-sign />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>

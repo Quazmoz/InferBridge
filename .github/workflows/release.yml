@@ -1,0 +1,196 @@
+name: Release build
+
+# Manual only: builds Windows release artifacts on a GitHub-hosted runner, optionally has
+# SignPath Foundation sign the launcher and installer, and packs the Microsoft Store MSIX.
+# It never publishes; publish with scripts/publish_release.ps1 after review.
+# Setup: docs/CODE_SIGNING.md (SignPath) and docs/MICROSOFT_STORE.md (MSIX).
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version (blank = app/version.py)"
+        required: false
+        default: ""
+      channel:
+        description: "Release channel"
+        type: choice
+        options: [stable, beta, nightly]
+        default: stable
+      sign:
+        description: "Sign with SignPath (requires SignPath setup)"
+        type: boolean
+        default: true
+      msix:
+        description: "Build the Microsoft Store MSIX (requires MSIX_* variables)"
+        type: boolean
+        default: true
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    name: Windows release artifacts
+    runs-on: windows-latest
+    timeout-minutes: 240
+    env:
+      SIGNPATH_ORGANIZATION_ID: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+      SIGNPATH_PROJECT_SLUG: ${{ vars.SIGNPATH_PROJECT_SLUG || 'InferBridge' }}
+      SIGNPATH_SIGNING_POLICY_SLUG: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG || 'release-signing' }}
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Resolve version
+        id: version
+        run: |
+          $version = "${{ inputs.version }}".Trim()
+          if (-not $version) { $version = (python scripts/release_tools.py canonical-version).Trim() }
+          $core = ($version -split '[-+]')[0]
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "numeric=$core.0" >> $env:GITHUB_OUTPUT
+          "artifacts=artifacts/release-$version" >> $env:GITHUB_OUTPUT
+
+      - name: Check SignPath configuration
+        if: inputs.sign
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+        run: |
+          if (-not $env:SIGNPATH_API_TOKEN -or -not $env:SIGNPATH_ORGANIZATION_ID) {
+            throw "Signing needs the SIGNPATH_API_TOKEN secret and SIGNPATH_ORGANIZATION_ID variable. Re-run with sign unchecked for an unsigned build."
+          }
+
+      # ---------------- unsigned path ----------------
+      - name: Build unsigned release
+        if: ${{ !inputs.sign }}
+        run: >-
+          ./scripts/build_release.ps1 -Version "${{ steps.version.outputs.version }}"
+          -Channel ${{ inputs.channel }} -Clean -Unsigned -MockSmokeTest
+
+      # ---------------- SignPath path ----------------
+      - name: Build launcher
+        if: inputs.sign
+        run: >-
+          ./scripts/build_release.ps1 -Version "${{ steps.version.outputs.version }}"
+          -Channel ${{ inputs.channel }} -Clean -ExternallySigned -Phase Launcher -MockSmokeTest
+
+      - name: Upload unsigned launcher
+        if: inputs.sign
+        id: upload-launcher
+        uses: actions/upload-artifact@v7
+        with:
+          name: launcher-unsigned
+          path: dist/InferBridge/InferBridge.exe
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Sign launcher with SignPath
+        if: inputs.sign
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ env.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ env.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ env.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: launcher
+          github-artifact-id: ${{ steps.upload-launcher.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: build/signpath/launcher
+          parameters: |
+            version: ${{ toJSON(steps.version.outputs.version) }}
+
+      - name: Install signed launcher
+        if: inputs.sign
+        run: Copy-Item build/signpath/launcher/InferBridge.exe dist/InferBridge/InferBridge.exe -Force
+
+      - name: Package installer and portable ZIP
+        if: inputs.sign
+        run: >-
+          ./scripts/build_release.ps1 -Version "${{ steps.version.outputs.version }}"
+          -Channel ${{ inputs.channel }} -ExternallySigned -Phase Package -MockSmokeTest
+
+      - name: Upload unsigned installer
+        if: inputs.sign
+        id: upload-installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: installer-unsigned
+          path: ${{ steps.version.outputs.artifacts }}/InferBridge-${{ steps.version.outputs.version }}-windows-x64-installer.exe
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Sign installer with SignPath
+        if: inputs.sign
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ env.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ env.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ env.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: installer
+          github-artifact-id: ${{ steps.upload-installer.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: build/signpath/installer
+          parameters: |
+            numeric_version: ${{ toJSON(steps.version.outputs.numeric) }}
+
+      - name: Install signed installer
+        if: inputs.sign
+        run: >-
+          Copy-Item "build/signpath/installer/InferBridge-${{ steps.version.outputs.version }}-windows-x64-installer.exe"
+          "${{ steps.version.outputs.artifacts }}/" -Force
+
+      - name: Finalize manifest and checksums
+        if: inputs.sign
+        run: >-
+          ./scripts/build_release.ps1 -Version "${{ steps.version.outputs.version }}"
+          -Channel ${{ inputs.channel }} -ExternallySigned -Phase Finalize -MockSmokeTest
+
+      # ---------------- Store package and outputs ----------------
+      - name: Build Microsoft Store MSIX
+        if: inputs.msix
+        env:
+          INFERBRIDGE_MSIX_IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME }}
+          INFERBRIDGE_MSIX_PUBLISHER: ${{ vars.MSIX_PUBLISHER }}
+          INFERBRIDGE_MSIX_PUBLISHER_DISPLAY_NAME: ${{ vars.MSIX_PUBLISHER_DISPLAY_NAME }}
+        run: >-
+          ./scripts/build_msix.ps1 -Version "${{ steps.version.outputs.version }}"
+          -OutputDirectory build/store
+          -Python (Get-ChildItem build/release-environments/*/Scripts/python.exe | Select-Object -First 1).FullName
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: InferBridge-${{ steps.version.outputs.version }}-release
+          path: ${{ steps.version.outputs.artifacts }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Store package
+        if: inputs.msix
+        uses: actions/upload-artifact@v7
+        with:
+          name: InferBridge-${{ steps.version.outputs.version }}-msix
+          path: build/store/*.msix
+          if-no-files-found: error
+          retention-days: 14

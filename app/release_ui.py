@@ -57,6 +57,7 @@ RELEASE_EXTENSION_JS = r"""
     content.append(el('div', `Build commit: ${build.source_commit}`, 'muted'));
     content.append(el('div', `Data schema: ${status.data_schema_version}`, 'muted'));
     content.append(el('h3', 'Updates'));
+    if (status.installation_mode === 'store') { content.append(el('p', 'Microsoft Store delivers updates for this installation.')); addAction('Close', () => { modal.style.display='none'; }); return; }
     content.append(el('p', status.update_checks.enabled ? `Channel: ${status.update_checks.channel}. Checks occur only when this local UI requests one.` : 'Update checks are disabled.'));
     if (result && result.status === 'available' && result.manifest) {
       const manifest = result.manifest;

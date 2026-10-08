@@ -10,6 +10,11 @@ param(
     [string]$OutputDirectory = "",
     [switch]$MockSmokeTest,
     [switch]$Sign,
+    # SignPath (or any service that signs outside this process) runs between staged phases:
+    # Launcher -> sign InferBridge.exe -> Package -> sign installer -> Finalize.
+    # See docs/CODE_SIGNING.md and .github/workflows/release.yml.
+    [switch]$ExternallySigned,
+    [ValidateSet("All", "Launcher", "Package", "Finalize")][string]$Phase = "All",
     [switch]$GenerateChecksums,
     [switch]$AllowDirty,
     [string]$Python = "python",
@@ -117,6 +122,9 @@ function Resolve-SignTool() {
     }
     $Found = Get-Command signtool.exe -ErrorAction SilentlyContinue
     if ($Found) { return $Found.Source }
+    $Kit = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue |
+        Sort-Object { [version]$_.Directory.Parent.Name } -Descending | Select-Object -First 1
+    if ($Kit) { return $Kit.FullName }
     throw "signtool.exe was not found. Set OV_LLM_SIGNTOOL_PATH."
 }
 
@@ -148,15 +156,26 @@ function Sign-AndVerify([string]$Path) {
     $Arguments += $Path
     & $SignTool @Arguments | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Authenticode signing failed for $([IO.Path]::GetFileName($Path))." }
+    Assert-Signature $Path
+}
+
+function Assert-Signature([string]$Path) {
+    $SignTool = Resolve-SignTool
     & $SignTool verify /pa /all $Path | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Authenticode verification failed for $([IO.Path]::GetFileName($Path))." }
 }
 
 if ($Sign -and $Unsigned) { throw "Use either -Sign or -Unsigned, not both." }
+if ($ExternallySigned -and ($Sign -or $Unsigned)) { throw "-ExternallySigned cannot be combined with -Sign or -Unsigned." }
+if ($ExternallySigned -and $Phase -eq "All") { throw "-ExternallySigned requires running -Phase Launcher, Package, and Finalize separately." }
 if ($SkipInstaller -and $SkipPortable) { throw "At least one of installer or portable output must be enabled." }
-if ($Sign -and ($SkipInstaller -or $SkipPortable)) {
+if (($Sign -or $ExternallySigned) -and ($SkipInstaller -or $SkipPortable)) {
     throw "Signed releases require both the launcher-containing portable ZIP and installer."
 }
+# Later phases reuse build\, dist\, and the artifact directory left by the earlier ones,
+# so they must run with the same arguments in the same checkout.
+$BuildPhase = $Phase -in @("All", "Launcher")
+$PackagePhase = $Phase -in @("All", "Package")
 
 $CanonicalVersion = (& $Python scripts/release_tools.py canonical-version).Trim()
 if ($LASTEXITCODE -ne 0) { throw "Could not read the canonical application version." }
@@ -182,15 +201,17 @@ $Artifacts = if ($OutputDirectory) {
     if ([IO.Path]::IsPathRooted($OutputDirectory)) { [IO.Path]::GetFullPath($OutputDirectory) }
     else { [IO.Path]::GetFullPath((Join-Path $Root $OutputDirectory)) }
 } else { Join-Path $Root "artifacts\release-$Version" }
-if ($Clean) {
-    Remove-Item $BuildRoot, $DistRoot -Recurse -Force -ErrorAction SilentlyContinue
-}
-Remove-Item $DistRoot -Recurse -Force -ErrorAction SilentlyContinue
-if (-not $OutputDirectory) {
-    Remove-Item $Artifacts -Recurse -Force -ErrorAction SilentlyContinue
-}
-elseif (Test-Path $Artifacts) {
-    Get-ChildItem $Artifacts -File -Filter "InferBridge-$Version-*" | Remove-Item -Force
+if ($BuildPhase) {
+    if ($Clean) {
+        Remove-Item $BuildRoot, $DistRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    Remove-Item $DistRoot -Recurse -Force -ErrorAction SilentlyContinue
+    if (-not $OutputDirectory) {
+        Remove-Item $Artifacts -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    elseif (Test-Path $Artifacts) {
+        Get-ChildItem $Artifacts -File -Filter "InferBridge-$Version-*" | Remove-Item -Force
+    }
 }
 New-Item $BuildRoot, $ReleaseEnvironmentRoot, $Artifacts -ItemType Directory -Force | Out-Null
 $script:TimingSnapshotPath = Join-Path $BuildRoot "release-timings.json"
@@ -236,10 +257,17 @@ else {
     $script:ReleaseEnvironmentReused = $true
     Write-Host "Reusing validated release environment: $EnvironmentKey"
 }
-Invoke-Checked "Install project without dependency re-resolution" { & $ReleasePython -m pip install --disable-pip-version-check --no-deps --no-build-isolation . }
-
 $InventoryJson = Join-Path $Artifacts "InferBridge-$Version-dependency-inventory.json"
 $InventoryText = Join-Path $Artifacts "InferBridge-$Version-dependency-freeze.txt"
+$Notices = Join-Path $BuildRoot "THIRD-PARTY-NOTICES.txt"
+$AppIcon = Join-Path $BuildRoot "brand\InferBridge.ico"
+$BuiltRoot = Join-Path $DistRoot "InferBridge"
+$Launcher = Join-Path $BuiltRoot "InferBridge.exe"
+$RunMockSmoke = (-not [bool]$SkipTests) -or [bool]$MockSmokeTest
+
+if ($BuildPhase) {
+Invoke-Checked "Install project without dependency re-resolution" { & $ReleasePython -m pip install --disable-pip-version-check --no-deps --no-build-isolation . }
+
 Invoke-Checked "Generate dependency inventory" {
     & $ReleasePython -m pip list --format=json | Set-Content -Path $InventoryJson -Encoding utf8
 }
@@ -259,7 +287,6 @@ else {
     Write-Warning "Tests were skipped by explicit -SkipTests request."
 }
 
-$Notices = Join-Path $BuildRoot "THIRD-PARTY-NOTICES.txt"
 Invoke-Checked "Collect third-party licenses" { & $ReleasePython -m piplicenses --format=plain-vertical --with-license-file --no-license-path --output-file=$Notices }
 $VersionInfo = Join-Path $BuildRoot "version_info.txt"
 $BuildInfo = Join-Path $BuildRoot "build-info.json"
@@ -267,7 +294,6 @@ Invoke-Checked "Generate executable version metadata" { & $ReleasePython scripts
 Invoke-Checked "Generate build metadata" { & $ReleasePython scripts/release_tools.py write-build-info --path $BuildInfo --version $Version --channel $Channel --commit $GitCommit --clean ($TreeClean.ToString().ToLowerInvariant()) --dependency-inventory $InventoryJson }
 $BrandAssets = Join-Path $BuildRoot "brand"
 Invoke-Checked "Generate application icons" { & $ReleasePython scripts/generate_brand_assets.py --output-directory $BrandAssets }
-$AppIcon = Join-Path $BrandAssets "InferBridge.ico"
 if (-not (Test-Path $AppIcon)) { throw "Application icon generation did not produce $AppIcon." }
 
 Remove-Item $DistRoot -Recurse -Force -ErrorAction SilentlyContinue
@@ -282,12 +308,9 @@ finally {
     Remove-Item Env:OV_LLM_THIRD_PARTY_NOTICES, Env:OV_LLM_VERSION_INFO, Env:OV_LLM_BUILD_INFO, Env:OV_LLM_APP_ICON -ErrorAction SilentlyContinue
 }
 
-$BuiltRoot = Join-Path $DistRoot "InferBridge"
-$Launcher = Join-Path $BuiltRoot "InferBridge.exe"
 Invoke-Checked "Verify packaged native components" { & $ReleasePython scripts/release_tools.py verify-native --path $BuiltRoot }
 Invoke-Checked "Scan packaged directory" { & $ReleasePython scripts/release_tools.py scan --path $BuiltRoot }
 
-$RunMockSmoke = (-not [bool]$SkipTests) -or [bool]$MockSmokeTest
 if ($RunMockSmoke -and -not $SkipInstaller) {
     if (Test-Path (Join-Path $BuiltRoot "portable.flag")) {
         throw "Installed-mode distribution unexpectedly contains portable.flag."
@@ -297,18 +320,34 @@ if ($RunMockSmoke -and -not $SkipInstaller) {
     }
 }
 
+}
+
+if (-not (Test-Path $Launcher)) { throw "Packaged launcher is missing: $Launcher. Run -Phase Launcher first." }
 $LauncherSigned = $false
-if ($Sign) {
+if ($Sign -and $BuildPhase) {
     Invoke-Checked "Sign and verify packaged launcher" { Sign-AndVerify $Launcher }
     $LauncherSigned = $true
 }
-else {
+elseif ($ExternallySigned -and -not $BuildPhase) {
+    Invoke-Checked "Verify externally signed launcher" { Assert-Signature $Launcher }
+    $LauncherSigned = $true
+}
+elseif (-not $ExternallySigned) {
     Write-Warning "Building unsigned artifacts. Use -Sign with secure signing environment variables for a signed release."
+}
+
+if ($Phase -eq "Launcher") {
+    Write-ReleaseTimingSnapshot -Path $script:TimingSnapshotPath -Finalized $true
+    Write-Host "Launcher phase completed. Sign $Launcher, then run -Phase Package."
+    exit 0
 }
 
 $Produced = @($InventoryJson, $InventoryText)
 $SignedTypes = @()
+$Installer = Join-Path $Artifacts "InferBridge-$Version-windows-x64-installer.exe"
+$PortableZip = Join-Path $Artifacts "InferBridge-$Version-windows-x64-portable.zip"
 
+if ($PackagePhase) {
 # Build the installed-mode installer before temporarily adding portable-only files.
 if (-not $SkipInstaller) {
     $Compiler = Resolve-Iscc $IsccPath
@@ -318,7 +357,6 @@ if (-not $SkipInstaller) {
     Invoke-Checked "Compile Inno Setup installer" {
         & $Compiler "/DMyAppVersion=$Version" "/DMyAppVersionNumeric=$NumericVersion" "/DSourceRoot=$BuiltRoot" "/DArtifactDir=$Artifacts" "/DAppIconPath=$AppIcon" packaging/installer.iss
     }
-    $Installer = Join-Path $Artifacts "InferBridge-$Version-windows-x64-installer.exe"
     if (-not (Test-Path $Installer)) { throw "Installer was not produced: $Installer" }
     if ($Sign) {
         Invoke-Checked "Sign and verify installer" { Sign-AndVerify $Installer }
@@ -362,7 +400,6 @@ InferBridge $Version portable release
             }
         }
 
-        $PortableZip = Join-Path $Artifacts "InferBridge-$Version-windows-x64-portable.zip"
         Invoke-Checked "Create portable ZIP without staging copy" {
             & $ReleasePython scripts/create_portable_archive.py create --source-root $BuiltRoot --output $PortableZip --archive-root $PortableName
         }
@@ -376,6 +413,29 @@ InferBridge $Version portable release
     }
     $Produced += $PortableZip
     if ($LauncherSigned) { $SignedTypes += "portable" }
+}
+}
+
+if ($Phase -eq "Package") {
+    Write-ReleaseTimingSnapshot -Path $script:TimingSnapshotPath -Finalized $true
+    Write-Host "Package phase completed. Sign $Installer, then run -Phase Finalize."
+    exit 0
+}
+
+if (-not $PackagePhase) {
+    if (-not $SkipInstaller) {
+        if (-not (Test-Path $Installer)) { throw "Installer is missing: $Installer. Run -Phase Package first." }
+        if ($ExternallySigned) {
+            Invoke-Checked "Verify externally signed installer" { Assert-Signature $Installer }
+            $SignedTypes += "installer"
+        }
+        $Produced += $Installer
+    }
+    if (-not $SkipPortable) {
+        if (-not (Test-Path $PortableZip)) { throw "Portable ZIP is missing: $PortableZip. Run -Phase Package first." }
+        $Produced += $PortableZip
+        if ($LauncherSigned) { $SignedTypes += "portable" }
+    }
 }
 
 $LicenseStage = Join-Path $BuildRoot "third-party-licenses"

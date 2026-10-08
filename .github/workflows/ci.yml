@@ -241,6 +241,7 @@ jobs:
         run: |
           $paths = @(
             "scripts/build_dev_package.ps1",
+            "scripts/build_msix.ps1",
             "scripts/build_release.ps1",
             "scripts/build_windows_distribution.ps1",
             "scripts/publish_release.ps1",
@@ -314,6 +315,7 @@ jobs:
           runtime/model_output_transaction.py
           runtime/progress_protocol.py
           scripts/release_tools.py
+          scripts/msix_package.py
           scripts/release_manifest.py
           scripts/release_scan.py
           scripts/verify_release_signing.py
@@ -334,6 +336,8 @@ jobs:
           tests/test_dev_package_script.py
           tests/test_release_pipeline.py
           tests/test_release_signing_gate.py
+          tests/test_msix_package.py
+          tests/test_msix_store_mode.py
           tests/test_release_provenance.py
           tests/test_installer_upgrade_contract.py
           tests/test_installer_first_launch_contract.py
