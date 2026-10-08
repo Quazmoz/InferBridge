@@ -9,9 +9,18 @@ from fastapi import HTTPException, Request
 
 from app.build_info import load_build_info
 from app.local_request_security import require_safe_browser_origin
+from app.msix import is_packaged
 from app.release_models import SemanticVersion
-from app.update_checker import UpdateChecker, UpdatePreferences, UpdateStore, check_due
+from app.update_checker import (
+    UpdateChecker,
+    UpdateCheckResult,
+    UpdatePreferences,
+    UpdateStore,
+    check_due,
+)
 from app.version import DATA_SCHEMA_VERSION
+
+STORE_UPDATE_MESSAGE = "Microsoft Store delivers updates for this installation."
 
 _LOOPBACK_CLIENTS = frozenset({"127.0.0.1", "::1", "localhost", "testclient"})
 
@@ -30,14 +39,20 @@ def _require_local_ui(request: Request) -> None:
         )
 
 
-def register_release_routes(app, *, paths) -> None:
+def register_release_routes(app, *, paths, packaged: bool | None = None) -> None:
     store = UpdateStore(paths.config_dir)
-    installation_mode = "portable" if paths.portable else "installed"
+    store_managed = is_packaged() if packaged is None else packaged
+    if store_managed:
+        installation_mode = "store"
+    else:
+        installation_mode = "portable" if paths.portable else "installed"
     release_check_lock = asyncio.Lock()
 
     @app.get("/desktop/release/status", include_in_schema=False)
     async def release_status():
         preferences = store.load_preferences()
+        if store_managed:
+            preferences.enabled = False
         cache = store.load_cache()
         cache_matches_channel = cache.channel == preferences.channel
         relevant_last_checked_at = cache.last_checked_at if cache_matches_channel else None
@@ -58,6 +73,10 @@ def register_release_routes(app, *, paths) -> None:
     @app.post("/desktop/release/check", include_in_schema=False)
     async def check_release(request: Request):
         _require_local_ui(request)
+        if store_managed:
+            return UpdateCheckResult(status="disabled", message=STORE_UPDATE_MESSAGE).model_dump(
+                mode="json"
+            )
         # A second manual click or overlapping browser request must not let an older
         # network response overwrite a newer update cache entry. Keep the network work
         # off the event loop while serializing checks for this desktop app instance.
@@ -69,6 +88,8 @@ def register_release_routes(app, *, paths) -> None:
     @app.put("/desktop/release/settings", include_in_schema=False)
     async def update_release_settings(request: Request):
         _require_local_ui(request)
+        if store_managed:
+            raise HTTPException(status_code=409, detail=STORE_UPDATE_MESSAGE)
         try:
             # JSON decoding is a client-validation boundary too: malformed request bodies
             # must return the same actionable 422 as structurally invalid settings.

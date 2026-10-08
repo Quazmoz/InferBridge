@@ -28,7 +28,7 @@ Releases from `v0.7.0` onward use the canonical `Quazmoz/InferBridge` repository
 
 The retained 0.6.1 hardware evidence comes from one Intel Core Ultra 9 185H laptop running Windows 11 build 26200 and OpenVINO `2026.2.1`. It is not a claim that every Intel system, model, precision, driver, or OpenVINO release will behave the same way, and no later release has been recertified on hardware.
 
-> **Signing status:** No published InferBridge installer or portable ZIP is Authenticode-signed. Windows reports an unknown publisher and SmartScreen may warn on first launch. Verify downloads against the published SHA-256 checksums.
+> **Signing status:** No published InferBridge installer or portable ZIP is Authenticode-signed yet. Windows reports an unknown publisher and SmartScreen may warn on first launch. Verify downloads against the published SHA-256 checksums. Signed releases through SignPath Foundation and a Microsoft Store listing are being set up; see the [code signing policy](docs/CODE_SIGNING.md#code-signing-policy) and [Microsoft Store packaging](docs/MICROSOFT_STORE.md).
 
 ## Download, install, choose a model, and chat
 
@@ -413,6 +413,10 @@ Linux GPU and NPU support remains driver-dependent and experimental. InferBridge
 - Certificates, private keys, passwords, tokens, and signing secrets must never enter the repository.
 
 Conversation history remains in browser localStorage and is not persisted by the server.
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org). Committers, reviewers, and approvers: [Quazmoz](https://github.com/Quazmoz). This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. Full policy: [docs/CODE_SIGNING.md](docs/CODE_SIGNING.md#code-signing-policy).
 
 ## Contributing
 

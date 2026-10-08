@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Protocol
 
 from app.brand import LEGACY_EXECUTABLE_BASENAME
+from app.msix import is_packaged
 
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 CURRENT_VALUE_NAME = "InferBridge"
@@ -144,11 +145,13 @@ class StartupRegistration:
         executable: Path | None = None,
         arguments: Sequence[str] = (),
         portable: bool = False,
+        packaged: bool | None = None,
         backend: RegistryBackend | None = None,
     ) -> None:
         self.executable = Path(executable or sys.executable).expanduser().resolve()
         self.arguments = tuple(str(argument) for argument in arguments)
         self.portable = bool(portable)
+        self.packaged = is_packaged() if packaged is None else bool(packaged)
         self.backend = backend or WinRegBackend()
 
     @classmethod
@@ -156,6 +159,7 @@ class StartupRegistration:
         cls,
         *,
         portable: bool = False,
+        packaged: bool | None = None,
         backend: RegistryBackend | None = None,
     ) -> StartupRegistration:
         command = desktop_launcher_command_prefix()
@@ -163,6 +167,7 @@ class StartupRegistration:
             executable=Path(command[0]),
             arguments=command[1:],
             portable=portable,
+            packaged=packaged,
             backend=backend,
         )
 
@@ -195,6 +200,10 @@ class StartupRegistration:
             self.backend.delete(RUN_KEY, LEGACY_VALUE_NAME)
 
     def state(self) -> StartupRegistrationState:
+        if self.packaged:
+            # The Store package's manifest StartupTask owns this; a Run value pointing into
+            # WindowsApps would launch outside package identity.
+            return StartupRegistrationState(enabled=False, command=None)
         self._migrate_legacy_if_enabled()
         current = self.backend.read(RUN_KEY, CURRENT_VALUE_NAME)
         return StartupRegistrationState(
@@ -207,6 +216,11 @@ class StartupRegistration:
             raise RuntimeError(
                 "Start with Windows is disabled in portable mode. Install the application "
                 "per-user before enabling automatic startup."
+            )
+        if enabled and self.packaged:
+            raise RuntimeError(
+                "Start with Windows for the Microsoft Store version is managed in "
+                "Windows Settings > Apps > Startup."
             )
         if enabled:
             self.backend.write(RUN_KEY, CURRENT_VALUE_NAME, self.expected_command)

@@ -1,6 +1,6 @@
 # Production release process
 
-Local Windows release generation is the primary workflow. GitHub Actions performs lightweight source validation, but it does not build, sign, or publish production releases automatically.
+Local Windows release generation remains supported. The manual **Release build** workflow (`.github/workflows/release.yml`) can also build the artifacts on a GitHub-hosted runner, sign them through SignPath Foundation (see [CODE_SIGNING.md](CODE_SIGNING.md)), and pack the Microsoft Store MSIX (see [MICROSOFT_STORE.md](MICROSOFT_STORE.md)). Nothing builds on push, and nothing is published automatically.
 
 ## Prerequisites
 
