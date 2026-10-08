@@ -20,11 +20,13 @@ The MSIX version is `<major>.<minor>.<patch>.0`; the Store reserves the fourth f
 ## One-time setup
 
 1. Register free at https://storedeveloper.microsoft.com as an individual developer (ID and selfie check).
-2. In Partner Center, reserve the name **InferBridge**, then open *Product management > Product identity* and copy:
-   - `Package/Identity/Name`
-   - `Package/Identity/Publisher` (starts with `CN=`)
-   - `Package/Properties/PublisherDisplayName`
-3. Add them as GitHub repository variables `MSIX_IDENTITY_NAME`, `MSIX_PUBLISHER`, and `MSIX_PUBLISHER_DISPLAY_NAME`. They are public identifiers, not secrets.
+2. The reserved Partner Center identity (*Product management > Product identity*) is built into `release.yml`:
+   - Name `QuinnFavo.InferBridge`
+   - Publisher `CN=CAC9A06A-996E-4DC7-9079-45803515E811`
+   - PublisherDisplayName `Quinn Favo`
+   - Store ID `9PJ0NSD01070`
+
+   These are public identifiers, not secrets. Repository variables `MSIX_IDENTITY_NAME`, `MSIX_PUBLISHER`, and `MSIX_PUBLISHER_DISPLAY_NAME` override them if the identity ever changes.
 
 ## Each release
 

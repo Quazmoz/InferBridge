@@ -22,7 +22,7 @@ on:
         type: boolean
         default: true
       msix:
-        description: "Build the Microsoft Store MSIX (requires MSIX_* variables)"
+        description: "Build the Microsoft Store MSIX"
         type: boolean
         default: true
 
@@ -170,9 +170,9 @@ jobs:
       - name: Build Microsoft Store MSIX
         if: inputs.msix
         env:
-          INFERBRIDGE_MSIX_IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME }}
-          INFERBRIDGE_MSIX_PUBLISHER: ${{ vars.MSIX_PUBLISHER }}
-          INFERBRIDGE_MSIX_PUBLISHER_DISPLAY_NAME: ${{ vars.MSIX_PUBLISHER_DISPLAY_NAME }}
+          INFERBRIDGE_MSIX_IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME || 'QuinnFavo.InferBridge' }}
+          INFERBRIDGE_MSIX_PUBLISHER: ${{ vars.MSIX_PUBLISHER || 'CN=CAC9A06A-996E-4DC7-9079-45803515E811' }}
+          INFERBRIDGE_MSIX_PUBLISHER_DISPLAY_NAME: ${{ vars.MSIX_PUBLISHER_DISPLAY_NAME || 'Quinn Favo' }}
         run: >-
           ./scripts/build_msix.ps1 -Version "${{ steps.version.outputs.version }}"
           -OutputDirectory build/store
