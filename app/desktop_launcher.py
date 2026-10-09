@@ -551,9 +551,7 @@ def main(argv: list[str] | None = None) -> int:
         return _diagnostic_export(args)
 
     try:
-        args.port, args.fixed_port = resolve_desktop_port(
-            args.port, os.environ.get("OV_LLM_PORT")
-        )
+        args.port, args.fixed_port = resolve_desktop_port(args.port, os.environ.get("OV_LLM_PORT"))
     except ValueError as exc:
         from app.desktop_shell import show_dialog
 
