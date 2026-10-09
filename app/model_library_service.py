@@ -143,8 +143,7 @@ class ModelLibraryService:
             ) from exc
         values = data.get("model_ids") if isinstance(data, dict) else None
         if not isinstance(values, list) or any(
-            not isinstance(value, str) or not MODEL_ID_RE.fullmatch(value)
-            for value in values
+            not isinstance(value, str) or not MODEL_ID_RE.fullmatch(value) for value in values
         ):
             raise ValueError("Model-library user index is malformed; refusing catalog changes.")
         return set(values)
