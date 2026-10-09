@@ -46,7 +46,6 @@ def test_new_tray_owner_discards_stale_one_shot_markers(tmp_path):
     assert stub.lock.released is True
 
 
-
 class _FailingStartupStub(_StartupStub):
     def __init__(self, tmp_path) -> None:
         super().__init__(tmp_path)
@@ -93,6 +92,7 @@ def test_interactive_startup_failure_keeps_tray_available(monkeypatch, tmp_path)
     assert stub.snapshot.phase is TrayPhase.ERROR
     assert stub.cleaned is True
     assert stub.lock.released is True
+
 
 def test_tray_shutdown_removes_all_session_markers(tmp_path):
     tray = object.__new__(TrayApplication)
