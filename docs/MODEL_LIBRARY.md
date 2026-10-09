@@ -33,7 +33,7 @@ https://github.com/Quazmoz/InferBridge/releases/latest/download/model-library-ma
 
 For compatibility with installations and releases from before the rename, the updater may also attempt the legacy repository location. Users cannot supply an arbitrary manifest URL.
 
-The response must remain on an approved GitHub release host, stay below 1 MB, use the supported schema, contain at most 50 entries, and pass the SHA-256 checksum of its canonical catalog. Release publication also includes this asset in the versioned SHA-256 checksum file. A valid copy is cached beside the writable model catalog. If it is unavailable or invalid, the bundled manifest remains the offline fallback.
+Every manifest redirect is checked **before making the next request**: only HTTPS URLs on the approved GitHub release hosts, with no embedded credentials or nonstandard ports, are permitted. Redirect chains are limited to five hops. The response must stay below 1 MB, use the supported schema, contain at most 50 entries, and pass the SHA-256 checksum of its canonical catalog. Release publication also includes this asset in the versioned SHA-256 checksum file. A valid copy is cached beside the writable model catalog. If it is unavailable or invalid, the bundled manifest remains the offline fallback.
 
 Checksums protect against corruption and inconsistent publication. They are not substitutes for HTTPS, GitHub account security, release signing, or Authenticode verification.
 
