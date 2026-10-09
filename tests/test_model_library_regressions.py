@@ -488,6 +488,7 @@ def test_official_refresh_stops_reading_oversized_manifest(tmp_path, monkeypatch
 
     class FakeResponse:
         url = library.OFFICIAL_MANIFEST_URL
+        status_code = 200
         headers = {}
 
         async def __aenter__(self):
@@ -517,3 +518,117 @@ def test_official_refresh_stops_reading_oversized_manifest(tmp_path, monkeypatch
     with pytest.raises(ManifestValidationError, match="1 MB"):
         asyncio.run(service.refresh_official())
     assert not service.cache_file.exists()
+
+
+def _mock_official_manifest_http(monkeypatch, handler):
+    """Use HTTPX's real redirect semantics without allowing outbound network I/O."""
+    import httpx
+
+    real_client = httpx.AsyncClient
+    clients = []
+
+    def create_client(**kwargs):
+        clients.append(kwargs)
+        return real_client(transport=httpx.MockTransport(handler), **kwargs)
+
+    monkeypatch.setattr(library.httpx, "AsyncClient", create_client)
+    return clients
+
+
+@pytest.mark.parametrize(
+    "redirect",
+    [
+        "http://127.0.0.1/private",
+        "http://github.com/untrusted-scheme",
+        "https://evil.example/manifest.json",
+        "https://github.com:444/manifest.json",
+        "https://user:secret@github.com/manifest.json",
+        "//169.254.169.254/latest/meta-data/",
+    ],
+)
+def test_official_refresh_rejects_untrusted_redirect_before_request(tmp_path, monkeypatch, redirect):
+    import httpx
+
+    settings = _settings(tmp_path)
+    manager = ModelManager(settings)
+    service = ModelLibraryService(settings, manager)
+    requested = []
+
+    def handler(request):
+        requested.append(str(request.url))
+        if len(requested) > 1:
+            pytest.fail("The HTTP client contacted an untrusted manifest redirect")
+        return httpx.Response(302, headers={"Location": redirect})
+
+    client_options = _mock_official_manifest_http(monkeypatch, handler)
+    with pytest.raises(ManifestValidationError, match="untrusted host"):
+        asyncio.run(service.refresh_official())
+
+    assert requested == [library.OFFICIAL_MANIFEST_URL]
+    assert client_options[0]["follow_redirects"] is False
+    assert not service.cache_file.exists()
+    assert manager.catalog == {}
+
+
+def test_official_refresh_accepts_bounded_trusted_redirect_chain(tmp_path, monkeypatch):
+    import httpx
+
+    settings = _settings(tmp_path)
+    manager = ModelManager(settings)
+    service = ModelLibraryService(settings, manager)
+    catalog = {"redirected-model": {"definition": _definition("redirected-model"), "metadata": {}}}
+    payload = json.dumps(
+        {
+            "schema_version": 1,
+            "catalog": catalog,
+            "catalog_sha256": library.catalog_checksum(catalog),
+        }
+    ).encode("utf-8")
+    second_url = "https://github.com/Quazmoz/InferBridge/releases/download/v1/library.json"
+    final_url = "https://release-assets.githubusercontent.com/library.json"
+    requested = []
+
+    def handler(request):
+        url = str(request.url)
+        requested.append(url)
+        if url == library.OFFICIAL_MANIFEST_URL:
+            return httpx.Response(302, headers={"Location": "/Quazmoz/InferBridge/releases/download/v1/library.json"})
+        if url == second_url:
+            return httpx.Response(302, headers={"Location": final_url})
+        if url == final_url:
+            return httpx.Response(200, content=payload)
+        pytest.fail(f"Unexpected manifest request: {url}")
+
+    _mock_official_manifest_http(monkeypatch, handler)
+    result = asyncio.run(service.refresh_official())
+
+    assert requested == [library.OFFICIAL_MANIFEST_URL, second_url, final_url]
+    assert result["source"] == final_url
+    assert result["added"] == ["redirected-model"]
+    assert library.parse_manifest_bytes(service.cache_file.read_bytes())["catalog"][
+        "redirected-model"
+    ]["definition"]["model_id"] == "redirected-model"
+
+
+@pytest.mark.parametrize("location", [None, "/repeat"])
+def test_official_refresh_rejects_missing_or_excessive_redirects(tmp_path, monkeypatch, location):
+    import httpx
+
+    settings = _settings(tmp_path)
+    manager = ModelManager(settings)
+    service = ModelLibraryService(settings, manager)
+    requested = []
+
+    def handler(request):
+        requested.append(str(request.url))
+        return httpx.Response(
+            302,
+            headers={"Location": location} if location is not None else {},
+        )
+
+    _mock_official_manifest_http(monkeypatch, handler)
+    with pytest.raises(ManifestValidationError, match="missing or exceeds"):
+        asyncio.run(service.refresh_official())
+    assert len(requested) == (1 if location is None else 6)
+    assert not service.cache_file.exists()
+    assert manager.catalog == {}
