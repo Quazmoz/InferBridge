@@ -11,7 +11,7 @@ import threading
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
@@ -51,6 +51,28 @@ _ALLOWED_RELEASE_HOSTS = {
     "objects.githubusercontent.com",
     "release-assets.githubusercontent.com",
 }
+
+_MAX_MANIFEST_REDIRECTS = 5
+_REDIRECT_STATUSES = {301, 302, 303, 307, 308}
+
+
+def _require_trusted_manifest_url(url: str) -> None:
+    """Reject off-host redirects before the HTTP client can contact them."""
+
+    try:
+        parsed = urlparse(url)
+        approved = (
+            parsed.scheme == "https"
+            and parsed.hostname in _ALLOWED_RELEASE_HOSTS
+            and parsed.port in (None, 443)
+            and parsed.username is None
+            and parsed.password is None
+        )
+    except ValueError:
+        approved = False
+    if not approved:
+        raise ManifestValidationError("Official manifest redirected to an untrusted host.")
+
 
 
 def definition_to_config(
@@ -212,37 +234,45 @@ class ModelLibraryService:
 
     async def refresh_official(self) -> dict[str, Any]:
         source_url = OFFICIAL_MANIFEST_URL
-        async with httpx.AsyncClient(timeout=12.0, follow_redirects=True) as client:
-            async with client.stream(
-                "GET",
-                OFFICIAL_MANIFEST_URL,
-                headers={
-                    "Accept": "application/json",
-                    "User-Agent": f"OpenVINO-Windows-LLM/{__version__}",
-                },
-            ) as response:
-                response.raise_for_status()
-                source_url = str(response.url)
-                host = (urlparse(source_url).hostname or "").lower()
-                if host not in _ALLOWED_RELEASE_HOSTS:
-                    raise ManifestValidationError(
-                        "Official manifest redirected to an untrusted host."
-                    )
-                content_length = response.headers.get("Content-Length")
-                try:
-                    declared_length = int(content_length) if content_length else None
-                except (TypeError, ValueError):
-                    declared_length = None
-                if declared_length is not None and declared_length > MAX_MANIFEST_BYTES:
-                    raise ManifestValidationError("Model library manifest exceeds the 1 MB limit.")
-                payload = bytearray()
-                async for chunk in response.aiter_bytes():
-                    payload.extend(chunk)
-                    if len(payload) > MAX_MANIFEST_BYTES:
-                        raise ManifestValidationError(
-                            "Model library manifest exceeds the 1 MB limit."
-                        )
-                manifest = parse_manifest_bytes(bytes(payload))
+        async with httpx.AsyncClient(timeout=12.0, follow_redirects=False) as client:
+            for hop in range(_MAX_MANIFEST_REDIRECTS + 1):
+                _require_trusted_manifest_url(source_url)
+                async with client.stream(
+                    "GET",
+                    source_url,
+                    headers={
+                        "Accept": "application/json",
+                        "User-Agent": f"OpenVINO-Windows-LLM/{__version__}",
+                    },
+                ) as response:
+                    if response.status_code in _REDIRECT_STATUSES:
+                        location = response.headers.get("Location")
+                        if not location or hop == _MAX_MANIFEST_REDIRECTS:
+                            raise ManifestValidationError(
+                                "Official manifest redirect is missing or exceeds the limit."
+                            )
+                        source_url = urljoin(str(response.url), location)
+                        _require_trusted_manifest_url(source_url)
+                        continue
+                    response.raise_for_status()
+                    source_url = str(response.url)
+                    _require_trusted_manifest_url(source_url)
+                    content_length = response.headers.get("Content-Length")
+                    try:
+                        declared_length = int(content_length) if content_length else None
+                    except (TypeError, ValueError):
+                        declared_length = None
+                    if declared_length is not None and declared_length > MAX_MANIFEST_BYTES:
+                        raise ManifestValidationError("Model library manifest exceeds the 1 MB limit.")
+                    payload = bytearray()
+                    async for chunk in response.aiter_bytes():
+                        payload.extend(chunk)
+                        if len(payload) > MAX_MANIFEST_BYTES:
+                            raise ManifestValidationError(
+                                "Model library manifest exceeds the 1 MB limit."
+                            )
+                    manifest = parse_manifest_bytes(bytes(payload))
+                    break
 
         self.cache_file.parent.mkdir(parents=True, exist_ok=True)
         temp = self.cache_file.with_suffix(".json.tmp")
