@@ -74,7 +74,6 @@ def _require_trusted_manifest_url(url: str) -> None:
         raise ManifestValidationError("Official manifest redirected to an untrusted host.")
 
 
-
 def definition_to_config(
     definition: dict[str, Any],
     model_path: Path,
@@ -263,7 +262,9 @@ class ModelLibraryService:
                     except (TypeError, ValueError):
                         declared_length = None
                     if declared_length is not None and declared_length > MAX_MANIFEST_BYTES:
-                        raise ManifestValidationError("Model library manifest exceeds the 1 MB limit.")
+                        raise ManifestValidationError(
+                            "Model library manifest exceeds the 1 MB limit."
+                        )
                     payload = bytearray()
                     async for chunk in response.aiter_bytes():
                         payload.extend(chunk)
