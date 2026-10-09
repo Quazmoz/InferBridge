@@ -49,6 +49,8 @@ New conversions and imported OpenVINO IR directories receive a local `.ovllm-con
 
 The library reports conversions as compatible, legacy or untracked, stale after a runtime major or minor change, definition-mismatched, incomplete, or metadata-damaged. A warning does not delete or silently reconvert a model.
 
+If `model-library-user.json` is corrupted, catalog mutations fail closed rather than treating user-owned models as unowned. Preserve the file for recovery; restore a valid backup before retrying a refresh or model import.
+
 ## Import and export
 
 ### Definitions
