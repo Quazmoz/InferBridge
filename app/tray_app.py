@@ -52,6 +52,7 @@ class TrayApplication(
             paths=self.paths,
             options=ServerControllerOptions(
                 preferred_port=args.port,
+                fixed_port=getattr(args, "fixed_port", False),
                 portable=args.portable,
                 data_dir=resolved_data_dir,
                 mock=args.mock,

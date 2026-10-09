@@ -154,3 +154,7 @@ python -m pytest
 ruff check .
 ruff format --check .
 ```
+
+## Fixed port for packaged Windows desktop
+
+Exit the existing InferBridge tray instance before changing ports. Launch the installed executable with `--port 8123` or set `OV_LLM_PORT=8123` in the launching process environment. Explicit ports will not silently fall back if occupied; by default the tray prefers port 8000 and can use a free alternative. Windows user environment changes may require signing out and back in before Start Menu launches inherit them. Do not put `OV_LLM_PORT` in an install-directory `.env` and expect the tray port to change. See [configuration](README.md#fixed-port-for-the-installed-windows-desktop-application).

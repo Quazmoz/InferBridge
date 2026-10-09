@@ -204,6 +204,22 @@ def _portable_default() -> bool:
     return (base / "portable.flag").exists()
 
 
+def resolve_desktop_port(cli_port: int | None, env_port: str | None) -> tuple[int, bool]:
+    """Use explicit CLI > environment > fallback; distinguish pinned from default."""
+
+    if cli_port is not None:
+        return cli_port, True
+    if env_port is None:
+        return 8000, False
+    value = env_port.strip()
+    if not value.isascii() or not value.isdecimal():
+        raise ValueError("OV_LLM_PORT must be an integer between 1 and 65535.")
+    port = int(value)
+    if not 1 <= port <= 65535:
+        raise ValueError("OV_LLM_PORT must be an integer between 1 and 65535.")
+    return port, True
+
+
 def _child_command(args: argparse.Namespace, metadata: InstanceMetadata) -> list[str]:
     if getattr(sys, "frozen", False):
         command = [sys.executable, "--server-child"]
@@ -500,7 +516,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--server-child", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--convert-model", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--native-smoke", action="store_true", help=argparse.SUPPRESS)
-    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--port", type=int, default=None)
     parser.add_argument("--instance-nonce", default="")
     parser.add_argument("--control-token", default="", help=argparse.SUPPRESS)
     parser.add_argument("--owner-pid", type=int, default=0, help=argparse.SUPPRESS)
@@ -521,9 +537,11 @@ def main(argv: list[str] | None = None) -> int:
         return _native_runtime_smoke() or _conversion_import_smoke()
     if remaining:
         parser.error(f"unrecognized arguments: {' '.join(remaining)}")
-    if args.port < 1 or args.port > 65535:
+    if args.port is not None and not 1 <= args.port <= 65535:
         parser.error("--port must be between 1 and 65535")
     if args.server_child:
+        if args.port is None:
+            parser.error("--server-child requires --port")
         if not args.instance_nonce or not (
             args.control_token or os.environ.get("OV_LLM_DESKTOP_CONTROL_TOKEN")
         ):
@@ -531,6 +549,16 @@ def main(argv: list[str] | None = None) -> int:
         return _server_child(args)
     if args.diagnostic:
         return _diagnostic_export(args)
+
+    try:
+        args.port, args.fixed_port = resolve_desktop_port(
+            args.port, os.environ.get("OV_LLM_PORT")
+        )
+    except ValueError as exc:
+        from app.desktop_shell import show_dialog
+
+        show_dialog(_APP_TITLE, str(exc), error=True)
+        return 2
 
     from app.tray_app import run_tray_controller
 

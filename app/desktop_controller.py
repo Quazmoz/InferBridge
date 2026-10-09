@@ -40,14 +40,14 @@ def _current_process_created_at() -> float:
         return 0.0
 
 
-def choose_available_port(preferred: int = 8000) -> int:
-    """Choose a port available for either loopback or wildcard desktop listeners.
+def choose_available_port(preferred: int = 8000, *, allow_fallback: bool = True) -> int:
+    """Find a listener-compatible port; explicit pinned ports must not silently change.
 
     The socket is never put into listening mode. Probe both wildcard and loopback
     addresses because Windows can allow a wildcard bind beside a loopback listener.
     """
 
-    for candidate in (preferred, 0):
+    for candidate in (preferred, 0) if allow_fallback else (preferred,):
         for _ in range(10 if candidate == 0 else 1):
             port = candidate
             try:
@@ -60,6 +60,11 @@ def choose_available_port(preferred: int = 8000) -> int:
             except OSError:
                 continue
             return port
+    if not allow_fallback:
+        raise RuntimeError(
+            f"Configured port {preferred} is unavailable. Close the application using it "
+            "or change OV_LLM_PORT/--port, then restart InferBridge."
+        )
     raise RuntimeError("No local TCP port is available for the application server.")
 
 
@@ -70,6 +75,7 @@ choose_available_listener_port = choose_available_port
 @dataclass(frozen=True)
 class ServerControllerOptions:
     preferred_port: int = 8000
+    fixed_port: bool = False
     portable: bool = False
     data_dir: str | None = None
     mock: bool = False
@@ -245,8 +251,16 @@ class DesktopServerController:
         self._expected_exit = False
         try:
             self.recover_stale_metadata()
-            preferred = self.port or self.options.preferred_port
-            port = choose_available_port(preferred)
+            preferred = (
+                self.options.preferred_port
+                if self.options.fixed_port
+                else self.port or self.options.preferred_port
+            )
+            port = (
+                choose_available_port(preferred, allow_fallback=False)
+                if self.options.fixed_port
+                else choose_available_port(preferred)
+            )
             nonce = secrets.token_urlsafe(24)
             control_token = secrets.token_urlsafe(32)
             provisional = InstanceMetadata(

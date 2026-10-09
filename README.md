@@ -429,3 +429,16 @@ https://github.com/Quazmoz/InferBridge
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+### Fixed port for the installed Windows desktop application
+
+The packaged tray/desktop launcher supports `OV_LLM_PORT` and `--port`. Explicitly configured ports are **pinned**: if another program owns the port, InferBridge displays an error instead of unexpectedly switching to an ephemeral port. Without a configured port, the tray prefers 8000 and may fall back to an available local port. The desktop server, tray health probes, and displayed endpoint share the selected port. Port choice does not expand LAN exposure; the existing host/API-key safety checks still apply.
+
+In PowerShell, **fully exit the InferBridge tray process** and launch the executable from the same session:
+
+```powershell
+$env:OV_LLM_PORT = "8123"
+& "C:\\Program Files\\InferBridge\\InferBridge.exe"  # adjust to your actual installation path
+```
+
+Alternatively, pass `--port 8123` to the desktop executable; command-line `--port` takes precedence over `OV_LLM_PORT`. For a persistent user environment variable, use `[Environment]::SetEnvironmentVariable("OV_LLM_PORT", "8123", "User")`, then sign out/in (or restart the launching shell) and start InferBridge anew. A currently running tray process retains its existing port. Do not rely on a `.env` file beside the installed executable: desktop port selection happens before the server loads environment configuration. For source-mode server use, `OV_LLM_PORT` continues to follow the server's own settings.

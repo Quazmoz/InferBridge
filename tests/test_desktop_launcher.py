@@ -549,3 +549,47 @@ def test_native_runtime_smoke_loads_tokenizer_extension_by_name(monkeypatch):
 
     assert desktop_launcher._native_runtime_smoke() == 0
     assert calls == ["openvino_tokenizers.dll"]
+
+
+def test_resolve_desktop_port_precedence_and_fixed_policy():
+    assert desktop_launcher.resolve_desktop_port(None, None) == (8000, False)
+    assert desktop_launcher.resolve_desktop_port(None, " 8123 ") == (8123, True)
+    assert desktop_launcher.resolve_desktop_port(9090, "bad") == (9090, True)
+
+
+@pytest.mark.parametrize("raw", ["", " ", "zero", "0", "65536", "-1", "8000.0"])
+def test_resolve_desktop_port_rejects_invalid_env(raw):
+    with pytest.raises(ValueError, match="OV_LLM_PORT"):
+        desktop_launcher.resolve_desktop_port(None, raw)
+
+
+def test_desktop_main_honors_env_and_cli_port_overrides(monkeypatch):
+    from app import tray_app
+
+    captured = []
+    monkeypatch.setattr(tray_app, "run_tray_controller", lambda args: captured.append(args) or 0)
+    monkeypatch.setenv("OV_LLM_PORT", "8123")
+    assert desktop_launcher.main(["--headless", "--start-stopped"]) == 0
+    assert (captured[-1].port, captured[-1].fixed_port) == (8123, True)
+
+    assert desktop_launcher.main(["--port", "9123", "--headless", "--start-stopped"]) == 0
+    assert (captured[-1].port, captured[-1].fixed_port) == (9123, True)
+
+    monkeypatch.delenv("OV_LLM_PORT")
+    assert desktop_launcher.main(["--headless", "--start-stopped"]) == 0
+    assert (captured[-1].port, captured[-1].fixed_port) == (8000, False)
+
+
+def test_invalid_desktop_port_env_returns_error_before_tray(monkeypatch):
+    from app import desktop_shell, tray_app
+
+    notices = []
+    monkeypatch.setenv("OV_LLM_PORT", "99999")
+    monkeypatch.setattr(desktop_shell, "show_dialog", lambda *a, **kw: notices.append((a, kw)))
+    monkeypatch.setattr(
+        tray_app,
+        "run_tray_controller",
+        lambda _args: pytest.fail("Invalid OV_LLM_PORT must not start the tray"),
+    )
+    assert desktop_launcher.main([]) == 2
+    assert "OV_LLM_PORT" in notices[0][0][-1]

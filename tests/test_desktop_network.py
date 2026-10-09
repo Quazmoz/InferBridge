@@ -406,3 +406,35 @@ def test_portable_mode_keeps_network_credentials_under_portable_data(monkeypatch
     assert resolved.data_root == (portable_root / "data").resolve()
     assert store.key_path == resolved.config_dir / "api-key.dpapi"
     assert resolved.onboarding_file.is_relative_to(resolved.data_root)
+
+
+def test_explicit_desktop_port_does_not_fall_back_when_occupied():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        occupied = listener.getsockname()[1]
+        with pytest.raises(RuntimeError, match=f"Configured port {occupied} is unavailable"):
+            desktop_controller.choose_available_port(occupied, allow_fallback=False)
+
+
+def test_desktop_controller_uses_fixed_port_selection(monkeypatch, tmp_path):
+    from app.desktop_controller import DesktopServerController, ServerControllerOptions
+
+    calls = []
+
+    def select_port(preferred, *, allow_fallback=True):
+        calls.append((preferred, allow_fallback))
+        raise RuntimeError("fixed port unavailable")
+
+    controller = DesktopServerController(
+        paths=SimpleNamespace(launcher_metadata_file=tmp_path / "instance.json"),
+        options=ServerControllerOptions(preferred_port=8123, fixed_port=True),
+        log_path=tmp_path / "desktop.log",
+    )
+    monkeypatch.setattr(controller, "recover_stale_metadata", lambda: None)
+    monkeypatch.setattr(desktop_controller, "choose_available_port", select_port)
+    with pytest.raises(RuntimeError, match="fixed port unavailable"):
+        controller.start()
+    assert calls == [(8123, False)]
+    assert controller.child is None
+    assert controller.metadata is None
