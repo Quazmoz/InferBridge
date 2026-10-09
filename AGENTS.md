@@ -1,3 +1,11 @@
+## Branch ownership and promotion policy
+
+**Development target: `dev`.** `main` is the stable/tested branch; `beta` is a separate candidate branch. Unless the user explicitly authorizes a specific promotion, agents and maintainers must not commit, merge, reset, force-push, or otherwise update `main` or `beta`. Do not interpret "keep building", "continue", "fix", or "make it ready" as permission to promote. Existing releases, tags, and production deployments are also out of scope without explicit authorization.
+
+Before repository changes, fetch current heads and compare `main`, `beta`, and `dev`. Incorporate any missing upstream commits into `dev` safely before beginning new development; retain all existing `dev` changes and resolve real conflicts rather than replacing the branch. Read the scoped instructions and run the appropriate quality gates. Commit qualified work to `dev` (or a short-lived branch targeting `dev` when needed). Report the `dev` commit, CI evidence, hardware verification gaps, and user test procedure. **Stop at `dev` even when all checks are green.** Only promote when the user separately requests it after testing.
+
+This is a repository workflow instruction, not a GitHub permission boundary. Repository branch rules must be configured separately to technically prevent unauthorized pushes to `main`.
+
 <!-- graft:start -->
 ## Graft — repo context graph
 

@@ -115,6 +115,8 @@ We use **ruff** for formatting and linting. Make sure to check and format your c
 
 ## Submitting Pull Requests
 
+All ordinary changes are based on `dev`. The upstream `main` branch is reserved for user-approved promotion of tested changes.
+
 1. **Create a branch** for your work:
    ```bash
    git checkout -b feature/my-cool-feature
@@ -122,7 +124,11 @@ We use **ruff** for formatting and linting. Make sure to check and format your c
 2. **Implement changes** and add unit tests under the `tests/` directory if you're writing new functionality.
 3. **Verify** that `ruff check .` runs clean and `pytest` passes.
 4. **Commit your changes** with a clear commit message.
-5. **Push** to your fork and **open a Pull Request** against the main repository.
+5. **Push** to your fork and **open a Pull Request** targeting the upstream `dev` branch, not `main`.
+
+### Branch promotion
+
+Use `dev` for all normal development, including AI-assisted work. Before changes, compare `dev` against `main` and `beta` and bring any missing upstream changes into `dev` without replacing existing development work. Keep `main` stable and `beta` untouched by default. Once tests and applicable CI have passed, leave changes on `dev` for user testing. Only merge into `main` or `beta` following an explicit promotion request; successful CI by itself does **not** grant promotion approval. Never publish a release as a side effect of ordinary development.
 
 ---
 
