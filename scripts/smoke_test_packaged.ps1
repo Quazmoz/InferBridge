@@ -53,8 +53,28 @@ if ($NativeSmoke.ExitCode -ne 0) {
 $Data = Join-Path ([IO.Path]::GetTempPath()) ("OV LLM Packaged Smoke " + [guid]::NewGuid().ToString("N"))
 New-Item $Data -ItemType Directory -Force | Out-Null
 $Process = $null
+$PreviousPortEnvironment = [Environment]::GetEnvironmentVariable("OV_LLM_PORT", "Process")
 
 try {
+    # Exercise the packaged launcher setting, not merely the server's actual port.
+    # Bind port zero temporarily to ask Windows for an unused, nondefault test port.
+    # The launcher must still fail closed if another process acquires it afterward.
+    $RequestedPort = 0
+    for ($Attempt = 0; $Attempt -lt 4 -and ($RequestedPort -eq 0 -or $RequestedPort -eq 8000); $Attempt++) {
+        $Probe = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+        try {
+            $Probe.Start()
+            $RequestedPort = ([System.Net.IPEndPoint]$Probe.LocalEndpoint).Port
+        }
+        finally {
+            $Probe.Stop()
+        }
+    }
+    if ($RequestedPort -eq 0 -or $RequestedPort -eq 8000) {
+        throw "Could not select a nondefault port for the packaged OV_LLM_PORT smoke test."
+    }
+    $env:OV_LLM_PORT = [string]$RequestedPort
+
     $Arguments = @(
         "--mock", "--headless", "--headless-seconds", "$HeadlessSeconds",
         "--data-dir", ('"' + $Data + '"'), "--no-browser"
@@ -71,6 +91,9 @@ try {
     if (-not (Test-Path $MetadataPath)) { throw "Packaged tray did not publish server metadata." }
 
     $Metadata = Get-Content -Raw $MetadataPath | ConvertFrom-Json
+    if ($Metadata.port -ne $RequestedPort) {
+        throw "Packaged desktop ignored OV_LLM_PORT: configured $RequestedPort; actual $($Metadata.port)."
+    }
     $Origin = "http://127.0.0.1:$($Metadata.port)"
     $Deadline = [DateTime]::UtcNow.AddSeconds(90)
     do {
@@ -130,6 +153,12 @@ try {
     Write-Host "Packaged $ExpectedMode-mode tray-owned mock smoke test passed."
 }
 finally {
+    if ($null -eq $PreviousPortEnvironment) {
+        Remove-Item Env:OV_LLM_PORT -ErrorAction SilentlyContinue
+    }
+    else {
+        $env:OV_LLM_PORT = $PreviousPortEnvironment
+    }
     if ($Process -and -not $Process.HasExited) {
         Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
         $Process.WaitForExit(10000) | Out-Null

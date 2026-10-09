@@ -71,6 +71,36 @@ The browser accepts an absolute local directory containing OpenVINO IR. The serv
 
 A loaded, loading, or converting model cannot be replaced. In-place replacement of a managed converted model is intentionally disabled. Unload and delete the managed copy first, or import the new directory under a different model ID.
 
+### Qwen3 and sideloading quickstart (Windows)
+
+InferBridge accepts **already converted OpenVINO IR directories**, not raw downloaded
+Hugging Face `.safetensors` files as ready-to-load local models.
+
+1. Obtain a model exported in OpenVINO format using a trusted converter and review its
+   license. Its directory should include `openvino_model.xml`, `openvino_model.bin`,
+   configuration, and the tokenizer resources needed for inference. Exporting a model
+   does not establish that a particular GPU/NPU can run it.
+2. Open the built-in InferBridge browser UI and select **Import local** beside the model
+   picker, or open **Verified Model Library → Import local**.
+3. Enter a **unique model ID**, name, absolute directory path, backend, weight format,
+   and an initial device (use **CPU** unless the target has been qualified). Select
+   **Import and manage copy**. InferBridge checks the directory and copies it into its
+   writable managed model storage; it does not load external code from the path.
+4. Select the imported model, then load and benchmark it. Check compatibility warnings
+   and real OpenVINO device discovery before trying GPU or NPU.
+
+If a valid converted model directory is **already present directly beneath the managed
+models directory**, the library can detect it and offer **Review & register** instead
+of copying a second model. Do not copy models into the installed application directory;
+use the per-user storage path shown in [Data paths](DATA_PATHS.md).
+
+For Qwen3, the runtime catalog includes `qwen3-4b-int4`, `qwen3-8b-int4` and
+`qwen3-30b-a3b-int4` candidates. In **Show all registered**, choose one to prepare
+through the normal model conversion flow; alternatively import an OpenVINO IR directory
+prepared on a higher-memory machine. Qwen3 conversion and support on any particular
+NPU, GPU, or driver remain **unverified** until actually tested. A 30B MoE model has
+roughly 30B *total* stored parameters even if fewer experts activate per token.
+
 ## API
 
 ```text

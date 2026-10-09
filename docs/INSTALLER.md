@@ -42,3 +42,7 @@ Installer upgrades replace application files only. Mutable data remains under `%
 Interactive uninstall asks whether to retain downloaded models, settings, logs, benchmarks, onboarding state, and diagnostics. Preservation is the default. Desktop network preferences and the encrypted API key follow the same retained user-data policy. Disable Start with Windows from the tray before uninstall when possible; the per-user Run value can also be removed manually.
 
 See [LAN and home-lab access](LAN_ACCESS.md) for the packaged network configuration and firewall model.
+
+## Fixed-port acceptance test
+
+The development and release packaged smoke tests now set `OV_LLM_PORT` to a nondefault loopback port and reject a launcher that silently starts on a different port. The installer/portable smoke tests are separate from source-level mock tests; CI's Python and PowerShell syntax suites do **not** prove that a fully packaged Windows executable has passed these checks. For a local pre-release test, run `scripts/build_dev_package.ps1` on Windows without `-SkipSmokeTest` and retain the result. This remains a mock API test rather than a real Intel-device or clean-machine upgrade certification.

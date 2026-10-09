@@ -158,3 +158,9 @@ ruff format --check .
 ## Fixed port for packaged Windows desktop
 
 Exit the existing InferBridge tray instance before changing ports. Launch the installed executable with `--port 8123` or set `OV_LLM_PORT=8123` in the launching process environment. Explicit ports will not silently fall back if occupied; by default the tray prefers port 8000 and can use a free alternative. Windows user environment changes may require signing out and back in before Start Menu launches inherit them. Do not put `OV_LLM_PORT` in an install-directory `.env` and expect the tray port to change. See [configuration](README.md#fixed-port-for-the-installed-windows-desktop-application).
+
+## Add Qwen3 or import an already-converted model
+
+The full InferBridge catalog has Qwen3 preparation candidates. In **Verified Model Library**, enable **Show all registered** to find `qwen3-4b-int4`, `qwen3-8b-int4`, and the larger `qwen3-30b-a3b-int4`. These are **not** pre-certified on your device; start with CPU and review preflight memory and disk warnings.
+
+To sideload a model already exported to OpenVINO IR, open the browser UI and select **Import local** near the model picker. Enter its absolute directory path and a unique model ID, then select **Import and manage copy**. Raw Hugging Face `.safetensors` weights must first be converted; the import flow does not convert them. See [Qwen3 and sideloading details](docs/MODEL_LIBRARY.md#qwen3-and-sideloading-quickstart-windows).
