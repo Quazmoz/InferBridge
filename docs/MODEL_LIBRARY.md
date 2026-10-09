@@ -84,3 +84,30 @@ POST /v1/model-library/import-converted
 `profile` accepts `fastest`, `balanced`, `best_quality`, or `lowest_memory`. `include_all=true` adds every registered runtime model.
 
 State-changing browser requests enforce the existing same-origin safeguard and API-key policy. The refresh route does not accept an arbitrary URL. Official definitions cannot enable `trust_remote_code` through the model-library refresh path.
+
+## Additional OpenVINO model candidates (dev)
+
+The full runtime catalog (**Show all registered**) also includes newer general, coding, and high-memory configurations. These are **conversion and device-validation candidates**, not InferBridge-certified models; they have no manufactured CPU, GPU, or NPU verification badges. The smaller curated offline library stays unchanged until local qualification produces evidence.
+
+| Model ID | Weight precision | Initial device | Sizing guidance |
+|---|---|---|---|
+| `qwen2.5-coder-1.5b-int4` | INT4 | CPU | Low-footprint coding |
+| `qwen2.5-coder-7b-int4` | INT4 | GPU | Coding; CPU fallback may be slower |
+| `qwen3-4b-int4` | INT4 | NPU | NPU candidate, **not** NPU-certified for this PC |
+| `qwen3-8b-int4` | INT4 | GPU | General reasoning/instruction following |
+| `qwen3-30b-a3b-int4` | INT4 | CPU | ~30B **total** weights, ~3B active/token; conversion remains heavyweight |
+| `qwen3-30b-a3b-int8` | INT8 | CPU | **Over 32 GB estimated runtime RAM** |
+| `qwen2.5-coder-32b-int8` | INT8 | CPU | **Over 32 GB estimated runtime RAM**; exact variant not officially device-tested |
+
+Existing `qwen2.5-32b-fp16` and `deepseek-r1-distill-qwen-32b-fp16` entries also exceed 32 GB in estimated runtime memory. 64 GB or more installed RAM is a reasonable *starting point* for the new INT8 giants; actual usable memory, disk, paging, export peak memory, device constraints, and context length must be measured. These are not measured minimum requirements. The hardware advisor estimates the IR footprint, **total** parameter memory (including inactive MoE experts), temporary conversion disk use, and KV cache, and warns/blocks insufficient memory before load. The original FP16/BF16 model download and quantization process can require substantially more RAM and disk than an already-converted INT4/INT8 inference session.
+
+**Preparation:** install the repo's conversion dependencies, then convert by exact model ID with the existing tool:
+
+```powershell
+python -m pip install -r requirements-convert.txt
+python -m runtime.model_converter --id qwen3-30b-a3b-int8
+```
+
+Do not attempt a large model on a 32 GB machine merely because its compressed weights appear to fit. Start on CPU for large models, run the existing hardware preflight, convert on a host with enough memory and scratch disk, and benchmark the converted IR on the real target hardware before updating verification metadata. INT4 is lower-footprint, **not** evidence of equivalent model quality; no model automatically becomes NPU-compatible just because Optimum can export it.
+
+Compatibility references: [Intel OpenVINO 2026.2 model verification](https://docs.openvino.ai/2026/documentation/compatibility-and-support/supported-models.html), [OpenVINO GenAI export](https://openvinotoolkit.github.io/openvino.genai/docs/guides/model-preparation/convert-to-openvino/), and [Optimum Intel supported architectures](https://huggingface.co/docs/optimum-intel/en/openvino/models). The Qwen3 4B/8B and 30B-A3B INT4/INT8 architectures appear in Intel's matrix; the Qwen2.5-Coder variants are related-architecture export candidates and still require qualification. Model publisher licences must be checked at download/use time.

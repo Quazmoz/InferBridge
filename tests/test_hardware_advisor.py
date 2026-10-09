@@ -192,3 +192,57 @@ def test_embedding_advisor_output_budget_is_zero(tmp_path, monkeypatch):
     evaluation = advisor.evaluate_model(cfg, snapshot=snapshot)
 
     assert evaluation["recommended_output_tokens"] == 0
+
+
+def test_expanded_openvino_catalog_has_distinct_safe_model_variants():
+    from app.config import BASE_DIR
+    from app.model_registry import load_catalog
+
+    catalog = load_catalog(BASE_DIR / "models.json")
+    expected = {
+        "qwen2.5-coder-1.5b-int4": ("Qwen/Qwen2.5-Coder-1.5B-Instruct", "int4"),
+        "qwen2.5-coder-7b-int4": ("Qwen/Qwen2.5-Coder-7B-Instruct", "int4"),
+        "qwen3-4b-int4": ("Qwen/Qwen3-4B", "int4"),
+        "qwen3-8b-int4": ("Qwen/Qwen3-8B", "int4"),
+        "qwen3-30b-a3b-int4": ("Qwen/Qwen3-30B-A3B", "int4"),
+        "qwen3-30b-a3b-int8": ("Qwen/Qwen3-30B-A3B", "int8"),
+        "qwen2.5-coder-32b-int8": ("Qwen/Qwen2.5-Coder-32B-Instruct", "int8"),
+    }
+    assert len(catalog) >= 50
+    for model_id, (source, precision) in expected.items():
+        cfg = catalog[model_id]
+        assert cfg.source_model == source
+        assert cfg.weight_format == precision
+        assert cfg.backend == "openvino-genai"
+        assert cfg.trust_remote_code is False
+        assert cfg.model_path == f"models/openvino/{model_id}"
+        assert cfg.max_output_tokens < cfg.max_context_len
+    assert catalog["qwen3-30b-a3b-int8"].recommended_device == "CPU"
+    assert catalog["qwen2.5-coder-32b-int8"].recommended_device == "CPU"
+
+
+@pytest.mark.parametrize(
+    "model_id",
+    ["qwen3-30b-a3b-int8", "qwen2.5-coder-32b-int8"],
+)
+def test_new_high_memory_models_block_on_32gb_host(tmp_path, monkeypatch, model_id):
+    from app.config import BASE_DIR
+    from app.model_registry import load_catalog
+
+    catalog = load_catalog(BASE_DIR / "models.json")
+    advisor = make_advisor(tmp_path, catalog)
+    monkeypatch.setattr(advisor, "_actual_converted_size_gb", lambda _cfg: None)
+    monkeypatch.setattr(advisor, "_latest_benchmark", lambda *_a, **_kw: None)
+    cfg = catalog[model_id]
+
+    estimates = advisor.estimate_model(cfg, device="CPU")
+    assert estimates["parameter_count_b"] >= 30  # MoE uses total weights, not active experts
+    assert estimates["runtime_memory_gb"] > 32
+    insufficient = make_snapshot(ram=32, available=26, disk=700, devices=("CPU",))
+    evaluation = advisor.evaluate_model(cfg, snapshot=insufficient)
+    assert evaluation["compatibility"] == "blocked"
+    assert "ram-insufficient" in {warning["code"] for warning in evaluation["warnings"]}
+
+    roomy = make_snapshot(ram=128, available=110, disk=700, devices=("CPU",))
+    capable = advisor.evaluate_model(cfg, snapshot=roomy)
+    assert "ram-insufficient" not in {warning["code"] for warning in capable["warnings"]}
