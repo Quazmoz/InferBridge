@@ -246,3 +246,33 @@ def test_new_high_memory_models_block_on_32gb_host(tmp_path, monkeypatch, model_
     roomy = make_snapshot(ram=128, available=110, disk=700, devices=("CPU",))
     capable = advisor.evaluate_model(cfg, snapshot=roomy)
     assert "ram-insufficient" not in {warning["code"] for warning in capable["warnings"]}
+
+
+def test_large_int4_conversion_warning_does_not_block_imported_ir(tmp_path, monkeypatch):
+    from app.config import BASE_DIR
+    from app.model_registry import load_catalog
+
+    cfg = load_catalog(BASE_DIR / "models.json")["qwen3-30b-a3b-int4"]
+    advisor = make_advisor(tmp_path, {cfg.id: cfg})
+    monkeypatch.setattr(advisor, "_actual_converted_size_gb", lambda _cfg: None)
+    monkeypatch.setattr(advisor, "_latest_benchmark", lambda *_args, **_kwargs: None)
+    host = make_snapshot(ram=32, available=28, disk=700, devices=("CPU",))
+
+    preparation = advisor.evaluate_model(cfg, downloaded=False, snapshot=host)
+    converted = advisor.evaluate_model(cfg, downloaded=True, snapshot=host)
+    assert advisor.estimate_model(cfg)["parameter_count_b"] == pytest.approx(30)
+    assert "conversion-memory-risk" in {w["code"] for w in preparation["warnings"]}
+    assert "conversion-memory-risk" not in {w["code"] for w in converted["warnings"]}
+    assert preparation["requires_confirmation"] is True
+
+
+def test_small_model_has_no_spurious_conversion_memory_warning(tmp_path, monkeypatch):
+    cfg = make_cfg("qwen2.5-1.5b-int4", precision="int4", device="CPU")
+    advisor = make_advisor(tmp_path, {cfg.id: cfg})
+    monkeypatch.setattr(advisor, "_actual_converted_size_gb", lambda _cfg: None)
+    monkeypatch.setattr(advisor, "_latest_benchmark", lambda *_args, **_kwargs: None)
+
+    assessment = advisor.evaluate_model(
+        cfg, snapshot=make_snapshot(ram=32, available=28, disk=700, devices=("CPU",))
+    )
+    assert "conversion-memory-risk" not in {w["code"] for w in assessment["warnings"]}

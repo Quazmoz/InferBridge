@@ -35,6 +35,8 @@ Before a model is downloaded, the advisor estimates:
 
 These values are labelled as estimates. After conversion or loading, the real model-directory footprint is measured in a worker thread and replaces the converted-size estimate.
 
+For a model **not yet converted**, a separate `conversion-memory-risk` caution is raised if approximate source-weight footprint is large relative to installed RAM. This is intentionally **not** an inference block or a claimed peak-RAM requirement: export and quantization may use far more memory than the compressed IR at load time, and exact demand varies by exporter and model. An already-converted IR directory does not receive this preparation-only warning. For larger models, consider converting on a higher-memory host and importing the resulting OpenVINO IR.
+
 When a **real, non-synthetic** benchmark exists for the same model identity, precision, direct device, and current hardware fingerprint, observed load time and generation throughput take precedence. Benchmark Lab methodology version 2 prefers measured decode throughput where available while retaining the older `tokens_sec` field for backward compatibility.
 
 Evidence from a materially different fingerprint is not applied to current recommendations. Mock/synthetic Benchmark Lab runs are retained for UI/API/CI validation but are never consumed as hardware recommendation evidence.

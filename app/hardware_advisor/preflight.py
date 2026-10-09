@@ -99,6 +99,23 @@ class PreflightMixin:
                 "warning",
                 "Long contexts can sharply increase NPU compilation and memory cost; the advisor will recommend a shorter context initially.",
             )
+        # Inference fit does not establish conversion fit: an INT4 artifact may use
+        # modest RAM once prepared while exporting it starts from larger source weights.
+        # This is a caution, not a hard limit: conversion memory depends on the exporter,
+        # shard handling and quantization, so the source download estimate is not a peak.
+        if (
+            not downloaded
+            and total_ram
+            and safe_float(estimates.get("download_size_gb")) * 1.15 > total_ram
+        ):
+            warn(
+                "conversion-memory-risk",
+                "warning",
+                "The estimated uncompressed source weights exceed this PC's practical RAM "
+                "headroom. Conversion and quantization may require much more memory than "
+                "loading an already-converted model; use a higher-memory conversion host "
+                "or import compatible OpenVINO IR.",
+            )
         if estimates["parameter_count_b"] >= 14 and total_ram and total_ram < 48:
             warn(
                 "large-model-system-memory",
