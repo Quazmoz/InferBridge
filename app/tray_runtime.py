@@ -40,8 +40,11 @@ class TrayRuntimeMixin:
                         server_status="Startup failed",
                         warning=message,
                     )
-                    if not self.args.headless:
-                        show_dialog(APP_TITLE, message, error=True)
+                    if self.args.headless:
+                        # A headless integration check must never report a failed
+                        # initial server startup as a successful timed run.
+                        return 6
+                    show_dialog(APP_TITLE, message, error=True)
             if self.args.headless:
                 return self._run_headless()
             return self._run_tray()
