@@ -46,6 +46,54 @@ def test_new_tray_owner_discards_stale_one_shot_markers(tmp_path):
     assert stub.lock.released is True
 
 
+
+class _FailingStartupStub(_StartupStub):
+    def __init__(self, tmp_path) -> None:
+        super().__init__(tmp_path)
+        self.args = SimpleNamespace(
+            start_stopped=False,
+            headless=True,
+            no_browser=True,
+            startup=False,
+        )
+
+    def _start_server(self, *, open_chat: bool) -> None:
+        assert open_chat is False
+        raise RuntimeError("Configured port 8123 is unavailable")
+
+    def _run_headless(self) -> int:
+        raise AssertionError("Failed headless startup must not enter the polling loop")
+
+
+def test_headless_startup_failure_is_nonzero_and_releases_owner_lock(tmp_path):
+    from app.tray_state import TrayPhase
+
+    stub = _FailingStartupStub(tmp_path)
+    assert stub.run() == 6
+    assert stub.snapshot.phase is TrayPhase.ERROR
+    assert "Configured port 8123 is unavailable" in stub.snapshot.warning
+    assert stub.cleaned is True
+    assert stub.lock.released is True
+
+
+def test_interactive_startup_failure_keeps_tray_available(monkeypatch, tmp_path):
+    from app import tray_runtime
+    from app.tray_state import TrayPhase
+
+    stub = _FailingStartupStub(tmp_path)
+    stub.args.headless = False
+    tray_entered = []
+    dialogs = []
+    stub._run_tray = lambda: tray_entered.append(True) or 0
+    monkeypatch.setattr(tray_runtime, "show_dialog", lambda *args, **kw: dialogs.append((args, kw)))
+
+    assert stub.run() == 0
+    assert tray_entered == [True]
+    assert len(dialogs) == 1 and dialogs[0][1].get("error") is True
+    assert stub.snapshot.phase is TrayPhase.ERROR
+    assert stub.cleaned is True
+    assert stub.lock.released is True
+
 def test_tray_shutdown_removes_all_session_markers(tmp_path):
     tray = object.__new__(TrayApplication)
     tray.stop_event = threading.Event()
