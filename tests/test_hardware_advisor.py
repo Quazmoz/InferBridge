@@ -265,6 +265,11 @@ def test_large_int4_conversion_warning_does_not_block_imported_ir(tmp_path, monk
     assert "conversion-memory-risk" not in {w["code"] for w in converted["warnings"]}
     assert preparation["requires_confirmation"] is True
 
+    # Total RAM alone must not hide conversion pressure when most RAM is in use.
+    constrained = make_snapshot(ram=128, available=10, disk=700, devices=("CPU",))
+    busy = advisor.evaluate_model(cfg, downloaded=False, snapshot=constrained)
+    assert "conversion-memory-risk" in {w["code"] for w in busy["warnings"]}
+
 
 def test_small_model_has_no_spurious_conversion_memory_warning(tmp_path, monkeypatch):
     cfg = make_cfg("qwen2.5-1.5b-int4", precision="int4", device="CPU")

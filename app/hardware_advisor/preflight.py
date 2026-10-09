@@ -103,10 +103,11 @@ class PreflightMixin:
         # modest RAM once prepared while exporting it starts from larger source weights.
         # This is a caution, not a hard limit: conversion memory depends on the exporter,
         # shard handling and quantization, so the source download estimate is not a peak.
+        conversion_ram_headroom = available_ram or total_ram
         if (
             not downloaded
-            and total_ram
-            and safe_float(estimates.get("download_size_gb")) * 1.15 > total_ram
+            and conversion_ram_headroom
+            and safe_float(estimates.get("download_size_gb")) * 1.15 > conversion_ram_headroom
         ):
             warn(
                 "conversion-memory-risk",
