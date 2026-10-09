@@ -156,7 +156,6 @@ def test_definition_import_is_atomic_when_later_entry_is_invalid(tmp_path):
     assert not service.user_file.exists()
 
 
-
 @pytest.mark.parametrize(
     "broken_index",
     [
