@@ -69,4 +69,4 @@ Automated tests can run the tray-owned lifecycle without a graphical tray backen
 InferBridge.exe --mock --headless --headless-seconds 30 --no-browser
 ```
 
-Headless mode is intended for packaging and integration tests. It does not validate the native Windows notification-area backend.
+Headless mode is intended for packaging and integration tests. It does not validate the native Windows notification-area backend. A headless initial server startup failure exits with a nonzero code instead of waiting through the test window and reporting success. Interactive tray mode remains open after a startup failure so the user can correct settings and restart the server.
