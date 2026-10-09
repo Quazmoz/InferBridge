@@ -44,3 +44,13 @@ def test_beta_promotion_pull_requests_run_release_and_lifecycle_ci():
         pull_request_section = workflow.split("  pull_request:", 1)[1].split("\n\n", 1)[0]
 
         assert 'branches: ["main", "dev", "beta"]' in pull_request_section
+
+
+def test_documented_stable_signing_policy_matches_publisher_gate():
+    root = Path(__file__).resolve().parents[1]
+    docs = (root / "docs" / "CODE_SIGNING.md").read_text(encoding="utf-8")
+    script = _publisher_script()
+
+    assert "unsigned stable publication" in docs
+    assert "without** `--require-signed`" in docs
+    assert '"--require-signed"' not in script

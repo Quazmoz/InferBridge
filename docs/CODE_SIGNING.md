@@ -1,6 +1,6 @@
 # Code signing
 
-Unsigned local-development builds are supported. Artifact filenames remain deterministic and do not use `signed` or `unsigned` suffixes. Trust state is recorded only in the validated release manifest and summary. Stable GitHub publication requires verified Authenticode signatures for both the installer and the launcher inside the portable ZIP.
+Unsigned local-development builds and **unsigned stable publication** are currently supported. Artifact filenames remain deterministic and do not use `signed` or `unsigned` suffixes. Trust state is recorded only in the validated release manifest and summary. A signed release must have independently verified Authenticode signatures on **both** the installer and the launcher inside the portable ZIP. Publishing an unsigned release must never claim the files are signed; users must be informed that Windows may show an unknown publisher warning.
 
 ## Free signing through SignPath Foundation (CI)
 
@@ -32,7 +32,7 @@ Free code signing provided by [SignPath.io](https://about.signpath.io), certific
 - Committers and reviewers: [Quazmoz](https://github.com/Quazmoz)
 - Approvers: [Quazmoz](https://github.com/Quazmoz)
 
-Only release builds produced by `.github/workflows/release.yml` from this repository are signed, and every signing request is approved manually.
+SignPath Foundation signing requests are submitted only from the manual `.github/workflows/release.yml` workflow in this repository, and every signing request requires maintainer approval. Separate local certificate-store/PFX signing is supported under the same artifact verification rules.
 
 Privacy: this program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. Update checks are off by default, and model downloads from Hugging Face happen only when the user starts them.
 
@@ -82,7 +82,7 @@ A signing, timestamp, or verification failure blocks a signed release. The ZIP a
 
 `/tr <url> /td SHA256` applies an RFC 3161 timestamp. Before publishing a release whose metadata claims signatures, `publish_release.ps1` independently runs `signtool verify /pa /all` against the installer and against the launcher extracted from the portable ZIP. A missing SignTool, partial claim, manifest/summary disagreement, missing artifact, malformed ZIP, or nonzero verification result blocks publication.
 
-Stable publication additionally invokes the signing verifier with `--require-signed`. An unsigned artifact set can still be built for local validation, but it cannot pass the stable publication gate.
+Stable publication currently runs the signing verifier **without** `--require-signed`, so genuinely unsigned artifacts with consistent unsigned manifest and summary claims may be published. The optional `--require-signed` flag exists for a future signed-only policy but is **not** enabled by `scripts/publish_release.ps1`. An artifact that claims to be signed is still rejected unless both signatures pass independent verification.
 
 Signed releases must include both the portable launcher and installer; `-Sign` cannot be combined with `-SkipPortable` or `-SkipInstaller`.
 
