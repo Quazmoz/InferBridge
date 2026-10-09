@@ -156,6 +156,43 @@ def test_definition_import_is_atomic_when_later_entry_is_invalid(tmp_path):
     assert not service.user_file.exists()
 
 
+
+@pytest.mark.parametrize(
+    "broken_index",
+    [
+        "{invalid JSON",
+        '{"model_ids": null}',
+        '{"model_ids": "custom-small"}',
+        '{"model_ids": [42]}',
+        '{"model_ids": ["../outside"]}',
+    ],
+)
+def test_corrupt_user_index_blocks_catalog_overwrite(tmp_path, broken_index):
+    settings = _settings(tmp_path)
+    manager = ModelManager(settings)
+    service = ModelLibraryService(settings, manager)
+    service.import_definitions(
+        ModelDefinitionImportRequest(payload={"models": {"custom-small": _definition()}})
+    )
+    service.user_file.write_text(broken_index, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="user index"):
+        service.apply_official_definitions(
+            {
+                "catalog": {
+                    "custom-small": {
+                        "definition": _definition("custom-small", weight_format="int4"),
+                        "metadata": {},
+                    }
+                }
+            }
+        )
+
+    assert manager.catalog["custom-small"].weight_format == "fp16"
+    assert load_catalog(settings.models_file)["custom-small"].weight_format == "fp16"
+    assert service.user_file.read_text(encoding="utf-8") == broken_index
+
+
 def test_official_catalog_does_not_replace_user_owned_definition(tmp_path):
     settings = _settings(tmp_path)
     manager = ModelManager(settings)
