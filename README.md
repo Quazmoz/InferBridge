@@ -438,7 +438,7 @@ In PowerShell, **fully exit the InferBridge tray process** and launch the execut
 
 ```powershell
 $env:OV_LLM_PORT = "8123"
-& "C:\\Program Files\\InferBridge\\InferBridge.exe"  # adjust to your actual installation path
+& (Join-Path $env:LOCALAPPDATA "Programs\\InferBridge\\InferBridge.exe")  # default per-user installer path
 ```
 
 Alternatively, pass `--port 8123` to the desktop executable; command-line `--port` takes precedence over `OV_LLM_PORT`. For a persistent user environment variable, use `[Environment]::SetEnvironmentVariable("OV_LLM_PORT", "8123", "User")`, then sign out/in (or restart the launching shell) and start InferBridge anew. A currently running tray process retains its existing port. Do not rely on a `.env` file beside the installed executable: desktop port selection happens before the server loads environment configuration. For source-mode server use, `OV_LLM_PORT` continues to follow the server's own settings.
