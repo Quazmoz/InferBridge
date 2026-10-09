@@ -135,12 +135,19 @@ class ModelLibraryService:
     def _read_user_ids(self) -> set[str]:
         try:
             data = json.loads(self.user_file.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except FileNotFoundError:
             return set()
-        values = data.get("model_ids") if isinstance(data, dict) else []
-        return {
-            value for value in values if isinstance(value, str) and MODEL_ID_RE.fullmatch(value)
-        }
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise ValueError(
+                "Model-library user index is unreadable; refusing catalog changes."
+            ) from exc
+        values = data.get("model_ids") if isinstance(data, dict) else None
+        if not isinstance(values, list) or any(
+            not isinstance(value, str) or not MODEL_ID_RE.fullmatch(value)
+            for value in values
+        ):
+            raise ValueError("Model-library user index is malformed; refusing catalog changes.")
+        return set(values)
 
     def _write_user_ids(self, values: set[str]) -> None:
         self.user_file.parent.mkdir(parents=True, exist_ok=True)
