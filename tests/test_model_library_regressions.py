@@ -546,7 +546,9 @@ def _mock_official_manifest_http(monkeypatch, handler):
         "//169.254.169.254/latest/meta-data/",
     ],
 )
-def test_official_refresh_rejects_untrusted_redirect_before_request(tmp_path, monkeypatch, redirect):
+def test_official_refresh_rejects_untrusted_redirect_before_request(
+    tmp_path, monkeypatch, redirect
+):
     import httpx
 
     settings = _settings(tmp_path)
@@ -592,7 +594,9 @@ def test_official_refresh_accepts_bounded_trusted_redirect_chain(tmp_path, monke
         url = str(request.url)
         requested.append(url)
         if url == library.OFFICIAL_MANIFEST_URL:
-            return httpx.Response(302, headers={"Location": "/Quazmoz/InferBridge/releases/download/v1/library.json"})
+            return httpx.Response(
+                302, headers={"Location": "/Quazmoz/InferBridge/releases/download/v1/library.json"}
+            )
         if url == second_url:
             return httpx.Response(302, headers={"Location": final_url})
         if url == final_url:
@@ -605,9 +609,12 @@ def test_official_refresh_accepts_bounded_trusted_redirect_chain(tmp_path, monke
     assert requested == [library.OFFICIAL_MANIFEST_URL, second_url, final_url]
     assert result["source"] == final_url
     assert result["added"] == ["redirected-model"]
-    assert library.parse_manifest_bytes(service.cache_file.read_bytes())["catalog"][
-        "redirected-model"
-    ]["definition"]["model_id"] == "redirected-model"
+    assert (
+        library.parse_manifest_bytes(service.cache_file.read_bytes())["catalog"][
+            "redirected-model"
+        ]["definition"]["model_id"]
+        == "redirected-model"
+    )
 
 
 @pytest.mark.parametrize("location", [None, "/repeat"])
