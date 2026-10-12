@@ -26,5 +26,5 @@ numpy==2.4.6
 safetensors==0.7.0
 pyinstaller==6.21.0
 pip-licenses==5.5.5
-pytest==9.1.0
-ruff==0.16.0
+pytest==9.1.1
+ruff==0.16.10
