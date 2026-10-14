@@ -106,3 +106,26 @@ exercise first launch, engine handoff, background lifecycle, reconnect,
 repeated launch, protected APIs, data preservation, upgrade/uninstall, and
 WACK. Retire Python UI dependencies only after proving they have no remaining
 consumer.
+
+
+## Opt-in combined native launch evaluation
+
+The native MSIX evaluation mode is separate from the existing Store packaging
+workflow. Run scripts/build_msix.ps1 with -NativePublishDirectory and
+-NativeEntrypointEvaluation after building the installed Python distribution
+and a complete self-contained WinUI publish. Only the generated candidate
+manifest launches native\InferBridge.Native.exe, including the disabled startup
+task. The committed AppxManifest.xml and production release workflow are
+unchanged. The unsigned candidate carries an explicit evaluation filename
+and must never be submitted to Partner Center.
+
+The Native Windows frontend GitHub Action supports a manual
+full_combined_candidate dispatch from dev. It builds both real components,
+packs them using MakeAppx, then inspects archive contents and the executable
+entrypoint. Source-level packaging tests run on regular dev pushes.
+See windows-native/README.md for exact build commands.
+
+Even a successful combined build remains unqualified for signed installation,
+first launch, packaged backend discovery, authenticated operations, crash and
+sleep recovery, device inference, upgrade/uninstall data preservation, Windows
+App Certification Kit, and Microsoft Store certification.
