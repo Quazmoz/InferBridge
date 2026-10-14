@@ -1,8 +1,8 @@
 using InferBridge.Native;
 
-// Executable native-path contract tests, deliberately package/test-framework free.
-// The fixture only uses disposable temporary directories and simulates package
-// identity; signed MSIX installation must still be qualified separately.
+// Executable native data-path and HTTP client contracts, without a test framework.
+// All metadata is temporary and HTTP responses are simulated. Signed MSIX
+// installation and real inference must be qualified separately.
 string root = Path.Combine(Path.GetTempPath(), "inferbridge-native-paths-" + Guid.NewGuid().ToString("N"));
 try
 {
