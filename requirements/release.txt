@@ -14,6 +14,7 @@ psutil==7.2.2
 pillow==12.3.0
 httpx==0.28.1
 pystray==0.19.5
+pywebview==6.2.1; platform_system == "Windows"
 python-certifi-win32==1.6.1; platform_system == "Windows"
 optimum-intel[openvino]==2.0.0
 optimum==2.2.0
