@@ -2,6 +2,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$Version,
     [string]$DistributionPath = "dist\InferBridge",
+    [string]$NativePublishDirectory = "",
     [string]$OutputDirectory = "",
     [string]$IdentityName = $env:INFERBRIDGE_MSIX_IDENTITY_NAME,
     [string]$Publisher = $env:INFERBRIDGE_MSIX_PUBLISHER,
@@ -26,9 +27,15 @@ if (-not $OutputDirectory) { $OutputDirectory = Join-Path $Root "artifacts\relea
 $Stage = Join-Path $Root "build\msix"
 Remove-Item $Stage -Recurse -Force -ErrorAction SilentlyContinue
 
-$Mapping = (& $Python scripts/msix_package.py --distribution $DistributionPath --output-dir $Stage `
-    --identity-name $IdentityName --publisher $Publisher --publisher-display-name $PublisherDisplayName `
-    --version $Version | Select-Object -Last 1)
+$StageArguments = @(
+    "scripts/msix_package.py", "--distribution", $DistributionPath, "--output-dir", $Stage,
+    "--identity-name", $IdentityName, "--publisher", $Publisher,
+    "--publisher-display-name", $PublisherDisplayName, "--version", $Version
+)
+if ($NativePublishDirectory) {
+    $StageArguments += @("--native-publish-dir", $NativePublishDirectory)
+}
+$Mapping = (& $Python @StageArguments | Select-Object -Last 1)
 if ($LASTEXITCODE -ne 0) { throw "MSIX staging failed." }
 
 $MakeAppx = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\makeappx.exe" -ErrorAction SilentlyContinue |

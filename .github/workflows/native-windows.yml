@@ -51,6 +51,14 @@ jobs:
             throw "Native Windows executable was not produced."
           }
 
+      - name: Verify MSIX candidate native payload mapping
+        shell: pwsh
+        run: |
+          # Exercise the exact staging helper against the real Windows publish,
+          # without treating a mapping check as installed/signed MSIX qualification.
+          python -c "from pathlib import Path; from scripts.msix_package import native_entries; entries = native_entries(Path('artifacts/native-win-x64')); assert any(target == 'native\\InferBridge.Native.exe' for _, target in entries)"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Save evaluation files
         uses: actions/upload-artifact@v4
         with:

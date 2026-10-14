@@ -78,6 +78,25 @@ def write_assets(directory: Path) -> list[Path]:
     return written
 
 
+def native_entries(native_publish: Path) -> list[tuple[Path, str]]:
+    """Validate native publish output and map it under native/ in the MSIX.
+
+    This adds payload only; the Store manifest deliberately retains the Python
+    entrypoint until signed installed-package qualification is complete.
+    """
+    native_publish = native_publish.resolve()
+    if not (native_publish / "InferBridge.Native.exe").is_file():
+        raise FileNotFoundError("Native publish output is missing InferBridge.Native.exe.")
+    entries: list[tuple[Path, str]] = []
+    for path in sorted(native_publish.rglob("*")):
+        if path.is_symlink():
+            raise RuntimeError("Native publish output must not contain symbolic links.")
+        if path.is_file():
+            target = "native\\" + str(path.relative_to(native_publish)).replace("/", "\\")
+            entries.append((path, target))
+    return entries
+
+
 def stage(
     *,
     distribution: Path,
@@ -86,12 +105,21 @@ def stage(
     publisher: str,
     publisher_display_name: str,
     version: str,
+    native_publish: Path | None = None,
 ) -> Path:
     distribution = distribution.resolve()
     if not (distribution / "InferBridge.exe").is_file():
         raise FileNotFoundError(f"InferBridge.exe not found in {distribution}")
     if (distribution / "portable.flag").exists():
         raise RuntimeError("The Store package must be built from the installed-mode layout.")
+    native_payload: list[tuple[Path, str]] = []
+    if native_publish is not None:
+        native_publish = native_publish.resolve()
+        if native_publish == distribution or native_publish.is_relative_to(distribution):
+            raise ValueError("Native publish output must be outside the Python distribution.")
+        if (distribution / "native").exists():
+            raise RuntimeError("The Python distribution already contains a native/ directory.")
+        native_payload = native_entries(native_publish)
     output_dir.mkdir(parents=True, exist_ok=True)
     manifest = output_dir / "AppxManifest.xml"
     manifest.write_text(
@@ -111,6 +139,7 @@ def stage(
             if relative.parts[0].casefold() in {"appxmanifest.xml", "assets"}:
                 raise RuntimeError(f"Distribution file collides with package metadata: {relative}")
             entries.append((path, str(relative).replace("/", "\\")))
+    entries.extend(native_payload)
     mapping = output_dir / "mapping.txt"
     lines = ["[Files]"] + [f'"{source}" "{target}"' for source, target in entries]
     mapping.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -120,6 +149,7 @@ def stage(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--distribution", required=True, type=Path)
+    parser.add_argument("--native-publish-dir", type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--identity-name", required=True)
     parser.add_argument("--publisher", required=True)
@@ -134,6 +164,7 @@ def main(argv: list[str] | None = None) -> int:
             publisher=args.publisher,
             publisher_display_name=args.publisher_display_name,
             version=args.version,
+            native_publish=args.native_publish_dir,
         )
     )
     return 0

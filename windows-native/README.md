@@ -38,7 +38,11 @@ tray/WebView path). Do **not** resubmit it as a native application yet.
   not a replacement for the Python tray's lifecycle state machine. The native
   window does not own backend shutdown or private tray-control credentials.
 
-**Not Store qualified.** The current MSIX still starts the Python/WebView
+**Not Store qualified.** The MSIX packaging helper can now *optionally*
+include the native publish payload under `native\\` without changing the
+Python launch entrypoint. This is an integration candidate, not a native Store
+release; no signing, installed-package launch, or WACK has been demonstrated.
+The default MSIX still starts the Python/WebView
 interface. Native installation, interactive single-instance window behavior, packaged
 engine handoff, installed MSIX signing, and Windows certification tests remain
 unverified. Never submit the transitional MSIX as a native application.
@@ -126,3 +130,22 @@ Before replacing the current MSIX entrypoint, verify on Windows:
    user approval and passing evidence.
 
 See `docs/MICROSOFT_STORE.md` for the existing submission/release workflow.
+
+## Stage an optional combined MSIX integration candidate
+
+After publishing the native x64 client and building the installed-mode Python
+distribution, Windows developers can build an **unsigned transitional** MSIX:
+
+```powershell
+dotnet publish .\windows-native\InferBridge.Native\InferBridge.Native.csproj `
+  --configuration Release --runtime win-x64 --self-contained true `
+  -p:Platform=x64 -o artifacts\native-win-x64
+.\scripts\build_msix.ps1 -Version <version> `
+  -NativePublishDirectory artifacts\native-win-x64 `
+  -DistributionPath dist\InferBridge
+```
+
+The native files are mapped under `native\` while `InferBridge.exe` remains
+the Store entrypoint. The Python tray/engine continues owning lifecycle and
+data. This staging does not replace signed MSIX installation testing or
+constitute a Store-ready native package. Do not submit the transitional MSIX.

@@ -86,3 +86,23 @@ onboarding), model library, server stop/recovery, tray reopen and repeated launc
 verify model data after an update and uninstall/reinstall. Test missing WebView2
 runtime as a recoverable error. Source-level unit tests or an unpackaged executable
 alone do not establish this acceptance criterion.
+
+
+
+## Optional native payload integration (development only)
+
+`scripts/build_msix.ps1 -NativePublishDirectory artifacts\native-win-x64`
+includes an already-published WinUI 3 x64 client under `native\` in the
+unsigned MSIX mapping alongside the installed-mode Python distribution.
+This is opt-in so that the existing Store entrypoint and release behavior do
+not change without signed installation evidence. The native CI workflow checks
+the mapping helper against real Windows x64 publish output. Python regression
+tests cover mapping collisions, missing native entrypoint and manifest identity.
+
+**This is not a Store-ready native app:** the manifest application and startup
+task still launch the Python entrypoint. Before switching either entrypoint,
+sign and sideload a candidate on Windows 11 with actual package identity;
+exercise first launch, engine handoff, background lifecycle, reconnect,
+repeated launch, protected APIs, data preservation, upgrade/uninstall, and
+WACK. Retire Python UI dependencies only after proving they have no remaining
+consumer.

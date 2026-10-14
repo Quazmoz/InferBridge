@@ -15,6 +15,7 @@ public sealed partial class MainWindow : Window
     private readonly List<ChatTurn> _turns = new();
     private CancellationTokenSource? _sendCancellation;
     private bool _isRefreshing;
+    private bool _updatingModelPicker;
     private bool _isManaging;
     private bool _chatBusy;
     private bool _startRequested;
@@ -79,6 +80,8 @@ public sealed partial class MainWindow : Window
     private void ChatModelPicker_SelectionChanged(
         object sender, SelectionChangedEventArgs args)
     {
+        // Inventory polling is not an intentional conversation/model change.
+        if (_updatingModelPicker) return;
         string? modelId = SelectedModelId;
         if (modelId is not null && _conversationModelId != modelId)
         {
@@ -138,24 +141,37 @@ public sealed partial class MainWindow : Window
             }
             StartButton.IsEnabled = !status.Connected && !_startRequested;
 
-            string? selected = SelectedModelId;
-            ChatModelPicker.Items.Clear();
-            ModelsList.Items.Clear();
-            foreach (ModelInfo model in status.Models)
+            // Rebuilding ComboBox items raises SelectionChanged. Suppress it so
+            // polling, reconnects and temporary model absence keep the transcript.
+            string? selected = SelectedModelId ?? _conversationModelId;
+            _updatingModelPicker = true;
+            try
             {
-                ModelsList.Items.Add(new ListViewItem
+                ChatModelPicker.Items.Clear();
+                ModelsList.Items.Clear();
+                foreach (ModelInfo model in status.Models)
                 {
-                    Content = model.Name + "  ·  " + model.Status + "  (" + model.Id + ")",
-                    Tag = model,
-                });
-                if (model.Status != "loaded") continue;
-                var option = new ComboBoxItem { Content = model.Name, Tag = model.Id };
-                ChatModelPicker.Items.Add(option);
-                if (model.Id == selected)
-                    ChatModelPicker.SelectedItem = option;
+                    ModelsList.Items.Add(new ListViewItem
+                    {
+                        Content = model.Name + "  ·  " + model.Status + "  (" + model.Id + ")",
+                        Tag = model,
+                    });
+                    if (model.Status != "loaded") continue;
+                    var option = new ComboBoxItem { Content = model.Name, Tag = model.Id };
+                    ChatModelPicker.Items.Add(option);
+                    if (model.Id == selected)
+                        ChatModelPicker.SelectedItem = option;
+                }
+                // Never silently move an existing conversation to a different model.
+                // When its model returns after a restart, it is selected again.
+                if (ChatModelPicker.SelectedItem is null && _conversationModelId is null
+                    && ChatModelPicker.Items.Count > 0)
+                    ChatModelPicker.SelectedIndex = 0;
             }
-            if (ChatModelPicker.SelectedItem is null && ChatModelPicker.Items.Count > 0)
-                ChatModelPicker.SelectedIndex = 0;
+            finally
+            {
+                _updatingModelPicker = false;
+            }
 
             ModelsSummary.Text = status.RequiresAuthentication
                 ? "Authentication required. Enter your API key on the Engine screen."
@@ -262,6 +278,7 @@ public sealed partial class MainWindow : Window
             string answer = await _backend.CompleteChatAsync(
                 modelId, pending, ApiKeyBox.Password, _sendCancellation.Token);
             if (_closing.IsCancellationRequested) return;
+            _conversationModelId = modelId;
             _turns.Clear();
             _turns.AddRange(pending);
             _turns.Add(new ChatTurn("assistant", answer[..Math.Min(answer.Length, 8000)]));

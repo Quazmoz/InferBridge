@@ -112,3 +112,13 @@ def test_native_frontend_is_single_instance_per_installation_and_preserves_engin
     assert "status.Connected" in window
     assert "EngineLauncher.Start()" in window
     assert "Process.Kill(" not in program + app + window
+
+
+def test_native_status_polling_never_reinterprets_inventory_as_user_model_change():
+    window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    assert "if (_updatingModelPicker) return;" in window
+    assert "string? selected = SelectedModelId ?? _conversationModelId;" in window
+    assert "_updatingModelPicker = true;" in window
+    assert "_updatingModelPicker = false;" in window
+    assert "ChatModelPicker.SelectedItem is null && _conversationModelId is null" in window
+    assert "_conversationModelId = modelId;" in window
