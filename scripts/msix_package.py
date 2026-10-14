@@ -177,18 +177,16 @@ def stage(
         if folded in targets:
             raise RuntimeError(f"Duplicate MSIX package target: {target}")
         targets.add(folded)
+    manifest_xml = render_manifest(
+        identity_name=identity_name,
+        publisher=publisher,
+        publisher_display_name=publisher_display_name,
+        version=version,
+        native_entrypoint_evaluation=native_entrypoint_evaluation,
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
     manifest = output_dir / "AppxManifest.xml"
-    manifest.write_text(
-        render_manifest(
-            identity_name=identity_name,
-            publisher=publisher,
-            publisher_display_name=publisher_display_name,
-            version=version,
-            native_entrypoint_evaluation=native_entrypoint_evaluation,
-        ),
-        encoding="utf-8",
-    )
+    manifest.write_text(manifest_xml, encoding="utf-8")
     entries = [(manifest, "AppxManifest.xml")]
     entries += [(path, f"Assets\\{path.name}") for path in write_assets(output_dir / "Assets")]
     entries.extend(distribution_payload)
