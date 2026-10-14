@@ -26,6 +26,8 @@ from app.desktop_launcher import (
     wait_for_readiness,
 )
 from app.desktop_shell import open_browser
+from app.msix import is_packaged
+from app.store_window import open_store_window
 from app.paths import RuntimePaths
 
 logger = logging.getLogger("ov-llm.tray.controller")
@@ -301,7 +303,7 @@ class DesktopServerController:
                 )
             if open_chat and not self.open_chat():
                 logger.warning(
-                    "The server is ready, but the browser could not be opened. Visit %s/",
+                    "The server is ready, but the application UI could not be opened. Visit %s/",
                     self.origin,
                 )
             return metadata
@@ -365,7 +367,11 @@ class DesktopServerController:
 
     def open_chat(self) -> bool:
         origin = self.origin
-        return bool(origin and open_browser(f"{origin}/"))
+        if not origin:
+            return False
+        if is_packaged():
+            return bool(self.port and open_store_window(self.port))
+        return open_browser(f"{origin}/")
 
     def stop(self) -> None:
         if not self.running:
