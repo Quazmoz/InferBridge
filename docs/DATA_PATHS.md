@@ -25,6 +25,21 @@ Subdirectories:
 
 Normal upgrades and uninstall preserve this directory. The uninstaller asks before removing it and defaults to preservation.
 
+## Microsoft Store mode (MSIX)
+
+The Store build defaults to `%USERPROFILE%\\InferBridgeStoreData`. This regular
+per-user directory is outside MSIX AppData virtualization. It uses the same
+subdirectory layout as installed mode, preserves downloads on Store
+uninstall/reinstall, and needs no `unvirtualizedResources` capability. Uninstall
+does **not** delete this folder: exit InferBridge, then delete it manually if you
+want to remove models and local data.
+
+The standalone build still defaults to `%LOCALAPPDATA%\\InferBridge`. There is
+no implicit copying or migration of multi-gigabyte model data. A deliberate
+`OV_LLM_DATA_DIR` override can point both editions at a common user-owned
+directory outside AppData, but do not run them concurrently against the same
+data root.
+
 ## Portable mode
 
 A portable build contains `portable.flag`. Mutable state is stored under:
