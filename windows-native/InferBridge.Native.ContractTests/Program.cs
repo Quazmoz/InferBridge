@@ -64,6 +64,7 @@ try
     }
 
     Console.WriteLine("Native data-root contract: all cases passed.");
+    await BackendContractTests.RunAsync(root);
     return 0;
 }
 finally
