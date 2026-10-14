@@ -277,7 +277,10 @@ public sealed partial class MainWindow : Window
         {
             string answer = await _backend.CompleteChatAsync(
                 modelId, pending, ApiKeyBox.Password, _sendCancellation.Token);
-            if (_closing.IsCancellationRequested) return;
+            // A late HTTP success must not commit a reply after the user has
+            // cancelled this request (server-side inference may still run).
+            if (_closing.IsCancellationRequested || _sendCancellation?.IsCancellationRequested != false)
+                return;
             _conversationModelId = modelId;
             _turns.Clear();
             _turns.AddRange(pending);
