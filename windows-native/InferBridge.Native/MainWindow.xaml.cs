@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net.Http;
 using System.Text.Json;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 
 namespace InferBridge.Native;
@@ -363,9 +364,17 @@ public sealed partial class MainWindow : Window
 
     private void ShowChatInfo(string title, string message, InfoBarSeverity severity)
     {
+        // Polling repeats the same status every tick; only real changes update
+        // the bar and are announced, so screen readers hear replies and errors.
+        if (ChatInfo.Title == title && ChatInfo.Message == message) return;
         ChatInfo.Title = title;
         ChatInfo.Message = message;
         ChatInfo.Severity = severity;
+        (FrameworkElementAutomationPeer.FromElement(ChatInfo)
+            ?? FrameworkElementAutomationPeer.CreatePeerForElement(ChatInfo))
+            ?.RaiseNotificationEvent(AutomationNotificationKind.ActionCompleted,
+                AutomationNotificationProcessing.ImportantMostRecent,
+                title + ". " + message, "InferBridge.ChatStatus");
     }
 
     private static string SafeError(Exception error) => error switch
