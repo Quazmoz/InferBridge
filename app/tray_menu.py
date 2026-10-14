@@ -237,7 +237,7 @@ class TrayMenuMixin:
             self._start_server(open_chat=True)
             return
         if not self.controller.open_chat():
-            raise RuntimeError(f"The browser could not be opened. Visit {self.controller.origin}/")
+            raise RuntimeError("The InferBridge interface could not be opened.")
 
     def open_updates(self) -> None:
         if not self.controller.running:

@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.brand import DATA_DIR_NAME, DISPLAY_NAME, LEGACY_DATA_DIR_NAME
+from app.msix import is_packaged
 
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
 
@@ -143,7 +144,14 @@ def resolve_runtime_paths(
     elif portable_mode:
         data_root = executable_dir() / "data"
     elif desktop_mode:
-        data_root = _desktop_data_root(values)
+        # MSIX may virtualize AppData writes and delete them on uninstall.
+        # Keep Store-owned downloads in an ordinary per-user profile directory.
+        data_root = (
+            Path(str(values.get("USERPROFILE") or Path.home())).expanduser()
+            / "InferBridgeStoreData"
+            if is_packaged()
+            else _desktop_data_root(values)
+        )
     else:
         data_root = resource_root
 

@@ -11,6 +11,8 @@ from datetime import UTC, datetime
 
 from app.desktop_launcher import _read_metadata, verify_instance
 from app.desktop_shell import open_browser, show_dialog
+from app.msix import is_packaged
+from app.store_window import open_store_window
 from app.tray_state import TrayPhase, TraySnapshot, tooltip
 from app.tray_support import APP_TITLE, atomic_json, guarded_tray_icon, tray_icon
 
@@ -56,7 +58,15 @@ class TrayRuntimeMixin:
         metadata = _read_metadata(self.paths.launcher_metadata_file)
         if metadata and verify_instance(metadata):
             if not self.args.no_browser:
-                open_browser(f"http://127.0.0.1:{metadata.port}/")
+                if is_packaged():
+                    if not open_store_window(metadata.port, metadata.nonce):
+                        show_dialog(
+                            APP_TITLE,
+                            "The Store application window could not be opened.",
+                            error=True,
+                        )
+                else:
+                    open_browser(f"http://127.0.0.1:{metadata.port}/")
             return
         try:
             atomic_json(

@@ -91,6 +91,14 @@ hiddenimports += psutil_hidden
 hiddenimports += collect_submodules("pystray")
 datas += collect_data_files("pystray", include_py_files=False)
 
+# The Microsoft Store edition displays its primary localhost UI in an embedded
+# WebView2 window, rather than opening a browser tab. Collect Windows backends
+# and .NET interop explicitly so the frozen child process can initialize them.
+webview_datas, webview_binaries, webview_hidden = collect_all("webview")
+datas += webview_datas
+binaries += webview_binaries
+hiddenimports += webview_hidden + ["clr"]
+
 # Optimum performs dynamic command and exporter discovery. Conversion remains in the
 # same frozen directory, so the packaged launcher can dispatch the converter helper.
 #

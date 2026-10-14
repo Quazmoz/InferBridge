@@ -4,18 +4,14 @@
   scripts/msix_package.py fills the double-brace tokens; Identity Name, Publisher, and
   PublisherDisplayName must match Partner Center > Product identity exactly.
 
-  File-system and registry write virtualization are disabled so the Store build
-  keeps the installed build's data root (%LOCALAPPDATA%\InferBridge) and model
-  downloads survive reinstalls, as docs/DATA_PATHS.md promises. This requires the
-  restricted capability unvirtualizedResources, which Store certification reviews.
+  Store data is placed outside MSIX-virtualized AppData without restricted capabilities.
 -->
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
   xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
-  xmlns:desktop6="http://schemas.microsoft.com/appx/manifest/desktop/windows10/6"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="uap desktop desktop6 rescap">
+  IgnorableNamespaces="uap desktop rescap">
 
   <Identity Name="{{IDENTITY_NAME}}" Publisher="{{PUBLISHER}}" Version="{{VERSION}}" ProcessorArchitecture="x64" />
 
@@ -23,8 +19,6 @@
     <DisplayName>InferBridge</DisplayName>
     <PublisherDisplayName>{{PUBLISHER_DISPLAY_NAME}}</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
-    <desktop6:FileSystemWriteVirtualization>disabled</desktop6:FileSystemWriteVirtualization>
-    <desktop6:RegistryWriteVirtualization>disabled</desktop6:RegistryWriteVirtualization>
   </Properties>
 
   <Dependencies>
@@ -56,6 +50,5 @@
 
   <Capabilities>
     <rescap:Capability Name="runFullTrust" />
-    <rescap:Capability Name="unvirtualizedResources" />
   </Capabilities>
 </Package>
