@@ -166,3 +166,40 @@ dotnet run --project .\windows-native\InferBridge.Native.ContractTests\InferBrid
 ```
 
 These are real .NET path-contract tests, not installed MSIX identity tests.
+
+
+## Separate unsigned native-entrypoint MSIX evaluation
+
+The committed Store manifest remains Python-first. The explicit
+-NativeEntrypointEvaluation option changes only the generated candidate:
+the foreground application and disabled startup task point to
+native\InferBridge.Native.exe. The output has a separate
+-native-evaluation-unsigned.msix filename; it is not a Store submission.
+
+On Windows 11 x64, from a clean checkout with Python 3.11, .NET 10 and
+Windows SDK MakeAppx, execute:
+
+    $version = (python scripts/release_tools.py canonical-version).Trim()
+    .\scripts\build_release.ps1 -Version $version -Phase Launcher -SkipInstaller -Unsigned -SkipTests
+    dotnet restore windows-native/InferBridge.Native/InferBridge.Native.csproj -p:Platform=x64 -p:RuntimeIdentifier=win-x64
+    dotnet publish windows-native/InferBridge.Native/InferBridge.Native.csproj --configuration Release --runtime win-x64 --self-contained true -p:Platform=x64 -o artifacts/native-win-x64
+    $python = (Get-ChildItem build/release-environments/*/Scripts/python.exe | Select-Object -First 1).FullName
+    .\scripts\build_msix.ps1 -Version $version -Python $python -DistributionPath dist/InferBridge -NativePublishDirectory artifacts/native-win-x64 -NativeEntrypointEvaluation -OutputDirectory artifacts/msix-native-evaluation -IdentityName "Quazmoz.InferBridge.Evaluation" -Publisher "CN=00000000-0000-0000-0000-000000000000" -PublisherDisplayName "InferBridge Evaluation"
+
+The candidate is unsigned with a synthetic evaluation identity, and cannot be
+sideloaded without valid signing and trust setup. Do not submit it to
+Partner Center. Staging rejects missing native .NET runtime files, missing
+Python runtime DLLs, symlinks, nested output directories, and conflicting
+package destinations before emitting the mapping.
+
+On GitHub, the Native Windows frontend workflow checks relevant Python and
+C# contracts on pushes to dev. A real combined package can be built by
+manually running that workflow on dev with full_combined_candidate enabled.
+This expensive build is opt-in. Its archive checks prove neither installed
+Windows behavior nor Store compliance.
+
+Remaining gates: a correctly signed test package with valid package identity,
+Windows 11 Start-menu launch, engine startup/authentication and reconnect,
+duplicate activation, sleep/resume, UI accessibility, real inference hardware,
+data preservation across update/uninstall/reinstall, and Windows App
+Certification Kit. Do not modify real user model directories during testing.
