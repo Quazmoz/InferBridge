@@ -7,7 +7,6 @@ import xml.etree.ElementTree as ET
 import pytest
 
 from app.paths import resolve_runtime_paths
-
 from scripts.msix_package import ASSETS, msix_version, render_manifest, stage
 
 FOUNDATION = "{http://schemas.microsoft.com/appx/manifest/foundation/windows10}"
