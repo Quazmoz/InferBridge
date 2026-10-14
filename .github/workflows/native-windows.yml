@@ -58,7 +58,7 @@ jobs:
       - name: Validate MSIX staging and native source contracts
         shell: pwsh
         run: |
-          python -m pip install --disable-pip-version-check pytest pillow ruff==0.16.0
+          python -m pip install --disable-pip-version-check pytest pillow ruff==0.16.10
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m ruff check scripts/msix_package.py tests/test_msix_package.py tests/test_native_windows_source_contract.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
