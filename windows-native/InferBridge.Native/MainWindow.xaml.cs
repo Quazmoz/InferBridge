@@ -16,7 +16,6 @@ public sealed partial class MainWindow : Window
         Closed += (_, _) =>
         {
             _closing.Cancel();
-            _closing.Dispose();
             _backend.Dispose();
         };
         _ = RefreshAsync();
@@ -81,6 +80,12 @@ public sealed partial class MainWindow : Window
         catch (OperationCanceledException) when (_closing.IsCancellationRequested)
         {
             // Window closure cancels pending local requests.
+        }
+        catch (Exception) when (!_closing.IsCancellationRequested)
+        {
+            ConnectionInfo.Severity = InfoBarSeverity.Error;
+            ConnectionInfo.Message = "The local engine status could not be displayed.";
+            ModelsSummary.Text = "Refresh status after checking the engine.";
         }
         finally
         {
