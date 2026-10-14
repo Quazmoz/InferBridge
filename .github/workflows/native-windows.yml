@@ -60,8 +60,9 @@ jobs:
         run: |
           python -m pip install --disable-pip-version-check pytest pillow ruff==0.16.0
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python -m ruff format --diff scripts/msix_package.py tests/test_msix_package.py
-          python -m ruff format --check scripts/msix_package.py tests/test_msix_package.py
+          python -m ruff check scripts/msix_package.py tests/test_msix_package.py tests/test_native_windows_source_contract.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m ruff format --check scripts/msix_package.py tests/test_msix_package.py tests/test_native_windows_source_contract.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m pytest tests/test_msix_package.py tests/test_native_windows_source_contract.py -q
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
