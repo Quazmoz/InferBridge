@@ -62,6 +62,7 @@ def test_stage_maps_every_built_file_and_refuses_portable_layouts(tmp_path):
     with pytest.raises(RuntimeError, match="installed-mode"):
         stage(distribution=dist, output_dir=tmp_path / "msix2", version="1.0.0", **IDENTITY)
 
+
 def test_store_data_root_preserves_downloads_without_appdata_virtualization(tmp_path, monkeypatch):
     monkeypatch.setattr("app.paths.is_packaged", lambda: True)
     profile = tmp_path / "profile"

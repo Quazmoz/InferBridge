@@ -370,7 +370,9 @@ class DesktopServerController:
         if not origin:
             return False
         if is_packaged():
-            return bool(self.metadata and open_store_window(self.metadata.port, self.metadata.nonce))
+            return bool(
+                self.metadata and open_store_window(self.metadata.port, self.metadata.nonce)
+            )
         return open_browser(f"{origin}/")
 
     def stop(self) -> None:
