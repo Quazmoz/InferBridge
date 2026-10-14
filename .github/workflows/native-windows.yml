@@ -16,6 +16,7 @@ on:
       - "scripts/msix_package.py"
       - "scripts/build_msix.ps1"
       - "tests/test_msix_package.py"
+      - "tests/test_native_windows_source_contract.py"
       - "packaging/msix/**"
   pull_request:
     branches: ["dev"]
@@ -25,6 +26,7 @@ on:
       - "scripts/msix_package.py"
       - "scripts/build_msix.ps1"
       - "tests/test_msix_package.py"
+      - "tests/test_native_windows_source_contract.py"
       - "packaging/msix/**"
 
 permissions:
