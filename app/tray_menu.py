@@ -237,8 +237,7 @@ class TrayMenuMixin:
             self._start_server(open_chat=True)
             return
         if not self.controller.open_chat():
-            raise RuntimeError("Could not open InferBridge. On the Store edition, confirm "
-                               "Microsoft Edge WebView2 Runtime is installed.")
+            raise RuntimeError("The InferBridge interface could not be opened.")
 
     def open_updates(self) -> None:
         if not self.controller.running:
