@@ -158,8 +158,11 @@ def test_native_evaluation_changes_only_generated_manifest_and_requires_complete
 
     with pytest.raises(ValueError, match="requires a native publish"):
         stage(
-            distribution=dist, output_dir=tmp_path / "missing-native",
-            version="1.0.0", native_entrypoint_evaluation=True, **IDENTITY,
+            distribution=dist,
+            output_dir=tmp_path / "missing-native",
+            version="1.0.0",
+            native_entrypoint_evaluation=True,
+            **IDENTITY,
         )
 
     mapping = stage(
@@ -184,9 +187,10 @@ def test_native_evaluation_changes_only_generated_manifest_and_requires_complete
 
     # No source template change; the normal Store entrypoint remains Python.
     default = ET.fromstring(render_manifest(version="1.0.0", **IDENTITY))
-    assert default.find(f"{FOUNDATION}Applications/{FOUNDATION}Application").get(
-        "Executable"
-    ) == "InferBridge.exe"
+    assert (
+        default.find(f"{FOUNDATION}Applications/{FOUNDATION}Application").get("Executable")
+        == "InferBridge.exe"
+    )
 
 
 def test_native_evaluation_rejects_missing_runtime_without_partial_mapping(tmp_path):
@@ -199,8 +203,12 @@ def test_native_evaluation_rejects_missing_runtime_without_partial_mapping(tmp_p
     output = tmp_path / "staging"
     with pytest.raises(FileNotFoundError, match="deps.json"):
         stage(
-            distribution=dist, native_publish=native, output_dir=output,
-            version="1.0.0", native_entrypoint_evaluation=True, **IDENTITY,
+            distribution=dist,
+            native_publish=native,
+            output_dir=output,
+            version="1.0.0",
+            native_entrypoint_evaluation=True,
+            **IDENTITY,
         )
     assert not output.exists()
 
@@ -212,8 +220,12 @@ def test_native_evaluation_rejects_missing_runtime_without_partial_mapping(tmp_p
         (native / filename).write_bytes(b"payload")
     with pytest.raises(FileNotFoundError, match="Python runtime DLL"):
         stage(
-            distribution=dist, native_publish=native, output_dir=output,
-            version="1.0.0", native_entrypoint_evaluation=True, **IDENTITY,
+            distribution=dist,
+            native_publish=native,
+            output_dir=output,
+            version="1.0.0",
+            native_entrypoint_evaluation=True,
+            **IDENTITY,
         )
     assert not output.exists()
 
@@ -224,16 +236,20 @@ def test_staging_rejects_nested_output_and_case_insensitive_collisions(tmp_path)
     (dist / "InferBridge.exe").write_bytes(b"MZ")
     with pytest.raises(ValueError, match="outside"):
         stage(
-            distribution=dist, output_dir=dist / "stage",
-            version="1.0.0", **IDENTITY,
+            distribution=dist,
+            output_dir=dist / "stage",
+            version="1.0.0",
+            **IDENTITY,
         )
 
     (dist / "ASSETS").mkdir()
     (dist / "ASSETS" / "StoreLogo.png").write_bytes(b"bad")
     with pytest.raises(RuntimeError, match="collides"):
         stage(
-            distribution=dist, output_dir=tmp_path / "stage",
-            version="1.0.0", **IDENTITY,
+            distribution=dist,
+            output_dir=tmp_path / "stage",
+            version="1.0.0",
+            **IDENTITY,
         )
     assert not (tmp_path / "stage").exists()
 
@@ -249,6 +265,8 @@ def test_staging_rejects_symlinked_python_payload(tmp_path):
         pytest.skip("Symbolic links not available in this test environment.")
     with pytest.raises(RuntimeError, match="symbolic links"):
         stage(
-            distribution=dist, output_dir=tmp_path / "msix",
-            version="1.0.0", **IDENTITY,
+            distribution=dist,
+            output_dir=tmp_path / "msix",
+            version="1.0.0",
+            **IDENTITY,
         )
