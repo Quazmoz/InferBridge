@@ -2,6 +2,21 @@
 
 The Store build is the zero-cost way to ship InferBridge without SmartScreen or "unknown publisher" warnings: Microsoft re-signs the MSIX with its own certificate after certification. Individual developer registration is free.
 
+## Native Windows migration notice (October 2026)
+
+**Store submission blocked; do not resubmit the current MSIX.** The previous
+WebView2/pywebview shell was rejected because Microsoft requires the app's
+primary functionality to open as an application, not merely a browser tab.
+A genuine C# / WinUI 3 / XAML client has now started under
+`windows-native/InferBridge.Native/`. Its present scope is native overview,
+engine connectivity, and a read-only model library.
+
+The MSIX manifest **still launches the previous Python/WebView entrypoint**.
+Until the native executable is Windows-build-verified, packaged alongside the
+Python engine, designated the actual `<Application Executable>` and tested as
+an installed Store-equivalent MSIX, certification is **not** resolved.
+See `windows-native/README.md` for the migration qualification checklist.
+
 ## What the package is
 
 `scripts/build_msix.ps1` packs the same installed-mode PyInstaller layout the Inno Setup installer ships into an unsigned `InferBridge-<version>-windows-x64.msix`. `packaging/msix/AppxManifest.xml` is the template and `scripts/msix_package.py` fills it in.
@@ -10,7 +25,7 @@ Behavior that differs from the standalone installer build:
 
 | Area | Store build |
 |---|---|
-| Primary UI | Launches an InferBridge-owned WebView2 application window after its local server becomes ready, rather than a system browser tab. Microsoft Edge WebView2 Runtime is required. |
+| Primary UI | **Transitional/blocked:** existing MSIX launches the Python WebView2 shell; the new WinUI 3 native client is not yet wired into MSIX. Do not submit the existing package. |
 | Data root | `%USERPROFILE%\InferBridgeStoreData` (outside MSIX AppData virtualization). Survives uninstall; not automatically shared with standalone editions. |
 | Start with Windows | Declared as a manifest StartupTask, off by default. Users toggle it in Windows Settings > Apps > Startup; the in-app toggle explains this instead of writing the Run key. |
 | Updates | Delivered by the Store. GitHub update checks are disabled and the release dialog says so. |
