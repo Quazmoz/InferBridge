@@ -107,16 +107,16 @@ internal sealed class BackendClient : IDisposable
                     throw new JsonException("Invalid model inventory schema.");
 
                 foreach (var item in data.EnumerateArray())
-                    {
-                        if (models.Count >= 2000) break;
-                        string id = ReadString(item, "id");
-                        if (id.Length is < 1 or > 512) continue;
-                        string name = ReadString(item, "name");
-                        string status = ReadString(item, "status");
-                        models.Add(new ModelInfo(
-                            id, string.IsNullOrWhiteSpace(name) ? id : name,
-                            string.IsNullOrWhiteSpace(status) ? "unknown" : status));
-                    }
+                {
+                    if (models.Count >= 2000) break;
+                    string id = ReadString(item, "id");
+                    if (id.Length is < 1 or > 512) continue;
+                    string name = ReadString(item, "name");
+                    string status = ReadString(item, "status");
+                    models.Add(new ModelInfo(
+                        id, string.IsNullOrWhiteSpace(name) ? id : name,
+                        string.IsNullOrWhiteSpace(status) ? "unknown" : status));
+                }
 
                 return new BackendSnapshot(
                     true, "Connected to the local InferBridge engine.", origin,
