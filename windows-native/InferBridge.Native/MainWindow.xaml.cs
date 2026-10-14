@@ -163,6 +163,7 @@ public sealed partial class MainWindow : Window
             // Rebuilding ComboBox items raises SelectionChanged. Suppress it so
             // polling, reconnects and temporary model absence keep the transcript.
             string? selected = SelectedModelId ?? _conversationModelId;
+            string? selectedLibraryId = SelectedLibraryModel?.Id;
             _updatingModelPicker = true;
             try
             {
@@ -170,11 +171,14 @@ public sealed partial class MainWindow : Window
                 ModelsList.Items.Clear();
                 foreach (ModelInfo model in status.Models)
                 {
-                    ModelsList.Items.Add(new ListViewItem
+                    var libraryItem = new ListViewItem
                     {
                         Content = model.Name + "  ·  " + model.Status + "  (" + model.Id + ")",
                         Tag = model,
-                    });
+                    };
+                    ModelsList.Items.Add(libraryItem);
+                    if (model.Id == selectedLibraryId)
+                        ModelsList.SelectedItem = libraryItem;
                     if (model.Status != "loaded") continue;
                     var option = new ComboBoxItem { Content = model.Name, Tag = model.Id };
                     ChatModelPicker.Items.Add(option);

@@ -179,3 +179,16 @@ def test_native_window_is_production_safe_on_close_auth_throttle_and_high_dpi():
     assert "EngineLauncher.IsBundled" in window
     assert "<ApplicationManifest>app.manifest</ApplicationManifest>" in MSBUILD.read_text("utf-8")
     assert "PerMonitorV2" in manifest
+
+
+def test_native_model_library_selection_survives_status_poll():
+    window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    # The 8-second poll replaces ListViewItem instances. Preserve selection by
+    # stable model ID rather than retaining a stale ListViewItem reference.
+    captured = window.index("string? selectedLibraryId = SelectedLibraryModel?.Id;")
+    cleared = window.index("ModelsList.Items.Clear();", captured)
+    added = window.index("ModelsList.Items.Add(libraryItem);", cleared)
+    restored = window.index("if (model.Id == selectedLibraryId)", added)
+    assert captured < cleared < added < restored
+    assert "ModelsList.SelectedItem = libraryItem;" in window[restored:]
+    assert "UpdateChatButtons();" in window[restored:window.index("private async void LoadButton_Click", restored)]
