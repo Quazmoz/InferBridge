@@ -7,7 +7,6 @@ Browser-based standalone and portable distributions are intentionally unchanged.
 from __future__ import annotations
 
 import logging
-import os
 import subprocess
 import sys
 import threading
@@ -36,7 +35,14 @@ def open_store_window(port: int, instance_nonce: str) -> bool:
     # shell, and the window child can only navigate to our loopback origin.
     try:
         subprocess.Popen(
-            [sys.executable, "--window-child", "--port", str(port), "--instance-nonce", instance_nonce],
+            [
+                sys.executable,
+                "--window-child",
+                "--port",
+                str(port),
+                "--instance-nonce",
+                instance_nonce,
+            ],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
