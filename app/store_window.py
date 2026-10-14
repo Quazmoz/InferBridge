@@ -20,8 +20,12 @@ logger = logging.getLogger("ov-llm.store.window")
 
 
 def _validate_port(port: int) -> None:
-    if type(port) is not int or not 1 <= port <= 65535:
+    if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
         raise ValueError("Store window port must be an integer between 1 and 65535.")
+
+
+def _store_runtime_available() -> bool:
+    return sys.platform == "win32" and is_packaged()
 
 
 def open_store_window(port: int, instance_nonce: str) -> bool:
@@ -29,7 +33,7 @@ def open_store_window(port: int, instance_nonce: str) -> bool:
     _validate_port(port)
     if not isinstance(instance_nonce, str) or not instance_nonce:
         return False
-    if sys.platform != "win32" or not is_packaged():
+    if not _store_runtime_available():
         return False
     # Reuse the bundled launcher; this avoids injecting a URL or command into a
     # shell, and the window child can only navigate to our loopback origin.
@@ -58,7 +62,7 @@ def open_store_window(port: int, instance_nonce: str) -> bool:
 def run_store_window(port: int, instance_nonce: str) -> int:
     """Run WebView2 on this child process's main STA/GUI thread."""
     _validate_port(port)
-    if sys.platform != "win32" or not is_packaged():
+    if not _store_runtime_available():
         raise RuntimeError("The Store window is available only to an installed MSIX package.")
     if not isinstance(instance_nonce, str) or not instance_nonce:
         raise RuntimeError("The Store window requires a valid server instance nonce.")
