@@ -6,10 +6,11 @@ The Store build is the zero-cost way to ship InferBridge without SmartScreen or 
 
 `scripts/build_msix.ps1` packs the same installed-mode PyInstaller layout the Inno Setup installer ships into an unsigned `InferBridge-<version>-windows-x64.msix`. `packaging/msix/AppxManifest.xml` is the template and `scripts/msix_package.py` fills it in.
 
-Behavior that differs from the installer build, all in `app/msix.py` callers:
+Behavior that differs from the standalone installer build:
 
 | Area | Store build |
 |---|---|
+| Primary UI | Launches an InferBridge-owned WebView2 application window after its local server becomes ready, rather than a system browser tab. Microsoft Edge WebView2 Runtime is required. |
 | Data root | `%USERPROFILE%\InferBridgeStoreData` (outside MSIX AppData virtualization). Survives uninstall; not automatically shared with standalone editions. |
 | Start with Windows | Declared as a manifest StartupTask, off by default. Users toggle it in Windows Settings > Apps > Startup; the in-app toggle explains this instead of writing the Run key. |
 | Updates | Delivered by the Store. GitHub update checks are disabled and the release dialog says so. |
