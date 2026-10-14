@@ -2,16 +2,30 @@ name: Native Windows frontend
 
 on:
   workflow_dispatch:
+    inputs:
+      full_combined_candidate:
+        description: "Build real Python + native unsigned MSIX (manual; no signing)"
+        type: boolean
+        required: false
+        default: false
   push:
     branches: ["dev"]
     paths:
       - "windows-native/**"
       - ".github/workflows/native-windows.yml"
+      - "scripts/msix_package.py"
+      - "scripts/build_msix.ps1"
+      - "tests/test_msix_package.py"
+      - "packaging/msix/**"
   pull_request:
     branches: ["dev"]
     paths:
       - "windows-native/**"
       - ".github/workflows/native-windows.yml"
+      - "scripts/msix_package.py"
+      - "scripts/build_msix.ps1"
+      - "tests/test_msix_package.py"
+      - "packaging/msix/**"
 
 permissions:
   contents: read
@@ -33,6 +47,19 @@ jobs:
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "10.0.x"
+
+      - name: Install Python 3.11 for MSIX contracts
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Validate MSIX staging and native source contracts
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check pytest pillow
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pytest tests/test_msix_package.py tests/test_native_windows_source_contract.py -q
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Validate Windows native data-root contract
         shell: pwsh
@@ -71,3 +98,81 @@ jobs:
           name: inferbridge-native-winui-x64-evaluation
           path: artifacts/native-win-x64/
           retention-days: 7
+
+
+  combined-msix-evaluation:
+    name: Real Python + WinUI unsigned native-entrypoint MSIX (manual)
+    if: github.event_name == 'workflow_dispatch' && inputs.full_combined_candidate
+    needs: winui-build
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+
+      - name: Install Python 3.11
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install .NET 10
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Build installed-mode Python distribution
+        shell: pwsh
+        run: |
+          $version = (python scripts/release_tools.py canonical-version).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $version) { throw "Could not read application version." }
+          .\scripts\build_release.ps1 -Version $version -Phase Launcher -SkipInstaller -Unsigned -SkipTests
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path dist\InferBridge\InferBridge.exe)) {
+            throw "Installed-mode Python distribution build failed."
+          }
+
+      - name: Publish native client and build unsigned evaluation package
+        shell: pwsh
+        run: |
+          dotnet restore windows-native/InferBridge.Native/InferBridge.Native.csproj -p:Platform=x64 -p:RuntimeIdentifier=win-x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet publish windows-native/InferBridge.Native/InferBridge.Native.csproj --no-restore --configuration Release --runtime win-x64 --self-contained true -p:Platform=x64 -o artifacts/native-win-x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $version = (python scripts/release_tools.py canonical-version).Trim()
+          $releasePython = (Get-ChildItem build/release-environments/*/Scripts/python.exe | Select-Object -First 1).FullName
+          if (-not $releasePython) { throw "Pinned release Python not found." }
+          .\scripts\build_msix.ps1 -Version $version -Python $releasePython -DistributionPath dist\InferBridge -NativePublishDirectory artifacts/native-win-x64 -NativeEntrypointEvaluation -OutputDirectory artifacts/msix-native-evaluation -IdentityName "Quazmoz.InferBridge.Evaluation" -Publisher "CN=00000000-0000-0000-0000-000000000000" -PublisherDisplayName "InferBridge Evaluation"
+          if ($LASTEXITCODE -ne 0) { throw "Combined MSIX evaluation build failed." }
+
+      - name: Verify combined package contents and entrypoints
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          from zipfile import ZipFile
+          import xml.etree.ElementTree as ET
+
+          packages = list(Path("artifacts/msix-native-evaluation").glob("*native-evaluation-unsigned.msix"))
+          assert len(packages) == 1, "Expected exactly one unsigned native evaluation MSIX"
+          with ZipFile(packages[0]) as archive:
+              files = {name.replace("\\", "/").casefold() for name in archive.namelist()}
+              for required in (
+                  "inferbridge.exe", "native/inferbridge.native.exe",
+                  "native/inferbridge.native.runtimeconfig.json",
+                  "native/coreclr.dll", "appxmanifest.xml",
+              ):
+                  assert required in files, f"Missing packaged file: {required}"
+              assert any(name.startswith("_internal/python") and name.endswith(".dll") for name in files)
+              root = ET.fromstring(archive.read("AppxManifest.xml"))
+              foundation = "{http://schemas.microsoft.com/appx/manifest/foundation/windows10}"
+              app = root.find(f"{foundation}Applications/{foundation}Application")
+              assert app is not None and app.get("Executable") == r"native\InferBridge.Native.exe"
+          print("Structural MSIX checks passed (not installation/signing).")
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Save unsigned candidate (not Store-qualified)
+        uses: actions/upload-artifact@v7
+        with:
+          name: inferbridge-native-msix-UNSIGNED-EVALUATION-NOT-STORE-READY
+          path: artifacts/msix-native-evaluation/*native-evaluation-unsigned.msix
+          retention-days: 3
