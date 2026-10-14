@@ -191,4 +191,7 @@ def test_native_model_library_selection_survives_status_poll():
     restored = window.index("if (model.Id == selectedLibraryId)", added)
     assert captured < cleared < added < restored
     assert "ModelsList.SelectedItem = libraryItem;" in window[restored:]
-    assert "UpdateChatButtons();" in window[restored:window.index("private async void LoadButton_Click", restored)]
+    assert (
+        "UpdateChatButtons();"
+        in window[restored : window.index("private async void LoadButton_Click", restored)]
+    )
