@@ -1,0 +1,61 @@
+<Window
+    x:Class="InferBridge.Native.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="InferBridge">
+    <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <NavigationView x:Name="MainNavigation"
+                        PaneDisplayMode="Left"
+                        IsBackButtonVisible="Collapsed"
+                        IsSettingsVisible="False"
+                        IsPaneToggleButtonVisible="False"
+                        OpenPaneLength="212"
+                        Header="InferBridge"
+                        SelectionChanged="MainNavigation_SelectionChanged">
+            <NavigationView.MenuItems>
+                <NavigationViewItem Icon="Home" Content="Overview" Tag="overview" />
+                <NavigationViewItem Icon="Library" Content="Model library" Tag="models" />
+            </NavigationView.MenuItems>
+            <Grid Padding="28,16,28,28">
+                <StackPanel x:Name="OverviewPanel" Spacing="16">
+                    <TextBlock Text="Local inference. Native Windows."
+                               FontSize="28" FontWeight="SemiBold"
+                               TextWrapping="Wrap" />
+                    <TextBlock Text="InferBridge runs OpenVINO on your device. This native desktop client connects to the existing local engine."
+                               TextWrapping="Wrap" Opacity="0.8" />
+                    <InfoBar x:Name="ConnectionInfo" Title="Local engine"
+                             Severity="Informational" IsOpen="True"
+                             IsClosable="False" Message="Checking the local engine…" />
+                    <ProgressRing x:Name="ConnectionProgress" Width="30"
+                                  Height="30" IsActive="False"
+                                  HorizontalAlignment="Left" />
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Button x:Name="RefreshButton" Content="Refresh status"
+                                Click="RefreshButton_Click" />
+                        <Button x:Name="StartButton" Content="Start local engine"
+                                Click="StartButton_Click" />
+                    </StackPanel>
+                    <TextBlock x:Name="ConnectionDetails"
+                               TextWrapping="Wrap" Opacity="0.8" />
+                    <InfoBar Title="Local-first by design"
+                             Severity="Informational" IsOpen="True"
+                             IsClosable="False"
+                             Message="The AI engine and models stay in the existing Python/OpenVINO service. No hosted inference or browser UI is required." />
+                </StackPanel>
+                <StackPanel x:Name="ModelsPanel" Spacing="12"
+                            Visibility="Collapsed">
+                    <TextBlock Text="Model library" FontSize="28"
+                               FontWeight="SemiBold" />
+                    <TextBlock Text="Models reported by your local InferBridge engine"
+                               TextWrapping="Wrap" Opacity="0.8" />
+                    <TextBlock x:Name="ModelsSummary" TextWrapping="Wrap" />
+                    <ListView x:Name="ModelsList"
+                              AutomationProperties.Name="Available local models" />
+                    <Button Content="Refresh models"
+                            HorizontalAlignment="Left"
+                            Click="RefreshButton_Click" />
+                </StackPanel>
+            </Grid>
+        </NavigationView>
+    </Grid>
+</Window>
