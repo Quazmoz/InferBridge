@@ -35,7 +35,7 @@ public sealed partial class MainWindow : Window
         await RefreshAsync();
     }
 
-    private async void StartButton_Click(object sender, RoutedEventArgs args)
+    private void StartButton_Click(object sender, RoutedEventArgs args)
     {
         var result = EngineLauncher.Start();
         ConnectionInfo.Severity = result.Started
