@@ -27,8 +27,8 @@ from app.desktop_launcher import (
 )
 from app.desktop_shell import open_browser
 from app.msix import is_packaged
-from app.store_window import open_store_window
 from app.paths import RuntimePaths
+from app.store_window import open_store_window
 
 logger = logging.getLogger("ov-llm.tray.controller")
 
