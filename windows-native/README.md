@@ -203,3 +203,24 @@ Windows 11 Start-menu launch, engine startup/authentication and reconnect,
 duplicate activation, sleep/resume, UI accessibility, real inference hardware,
 data preservation across update/uninstall/reinstall, and Windows App
 Certification Kit. Do not modify real user model directories during testing.
+
+### Executable native backend HTTP security contracts
+
+The Windows-native CI harness compiles the **production** `BackendClient.cs`
+into a dependency-free .NET 10 executable alongside its path resolver. It
+injects a deterministic in-memory HTTP transport and temporary session metadata;
+no real port, model, key, user data directory, or external endpoint is used.
+
+The executable checks valid loopback port/nonce attachment, stale owner and
+reported-port rejection, malformed/oversized metadata, redirects, API-key
+challenges, guarded model mutations, authenticated chat payloads, oversized
+responses, and request cancellation. It is run with:
+
+```powershell
+dotnet run --project .\windows-native\InferBridge.Native.ContractTests\InferBridge.Native.ContractTests.csproj --configuration Release
+```
+
+These tests verify real client request/response behavior, not merely source
+strings. They do **not** prove Windows TCP/socket behavior, native UI activation,
+installed package identity, credential persistence, real model inference, or
+Store certification. The signed installed-MSIX checks above remain mandatory.
