@@ -6,6 +6,8 @@ import xml.etree.ElementTree as ET
 
 import pytest
 
+from app.paths import resolve_runtime_paths
+
 from scripts.msix_package import ASSETS, msix_version, render_manifest, stage
 
 FOUNDATION = "{http://schemas.microsoft.com/appx/manifest/foundation/windows10}"
@@ -33,6 +35,9 @@ def test_manifest_is_well_formed_and_escapes_partner_center_values():
     )
     application = root.find(f"{FOUNDATION}Applications/{FOUNDATION}Application")
     assert application.get("Executable") == "InferBridge.exe"
+    capabilities = root.find(f"{FOUNDATION}Capabilities")
+    assert [item.get("Name") for item in capabilities] == ["runFullTrust"]
+    assert "WriteVirtualization" not in ET.tostring(root, encoding="unicode")
 
 
 def test_manifest_rejects_values_partner_center_would_not_issue():
@@ -57,3 +62,18 @@ def test_stage_maps_every_built_file_and_refuses_portable_layouts(tmp_path):
     (dist / "portable.flag").write_text("portable")
     with pytest.raises(RuntimeError, match="installed-mode"):
         stage(distribution=dist, output_dir=tmp_path / "msix2", version="1.0.0", **IDENTITY)
+
+def test_store_data_root_preserves_downloads_without_appdata_virtualization(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.paths.is_packaged", lambda: True)
+    profile = tmp_path / "profile"
+    env = {
+        "USERPROFILE": str(profile),
+        "LOCALAPPDATA": str(profile / "AppData" / "Local"),
+    }
+    paths = resolve_runtime_paths(portable=False, desktop=True, env=env)
+    assert paths.data_root == profile / "InferBridgeStoreData"
+    assert paths.models_dir == profile / "InferBridgeStoreData" / "models"
+    env["OV_LLM_DATA_DIR"] = str(tmp_path / "opted-in-root")
+    assert resolve_runtime_paths(portable=False, desktop=True, env=env).data_root == (
+        tmp_path / "opted-in-root"
+    )
