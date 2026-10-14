@@ -5,7 +5,7 @@ edition's pywebview shell. It renders XAML native controls, not HTML or
 WebView2. The existing Python FastAPI/OpenVINO engine remains the source of
 truth for models, credentials, inference, and process ownership.
 
-**Status: native chat and model controls implemented in source on `dev`; Windows build/packaging qualification pending.**
+**Status: native chat and model controls have passed the Windows x64 build/publish CI. Interactive native runtime and MSIX installation remain unqualified.**
 The existing Store MSIX manifest still launches `InferBridge.exe` (the Python
 tray/WebView path). Do **not** resubmit it as a native application yet.
 
@@ -28,11 +28,18 @@ tray/WebView path). Do **not** resubmit it as a native application yet.
   browsing models or sending API mutations; proxy/redirect following disabled.
   A local nonce check is not an OS-level server identity guarantee against a
   malicious same-user process. Do not enable untrusted local programs.
-- Explicit manual launch of the existing bundled Python engine. No native tray
-  control token, duplicate lifecycle owner, or implicit stop on window closure.
+- WinUI frontend single-instance activation scoped to the installation directory;
+  another launch redirects to and focuses the existing native window, without
+  creating a second engine owner. Portable installations in different folders
+  retain independent native window instances.
+- Explicit manual launch of the bundled Python engine; an 8-second status poll
+  subsequently verifies its identity and health. A pending launch stops blocking
+  retries after 90 seconds without verified service. The polling is a UI aid,
+  not a replacement for the Python tray's lifecycle state machine. The native
+  window does not own backend shutdown or private tray-control credentials.
 
 **Not Store qualified.** The current MSIX still starts the Python/WebView
-interface. Native installation, single-instance window activation, packaged
+interface. Native installation, interactive single-instance window behavior, packaged
 engine handoff, installed MSIX signing, and Windows certification tests remain
 unverified. Never submit the transitional MSIX as a native application.
 
@@ -68,6 +75,35 @@ For development against an existing standalone/server data directory, set
 `INFERBRIDGE_NATIVE_DATA_DIR` to its absolute root before launching native
 UI. The override changes **only metadata lookup**, never server hostname:
 all requests use `127.0.0.1` and validate the nonce.
+
+## Windows 11 native lifecycle qualification (manual, not yet executed)
+
+1. Build the native project using the commands above on Windows 11 x64.
+   Run `InferBridge.Native.exe` from its complete published output folder.
+   Confirm one native window, working navigation, and correct keyboard focus.
+2. Launch the same executable a second time. Confirm no second native window
+   remains, the original window is restored/focused, and chat history remains
+   present. Confirm that two *separate* portable installation directories do
+   not redirect to each other.
+3. In an unpackaged development build, start the Python tray/backend separately
+   and set `INFERBRIDGE_NATIVE_DATA_DIR` to its verified data root
+   (normally `$env:LOCALAPPDATA\\InferBridge` for installed mode).
+   Check connection, enter the real API key if configured, load a model,
+   send a message and verify response/cancellation semantics.
+4. In a combined evaluation layout (`native\\InferBridge.Native.exe` and
+   sibling `InferBridge.exe`), start with the backend stopped. Use **Start
+   local engine** once; the button should stay disabled while pending, and
+   turn off automatically only when nonce/liveness verify (or after the bounded
+   90-second unsuccessful startup). A second launch must not create a second
+   tray/server lifecycle owner.
+5. Simulate an unavailable engine and stale session metadata using a **temporary
+   test data directory only**, never modifying live model stores. Ensure the
+   client does not attach to an unverified listener and recovers when the
+   authoritative tray has restarted. Close the native window during polling:
+   no HTTP operations or status callbacks should outlive the window.
+6. Repeat with the signed, identity-bearing MSIX after packaging integration.
+   That test, update/uninstall preservation, and WACK are still required before
+   any Store submission.
 
 ## Store migration acceptance
 

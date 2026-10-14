@@ -90,3 +90,25 @@ def test_native_chat_and_models_use_authoritative_bounded_backend_contracts():
     assert "CancelButton_Click" in window
     assert "NewChatButton_Click" in window
     assert "ChangeModelAsync" in window
+
+
+def test_native_frontend_is_single_instance_per_installation_and_preserves_engine_owner():
+    project = MSBUILD.read_text(encoding="utf-8")
+    program = (PROJECT / "Program.cs").read_text(encoding="utf-8")
+    app = (PROJECT / "App.xaml.cs").read_text(encoding="utf-8")
+    window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    assert "DISABLE_XAML_GENERATED_MAIN" in project
+    assert "InitializeComWrappers" in program
+    assert "FindOrRegisterForKey" in program
+    assert "RedirectActivationToAsync" in program
+    assert "AppContext.BaseDirectory" in program
+    assert "Application.Start" in program
+    assert "ActivateExistingWindow" in app
+    assert "SetForegroundWindow" in app
+    assert "new MainWindow()" in app
+    assert "_pollTimer.Start()" in window
+    assert "_pollTimer.Stop()" in window
+    assert "_startupElapsed.Elapsed >= TimeSpan.FromSeconds(90)" in window
+    assert "status.Connected" in window
+    assert "EngineLauncher.Start()" in window
+    assert "Process.Kill(" not in program + app + window

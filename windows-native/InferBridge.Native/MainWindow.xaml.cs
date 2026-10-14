@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Http;
 using System.Text.Json;
 using Microsoft.UI.Xaml;
@@ -9,19 +10,31 @@ public sealed partial class MainWindow : Window
 {
     private readonly BackendClient _backend = new();
     private readonly CancellationTokenSource _closing = new();
+    private readonly DispatcherTimer _pollTimer = new() { Interval = TimeSpan.FromSeconds(8) };
+    private readonly Stopwatch _startupElapsed = new();
     private readonly List<ChatTurn> _turns = new();
     private CancellationTokenSource? _sendCancellation;
     private bool _isRefreshing;
     private bool _isManaging;
     private bool _chatBusy;
+    private bool _startRequested;
     private string? _conversationModelId;
 
     public MainWindow()
     {
         InitializeComponent();
         MainNavigation.SelectedItem = MainNavigation.MenuItems[0];
+        _pollTimer.Tick += async (_, _) =>
+        {
+            // Polling updates presentation only. The Python tray owns server
+            // startup, crash recovery, and model lifecycle transitions.
+            if (!_closing.IsCancellationRequested)
+                await RefreshAsync();
+        };
+        _pollTimer.Start();
         Closed += (_, _) =>
         {
+            _pollTimer.Stop();
             _closing.Cancel();
             _sendCancellation?.Cancel();
             _backend.Dispose();
@@ -47,14 +60,20 @@ public sealed partial class MainWindow : Window
     private async void RefreshButton_Click(object sender, RoutedEventArgs args) =>
         await RefreshAsync();
 
-    private void StartButton_Click(object sender, RoutedEventArgs args)
+    private async void StartButton_Click(object sender, RoutedEventArgs args)
     {
+        if (_startRequested || _closing.IsCancellationRequested) return;
         var result = EngineLauncher.Start();
         ConnectionInfo.Severity = result.Started
             ? InfoBarSeverity.Informational : InfoBarSeverity.Warning;
         ConnectionInfo.Message = result.Message;
         ConnectionDetails.Text = result.Message;
-        // A launch request is never proof of engine identity or readiness.
+        if (!result.Started) return;
+        _startRequested = true;
+        _startupElapsed.Restart();
+        StartButton.IsEnabled = false;
+        // Only successful nonce + liveness verification clears the pending launch.
+        await RefreshAsync();
     }
 
     private void ChatModelPicker_SelectionChanged(
@@ -106,7 +125,18 @@ public sealed partial class MainWindow : Window
             ConnectionDetails.Text = status.Connected
                 ? "Verified loopback endpoint: " + status.Origin
                 : "The client will not attach to an unverified engine process.";
-            StartButton.IsEnabled = !status.Connected;
+            if (status.Connected)
+            {
+                _startRequested = false;
+                _startupElapsed.Reset();
+            }
+            else if (_startRequested && _startupElapsed.Elapsed >= TimeSpan.FromSeconds(90))
+            {
+                _startRequested = false;
+                ConnectionInfo.Message =
+                    "Engine startup could not be verified. Check the Python tray and retry.";
+            }
+            StartButton.IsEnabled = !status.Connected && !_startRequested;
 
             string? selected = SelectedModelId;
             ChatModelPicker.Items.Clear();
