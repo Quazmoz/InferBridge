@@ -34,6 +34,12 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      - name: Validate Windows native data-root contract
+        shell: pwsh
+        run: |
+          dotnet run --project windows-native/InferBridge.Native.ContractTests/InferBridge.Native.ContractTests.csproj --configuration Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Build native app
         shell: pwsh
         run: |

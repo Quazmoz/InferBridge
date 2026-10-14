@@ -73,12 +73,17 @@ server rejects protected reads. Send with **Ctrl+Enter** or the Send button;
 cancel only stops the client request, not necessarily ongoing backend compute.
 Neither conversation history nor credentials persist across window sessions.
 
-Native metadata root defaults to
-`%USERPROFILE%\InferBridgeStoreData` to match the updated Store default.
-For development against an existing standalone/server data directory, set
-`INFERBRIDGE_NATIVE_DATA_DIR` to its absolute root before launching native
-UI. The override changes **only metadata lookup**, never server hostname:
-all requests use `127.0.0.1` and validate the nonce.
+Native metadata discovery now follows the authoritative Python tray's
+distribution rules: signed MSIX uses `%USERPROFILE%\InferBridgeStoreData`;
+an unpackaged installation uses `%LOCALAPPDATA%\InferBridge` (or the existing
+legacy `OpenVINOWindowsLLM` root); and a combined portable distribution with
+a sibling `portable.flag` uses `<portable root>\data`. The Python
+`OV_LLM_DATA_DIR` override is honored. `INFERBRIDGE_NATIVE_DATA_DIR`
+overrides metadata lookup only and takes precedence. Set overrides to absolute
+paths; ambiguous relative overrides fail closed rather than attaching to an
+incorrect instance. All HTTP requests remain bound to verified loopback
+`127.0.0.1` and nonce identity. Neither backend storage nor models are
+moved or duplicated by the native client.
 
 ## Windows 11 native lifecycle qualification (manual, not yet executed)
 
@@ -149,3 +154,15 @@ The native files are mapped under `native\` while `InferBridge.exe` remains
 the Store entrypoint. The Python tray/engine continues owning lifecycle and
 data. This staging does not replace signed MSIX installation testing or
 constitute a Store-ready native package. Do not submit the transitional MSIX.
+
+### Native Windows data-path contract tests
+
+The Windows native workflow runs a dependency-free C# executable test harness
+with temporary directories, covering Store, installed, legacy, portable,
+override-precedence and unsafe relative-root cases:
+
+```powershell
+dotnet run --project .\windows-native\InferBridge.Native.ContractTests\InferBridge.Native.ContractTests.csproj -c Release
+```
+
+These are real .NET path-contract tests, not installed MSIX identity tests.

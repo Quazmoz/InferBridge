@@ -43,20 +43,29 @@ internal sealed class BackendClient : IDisposable
         Timeout = Timeout.InfiniteTimeSpan,
     };
 
-    private readonly string _metadataFile;
+    private readonly string? _metadataFile;
 
     public BackendClient()
     {
-        string root = Environment.GetEnvironmentVariable("INFERBRIDGE_NATIVE_DATA_DIR")
-            ?? Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                "InferBridgeStoreData");
-        _metadataFile = Path.Combine(Path.GetFullPath(root), "desktop-instance.json");
+        try
+        {
+            _metadataFile = NativeDataPaths.ResolveMetadataFile();
+        }
+        catch (Exception error) when (error is ArgumentException or IOException
+            or NotSupportedException)
+        {
+            // A malformed environment override must not crash the entire WinUI
+            // window or silently attach to a different engine's data directory.
+            _metadataFile = null;
+        }
     }
 
     public async Task<BackendSnapshot> InspectAsync(
         CancellationToken cancellationToken, string? apiKey = null)
     {
+        if (_metadataFile is null)
+            return BackendSnapshot.Offline(
+                "Invalid native data directory. Check INFERBRIDGE_NATIVE_DATA_DIR and OV_LLM_DATA_DIR.");
         if (!File.Exists(_metadataFile))
             return BackendSnapshot.Offline("No local engine session found. Start the engine.");
 

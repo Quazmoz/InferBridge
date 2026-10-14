@@ -122,3 +122,18 @@ def test_native_status_polling_never_reinterprets_inventory_as_user_model_change
     assert "_updatingModelPicker = false;" in window
     assert "ChatModelPicker.SelectedItem is null && _conversationModelId is null" in window
     assert "_conversationModelId = modelId;" in window
+
+
+def test_native_backend_resolves_python_tray_data_roots_instead_of_store_only():
+    client = (PROJECT / "BackendClient.cs").read_text(encoding="utf-8")
+    resolver = (PROJECT / "NativeDataPaths.cs").read_text(encoding="utf-8")
+    workflow = (ROOT / ".github/workflows/native-windows.yml").read_text(encoding="utf-8")
+
+    assert "NativeDataPaths.ResolveMetadataFile()" in client
+    assert "GetCurrentPackageFullName" in resolver
+    assert "portable.flag" in resolver
+    assert "OpenVINOWindowsLLM" in resolver
+    assert "INFERBRIDGE_NATIVE_DATA_DIR" in resolver
+    assert "OV_LLM_DATA_DIR" in resolver
+    assert "Path.IsPathFullyQualified(requested)" in resolver
+    assert "InferBridge.Native.ContractTests.csproj" in workflow
