@@ -20,6 +20,7 @@ public sealed partial class MainWindow : Window
     private bool _chatBusy;
     private bool _startRequested;
     private string? _conversationModelId;
+    private string? _rejectedApiKey;
 
     public MainWindow()
     {
@@ -29,7 +30,9 @@ public sealed partial class MainWindow : Window
         {
             // Polling updates presentation only. The Python tray owns server
             // startup, crash recovery, and model lifecycle transitions.
-            if (!_closing.IsCancellationRequested)
+            // Re-sending a rejected key every tick trips the engine's invalid-key
+            // throttle (HTTP 429); wait for a new key or an explicit refresh.
+            if (!_closing.IsCancellationRequested && _rejectedApiKey != ApiKeyBox.Password)
                 await RefreshAsync();
         };
         _pollTimer.Start();
@@ -40,7 +43,16 @@ public sealed partial class MainWindow : Window
             _sendCancellation?.Cancel();
             _backend.Dispose();
         };
-        _ = RefreshAsync();
+        _ = ConnectOrStartAsync();
+    }
+
+    private async Task ConnectOrStartAsync()
+    {
+        await RefreshAsync();
+        // A Start-menu launch of the combined package starts its engine without a
+        // second click. The Python tray's instance lock still arbitrates ownership.
+        if (StartButton.IsEnabled && EngineLauncher.IsBundled)
+            StartButton_Click(StartButton, new RoutedEventArgs());
     }
 
     private string? SelectedModelId =>
@@ -121,7 +133,9 @@ public sealed partial class MainWindow : Window
         ConnectionProgress.IsActive = true;
         try
         {
-            var status = await _backend.InspectAsync(_closing.Token, ApiKeyBox.Password);
+            string apiKey = ApiKeyBox.Password;
+            var status = await _backend.InspectAsync(_closing.Token, apiKey);
+            _rejectedApiKey = status.RequiresAuthentication ? apiKey : null;
             ConnectionInfo.Severity = status.Connected
                 ? InfoBarSeverity.Success : InfoBarSeverity.Warning;
             ConnectionInfo.Message = status.Message;
@@ -138,6 +152,10 @@ public sealed partial class MainWindow : Window
                 _startRequested = false;
                 ConnectionInfo.Message =
                     "Engine startup could not be verified. Check the Python tray and retry.";
+            }
+            else if (_startRequested)
+            {
+                ConnectionInfo.Message = "Starting the local engine. The first start can take a minute…";
             }
             StartButton.IsEnabled = !status.Connected && !_startRequested;
 
@@ -180,7 +198,7 @@ public sealed partial class MainWindow : Window
                     : "Start or reconnect to the local engine.";
 
             if (!status.Connected || status.RequiresAuthentication)
-                ShowChatInfo("Engine unavailable", status.Message, InfoBarSeverity.Warning);
+                ShowChatInfo("Engine unavailable", ConnectionInfo.Message, InfoBarSeverity.Warning);
             else if (ChatModelPicker.Items.Count == 0)
                 ShowChatInfo("No model loaded",
                     "Choose a downloaded model in Model library and load it, then refresh.",
@@ -189,9 +207,10 @@ public sealed partial class MainWindow : Window
                 ShowChatInfo("Ready", "Select a loaded model and send a message. Ctrl+Enter sends.",
                     InfoBarSeverity.Success);
         }
-        catch (OperationCanceledException) when (_closing.IsCancellationRequested)
+        catch (Exception) when (_closing.IsCancellationRequested)
         {
             // Closing the window cancels requests, not the authoritative tray.
+            // Late failures (e.g. the disposed client) must not crash on exit.
         }
         catch (Exception) when (!_closing.IsCancellationRequested)
         {
@@ -235,7 +254,7 @@ public sealed partial class MainWindow : Window
             ModelsSummary.Text = await _backend.ChangeModelAsync(
                 model, load, ApiKeyBox.Password, _closing.Token);
         }
-        catch (OperationCanceledException) when (_closing.IsCancellationRequested)
+        catch (Exception) when (_closing.IsCancellationRequested)
         {
         }
         catch (Exception error) when (!_closing.IsCancellationRequested)
@@ -302,6 +321,9 @@ public sealed partial class MainWindow : Window
         {
             ShowChatInfo("Could not complete chat", SafeError(error), InfoBarSeverity.Error);
         }
+        catch (Exception) when (_closing.IsCancellationRequested)
+        {
+        }
         finally
         {
             _sendCancellation?.Dispose();
@@ -350,6 +372,8 @@ public sealed partial class MainWindow : Window
     {
         UnauthorizedAccessException => "API key rejected. Update it on the Engine screen.",
         InvalidOperationException => "Model state changed or model is busy. Refresh and retry.",
+        HttpRequestException { StatusCode: System.Net.HttpStatusCode.TooManyRequests } =>
+            "The engine is temporarily refusing requests. Wait a few minutes, check the API key, then retry.",
         HttpRequestException => "The engine rejected the request or disconnected. Refresh status.",
         JsonException => "The engine returned an unexpected response. Refresh and retry.",
         IOException => "Engine connection or response failed. Refresh status.",

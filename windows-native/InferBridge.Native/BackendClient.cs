@@ -156,6 +156,14 @@ internal sealed class BackendClient : IDisposable
                     true, "Engine verified. Enter the configured API key to view models and chat.",
                     origin, Array.Empty<ModelInfo>(), true);
             }
+            catch (HttpRequestException error) when (error.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                // The engine throttles a source after repeated invalid keys. It is
+                // still the verified owner, so do not report it offline.
+                return new BackendSnapshot(
+                    true, "Engine verified, but it is refusing requests after repeated invalid API keys. Wait a few minutes, check the key, then refresh.",
+                    origin, Array.Empty<ModelInfo>(), true);
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

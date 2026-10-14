@@ -164,3 +164,18 @@ def test_windows_harness_executes_production_backend_http_contracts():
         "cancelled chat did not end promptly",
     ):
         assert requirement in contracts
+
+
+def test_native_window_is_production_safe_on_close_auth_throttle_and_high_dpi():
+    window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    manifest = (PROJECT / "app.manifest").read_text(encoding="utf-8")
+    # Any late failure after close must be swallowed, not crash an async void handler.
+    assert (
+        "catch (OperationCanceledException) when (_closing.IsCancellationRequested)" not in window
+    )
+    assert window.count("catch (Exception) when (_closing.IsCancellationRequested)") == 3
+    # Polling must not keep re-sending a rejected key into the engine's 429 throttle.
+    assert "_rejectedApiKey != ApiKeyBox.Password" in window
+    assert "EngineLauncher.IsBundled" in window
+    assert "<ApplicationManifest>app.manifest</ApplicationManifest>" in MSBUILD.read_text("utf-8")
+    assert "PerMonitorV2" in manifest

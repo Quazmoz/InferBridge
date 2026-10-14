@@ -32,8 +32,13 @@ tray/WebView path). Do **not** resubmit it as a native application yet.
   another launch redirects to and focuses the existing native window, without
   creating a second engine owner. Portable installations in different folders
   retain independent native window instances.
-- Explicit manual launch of the bundled Python engine; an 8-second status poll
-  subsequently verifies its identity and health. A pending launch stops blocking
+- When the bundled Python engine sits beside `native\` and no verified session
+  exists at window launch, the window requests one engine start automatically
+  (the Python tray's instance lock still arbitrates ownership); **Start local
+  engine** remains for retries. An 8-second status poll then verifies identity
+  and health. Polling pauses while the engine is rejecting the entered API key,
+  so it never trips the engine's invalid-key throttle (HTTP 429); a throttled
+  engine is reported as verified-but-refusing, not offline. A pending launch stops blocking
   retries after 90 seconds without verified service. The polling is a UI aid,
   not a replacement for the Python tray's lifecycle state machine. The native
   window does not own backend shutdown or private tray-control credentials.
@@ -100,11 +105,13 @@ moved or duplicated by the native client.
    Check connection, enter the real API key if configured, load a model,
    send a message and verify response/cancellation semantics.
 4. In a combined evaluation layout (`native\\InferBridge.Native.exe` and
-   sibling `InferBridge.exe`), start with the backend stopped. Use **Start
-   local engine** once; the button should stay disabled while pending, and
-   turn off automatically only when nonce/liveness verify (or after the bounded
-   90-second unsuccessful startup). A second launch must not create a second
-   tray/server lifecycle owner.
+   sibling `InferBridge.exe`), start with the backend stopped. Launching the
+   window must request one engine start by itself and show "Starting the local
+   engine"; **Start local engine** stays disabled while pending, and connects
+   only when nonce/liveness verify (or re-enables after the bounded 90-second
+   unsuccessful startup). A second launch must not create a second
+   tray/server lifecycle owner. Repeat at 150% display scaling: text must be
+   crisp, not bitmap-stretched.
 5. Simulate an unavailable engine and stale session metadata using a **temporary
    test data directory only**, never modifying live model stores. Ensure the
    client does not attach to an unverified listener and recovers when the

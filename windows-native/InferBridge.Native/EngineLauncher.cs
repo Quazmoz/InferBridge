@@ -4,25 +4,28 @@ namespace InferBridge.Native;
 
 internal static class EngineLauncher
 {
+    // In a combined desktop distribution, the bundled Python executable
+    // lives beside the native/ directory. Never execute PATH or user input.
+    private static readonly string EngineDirectory = Path.GetFullPath(
+        Path.Combine(AppContext.BaseDirectory, ".."));
+    private static readonly string EngineExecutable = Path.Combine(EngineDirectory, "InferBridge.exe");
+
+    public static bool IsBundled => File.Exists(EngineExecutable);
+
     public static (bool Started, string Message) Start()
     {
-        // In a combined desktop distribution, the bundled Python executable
-        // lives beside the native/ directory. Never execute PATH or user input.
-        string directory = Path.GetFullPath(
-            Path.Combine(AppContext.BaseDirectory, ".."));
-        string executable = Path.Combine(directory, "InferBridge.exe");
-        if (!File.Exists(executable))
+        if (!IsBundled)
             return (false,
                 "The packaged InferBridge engine was not found beside this native app. " +
                 "For development, start the Python desktop engine separately.");
 
         try
         {
-            var info = new ProcessStartInfo(executable)
+            var info = new ProcessStartInfo(EngineExecutable)
             {
                 UseShellExecute = false,
                 CreateNoWindow = true,
-                WorkingDirectory = directory,
+                WorkingDirectory = EngineDirectory,
             };
             info.ArgumentList.Add("--no-browser");
             using var process = Process.Start(info);

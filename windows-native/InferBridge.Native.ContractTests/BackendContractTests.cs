@@ -157,6 +157,20 @@ internal static class BackendContractTests
         Check(!protectedApi.RequestPaths.Contains("/v1/chat/completions"),
             "protected engine received unauthorized chat mutation");
 
+        // After repeated invalid keys the engine answers 429. It is still the
+        // verified owner: never report it offline (which re-enables Start).
+        var throttled = new StubHandler((request, _) =>
+            Task.FromResult(request.RequestUri!.AbsolutePath == "/v1/models"
+                ? Json("""{"detail":"Too many invalid API-key attempts"}""",
+                    HttpStatusCode.TooManyRequests)
+                : ValidResponse(request)));
+        using (var client = new BackendClient(throttled, metadata))
+        {
+            var snapshot = await client.InspectAsync(CancellationToken.None);
+            Check(snapshot.Connected && snapshot.RequiresAuthentication
+                && snapshot.Models.Count == 0, "invalid-key throttle handling");
+        }
+
         // Never post a stale model action. A fresh authoritative inventory read
         // must still show exactly the requested transition state.
         var actions = new StubHandler(async (request, cancellationToken) =>

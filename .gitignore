@@ -50,6 +50,8 @@ certification/results/
 /build/
 /dist/
 /artifacts/
+windows-native/**/bin/
+windows-native/**/obj/
 
 # --- IDE ---
 .vscode/
