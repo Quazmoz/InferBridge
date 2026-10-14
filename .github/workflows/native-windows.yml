@@ -67,7 +67,7 @@ jobs:
           python -m pytest tests/test_msix_package.py tests/test_native_windows_source_contract.py -q
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Validate Windows native data-root contract
+      - name: Validate Windows native data-root and HTTP client contracts
         shell: pwsh
         run: |
           dotnet run --project windows-native/InferBridge.Native.ContractTests/InferBridge.Native.ContractTests.csproj --configuration Release
