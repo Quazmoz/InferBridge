@@ -59,7 +59,7 @@ class TrayRuntimeMixin:
         if metadata and verify_instance(metadata):
             if not self.args.no_browser:
                 if is_packaged():
-                    if not open_store_window(metadata.port):
+                    if not open_store_window(metadata.port, metadata.nonce):
                         show_dialog(APP_TITLE, "The Store application window could not be opened.", error=True)
                 else:
                     open_browser(f"http://127.0.0.1:{metadata.port}/")
