@@ -101,11 +101,12 @@ internal sealed class BackendClient : IDisposable
             {
                 using var modelsPayload = await GetJsonAsync(origin + "/v1/models", cancellationToken);
                 var models = new List<ModelInfo>();
-                if (modelsPayload.RootElement.ValueKind == JsonValueKind.Object
-                    && modelsPayload.RootElement.TryGetProperty("data", out var data)
-                    && data.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var item in data.EnumerateArray())
+                if (modelsPayload.RootElement.ValueKind != JsonValueKind.Object
+                    || !modelsPayload.RootElement.TryGetProperty("data", out var data)
+                    || data.ValueKind != JsonValueKind.Array)
+                    throw new JsonException("Invalid model inventory schema.");
+
+                foreach (var item in data.EnumerateArray())
                     {
                         if (models.Count >= 2000) break;
                         string id = ReadString(item, "id");
@@ -116,7 +117,6 @@ internal sealed class BackendClient : IDisposable
                             id, string.IsNullOrWhiteSpace(name) ? id : name,
                             string.IsNullOrWhiteSpace(status) ? "unknown" : status));
                     }
-                }
 
                 return new BackendSnapshot(
                     true, "Connected to the local InferBridge engine.", origin,
