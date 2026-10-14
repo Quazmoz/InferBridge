@@ -10,10 +10,10 @@ Behavior that differs from the installer build, all in `app/msix.py` callers:
 
 | Area | Store build |
 |---|---|
-| Data root | Same `%LOCALAPPDATA%\InferBridge`; write virtualization is disabled, so models survive reinstalling and are shared with an installer copy. |
+| Data root | `%USERPROFILE%\InferBridgeStoreData` (outside MSIX AppData virtualization). Survives uninstall; not automatically shared with standalone editions. |
 | Start with Windows | Declared as a manifest StartupTask, off by default. Users toggle it in Windows Settings > Apps > Startup; the in-app toggle explains this instead of writing the Run key. |
 | Updates | Delivered by the Store. GitHub update checks are disabled and the release dialog says so. |
-| Uninstall | Removes the program; user data stays, as with the installer's default. |
+| Uninstall | Removes the program; model downloads and settings under `%USERPROFILE%\InferBridgeStoreData` remain until explicitly deleted. |
 
 The MSIX version is `<major>.<minor>.<patch>.0`; the Store reserves the fourth field. Pre-release suffixes are dropped, so submit only stable versions.
 
@@ -33,7 +33,7 @@ The MSIX version is `<major>.<minor>.<patch>.0`; the Store reserves the fourth f
 1. Run **Release build** (`.github/workflows/release.yml`) with *msix* checked. SignPath signing is independent; uncheck *sign* if it is not set up yet.
 2. Download the `InferBridge-<version>-msix` artifact.
 3. In Partner Center, create a submission, upload the `.msix` under *Packages*, and complete the listing, age rating, and a privacy policy URL (the privacy statement in [CODE_SIGNING.md](CODE_SIGNING.md#code-signing-policy) works).
-4. Under *Submission options > Restricted capabilities*, justify `runFullTrust` (desktop app) and `unvirtualizedResources` ("keeps multi-gigabyte AI model downloads in the user's existing InferBridge data folder so they survive reinstalls and are shared with the standalone installer").
+4. The MSIX requests only `runFullTrust` for its desktop process; the denied `unvirtualizedResources` request must be removed from the Partner Center submission.
 
 Local build on Windows with the Windows SDK:
 
@@ -43,3 +43,29 @@ Local build on Windows with the Windows SDK:
 ```
 
 To sideload-test before submitting, sign a copy with a self-signed certificate whose subject equals the publisher value; the Store submission itself must stay unsigned.
+
+## Storage and uninstall disclosure
+
+The Store package uses `%USERPROFILE%\InferBridgeStoreData` for its model files,
+conversion cache, configuration, and logs. This avoids the MSIX AppData virtualization
+boundary without disabling registry or filesystem virtualization. InferBridge does not
+write HKLM, modify Windows/system directories, or use this capability to access other
+applications' data (the capability is not declared at all). User-selected model locations
+and an explicit `OV_LLM_DATA_DIR` override remain possible.
+
+Store uninstall does **not** remove `%USERPROFILE%\InferBridgeStoreData`. After
+quitting InferBridge, users can manually delete that folder if they want to remove
+models and private data. The standalone installer continues to use
+`%LOCALAPPDATA%\InferBridge` by default; the two editions do not automatically
+copy or migrate large downloads. To share, explicitly set a common
+`OV_LLM_DATA_DIR` outside AppData and never run both editions concurrently.
+
+## Certification regression gate
+
+Before creating a new submission, sideload a *signed, package-identity-bearing* MSIX
+on Windows 11. Start from the Start menu and confirm a visible InferBridge-owned
+application window, not merely a browser tab. Exercise chat (including no-model
+onboarding), model library, server stop/recovery, tray reopen and repeated launch;
+verify model data after an update and uninstall/reinstall. Test missing WebView2
+runtime as a recoverable error. Source-level unit tests or an unpackaged executable
+alone do not establish this acceptance criterion.
