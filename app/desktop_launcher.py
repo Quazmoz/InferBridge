@@ -553,7 +553,7 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("--window-child requires --port and cannot be a server child")
         from app.store_window import run_store_window
 
-        return run_store_window(args.port)
+        return run_store_window(args.port, args.instance_nonce)
     if args.diagnostic:
         return _diagnostic_export(args)
 
