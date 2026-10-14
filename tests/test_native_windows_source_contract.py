@@ -146,3 +146,21 @@ def test_native_chat_disallows_late_success_after_user_cancellation():
     commit = window.index("_turns.AddRange(pending);", response)
     assert response < cancelled < commit
     assert "PromptBox.Text = string.Empty;" in window[commit:]
+
+
+def test_windows_harness_executes_production_backend_http_contracts():
+    project = ROOT / "windows-native" / "InferBridge.Native.ContractTests"
+    csproj = (project / "InferBridge.Native.ContractTests.csproj").read_text(encoding="utf-8")
+    entrypoint = (project / "Program.cs").read_text(encoding="utf-8")
+    contracts = (project / "BackendContractTests.cs").read_text(encoding="utf-8")
+    assert 'Include="../InferBridge.Native/BackendClient.cs"' in csproj
+    assert "await BackendContractTests.RunAsync(root);" in entrypoint
+    for requirement in (
+        "stale nonce was accepted",
+        "server-reported port mismatch was accepted",
+        "HTTP redirect was treated as an engine",
+        "oversized HTTP body was accepted",
+        "unauthorized chat mutation",
+        "cancelled chat did not end promptly",
+    ):
+        assert requirement in contracts
