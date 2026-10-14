@@ -37,7 +37,11 @@ def msix_version(version: str) -> str:
 
 
 def render_manifest(
-    *, identity_name: str, publisher: str, publisher_display_name: str, version: str,
+    *,
+    identity_name: str,
+    publisher: str,
+    publisher_display_name: str,
+    version: str,
     native_entrypoint_evaluation: bool = False,
 ) -> str:
     if not _IDENTITY_RE.fullmatch(identity_name):
@@ -59,7 +63,7 @@ def render_manifest(
         if manifest.count(old) != 2:
             raise RuntimeError("Store manifest entrypoint contract changed.")
         # This affects only the generated candidate; the Store template is untouched.
-        manifest = manifest.replace(old, 'Executable="native\InferBridge.Native.exe"')
+        manifest = manifest.replace(old, r'Executable="native\InferBridge.Native.exe"')
     for token, value in values.items():
         manifest = manifest.replace(token, value)
     if "{{" in manifest:
@@ -97,7 +101,11 @@ def native_entries(native_publish: Path) -> list[tuple[Path, str]]:
     if not (native_publish / "InferBridge.Native.exe").is_file():
         raise FileNotFoundError("Native publish output is missing InferBridge.Native.exe.")
     # Reject a lone application host without its self-contained .NET runtime.
-    for required in ("InferBridge.Native.deps.json", "InferBridge.Native.runtimeconfig.json", "coreclr.dll"):
+    for required in (
+        "InferBridge.Native.deps.json",
+        "InferBridge.Native.runtimeconfig.json",
+        "coreclr.dll",
+    ):
         if not (native_publish / required).is_file():
             raise FileNotFoundError(f"Native publish output is missing {required}.")
     entries: list[tuple[Path, str]] = []
@@ -196,7 +204,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--distribution", required=True, type=Path)
     parser.add_argument("--native-publish-dir", type=Path)
     parser.add_argument(
-        "--native-entrypoint-evaluation", action="store_true",
+        "--native-entrypoint-evaluation",
+        action="store_true",
         help="Isolated unsigned native launch candidate, never the shipping Store package.",
     )
     parser.add_argument("--output-dir", required=True, type=Path)
