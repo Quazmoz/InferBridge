@@ -142,9 +142,7 @@ def test_native_backend_resolves_python_tray_data_roots_instead_of_store_only():
 def test_native_chat_disallows_late_success_after_user_cancellation():
     window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
     response = window.index("string answer = await _backend.CompleteChatAsync(")
-    cancelled = window.index(
-        "_sendCancellation?.IsCancellationRequested != false", response
-    )
+    cancelled = window.index("_sendCancellation?.IsCancellationRequested != false", response)
     commit = window.index("_turns.AddRange(pending);", response)
     assert response < cancelled < commit
     assert "PromptBox.Text = string.Empty;" in window[commit:]
