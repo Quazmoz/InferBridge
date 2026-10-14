@@ -3,6 +3,7 @@ param(
     [Parameter(Mandatory = $true)][string]$Version,
     [string]$DistributionPath = "dist\InferBridge",
     [string]$NativePublishDirectory = "",
+    [switch]$NativeEntrypointEvaluation,
     [string]$OutputDirectory = "",
     [string]$IdentityName = $env:INFERBRIDGE_MSIX_IDENTITY_NAME,
     [string]$Publisher = $env:INFERBRIDGE_MSIX_PUBLISHER,
@@ -23,8 +24,15 @@ foreach ($Pair in @(@("IdentityName", $IdentityName), @("Publisher", $Publisher)
         throw "-$($Pair[0]) is required. Copy it from Partner Center > Product identity."
     }
 }
+if ($NativeEntrypointEvaluation -and -not $NativePublishDirectory) {
+    throw "-NativeEntrypointEvaluation requires -NativePublishDirectory."
+}
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $Root "artifacts\release-$Version" }
-$Stage = Join-Path $Root "build\msix"
+$Stage = if ($NativeEntrypointEvaluation) {
+    Join-Path $Root "build\msix-native-evaluation"
+} else {
+    Join-Path $Root "build\msix"
+}
 Remove-Item $Stage -Recurse -Force -ErrorAction SilentlyContinue
 
 $StageArguments = @(
@@ -35,6 +43,9 @@ $StageArguments = @(
 if ($NativePublishDirectory) {
     $StageArguments += @("--native-publish-dir", $NativePublishDirectory)
 }
+if ($NativeEntrypointEvaluation) {
+    $StageArguments += "--native-entrypoint-evaluation"
+}
 $Mapping = (& $Python @StageArguments | Select-Object -Last 1)
 if ($LASTEXITCODE -ne 0) { throw "MSIX staging failed." }
 
@@ -43,7 +54,12 @@ $MakeAppx = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\ma
 if (-not $MakeAppx) { throw "makeappx.exe was not found. Install the Windows 10/11 SDK." }
 
 New-Item $OutputDirectory -ItemType Directory -Force | Out-Null
-$Package = Join-Path $OutputDirectory "InferBridge-$Version-windows-x64.msix"
+$PackageName = if ($NativeEntrypointEvaluation) {
+    "InferBridge-$Version-windows-x64-native-evaluation-unsigned.msix"
+} else {
+    "InferBridge-$Version-windows-x64.msix"
+}
+$Package = Join-Path $OutputDirectory $PackageName
 & $MakeAppx.FullName pack /o /f $Mapping /p $Package | Out-Null
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path $Package)) { throw "makeappx pack failed." }
 Write-Host "Store package: $Package"
