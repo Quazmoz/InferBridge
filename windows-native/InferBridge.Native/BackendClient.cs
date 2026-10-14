@@ -74,6 +74,7 @@ internal sealed class BackendClient : IDisposable
             var root = metadata.RootElement;
             if (root.ValueKind != JsonValueKind.Object
                 || !root.TryGetProperty("port", out var portElement)
+                || portElement.ValueKind != JsonValueKind.Number
                 || !portElement.TryGetInt32(out int port)
                 || port is < 1 or > 65535)
                 return BackendSnapshot.Offline("Invalid local engine port.");
@@ -86,6 +87,7 @@ internal sealed class BackendClient : IDisposable
             using var identity = await GetJsonAsync(origin + "/desktop/instance", cancellationToken);
             if (ReadString(identity.RootElement, "instance_nonce") != nonce
                 || !identity.RootElement.TryGetProperty("port", out var claimedPort)
+                || claimedPort.ValueKind != JsonValueKind.Number
                 || !claimedPort.TryGetInt32(out int reportedPort)
                 || reportedPort != port)
                 return BackendSnapshot.Offline(
@@ -99,7 +101,8 @@ internal sealed class BackendClient : IDisposable
             {
                 using var modelsPayload = await GetJsonAsync(origin + "/v1/models", cancellationToken);
                 var models = new List<ModelInfo>();
-                if (modelsPayload.RootElement.TryGetProperty("data", out var data)
+                if (modelsPayload.RootElement.ValueKind == JsonValueKind.Object
+                    && modelsPayload.RootElement.TryGetProperty("data", out var data)
                     && data.ValueKind == JsonValueKind.Array)
                 {
                     foreach (var item in data.EnumerateArray())
