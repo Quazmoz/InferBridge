@@ -44,10 +44,7 @@ def test_packaged_chat_uses_window_instead_of_external_browser(monkeypatch):
 def test_window_child_dispatch_does_not_start_tray(monkeypatch):
     invoked = Mock(return_value=0)
     monkeypatch.setattr("app.store_window.run_store_window", invoked)
-    assert (
-        main(["--window-child", "--port", "8123", "--instance-nonce", "known-session"])
-        == 0
-    )
+    assert main(["--window-child", "--port", "8123", "--instance-nonce", "known-session"]) == 0
     invoked.assert_called_once_with(8123, "known-session")
 
 
@@ -66,6 +63,7 @@ def test_native_store_window_hosts_loopback_ui_with_edgechromium(tmp_path, monke
     )
     opened = Mock()
     started = Mock()
+
     class ClosedEvent:
         def __iadd__(self, callback):
             return self
