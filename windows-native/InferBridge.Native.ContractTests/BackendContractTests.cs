@@ -70,8 +70,6 @@ internal static class BackendContractTests
         {
             Check(request.RequestUri!.Host == "127.0.0.1", "client left literal loopback");
             Check(request.RequestUri.Port == Port, "client used a different port");
-            string path = request.RequestUri.AbsolutePath;
-            bool modelOperation = path.StartsWith("/v1/", StringComparison.Ordinal);
             Check(request.Headers.Authorization is null,
                 "identity and health probes must not expose API credentials");
             return Task.FromResult(ValidResponse(request));
