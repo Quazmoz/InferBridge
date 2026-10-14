@@ -1,0 +1,59 @@
+name: Native Windows frontend
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["dev"]
+    paths:
+      - "windows-native/**"
+      - ".github/workflows/native-windows.yml"
+  pull_request:
+    branches: ["dev"]
+    paths:
+      - "windows-native/**"
+      - ".github/workflows/native-windows.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  winui-build:
+    name: WinUI 3 native build (Windows x64)
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Build native app
+        shell: pwsh
+        run: |
+          dotnet restore windows-native/InferBridge.Native/InferBridge.Native.csproj -p:Platform=x64 -p:RuntimeIdentifier=win-x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build windows-native/InferBridge.Native/InferBridge.Native.csproj --no-restore --configuration Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Publish self-contained native evaluation layout
+        shell: pwsh
+        run: |
+          dotnet publish windows-native/InferBridge.Native/InferBridge.Native.csproj --no-restore --configuration Release --runtime win-x64 --self-contained true -p:Platform=x64 -o artifacts/native-win-x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path artifacts/native-win-x64/InferBridge.Native.exe)) {
+            throw "Native Windows executable was not produced."
+          }
+
+      - name: Save evaluation files
+        uses: actions/upload-artifact@v4
+        with:
+          name: inferbridge-native-winui-x64-evaluation
+          path: artifacts/native-win-x64/
+          retention-days: 7
