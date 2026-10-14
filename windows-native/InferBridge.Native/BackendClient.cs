@@ -34,19 +34,30 @@ internal sealed class BackendClient : IDisposable
     private const int MaximumJsonBytes = 256 * 1024;
     private const int MaximumChatBytes = 1024 * 1024;
     private const int MaximumMetadataBytes = 16 * 1024;
-    private readonly HttpClient _http = new(new SocketsHttpHandler
+    private readonly HttpClient _http;
+    private readonly string? _metadataFile;
+
+    public BackendClient() : this(new SocketsHttpHandler
     {
         AllowAutoRedirect = false,
         UseProxy = false,
-    })
+    }, null)
     {
-        Timeout = Timeout.InfiniteTimeSpan,
-    };
+    }
 
-    private readonly string? _metadataFile;
-
-    public BackendClient()
+    // The same production request pipeline is exercised with an in-memory
+    // response handler and disposable metadata file in native contract tests.
+    internal BackendClient(HttpMessageHandler handler, string? metadataFile)
     {
+        _http = new HttpClient(handler, disposeHandler: true)
+        {
+            Timeout = Timeout.InfiniteTimeSpan,
+        };
+        if (metadataFile is not null)
+        {
+            _metadataFile = metadataFile;
+            return;
+        }
         try
         {
             _metadataFile = NativeDataPaths.ResolveMetadataFile();
