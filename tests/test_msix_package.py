@@ -86,6 +86,9 @@ def test_native_payload_stages_without_changing_store_entrypoint(tmp_path):
     native = tmp_path / "native-publish"
     (native / "runtimes" / "win-x64").mkdir(parents=True)
     (native / "InferBridge.Native.exe").write_bytes(b"MZ")
+    (native / "InferBridge.Native.deps.json").write_text("{}")
+    (native / "InferBridge.Native.runtimeconfig.json").write_text("{}")
+    (native / "coreclr.dll").write_bytes(b"MZ")
     (native / "runtimes" / "win-x64" / "runtime.dll").write_bytes(b"MZ")
 
     mapping = stage(
@@ -134,4 +137,116 @@ def test_native_payload_rejects_missing_executable_and_nested_layout(tmp_path):
             output_dir=tmp_path / "msix",
             version="1.0.0",
             **IDENTITY,
+        )
+
+
+def test_native_evaluation_changes_only_generated_manifest_and_requires_complete_payload(tmp_path):
+    dist = tmp_path / "python-dist"
+    internal = dist / "_internal"
+    internal.mkdir(parents=True)
+    (dist / "InferBridge.exe").write_bytes(b"MZ")
+    (internal / "python311.dll").write_bytes(b"MZ")
+    native = tmp_path / "native-publish"
+    native.mkdir()
+    for filename in (
+        "InferBridge.Native.exe",
+        "InferBridge.Native.deps.json",
+        "InferBridge.Native.runtimeconfig.json",
+        "coreclr.dll",
+    ):
+        (native / filename).write_bytes(b"payload")
+
+    with pytest.raises(ValueError, match="requires a native publish"):
+        stage(
+            distribution=dist, output_dir=tmp_path / "missing-native",
+            version="1.0.0", native_entrypoint_evaluation=True, **IDENTITY,
+        )
+
+    mapping = stage(
+        distribution=dist,
+        native_publish=native,
+        output_dir=tmp_path / "candidate",
+        version="1.0.0",
+        native_entrypoint_evaluation=True,
+        **IDENTITY,
+    )
+    manifest = ET.parse(mapping.parent / "AppxManifest.xml").getroot()
+    app = manifest.find(f"{FOUNDATION}Applications/{FOUNDATION}Application")
+    assert app.get("Executable") == r"native\InferBridge.Native.exe"
+    extension = app.find(
+        "{http://schemas.microsoft.com/appx/manifest/desktop/windows10}Extensions"
+    )
+    assert extension is None  # startup task is an unqualified manifest extension, not a new root
+    assert r'"native\InferBridge.Native.exe"' in mapping.read_text(encoding="utf-8")
+    assert r'"_internal\python311.dll"' in mapping.read_text(encoding="utf-8")
+
+    # No source template change; the normal Store entrypoint remains Python.
+    default = ET.fromstring(render_manifest(version="1.0.0", **IDENTITY))
+    assert default.find(f"{FOUNDATION}Applications/{FOUNDATION}Application").get(
+        "Executable"
+    ) == "InferBridge.exe"
+
+
+def test_native_evaluation_rejects_missing_runtime_without_partial_mapping(tmp_path):
+    dist = tmp_path / "python-dist"
+    dist.mkdir()
+    (dist / "InferBridge.exe").write_bytes(b"MZ")
+    native = tmp_path / "native"
+    native.mkdir()
+    (native / "InferBridge.Native.exe").write_bytes(b"MZ")
+    output = tmp_path / "staging"
+    with pytest.raises(FileNotFoundError, match="deps.json"):
+        stage(
+            distribution=dist, native_publish=native, output_dir=output,
+            version="1.0.0", native_entrypoint_evaluation=True, **IDENTITY,
+        )
+    assert not output.exists()
+
+    for filename in (
+        "InferBridge.Native.deps.json",
+        "InferBridge.Native.runtimeconfig.json",
+        "coreclr.dll",
+    ):
+        (native / filename).write_bytes(b"payload")
+    with pytest.raises(FileNotFoundError, match="Python runtime DLL"):
+        stage(
+            distribution=dist, native_publish=native, output_dir=output,
+            version="1.0.0", native_entrypoint_evaluation=True, **IDENTITY,
+        )
+    assert not output.exists()
+
+
+def test_staging_rejects_nested_output_and_case_insensitive_collisions(tmp_path):
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "InferBridge.exe").write_bytes(b"MZ")
+    with pytest.raises(ValueError, match="outside"):
+        stage(
+            distribution=dist, output_dir=dist / "stage",
+            version="1.0.0", **IDENTITY,
+        )
+
+    (dist / "ASSETS").mkdir()
+    (dist / "ASSETS" / "StoreLogo.png").write_bytes(b"bad")
+    with pytest.raises(RuntimeError, match="collides"):
+        stage(
+            distribution=dist, output_dir=tmp_path / "stage",
+            version="1.0.0", **IDENTITY,
+        )
+    assert not (tmp_path / "stage").exists()
+
+
+def test_staging_rejects_symlinked_python_payload(tmp_path):
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "InferBridge.exe").write_bytes(b"MZ")
+    link = dist / "outside.txt"
+    try:
+        link.symlink_to(tmp_path / "anything")
+    except (OSError, NotImplementedError):
+        pytest.skip("Symbolic links not available in this test environment.")
+    with pytest.raises(RuntimeError, match="symbolic links"):
+        stage(
+            distribution=dist, output_dir=tmp_path / "msix",
+            version="1.0.0", **IDENTITY,
         )
