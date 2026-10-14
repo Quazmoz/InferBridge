@@ -7,9 +7,10 @@ The Store build is the zero-cost way to ship InferBridge without SmartScreen or 
 **Store submission blocked; do not resubmit the current MSIX.** The previous
 WebView2/pywebview shell was rejected because Microsoft requires the app's
 primary functionality to open as an application, not merely a browser tab.
-A genuine C# / WinUI 3 / XAML client has now started under
-`windows-native/InferBridge.Native/`. Its present scope is native overview,
-engine connectivity, and a read-only model library.
+A genuine C# / WinUI 3 / XAML client is being developed under
+`windows-native/InferBridge.Native/`. Its source now includes native chat,
+session-only API-key entry, engine connectivity, model inventory and authenticated
+load/unload controls. Windows runtime and packaged integration remain unverified.
 
 The MSIX manifest **still launches the previous Python/WebView entrypoint**.
 Until the native executable is Windows-build-verified, packaged alongside the

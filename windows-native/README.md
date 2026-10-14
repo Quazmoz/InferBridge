@@ -5,28 +5,36 @@ edition's pywebview shell. It renders XAML native controls, not HTML or
 WebView2. The existing Python FastAPI/OpenVINO engine remains the source of
 truth for models, credentials, inference, and process ownership.
 
-**Status: Phase 1 source scaffold on `dev`; not yet Store-qualified.**
+**Status: native chat and model controls implemented in source on `dev`; Windows build/packaging qualification pending.**
 The existing Store MSIX manifest still launches `InferBridge.exe` (the Python
 tray/WebView path). Do **not** resubmit it as a native application yet.
 
-## First implemented slice
+## Current native vertical slice
 
-- Responsive, native Windows navigation with Overview and Model library screens.
-- Bounded, loopback-only HTTP inspection of the existing engine:
-  - reads the bounded, user-owned `desktop-instance.json` metadata;
-  - validates the port and server nonce via `GET /desktop/instance`;
-  - checks `GET /health/live`;
-  - shows the `GET /v1/models` inventory when API-key policy permits.
-- Refuses redirects/proxies and uses finite timeouts and JSON size limits.
-- Explicit user action to launch a bundled sibling `InferBridge.exe --no-browser`.
-  Launch is **not** treated as proof that the backend is healthy.
-- Detects a protected model inventory without bypassing the existing API key.
+- Genuine WinUI 3/XAML Chat, Model library, and Engine screens.
+- Session-only API-key entry using a native PasswordBox. The key stays in this
+  window's memory; it is never written to application settings, process arguments,
+  model files, or browser storage. Clear the field or close the window to stop using it.
+- Bounded native non-streaming chat with loaded-model selection, Ctrl+Enter send,
+  copyable conversation text, cancellation, timeouts, and clear recovery states.
+  Conversation history is in memory only, limited to 20 recent messages and a
+  bounded prompt budget. Cancelling the HTTP request does not prove server-side
+  inference has stopped.
+- Read-only model inventory with truthful backend states; explicit Load/Unload
+  buttons use the existing authenticated model APIs. A backend-accepted load is
+  not represented as complete until refreshed. Download, conversion, and progress
+  bars are not independently fabricated by the native UI.
+- Bounded metadata read and verified loopback instance port/nonce before
+  browsing models or sending API mutations; proxy/redirect following disabled.
+  A local nonce check is not an OS-level server identity guarantee against a
+  malicious same-user process. Do not enable untrusted local programs.
+- Explicit manual launch of the existing bundled Python engine. No native tray
+  control token, duplicate lifecycle owner, or implicit stop on window closure.
 
-Not yet implemented: native API-key onboarding, chat, model downloads/load/unload,
-hardware/benchmark controls, toast notifications, native single-instance
-activation, Store manifest entrypoint, integrated MSIX packaging and signed
-installed-package testing. No native UI test or Windows runtime validation
-has been performed by repository code alone.
+**Not Store qualified.** The current MSIX still starts the Python/WebView
+interface. Native installation, single-instance window activation, packaged
+engine handoff, installed MSIX signing, and Windows certification tests remain
+unverified. Never submit the transitional MSIX as a native application.
 
 ## Development build
 
@@ -46,6 +54,13 @@ In the combined future distribution, `InferBridge.Native.exe` and its runtime
 files will live inside `native\` and Python `InferBridge.exe` at the package
 root. The native `Start local engine` button targets that exact sibling binary.
 For a source/developer build, run the Python desktop engine separately.
+
+Chat requires the engine to have an active `loaded` model. From **Model library**,
+select a `ready_to_load` model and choose **Load selected**, then refresh
+until the backend reports `loaded`. Enter the API key on **Engine** if the
+server rejects protected reads. Send with **Ctrl+Enter** or the Send button;
+cancel only stops the client request, not necessarily ongoing backend compute.
+Neither conversation history nor credentials persist across window sessions.
 
 Native metadata root defaults to
 `%USERPROFILE%\InferBridgeStoreData` to match the updated Store default.

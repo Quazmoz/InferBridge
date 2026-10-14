@@ -46,3 +46,44 @@ def test_native_client_is_loopback_only_and_checks_instance_identity():
     assert "UseProxy = false" in content
     assert "MaximumJsonBytes" in content
     assert "/v1/models" in content
+
+
+def test_native_chat_uses_real_accessible_xaml_controls():
+    root = ET.parse(PROJECT / "MainWindow.xaml").getroot()
+    xaml_ns = "{http://schemas.microsoft.com/winfx/2006/xaml}"
+    named = {
+        node.get(xaml_ns + "Name"): node.tag
+        for node in root.iter()
+        if node.get(xaml_ns + "Name")
+    }
+    assert named["ChatModelPicker"] == XAML + "ComboBox"
+    assert named["ChatHistory"] == XAML + "ListView"
+    assert named["PromptBox"] == XAML + "TextBox"
+    assert named["SendButton"] == XAML + "Button"
+    assert named["CancelButton"] == XAML + "Button"
+    assert named["ApiKeyBox"] == XAML + "PasswordBox"
+    assert named["LoadButton"] == XAML + "Button"
+    assert named["UnloadButton"] == XAML + "Button"
+    assert not any("WebView" in node.tag for node in root.iter())
+
+
+def test_native_chat_and_models_use_authoritative_bounded_backend_contracts():
+    client = (PROJECT / "BackendClient.cs").read_text(encoding="utf-8")
+    window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    for route in (
+        "/desktop/instance", "/health/live", "/v1/models",
+        "/v1/chat/completions", "/v1/models/load", "/v1/models/unload",
+    ):
+        assert route in client
+    for safeguard in (
+        "AllowAutoRedirect = false", "UseProxy = false",
+        "Authorization", "CancellationTokenSource.CreateLinkedTokenSource",
+        "MaximumChatBytes", "TimeSpan.FromSeconds(120)",
+        "RequireVerifiedOriginAsync", "ready_to_load",
+    ):
+        assert safeguard in client
+    assert "X-Desktop-Control" not in client
+    assert "ApiKeyBox.Password" in window
+    assert "CancelButton_Click" in window
+    assert "NewChatButton_Click" in window
+    assert "ChangeModelAsync" in window
