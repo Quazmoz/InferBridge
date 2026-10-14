@@ -100,9 +100,8 @@ def test_native_payload_stages_without_changing_store_entrypoint(tmp_path):
     assert '"native\\InferBridge.Native.exe"' in text
     assert '"native\\runtimes\\win-x64\\runtime.dll"' in text
     manifest = ET.parse(mapping.parent / "AppxManifest.xml").getroot()
-    assert manifest.find(f"{FOUNDATION}Applications/{FOUNDATION}Application").get(
-        "Executable"
-    ) == "InferBridge.exe"
+    application = manifest.find(f"{FOUNDATION}Applications/{FOUNDATION}Application")
+    assert application.get("Executable") == "InferBridge.exe"
     assert "unvirtualizedResources" not in ET.tostring(manifest, encoding="unicode")
 
     (dist / "native").mkdir()
