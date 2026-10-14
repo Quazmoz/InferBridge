@@ -173,10 +173,12 @@ def test_native_evaluation_changes_only_generated_manifest_and_requires_complete
     manifest = ET.parse(mapping.parent / "AppxManifest.xml").getroot()
     app = manifest.find(f"{FOUNDATION}Applications/{FOUNDATION}Application")
     assert app.get("Executable") == r"native\InferBridge.Native.exe"
-    extension = app.find(
-        "{http://schemas.microsoft.com/appx/manifest/desktop/windows10}Extensions"
+    startup = app.find(
+        f"{FOUNDATION}Extensions/"
+        "{http://schemas.microsoft.com/appx/manifest/desktop/windows10}Extension"
     )
-    assert extension is None  # startup task is an unqualified manifest extension, not a new root
+    assert startup is not None
+    assert startup.get("Executable") == r"native\InferBridge.Native.exe"
     assert r'"native\InferBridge.Native.exe"' in mapping.read_text(encoding="utf-8")
     assert r'"_internal\python311.dll"' in mapping.read_text(encoding="utf-8")
 
