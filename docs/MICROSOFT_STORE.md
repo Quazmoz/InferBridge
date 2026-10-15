@@ -79,6 +79,8 @@ copy or migrate large downloads. To share, explicitly set a common
 
 ## Certification regression gate
 
+WACK reports an overall **PASS** for this package. Its two *optional* package-sanity findings, "Archive files usage" (gzipped scikit-learn sample data) and "Blocked executables" (strings such as `cmd` inside Python, PyTorch, OpenVINO and .NET binaries), are heuristics expected for a full-trust desktop app and do not block certification.
+
 The automated smoke test covers installation, Start-menu-equivalent activation, a visible native window, the engine starting from inside the package with a verified session, and relaunch focusing the existing window. Before submitting, also check on a real Windows 11 PC with the signed sideload package:
 
 - First run with no models: the recommended model downloads, loads, and answers in Chat.
