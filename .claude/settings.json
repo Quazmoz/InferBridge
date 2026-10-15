@@ -20,7 +20,7 @@
         ]
       },
       {
-        "matcher": "Bash|mcp__graft__|Read|Grep|Glob",
+        "matcher": "Bash|mcp__graft__|mcp__trail__|Read|Grep|Glob",
         "hooks": [
           {
             "type": "command",
@@ -102,6 +102,7 @@
   ],
   "permissions": {
     "allow": [
+      "Bash(trail:*)",
       "Bash(graft:*)",
       "Bash(npx graft:*)",
       "Bash(graft-dev:*)",
