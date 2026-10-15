@@ -46,6 +46,11 @@
                                     Click="StartButton_Click" />
                         </StackPanel>
                         <TextBlock x:Name="ConnectionDetails" TextWrapping="Wrap" Opacity="0.8" />
+                        <TextBlock Text="Hardware &amp; inference" FontWeight="SemiBold" FontSize="18" />
+                        <TextBlock x:Name="HardwareSummary" Text="Connect to inspect available inference devices."
+                                   TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+                        <Button x:Name="ScanHardwareButton" Content="Scan inference devices"
+                                HorizontalAlignment="Left" Click="ScanHardwareButton_Click" />
                         <TextBlock Text="API authentication" FontWeight="SemiBold" FontSize="18" />
                         <TextBlock Text="If your engine uses an API key, enter it for this window only. InferBridge never saves it or sends it to tray-control endpoints."
                                    TextWrapping="Wrap" Opacity="0.8" />

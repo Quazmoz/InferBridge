@@ -34,6 +34,9 @@ public sealed partial class MainWindow : Window
     private bool _quitting;
     private bool _engineConnected;
     private bool _openingWebUi;
+    private bool _scanningDevices;
+    private bool _devicesScanned;
+    private bool _devicesAvailable;
     private string? _chatLoadError;
 
     public MainWindow()
@@ -236,6 +239,64 @@ public sealed partial class MainWindow : Window
         (LibraryDevicePicker.SelectedItem as ComboBoxItem)?.Tag as string is { Length: > 0 } device
             ? device : null;
 
+    private async void ScanHardwareButton_Click(object sender, RoutedEventArgs args) =>
+        await ScanHardwareAsync();
+
+    private async Task ScanHardwareAsync()
+    {
+        if (_scanningDevices || !_engineConnected || _closing.IsCancellationRequested || _quitting)
+            return;
+        _scanningDevices = true;
+        ScanHardwareButton.IsEnabled = false;
+        try
+        {
+            DeviceInventory inventory = await _backend.GetDevicesAsync(
+                ApiKeyBox.Password, _closing.Token);
+            if (_closing.IsCancellationRequested) return;
+            string? selected = SelectedInferenceDevice;
+            var options = new[] { "NPU", "GPU", "CPU" };
+            var supported = options.Where(device => inventory.Mock ||
+                inventory.Available.Any(found => found == device ||
+                    found.StartsWith(device + ".", StringComparison.Ordinal))).ToArray();
+            LibraryDevicePicker.Items.Clear();
+            LibraryDevicePicker.Items.Add(new ComboBoxItem
+            {
+                Content = "Automatic (engine default)", Tag = string.Empty,
+            });
+            foreach (string device in supported)
+                LibraryDevicePicker.Items.Add(new ComboBoxItem { Content = device, Tag = device });
+            LibraryDevicePicker.SelectedItem = LibraryDevicePicker.Items
+                .Cast<ComboBoxItem>().FirstOrDefault(item => (string?)item.Tag == selected)
+                ?? LibraryDevicePicker.Items[0];
+            _devicesAvailable = true;
+            _devicesScanned = true;
+            HardwareSummary.Text = "Engine default: " + inventory.Default
+                + ". Detected devices: "
+                + (inventory.Available.Count > 0
+                    ? string.Join(", ", inventory.Available) : "none reported")
+                + (inventory.Mock ? " (mock inference mode)" : "")
+                + ". Only detected targets are offered; compatibility also depends on the model.";
+        }
+        catch (Exception) when (_closing.IsCancellationRequested) { }
+        catch (Exception) when (!_closing.IsCancellationRequested)
+        {
+            _devicesAvailable = false;
+            _devicesScanned = false;
+            HardwareSummary.Text = "Hardware scan unavailable. Retry to select a verified target.";
+            LibraryDevicePicker.Items.Clear();
+            LibraryDevicePicker.Items.Add(new ComboBoxItem
+            {
+                Content = "Automatic (engine default)", Tag = string.Empty,
+            });
+            LibraryDevicePicker.SelectedIndex = 0;
+        }
+        finally
+        {
+            _scanningDevices = false;
+            if (!_closing.IsCancellationRequested) UpdateChatButtons();
+        }
+    }
+
     private void UpdateModelButtons()
     {
         var model = SelectedLibraryModel;
@@ -243,7 +304,7 @@ public sealed partial class MainWindow : Window
         LoadButton.IsEnabled = idle && model?.CanLoad == true;
         UnloadButton.IsEnabled = idle && model?.CanUnload == true;
         DownloadButton.IsEnabled = idle && model?.CanDownload == true;
-        LibraryDevicePicker.IsEnabled = idle;
+        LibraryDevicePicker.IsEnabled = idle && _devicesAvailable;
     }
 
     private void UpdateChatButtons()
@@ -253,6 +314,7 @@ public sealed partial class MainWindow : Window
         CancelButton.IsEnabled = _chatBusy;
         ChatModelPicker.IsEnabled = !_chatBusy && !_isManaging && !_isRefreshing && !_quitting;
         WebUiButton.IsEnabled = _engineConnected && !_quitting && !_openingWebUi;
+        ScanHardwareButton.IsEnabled = _engineConnected && !_quitting && !_scanningDevices;
         PromptBox.IsEnabled = !_chatBusy;
         ChatProgress.IsActive = _chatBusy;
         UpdateModelButtons();
@@ -271,6 +333,11 @@ public sealed partial class MainWindow : Window
             string apiKey = ApiKeyBox.Password;
             var status = await _backend.InspectAsync(_closing.Token, apiKey);
             _engineConnected = status.Connected;
+            if (!status.Connected || status.RequiresAuthentication)
+            {
+                _devicesScanned = false;
+                _devicesAvailable = false;
+            }
             _rejectedApiKey = status.RequiresAuthentication ? apiKey : null;
             ConnectionInfo.Severity = status.Connected
                 ? InfoBarSeverity.Success : InfoBarSeverity.Warning;
@@ -355,6 +422,11 @@ public sealed partial class MainWindow : Window
                         + (_recommendation is { Reason.Length: > 0 } advice
                             ? "\nRecommended for this PC: " + advice.Reason : string.Empty)
                     : "Start or reconnect to the local engine.";
+            if (status.Connected && !status.RequiresAuthentication && !_devicesScanned)
+            {
+                _devicesScanned = true;
+                _ = ScanHardwareAsync();
+            }
             if (status.Connected && !status.RequiresAuthentication && !_recommendationRequested)
             {
                 _recommendationRequested = true;

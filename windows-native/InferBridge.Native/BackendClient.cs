@@ -46,6 +46,8 @@ internal sealed record ChatTurn(string Role, string Content);
 
 internal sealed record ModelRecommendation(string Id, string Reason);
 
+internal sealed record DeviceInventory(string Default, IReadOnlyList<string> Available, bool Mock);
+
 internal sealed record BackendSnapshot(
     bool Connected,
     string Message,
@@ -302,6 +304,33 @@ internal sealed class BackendClient : IDisposable
     }
 
     /// <summary>The engine's hardware-aware first model, or null when it has none to offer.</summary>
+    public async Task<DeviceInventory> GetDevicesAsync(string? apiKey, CancellationToken cancellationToken)
+    {
+        string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
+        using var document = await GetJsonAsync(
+            origin + "/v1/devices", apiKey, cancellationToken, TimeSpan.FromSeconds(10));
+        var root = document.RootElement;
+        if (root.ValueKind != JsonValueKind.Object
+            || !root.TryGetProperty("available", out var entries)
+            || entries.ValueKind != JsonValueKind.Array)
+            throw new JsonException("Invalid device inventory.");
+        var available = new List<string>();
+        foreach (var entry in entries.EnumerateArray())
+        {
+            if (available.Count >= 32) break;
+            if (entry.ValueKind != JsonValueKind.String) continue;
+            string device = entry.GetString() ?? "";
+            if (device.Length is < 1 or > 64) continue;
+            if (!System.Text.RegularExpressions.Regex.IsMatch(device,
+                @"^(CPU|GPU|NPU)(\.[0-9]{1,3})?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                continue;
+            available.Add(device.ToUpperInvariant());
+        }
+        return new DeviceInventory(ReadString(root, "default_device"),
+            available.Distinct(StringComparer.Ordinal).ToArray(),
+            root.TryGetProperty("mock", out var mock) && mock.ValueKind == JsonValueKind.True);
+    }
+
     public async Task<ModelRecommendation?> RecommendModelAsync(
         string? apiKey, CancellationToken cancellationToken)
     {

@@ -51,6 +51,7 @@ internal static class BackendContractTests
             "/health/live" => Json("""{"status":"ok"}"""),
             "/v1/models" => Json(
                 """{"data":[{"id":"model-a","name":"Model A","status":"ready_to_load"},{"id":"model-b","name":"Model B","status":"not_downloaded"},{"id":"gated","name":"Gated","status":"not_downloaded"}]}"""),
+            "/v1/devices" => Json("""{"default_device":"AUTO","available":["CPU","GPU.0","NPU"],"mock":false}"""),
             "/v1/models/load" => Json("""{"status":"accepted"}"""),
             "/v1/models/convert" => Json("""{"status":"queued_convert"}"""),
             "/v1/onboarding/recommendation" => Json(
@@ -93,6 +94,22 @@ internal static class BackendContractTests
         Check(good.RequestPaths.SequenceEqual(
                 new[] { "/desktop/instance", "/health/live", "/v1/models" }),
             "read-only inspection requested an unexpected route");
+
+        // Device discovery uses authenticated verified loopback and parses physical targets.
+        var deviceTransport = new StubHandler((request, _) =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/v1/devices")
+                Check(request.Headers.Authorization?.Parameter == Key,
+                    "device scan omitted session API key");
+            return Task.FromResult(ValidResponse(request));
+        });
+        using (var client = new BackendClient(deviceTransport, metadata))
+        {
+            var devices = await client.GetDevicesAsync(Key, CancellationToken.None);
+            Check(devices.Default == "AUTO" && !devices.Mock
+                && devices.Available.SequenceEqual(new[] { "CPU", "GPU.0", "NPU" }),
+                "physical device discovery failed");
+        }
 
         // Stale metadata must not attach to a listener at a reused port.
         WriteMetadata(metadata, nonce: "previous-session-nonce");

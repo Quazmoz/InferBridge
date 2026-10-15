@@ -259,7 +259,9 @@ def test_native_web_ui_is_discoverable_and_opens_only_the_verified_engine_url():
 def test_native_model_library_selects_inference_device_and_forwards_to_backend():
     root = ET.parse(PROJECT / "MainWindow.xaml").getroot()
     xaml_ns = "{http://schemas.microsoft.com/winfx/2006/xaml}"
-    picker = next(node for node in root.iter() if node.get(xaml_ns + "Name") == "LibraryDevicePicker")
+    picker = next(
+        node for node in root.iter() if node.get(xaml_ns + "Name") == "LibraryDevicePicker"
+    )
     assert picker.tag == XAML + "ComboBox"
     assert [item.get("Tag") for item in picker] == ["", "NPU", "GPU", "CPU"]
     window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
@@ -267,6 +269,19 @@ def test_native_model_library_selects_inference_device_and_forwards_to_backend()
     assert "SelectedInferenceDevice" in window
     assert "_closing.Token, SelectedInferenceDevice" in window
     assert "LibraryDevicePicker.IsEnabled = idle;" in window
-    assert 'new { model = model.Id, device }' in client
-    assert 'new { model = model.Id, load_after = true, device }' in client
-    assert 'Unsupported inference device.' in client
+    assert "new { model = model.Id, device }" in client
+    assert "new { model = model.Id, load_after = true, device }" in client
+    assert "Unsupported inference device." in client
+
+
+def test_native_device_discovery_shows_available_hardware():
+    root = ET.parse(PROJECT / "MainWindow.xaml").getroot()
+    ns = "{http://schemas.microsoft.com/winfx/2006/xaml}"
+    names = {node.get(ns + "Name") for node in root.iter()}
+    assert {"ScanHardwareButton", "HardwareSummary", "LibraryDevicePicker"} <= names
+    window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    client = (PROJECT / "BackendClient.cs").read_text(encoding="utf-8")
+    assert "GetDevicesAsync" in window
+    assert "inventory.Available.Any" in window
+    assert '"/v1/devices"' in client
+    assert "RequireVerifiedOriginAsync" in client
