@@ -51,6 +51,7 @@ internal static class BackendContractTests
             "/health/live" => Json("""{"status":"ok"}"""),
             "/v1/models" => Json(
                 """{"data":[{"id":"model-a","name":"Model A","status":"ready_to_load"},{"id":"model-b","name":"Model B","status":"not_downloaded"},{"id":"gated","name":"Gated","status":"not_downloaded"}]}"""),
+            "/v1/system/status" => Json("""{"device":{"loaded":{"model-a":"GPU.0"}}}"""),
             "/v1/devices" => Json("""{"default_device":"AUTO","available":["CPU","GPU.0","NPU"],"mock":false}"""),
             "/v1/models/load" => Json("""{"status":"accepted"}"""),
             "/v1/models/convert" => Json("""{"status":"queued_convert"}"""),
@@ -106,6 +107,9 @@ internal static class BackendContractTests
         using (var client = new BackendClient(deviceTransport, metadata))
         {
             var devices = await client.GetDevicesAsync(Key, CancellationToken.None);
+            string active = await client.GetRuntimeSummaryAsync(Key, CancellationToken.None);
+            Check(active.Contains("model-a → GPU.0", StringComparison.Ordinal),
+                "actual loaded-device status was not presented");
             Check(devices.Default == "AUTO" && !devices.Mock
                 && devices.Available.SequenceEqual(new[] { "CPU", "GPU.0", "NPU" }),
                 "physical device discovery failed");
