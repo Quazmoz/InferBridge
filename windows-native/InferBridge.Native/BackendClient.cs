@@ -6,13 +6,44 @@ using System.Text.Json;
 
 namespace InferBridge.Native;
 
+internal enum ModelAction { Load, Unload, Download }
+
 internal sealed record ModelInfo(string Id, string Name, string Status)
 {
     public bool CanLoad => Status == "ready_to_load";
     public bool CanUnload => Status == "loaded";
+    // The engine's convert route downloads, converts, then loads; on a model whose
+    // files already exist it simply retries the load after a failure/cancellation.
+    public bool CanDownload => Status is "not_downloaded" or "error" or "cancelled";
+
+    public bool Permits(ModelAction action) => action switch
+    {
+        ModelAction.Load => CanLoad,
+        ModelAction.Unload => CanUnload,
+        _ => CanDownload,
+    };
+
+    public string StatusLabel => Status switch
+    {
+        "loaded" => "Loaded",
+        "ready_to_load" => "Downloaded",
+        "not_downloaded" => "Not downloaded",
+        "queued" => "Queued to load",
+        "loading" => "Loading…",
+        "queued_convert" => "Queued to download",
+        "converting" => "Downloading and converting…",
+        "cancelled" => "Download cancelled",
+        "error" => "Failed (retry available)",
+        _ => "Unknown state",
+    };
 }
 
+/// <summary>The engine refused a request and explained why in plain text.</summary>
+internal sealed class EngineRequestException(string message) : InvalidOperationException(message);
+
 internal sealed record ChatTurn(string Role, string Content);
+
+internal sealed record ModelRecommendation(string Id, string Reason);
 
 internal sealed record BackendSnapshot(
     bool Connected,
@@ -173,6 +204,7 @@ internal sealed class BackendClient : IDisposable
             or UnauthorizedAccessException
             or JsonException
             or HttpRequestException
+            or InvalidOperationException
             or TaskCanceledException
             or ArgumentException)
         {
@@ -223,7 +255,7 @@ internal sealed class BackendClient : IDisposable
     }
 
     public async Task<string> ChangeModelAsync(
-        ModelInfo model, bool load, string? apiKey, CancellationToken cancellationToken)
+        ModelInfo model, ModelAction action, string? apiKey, CancellationToken cancellationToken)
     {
         string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
         // Reconcile before mutation; do not act on a stale UI selection.
@@ -235,21 +267,50 @@ internal sealed class BackendClient : IDisposable
 
         bool permitted = items.EnumerateArray().Any(item =>
             ReadString(item, "id") == model.Id
-            && ReadString(item, "status") == (load ? "ready_to_load" : "loaded"));
+            && new ModelInfo(model.Id, model.Name, ReadString(item, "status")).Permits(action));
         if (!permitted)
             throw new InvalidOperationException(
                 "The model state changed. Refresh the library before trying again.");
 
-        string path = load ? "/v1/models/load" : "/v1/models/unload";
+        // The convert route checks Hugging Face access before queueing, so allow
+        // for a slow network; the download itself continues in the engine.
+        (string path, string body, TimeSpan deadline) = action switch
+        {
+            ModelAction.Load => ("/v1/models/load",
+                JsonSerializer.Serialize(new { model = model.Id }), TimeSpan.FromSeconds(20)),
+            ModelAction.Unload => ("/v1/models/unload",
+                JsonSerializer.Serialize(new { model = model.Id }), TimeSpan.FromSeconds(20)),
+            _ => ("/v1/models/convert",
+                JsonSerializer.Serialize(new { model = model.Id, load_after = true }),
+                TimeSpan.FromSeconds(60)),
+        };
         using var document = await PostJsonAsync(
-            origin + path, JsonSerializer.Serialize(new { model = model.Id }),
-            apiKey, cancellationToken, TimeSpan.FromSeconds(20), MaximumJsonBytes);
+            origin + path, body, apiKey, cancellationToken, deadline, MaximumJsonBytes);
         string status = ReadString(document.RootElement, "status");
         if (status.Length == 0)
             throw new JsonException("The engine did not confirm the model operation.");
-        return load
-            ? "Load requested. Refresh to check actual model progress."
-            : "Model unload accepted. Refresh to confirm its state.";
+        return action switch
+        {
+            ModelAction.Load => "Load requested. The library updates as the model loads.",
+            ModelAction.Unload => "Model unload accepted. The library updates shortly.",
+            _ => "Download started. Progress appears in the library, and the model loads when it is ready.",
+        };
+    }
+
+    /// <summary>The engine's hardware-aware first model, or null when it has none to offer.</summary>
+    public async Task<ModelRecommendation?> RecommendModelAsync(
+        string? apiKey, CancellationToken cancellationToken)
+    {
+        string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
+        // The first request may run a hardware scan; later ones are cached by the engine.
+        using var document = await GetJsonAsync(origin + "/v1/onboarding/recommendation",
+            apiKey, cancellationToken, TimeSpan.FromSeconds(45));
+        var root = document.RootElement;
+        string id = ReadString(root, "model_id");
+        if (id.Length is < 1 or > 512 || ReadString(root, "compatibility") == "blocked")
+            return null;
+        string reason = ReadString(root, "reason").Trim();
+        return new ModelRecommendation(id, reason.Length <= 300 ? reason : reason[..300] + "…");
     }
 
     private async Task<string> RequireVerifiedOriginAsync(
@@ -298,25 +359,57 @@ internal sealed class BackendClient : IDisposable
         if (response.StatusCode == HttpStatusCode.Unauthorized
             || response.StatusCode == HttpStatusCode.Forbidden)
             throw new UnauthorizedAccessException("The engine rejected the API key.");
-        if (response.StatusCode == HttpStatusCode.Conflict)
-            throw new InvalidOperationException("The engine is busy or the model state changed.");
+        if (response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.NotFound
+            or HttpStatusCode.Conflict)
+            throw new EngineRequestException(await ReadRefusalAsync(response, limit.Token));
         response.EnsureSuccessStatusCode();
-        if (response.Content.Headers.ContentLength is > 0
-            && response.Content.Headers.ContentLength > maximumBytes)
+        byte[] body = await ReadBoundedAsync(response, maximumBytes, limit.Token);
+        return JsonDocument.Parse(body, new JsonDocumentOptions { MaxDepth = 24 });
+    }
+
+    private static async Task<byte[]> ReadBoundedAsync(
+        HttpResponseMessage response, int maximumBytes, CancellationToken cancellationToken)
+    {
+        if (response.Content.Headers.ContentLength > maximumBytes)
             throw new IOException("The engine response is too large.");
 
-        await using var source = await response.Content.ReadAsStreamAsync(limit.Token);
+        await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var buffer = new MemoryStream();
         byte[] chunk = new byte[8192];
         while (true)
         {
-            int count = await source.ReadAsync(chunk, limit.Token);
+            int count = await source.ReadAsync(chunk, cancellationToken);
             if (count == 0) break;
             if (buffer.Length + count > maximumBytes)
                 throw new IOException("The engine response is too large.");
             buffer.Write(chunk, 0, count);
         }
-        return JsonDocument.Parse(buffer.ToArray(), new JsonDocumentOptions { MaxDepth = 24 });
+        return buffer.ToArray();
+    }
+
+    // FastAPI reports refusals as {"detail": "text"} or {"detail": {"message": "text"}}.
+    // Only a bounded plain-text reason is shown; anything else gets a generic message.
+    private static async Task<string> ReadRefusalAsync(
+        HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        const string fallback = "The engine is busy or the model state changed. Refresh and retry.";
+        try
+        {
+            byte[] bytes = await ReadBoundedAsync(response, MaximumMetadataBytes, cancellationToken);
+            using var document = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 8 });
+            var root = document.RootElement;
+            string message = ReadString(root, "detail");
+            if (message.Length == 0 && root.ValueKind == JsonValueKind.Object
+                && root.TryGetProperty("detail", out var detail))
+                message = ReadString(detail, "message");
+            message = string.Join(' ', message.Split((char[]?)null,
+                StringSplitOptions.RemoveEmptyEntries));
+            return message.Length is > 0 and <= 400 ? message : fallback;
+        }
+        catch (Exception error) when (error is JsonException or IOException)
+        {
+            return fallback;
+        }
     }
 
     private static string ReadString(JsonElement element, string property)

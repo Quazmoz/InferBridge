@@ -99,6 +99,9 @@ def test_native_frontend_is_single_instance_per_installation_and_preserves_engin
     window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
     assert "DISABLE_XAML_GENERATED_MAIN" in project
     assert "InitializeComWrappers" in program
+    # An async Main drops [STAThread]; WinUI must start on an STA thread.
+    assert "[STAThread]\n    private static int Main(string[] args)" in program
+    assert "async Task Main" not in program
     assert "FindOrRegisterForKey" in program
     assert "RedirectActivationToAsync" in program
     assert "AppContext.BaseDirectory" in program
@@ -188,7 +191,7 @@ def test_native_model_library_selection_survives_status_poll():
     captured = window.index("string? selectedLibraryId = SelectedLibraryModel?.Id;")
     cleared = window.index("ModelsList.Items.Clear();", captured)
     added = window.index("ModelsList.Items.Add(libraryItem);", cleared)
-    restored = window.index("if (model.Id == selectedLibraryId)", added)
+    restored = window.index("if (model.Id == (selectedLibraryId ?? recommended))", added)
     assert captured < cleared < added < restored
     assert "ModelsList.SelectedItem = libraryItem;" in window[restored:]
     assert (

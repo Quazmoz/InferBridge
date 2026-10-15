@@ -50,8 +50,11 @@ internal static class BackendContractTests
                 new { instance_nonce = Nonce, port = Port })),
             "/health/live" => Json("""{"status":"ok"}"""),
             "/v1/models" => Json(
-                """{"data":[{"id":"model-a","name":"Model A","status":"ready_to_load"}]}"""),
+                """{"data":[{"id":"model-a","name":"Model A","status":"ready_to_load"},{"id":"model-b","name":"Model B","status":"not_downloaded"},{"id":"gated","name":"Gated","status":"not_downloaded"}]}"""),
             "/v1/models/load" => Json("""{"status":"accepted"}"""),
+            "/v1/models/convert" => Json("""{"status":"queued_convert"}"""),
+            "/v1/onboarding/recommendation" => Json(
+                """{"model_id":"model-b","reason":"Fits this PC's memory.","compatibility":"compatible"}"""),
             "/v1/chat/completions" => Json(
                 """{"choices":[{"message":{"content":"Hello from the local model"}}]}"""),
             _ => throw new InvalidOperationException(
@@ -79,8 +82,11 @@ internal static class BackendContractTests
             var snapshot = await client.InspectAsync(CancellationToken.None);
             Check(snapshot.Connected && !snapshot.RequiresAuthentication,
                 "verified instance must connect");
-            Check(snapshot.Models.Count == 1 && snapshot.Models[0].Id == "model-a",
+            Check(snapshot.Models.Count == 3 && snapshot.Models[0].Id == "model-a",
                 "model inventory must match backend");
+            Check(snapshot.Models[1].CanDownload && !snapshot.Models[1].CanLoad
+                && snapshot.Models[1].StatusLabel == "Not downloaded",
+                "an undownloaded model must offer download, not load");
             Check(snapshot.Origin == "http://127.0.0.1:" + Port,
                 "origin must remain literal loopback");
         }
@@ -200,17 +206,86 @@ internal static class BackendContractTests
             await ThrowsAsync<InvalidOperationException>(
                 () => client.ChangeModelAsync(
                     new ModelInfo("not-in-catalog", "Missing", "ready_to_load"),
-                    true, Key, CancellationToken.None),
+                    ModelAction.Load, Key, CancellationToken.None),
                 "stale model selection");
             Check(!actions.RequestPaths.Contains("/v1/models/load"),
                 "stale model selection triggered mutation");
             string result = await client.ChangeModelAsync(
                 new ModelInfo("model-a", "Model A", "ready_to_load"),
-                true, Key, CancellationToken.None);
+                ModelAction.Load, Key, CancellationToken.None);
             Check(result.Contains("Load requested", StringComparison.Ordinal),
                 "accepted load was reported as immediately complete");
             Check(actions.RequestPaths.Count(x => x == "/v1/models/load") == 1,
                 "accepted load produced more than one post");
+            await ThrowsAsync<InvalidOperationException>(
+                () => client.ChangeModelAsync(
+                    new ModelInfo("model-a", "Model A", "not_downloaded"),
+                    ModelAction.Download, Key, CancellationToken.None),
+                "download of an already-downloaded model");
+            Check(!actions.RequestPaths.Contains("/v1/models/convert"),
+                "stale download selection triggered conversion");
+        }
+
+        // Download posts the convert route with load_after, and the engine's own
+        // refusal reason (e.g. gated Hugging Face access) reaches the user.
+        var downloads = new StubHandler(async (request, cancellationToken) =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/v1/models/convert")
+            {
+                using var parsed = JsonDocument.Parse(
+                    await request.Content!.ReadAsStringAsync(cancellationToken));
+                string model = parsed.RootElement.GetProperty("model").GetString()!;
+                Check(parsed.RootElement.GetProperty("load_after").GetBoolean(),
+                    "download did not request a load afterwards");
+                if (model == "gated")
+                    return Json("""{"detail":{"code":"hf_access_required","message":"Accept the model license on Hugging Face first."}}""",
+                        HttpStatusCode.Conflict);
+            }
+            return ValidResponse(request);
+        });
+        using (var client = new BackendClient(downloads, metadata))
+        {
+            string result = await client.ChangeModelAsync(
+                new ModelInfo("model-b", "Model B", "not_downloaded"),
+                ModelAction.Download, Key, CancellationToken.None);
+            Check(result.StartsWith("Download started", StringComparison.Ordinal),
+                "accepted download was not reported as started");
+            try
+            {
+                await client.ChangeModelAsync(new ModelInfo("gated", "Gated", "not_downloaded"),
+                    ModelAction.Download, Key, CancellationToken.None);
+                Check(false, "refused download was reported as started");
+            }
+            catch (EngineRequestException refusal)
+            {
+                Check(refusal.Message == "Accept the model license on Hugging Face first.",
+                    "engine refusal reason was not surfaced");
+            }
+        }
+
+        // The engine's first-model advice is read with the session key; a model it
+        // marks blocked for this PC is never presented as recommended.
+        bool blocked = false;
+        var advice = new StubHandler((request, _) =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/v1/onboarding/recommendation")
+            {
+                Check(request.Headers.Authorization?.Parameter == Key,
+                    "recommendation omitted the session key");
+                if (blocked)
+                    return Task.FromResult(Json(
+                        """{"model_id":"model-b","reason":"Too large","compatibility":"blocked"}"""));
+            }
+            return Task.FromResult(ValidResponse(request));
+        });
+        using (var client = new BackendClient(advice, metadata))
+        {
+            var recommendation = await client.RecommendModelAsync(Key, CancellationToken.None);
+            Check(recommendation is { Id: "model-b", Reason: "Fits this PC's memory." },
+                "engine recommendation was not read");
+            blocked = true;
+            Check(await client.RecommendModelAsync(Key, CancellationToken.None) is null,
+                "a blocked model was recommended");
         }
 
         // The native client must bound user prompts and trust the server's

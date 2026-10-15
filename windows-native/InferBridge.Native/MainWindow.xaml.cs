@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.Http;
 using System.Text.Json;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
@@ -14,6 +15,7 @@ public sealed partial class MainWindow : Window
     private readonly DispatcherTimer _pollTimer = new() { Interval = TimeSpan.FromSeconds(8) };
     private readonly Stopwatch _startupElapsed = new();
     private readonly List<ChatTurn> _turns = new();
+    private IReadOnlyList<ModelInfo> _shownModels = Array.Empty<ModelInfo>();
     private CancellationTokenSource? _sendCancellation;
     private bool _isRefreshing;
     private bool _updatingModelPicker;
@@ -22,10 +24,18 @@ public sealed partial class MainWindow : Window
     private bool _startRequested;
     private string? _conversationModelId;
     private string? _rejectedApiKey;
+    private ModelRecommendation? _recommendation;
+    private bool _recommendationRequested;
 
     public MainWindow()
     {
         InitializeComponent();
+        AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "InferBridge.ico"));
+        if (AppWindow.Presenter is OverlappedPresenter presenter)
+        {
+            presenter.PreferredMinimumWidth = 640;
+            presenter.PreferredMinimumHeight = 480;
+        }
         MainNavigation.SelectedItem = MainNavigation.MenuItems[0];
         _pollTimer.Tick += async (_, _) =>
         {
@@ -111,8 +121,10 @@ public sealed partial class MainWindow : Window
     private void UpdateModelButtons()
     {
         var model = SelectedLibraryModel;
-        LoadButton.IsEnabled = !_isManaging && !_chatBusy && model?.CanLoad == true;
-        UnloadButton.IsEnabled = !_isManaging && !_chatBusy && model?.CanUnload == true;
+        bool idle = !_isManaging && !_chatBusy;
+        LoadButton.IsEnabled = idle && model?.CanLoad == true;
+        UnloadButton.IsEnabled = idle && model?.CanUnload == true;
+        DownloadButton.IsEnabled = idle && model?.CanDownload == true;
     }
 
     private void UpdateChatButtons()
@@ -164,49 +176,67 @@ public sealed partial class MainWindow : Window
             // polling, reconnects and temporary model absence keep the transcript.
             string? selected = SelectedModelId ?? _conversationModelId;
             string? selectedLibraryId = SelectedLibraryModel?.Id;
-            _updatingModelPicker = true;
-            try
+            // Rebuild only on a real inventory change: replacing items every poll
+            // steals keyboard and screen-reader focus from the lists.
+            if (!status.Models.SequenceEqual(_shownModels))
             {
-                ChatModelPicker.Items.Clear();
-                ModelsList.Items.Clear();
-                foreach (ModelInfo model in status.Models)
+                _shownModels = status.Models;
+                _updatingModelPicker = true;
+                try
                 {
-                    var libraryItem = new ListViewItem
+                    ChatModelPicker.Items.Clear();
+                    ModelsList.Items.Clear();
+                    // The engine's recommendation leads the library and is preselected.
+                    string? recommended = _recommendation?.Id;
+                    foreach (ModelInfo model in status.Models.OrderBy(m => m.Id != recommended))
                     {
-                        Content = model.Name + "  ·  " + model.Status + "  (" + model.Id + ")",
-                        Tag = model,
-                    };
-                    ModelsList.Items.Add(libraryItem);
-                    if (model.Id == selectedLibraryId)
-                        ModelsList.SelectedItem = libraryItem;
-                    if (model.Status != "loaded") continue;
-                    var option = new ComboBoxItem { Content = model.Name, Tag = model.Id };
-                    ChatModelPicker.Items.Add(option);
-                    if (model.Id == selected)
-                        ChatModelPicker.SelectedItem = option;
+                        var libraryItem = new ListViewItem
+                        {
+                            Content = (model.Id == recommended ? "Recommended  ·  " : string.Empty)
+                                + model.Name + "  ·  " + model.StatusLabel
+                                + (model.Name.Contains(model.Id, StringComparison.Ordinal)
+                                    ? string.Empty : "  (" + model.Id + ")"),
+                            Tag = model,
+                        };
+                        ModelsList.Items.Add(libraryItem);
+                        if (model.Id == (selectedLibraryId ?? recommended))
+                            ModelsList.SelectedItem = libraryItem;
+                        if (model.Status != "loaded") continue;
+                        var option = new ComboBoxItem { Content = model.Name, Tag = model.Id };
+                        ChatModelPicker.Items.Add(option);
+                        if (model.Id == selected)
+                            ChatModelPicker.SelectedItem = option;
+                    }
+                    // Never silently move an existing conversation to a different model.
+                    // When its model returns after a restart, it is selected again.
+                    if (ChatModelPicker.SelectedItem is null && _conversationModelId is null
+                        && ChatModelPicker.Items.Count > 0)
+                        ChatModelPicker.SelectedIndex = 0;
                 }
-                // Never silently move an existing conversation to a different model.
-                // When its model returns after a restart, it is selected again.
-                if (ChatModelPicker.SelectedItem is null && _conversationModelId is null
-                    && ChatModelPicker.Items.Count > 0)
-                    ChatModelPicker.SelectedIndex = 0;
-            }
-            finally
-            {
-                _updatingModelPicker = false;
+                finally
+                {
+                    _updatingModelPicker = false;
+                }
             }
 
             ModelsSummary.Text = status.RequiresAuthentication
                 ? "Authentication required. Enter your API key on the Engine screen."
                 : status.Connected
-                    ? status.Models.Count + " catalog models; select a ready model to load or an active model to unload."
+                    ? status.Models.Count + " models. Select one to download, load or unload it. Downloads continue if you close this window."
+                        + (_recommendation is { Reason.Length: > 0 } advice
+                            ? "\nRecommended for this PC: " + advice.Reason : string.Empty)
                     : "Start or reconnect to the local engine.";
+            if (status.Connected && !status.RequiresAuthentication && !_recommendationRequested)
+            {
+                _recommendationRequested = true;
+                _ = LoadRecommendationAsync();
+            }
 
             if (!status.Connected || status.RequiresAuthentication)
                 ShowChatInfo("Engine unavailable", ConnectionInfo.Message, InfoBarSeverity.Warning);
             else if (ChatModelPicker.Items.Count == 0)
                 ShowChatInfo("No model loaded",
-                    "Choose a downloaded model in Model library and load it, then refresh.",
+                    "Open Model library, select a model, then choose Download and load (or Load if it is already downloaded).",
                     InfoBarSeverity.Informational);
             else
                 ShowChatInfo("Ready", "Select a loaded model and send a message. Ctrl+Enter sends.",
@@ -223,6 +253,7 @@ public sealed partial class MainWindow : Window
             ConnectionInfo.Message = "Could not display local engine status.";
             ModelsSummary.Text = "Refresh after checking the engine.";
             ChatModelPicker.Items.Clear();
+            _shownModels = Array.Empty<ModelInfo>();
             ShowChatInfo("Connection error", "Check the engine and refresh.",
                 InfoBarSeverity.Error);
         }
@@ -238,17 +269,36 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async Task LoadRecommendationAsync()
+    {
+        try
+        {
+            _recommendation = await _backend.RecommendModelAsync(ApiKeyBox.Password, _closing.Token);
+        }
+        catch (Exception)
+        {
+            // Advice only: the full library stays usable without it.
+            return;
+        }
+        if (_recommendation is null || _closing.IsCancellationRequested) return;
+        _shownModels = Array.Empty<ModelInfo>(); // rebuild the list with the recommendation
+        await RefreshAsync();
+    }
+
     private async void LoadButton_Click(object sender, RoutedEventArgs args) =>
-        await ManageModelAsync(true);
+        await ManageModelAsync(ModelAction.Load);
 
     private async void UnloadButton_Click(object sender, RoutedEventArgs args) =>
-        await ManageModelAsync(false);
+        await ManageModelAsync(ModelAction.Unload);
 
-    private async Task ManageModelAsync(bool load)
+    private async void DownloadButton_Click(object sender, RoutedEventArgs args) =>
+        await ManageModelAsync(ModelAction.Download);
+
+    private async Task ManageModelAsync(ModelAction action)
     {
         var model = SelectedLibraryModel;
         if (model is null || _isManaging || _chatBusy || _isRefreshing
-            || !(load ? model.CanLoad : model.CanUnload)
+            || !model.Permits(action)
             || _closing.IsCancellationRequested)
             return;
 
@@ -256,15 +306,15 @@ public sealed partial class MainWindow : Window
         UpdateChatButtons();
         try
         {
-            ModelsSummary.Text = await _backend.ChangeModelAsync(
-                model, load, ApiKeyBox.Password, _closing.Token);
+            ShowModelsInfo(await _backend.ChangeModelAsync(
+                model, action, ApiKeyBox.Password, _closing.Token), InfoBarSeverity.Success);
         }
         catch (Exception) when (_closing.IsCancellationRequested)
         {
         }
         catch (Exception error) when (!_closing.IsCancellationRequested)
         {
-            ModelsSummary.Text = SafeError(error);
+            ShowModelsInfo(SafeError(error), InfoBarSeverity.Error);
         }
         finally
         {
@@ -315,6 +365,7 @@ public sealed partial class MainWindow : Window
                 : answer);
             PromptBox.Text = string.Empty;
             ShowChatInfo("Response complete", "Generated locally.", InfoBarSeverity.Success);
+            _ = PromptBox.Focus(FocusState.Programmatic);
         }
         catch (OperationCanceledException) when (!_closing.IsCancellationRequested)
         {
@@ -366,6 +417,14 @@ public sealed partial class MainWindow : Window
         ChatHistory.ScrollIntoView(ChatHistory.Items[ChatHistory.Items.Count - 1]);
     }
 
+    // Separate from the summary, which every refresh rewrites, so action results stay visible.
+    private void ShowModelsInfo(string message, InfoBarSeverity severity)
+    {
+        ModelsInfo.Severity = severity;
+        ModelsInfo.Message = message;
+        ModelsInfo.IsOpen = true;
+    }
+
     private void ShowChatInfo(string title, string message, InfoBarSeverity severity)
     {
         // Polling repeats the same status every tick; only real changes update
@@ -384,6 +443,7 @@ public sealed partial class MainWindow : Window
     private static string SafeError(Exception error) => error switch
     {
         UnauthorizedAccessException => "API key rejected. Update it on the Engine screen.",
+        EngineRequestException => error.Message,
         InvalidOperationException => "Model state changed or model is busy. Refresh and retry.",
         HttpRequestException { StatusCode: System.Net.HttpStatusCode.TooManyRequests } =>
             "The engine is temporarily refusing requests. Wait a few minutes, check the API key, then retry.",

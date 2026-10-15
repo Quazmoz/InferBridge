@@ -9,7 +9,6 @@
                         IsBackButtonVisible="Collapsed"
                         IsSettingsVisible="False"
                         OpenPaneLength="220"
-                        Header="InferBridge"
                         SelectionChanged="MainNavigation_SelectionChanged">
             <NavigationView.MenuItems>
                 <NavigationViewItem Icon="Message" Content="Chat" Tag="chat" />
@@ -59,12 +58,16 @@
                     <StackPanel Spacing="8">
                         <TextBlock Text="Model library" FontSize="28" FontWeight="SemiBold" />
                         <TextBlock x:Name="ModelsSummary" TextWrapping="Wrap" />
+                        <InfoBar x:Name="ModelsInfo" Title="Model library" IsOpen="False" IsClosable="True" />
                     </StackPanel>
                     <ListView x:Name="ModelsList" Grid.Row="1"
                               SelectionMode="Single"
                               SelectionChanged="ModelsList_SelectionChanged"
                               AutomationProperties.Name="Engine model inventory" />
                     <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="10">
+                        <Button x:Name="DownloadButton" Content="Download and load" IsEnabled="False"
+                                Style="{StaticResource AccentButtonStyle}"
+                                Click="DownloadButton_Click" />
                         <Button x:Name="LoadButton" Content="Load selected" IsEnabled="False"
                                 Click="LoadButton_Click" />
                         <Button x:Name="UnloadButton" Content="Unload selected" IsEnabled="False"
