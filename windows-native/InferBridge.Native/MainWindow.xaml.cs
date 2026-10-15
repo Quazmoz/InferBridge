@@ -267,7 +267,7 @@ public sealed partial class MainWindow : Window
                 LibraryDevicePicker.Items.Add(new ComboBoxItem { Content = device, Tag = device });
             LibraryDevicePicker.SelectedItem = LibraryDevicePicker.Items
                 .Cast<ComboBoxItem>().FirstOrDefault(item => (string?)item.Tag == selected)
-                ?? LibraryDevicePicker.Items[0];
+                ?? (ComboBoxItem)LibraryDevicePicker.Items[0];
             _devicesAvailable = true;
             _devicesScanned = true;
             HardwareSummary.Text = "Engine default: " + inventory.Default
