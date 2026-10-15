@@ -85,5 +85,5 @@ The automated smoke test covers installation, Start-menu-equivalent activation, 
 
 - First run with no models: the recommended model downloads, loads, and answers in Chat.
 - Keyboard-only navigation and Narrator across Chat, Model library and Engine; 150% display scaling; light and dark mode.
-- Closing the window leaves the tray running; the tray's **Open** reopens the native window; **Quit** stops the engine and the window reports it offline.
+- The window's **X** offers **Close window only**, **Quit InferBridge**, and **Cancel**, with a clear explanation. Close-only leaves the tray, downloads and web UI running; the tray's **Open** reopens the native window. Quit stops the engine and tray before the native window exits; cancelling keeps everything running.
 - Model data survives an update (install a higher version over it) and an uninstall/reinstall.

@@ -12,6 +12,7 @@ internal sealed record ModelInfo(string Id, string Name, string Status)
 {
     public bool CanLoad => Status == "ready_to_load";
     public bool CanUnload => Status == "loaded";
+    public bool AvailableInChat => CanLoad || CanUnload || Status is "queued" or "loading";
     // The engine's convert route downloads, converts, then loads; on a model whose
     // files already exist it simply retries the load after a failure/cancellation.
     public bool CanDownload => Status is "not_downloaded" or "error" or "cancelled";
@@ -311,6 +312,75 @@ internal sealed class BackendClient : IDisposable
             return null;
         string reason = ReadString(root, "reason").Trim();
         return new ModelRecommendation(id, reason.Length <= 300 ? reason : reason[..300] + "…");
+    }
+
+    public async Task QuitApplicationAsync(CancellationToken cancellationToken, bool waitForStartup = false)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_metadataFile is null)
+            throw new IOException("Invalid native data directory.");
+        string directory = Path.GetDirectoryName(_metadataFile)!;
+        string lockFile = Path.Combine(directory, "desktop-instance.lock");
+        if (waitForStartup)
+        {
+            using var startup = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            startup.CancelAfter(TimeSpan.FromSeconds(30));
+            try
+            {
+                // The bundled launcher can still be importing before it owns
+                // the lock. Do not close and leave a just-starting engine behind.
+                while (!TrayIsRunning(lockFile)) await Task.Delay(200, startup.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                throw new TimeoutException("Engine startup is still pending. Check the tray and retry.");
+            }
+        }
+        if (!TrayIsRunning(lockFile))
+        {
+            if ((await InspectAsync(cancellationToken)).Connected)
+                throw new InvalidOperationException("This engine has no tray controller. Quit it where it was started.");
+            return;
+        }
+
+        // Reuse the tray's same-user IPC, including when its server is stopped.
+        // Never read private tray credentials or kill a process by name/PID.
+        string temporary = Path.Combine(directory, "tray-command-" + Guid.NewGuid().ToString("N") + ".tmp");
+        try
+        {
+            await File.WriteAllTextAsync(temporary,
+                JsonSerializer.Serialize(new { command = "quit", created_at = DateTimeOffset.UtcNow }),
+                cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            File.Move(temporary, Path.Combine(directory, "tray-command.json"), overwrite: true);
+        }
+        finally
+        {
+            File.Delete(temporary);
+        }
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        try
+        {
+            while (TrayIsRunning(lockFile))
+                await Task.Delay(200, timeout.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException("InferBridge is still shutting down. Check the tray and retry.");
+        }
+    }
+
+    private static bool TrayIsRunning(string lockFile)
+    {
+        if (!File.Exists(lockFile)) return false;
+        try
+        {
+            using var probe = new FileStream(lockFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            return false;
+        }
+        catch (FileNotFoundException) { return false; }
+        catch (IOException) { return true; }
     }
 
     private async Task<string> RequireVerifiedOriginAsync(

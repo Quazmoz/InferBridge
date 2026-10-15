@@ -176,7 +176,15 @@ def test_native_window_is_production_safe_on_close_auth_throttle_and_high_dpi():
     assert (
         "catch (OperationCanceledException) when (_closing.IsCancellationRequested)" not in window
     )
-    assert window.count("catch (Exception) when (_closing.IsCancellationRequested)") == 3
+    for method in (
+        "private async Task RefreshAsync",
+        "private async Task ManageModelAsync",
+        "private async void SendButton_Click",
+        "private async Task ConfirmCloseAsync",
+        "private async void WebUiButton_Click",
+    ):
+        body = window.split(method, 1)[1].split("\n    private ", 1)[0]
+        assert "catch (Exception) when (_closing.IsCancellationRequested)" in body
     # Polling must not keep re-sending a rejected key into the engine's 429 throttle.
     assert "_rejectedApiKey != ApiKeyBox.Password" in window
     assert "EngineLauncher.IsBundled" in window
@@ -198,3 +206,51 @@ def test_native_model_library_selection_survives_status_poll():
         "UpdateChatButtons();"
         in window[restored : window.index("private async void LoadButton_Click", restored)]
     )
+
+
+def test_native_close_prompt_distinguishes_window_close_from_whole_application_quit():
+    window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    intercept = window.split("AppWindow.Closing +=", 1)[1].split("Closed +=", 1)[0]
+    assert "args.Cancel = true;" in intercept
+    assert "_closePromptOpen" in intercept
+    assert "DispatcherQueue.TryEnqueue" in intercept
+    prompt = window.split("private async Task ConfirmCloseAsync", 1)[1].split("\n    private ", 1)[
+        0
+    ]
+    assert 'PrimaryButtonText = "Close window only"' in prompt
+    assert 'SecondaryButtonText = "Quit InferBridge"' in prompt
+    assert 'CloseButtonText = "Cancel"' in prompt
+    assert "keeps InferBridge running in the system tray" in prompt
+    assert "web UI or other apps" in prompt
+    assert "choice == ContentDialogResult.Secondary" in prompt
+    assert "await _backend.QuitApplicationAsync(_closing.Token, _startRequested);" in prompt
+    assert "Process.Kill" not in window
+
+
+def test_native_chat_picker_loads_downloaded_models_without_enabling_chat_early():
+    window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    selection = window.split("private async void ChatModelPicker_SelectionChanged", 1)[1].split(
+        "\n    private ", 1
+    )[0]
+    assert "if (_updatingModelPicker) return;" in selection
+    assert "SelectedChatModel is { CanLoad: true } model" in selection
+    assert "await ManageModelAsync(ModelAction.Load, model);" in selection
+    assert "if (!model.AvailableInChat) continue;" in window
+    assert 'SelectedChatModel?.Status == "loaded"' in window
+    assert 'SelectedChatModel?.Status != "loaded"' in window
+    assert "_chatLoadError" in window
+
+
+def test_native_web_ui_is_discoverable_and_opens_only_the_verified_engine_url():
+    xaml = ET.parse(PROJECT / "MainWindow.xaml").getroot()
+    assert any(node.get("Title") == "More features in the web UI" for node in xaml.iter())
+    assert any(node.get("Content") == "Open web UI" for node in xaml.iter())
+    window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    handler = window.split("private async void WebUiButton_Click", 1)[1].split("\n    private ", 1)[
+        0
+    ]
+    assert "await _backend.InspectAsync" in handler
+    assert "if (!status.Connected)" in handler
+    assert 'new ProcessStartInfo(status.Origin + "/")' in handler
+    assert "UseShellExecute = true" in handler
+    assert 'status.Origin + "/?"' not in handler

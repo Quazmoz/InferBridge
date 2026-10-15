@@ -29,6 +29,12 @@ public sealed partial class MainWindow : Window
     private string? _rejectedApiKey;
     private ModelRecommendation? _recommendation;
     private bool _recommendationRequested;
+    private bool _allowClose;
+    private bool _closePromptOpen;
+    private bool _quitting;
+    private bool _engineConnected;
+    private bool _openingWebUi;
+    private string? _chatLoadError;
 
     public MainWindow()
     {
@@ -58,6 +64,16 @@ public sealed partial class MainWindow : Window
                 await RefreshAsync();
         };
         _pollTimer.Start();
+        AppWindow.Closing += (_, args) =>
+        {
+            if (_allowClose) return;
+            args.Cancel = true;
+            if (_closePromptOpen) return;
+            _closePromptOpen = true;
+            // Return from Closing before showing an asynchronous XAML dialog.
+            if (!DispatcherQueue.TryEnqueue(async () => await ConfirmCloseAsync()))
+                _closePromptOpen = false;
+        };
         Closed += (_, _) =>
         {
             _pollTimer.Stop();
@@ -68,17 +84,101 @@ public sealed partial class MainWindow : Window
         _ = ConnectOrStartAsync();
     }
 
+    private async Task ConfirmCloseAsync()
+    {
+        try
+        {
+            var dialog = new ContentDialog
+            {
+                XamlRoot = ((FrameworkElement)Content).XamlRoot,
+                Title = "Close this window or quit InferBridge?",
+                Content = "Close window only keeps InferBridge running in the system tray. Your local engine, downloads, and web UI stay available.\n\nQuit InferBridge stops the engine and tray too. Active downloads and AI requests, including those from the web UI or other apps, will stop.",
+                PrimaryButtonText = "Close window only",
+                SecondaryButtonText = "Quit InferBridge",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Close,
+            };
+            var choice = await dialog.ShowAsync();
+            if (choice == ContentDialogResult.None) return;
+            if (choice == ContentDialogResult.Secondary)
+            {
+                _quitting = true;
+                MainNavigation.IsEnabled = false;
+                _sendCancellation?.Cancel();
+                UpdateChatButtons();
+                ShowChatInfo("Quitting InferBridge", "Waiting for the local engine and tray to stop…", InfoBarSeverity.Informational);
+                ShowModelsInfo("Quitting InferBridge. Waiting for the local engine and tray to stop…", InfoBarSeverity.Informational);
+                ConnectionInfo.Message = "Quitting InferBridge. Waiting for the local engine and tray to stop…";
+                await _backend.QuitApplicationAsync(_closing.Token, _startRequested);
+            }
+            // Let the dialog finish tearing down before closing its XAML host.
+            _allowClose = true;
+            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+            {
+                Close();
+            });
+        }
+        catch (Exception) when (!_closing.IsCancellationRequested)
+        {
+            const string message = "Could not confirm that InferBridge quit. Check the tray and retry, or choose Close window only.";
+            ShowChatInfo("Window kept open", message, InfoBarSeverity.Warning);
+            ShowModelsInfo(message, InfoBarSeverity.Warning);
+            ConnectionInfo.Message = message;
+        }
+        catch (Exception) when (_closing.IsCancellationRequested) { }
+        finally
+        {
+            _closePromptOpen = false;
+            _quitting = false;
+            if (!_closing.IsCancellationRequested)
+            {
+                MainNavigation.IsEnabled = true;
+                UpdateChatButtons();
+            }
+        }
+    }
+
+    private async void WebUiButton_Click(object sender, RoutedEventArgs args)
+    {
+        if (_openingWebUi || _quitting || _closing.IsCancellationRequested) return;
+        _openingWebUi = true;
+        WebUiButton.IsEnabled = false;
+        try
+        {
+            var status = await _backend.InspectAsync(_closing.Token, ApiKeyBox.Password);
+            if (!status.Connected) throw new IOException("No verified local engine.");
+            if (_quitting || _closing.IsCancellationRequested) return;
+            // Only the verified literal loopback origin; keys never enter the URL.
+            using var browser = Process.Start(new ProcessStartInfo(status.Origin + "/") { UseShellExecute = true });
+            WebUiInfo.Severity = InfoBarSeverity.Informational;
+            WebUiInfo.Message = "Web UI opened in your browser. Advanced settings, benchmarks, and more are available there.";
+        }
+        catch (Exception) when (!_closing.IsCancellationRequested)
+        {
+            WebUiInfo.Severity = InfoBarSeverity.Warning;
+            WebUiInfo.Message = "Could not open the web UI. Check the engine and your default browser, then retry.";
+        }
+        catch (Exception) when (_closing.IsCancellationRequested) { }
+        finally
+        {
+            _openingWebUi = false;
+            if (!_closing.IsCancellationRequested) UpdateChatButtons();
+        }
+    }
+
     private async Task ConnectOrStartAsync()
     {
         await RefreshAsync();
         // A Start-menu launch of the combined package starts its engine without a
         // second click. The Python tray's instance lock still arbitrates ownership.
-        if (StartButton.IsEnabled && EngineLauncher.IsBundled)
+        if (!_quitting && !_allowClose && StartButton.IsEnabled && EngineLauncher.IsBundled)
             StartButton_Click(StartButton, new RoutedEventArgs());
     }
 
     private string? SelectedModelId =>
         (ChatModelPicker.SelectedItem as ComboBoxItem)?.Tag as string;
+
+    private ModelInfo? SelectedChatModel => _shownModels.FirstOrDefault(model => model.Id == SelectedModelId);
 
     private ModelInfo? SelectedLibraryModel =>
         (ModelsList.SelectedItem as ListViewItem)?.Tag as ModelInfo;
@@ -97,7 +197,7 @@ public sealed partial class MainWindow : Window
 
     private async void StartButton_Click(object sender, RoutedEventArgs args)
     {
-        if (_startRequested || _closing.IsCancellationRequested) return;
+        if (_startRequested || _quitting || _allowClose || _closing.IsCancellationRequested) return;
         var result = EngineLauncher.Start();
         ConnectionInfo.Severity = result.Started
             ? InfoBarSeverity.Informational : InfoBarSeverity.Warning;
@@ -111,11 +211,12 @@ public sealed partial class MainWindow : Window
         await RefreshAsync();
     }
 
-    private void ChatModelPicker_SelectionChanged(
+    private async void ChatModelPicker_SelectionChanged(
         object sender, SelectionChangedEventArgs args)
     {
         // Inventory polling is not an intentional conversation/model change.
         if (_updatingModelPicker) return;
+        _chatLoadError = null;
         string? modelId = SelectedModelId;
         if (modelId is not null && _conversationModelId != modelId)
         {
@@ -124,6 +225,8 @@ public sealed partial class MainWindow : Window
             _conversationModelId = modelId;
         }
         UpdateChatButtons();
+        if (SelectedChatModel is { CanLoad: true } model)
+            await ManageModelAsync(ModelAction.Load, model);
     }
 
     private void ModelsList_SelectionChanged(
@@ -132,7 +235,7 @@ public sealed partial class MainWindow : Window
     private void UpdateModelButtons()
     {
         var model = SelectedLibraryModel;
-        bool idle = !_isManaging && !_chatBusy;
+        bool idle = !_isManaging && !_chatBusy && !_isRefreshing && !_quitting;
         LoadButton.IsEnabled = idle && model?.CanLoad == true;
         UnloadButton.IsEnabled = idle && model?.CanUnload == true;
         DownloadButton.IsEnabled = idle && model?.CanDownload == true;
@@ -140,9 +243,11 @@ public sealed partial class MainWindow : Window
 
     private void UpdateChatButtons()
     {
-        SendButton.IsEnabled = !_chatBusy && !_isManaging && SelectedModelId is not null;
+        SendButton.IsEnabled = !_chatBusy && !_isManaging && !_isRefreshing && !_quitting
+            && SelectedChatModel?.Status == "loaded";
         CancelButton.IsEnabled = _chatBusy;
-        ChatModelPicker.IsEnabled = !_chatBusy && !_isManaging;
+        ChatModelPicker.IsEnabled = !_chatBusy && !_isManaging && !_isRefreshing && !_quitting;
+        WebUiButton.IsEnabled = _engineConnected && !_quitting && !_openingWebUi;
         PromptBox.IsEnabled = !_chatBusy;
         ChatProgress.IsActive = _chatBusy;
         UpdateModelButtons();
@@ -150,15 +255,17 @@ public sealed partial class MainWindow : Window
 
     private async Task RefreshAsync()
     {
-        if (_isRefreshing || _isManaging || _chatBusy || _closing.IsCancellationRequested)
+        if (_isRefreshing || _isManaging || _chatBusy || _quitting || _allowClose || _closing.IsCancellationRequested)
             return;
         _isRefreshing = true;
+        UpdateChatButtons();
         RefreshButton.IsEnabled = false;
         ConnectionProgress.IsActive = true;
         try
         {
             string apiKey = ApiKeyBox.Password;
             var status = await _backend.InspectAsync(_closing.Token, apiKey);
+            _engineConnected = status.Connected;
             _rejectedApiKey = status.RequiresAuthentication ? apiKey : null;
             ConnectionInfo.Severity = status.Connected
                 ? InfoBarSeverity.Success : InfoBarSeverity.Warning;
@@ -212,8 +319,13 @@ public sealed partial class MainWindow : Window
                         ModelsList.Items.Add(libraryItem);
                         if (model.Id == (selectedLibraryId ?? recommended))
                             ModelsList.SelectedItem = libraryItem;
-                        if (model.Status != "loaded") continue;
-                        var option = new ComboBoxItem { Content = model.Name, Tag = model.Id };
+                        if (!model.AvailableInChat) continue;
+                        var option = new ComboBoxItem
+                        {
+                            Content = model.Name + "  ·  " + model.StatusLabel,
+                            Tag = model.Id,
+                            IsEnabled = model.CanLoad || model.CanUnload,
+                        };
                         ChatModelPicker.Items.Add(option);
                         if (model.Id == selected)
                             ChatModelPicker.SelectedItem = option;
@@ -222,7 +334,8 @@ public sealed partial class MainWindow : Window
                     // When its model returns after a restart, it is selected again.
                     if (ChatModelPicker.SelectedItem is null && _conversationModelId is null
                         && ChatModelPicker.Items.Count > 0)
-                        ChatModelPicker.SelectedIndex = 0;
+                        ChatModelPicker.SelectedItem = ChatModelPicker.Items.Cast<ComboBoxItem>()
+                            .FirstOrDefault(option => status.Models.Any(model => model.Id == (option.Tag as string) && model.CanUnload));
                 }
                 finally
                 {
@@ -243,15 +356,24 @@ public sealed partial class MainWindow : Window
                 _ = LoadRecommendationAsync();
             }
 
+            if (SelectedChatModel?.Status == "loaded") _chatLoadError = null;
             if (!status.Connected || status.RequiresAuthentication)
                 ShowChatInfo("Engine unavailable", ConnectionInfo.Message, InfoBarSeverity.Warning);
+            else if (_chatLoadError is not null)
+                ShowChatInfo("Could not load model", _chatLoadError, InfoBarSeverity.Error);
             else if (ChatModelPicker.Items.Count == 0)
-                ShowChatInfo("No model loaded",
+                ShowChatInfo("No downloaded models",
                     "Open Model library, select a model, then choose Download and load (or Load if it is already downloaded).",
                     InfoBarSeverity.Informational);
-            else
-                ShowChatInfo("Ready", "Select a loaded model and send a message. Ctrl+Enter sends.",
+            else if (SelectedChatModel?.Status == "loaded")
+                ShowChatInfo("Ready", "Send a message, or select another downloaded model to load it. Ctrl+Enter sends.",
                     InfoBarSeverity.Success);
+            else if (SelectedChatModel?.Status is "loading" or "queued")
+                ShowChatInfo("Loading model", "The selected model is loading. Chat becomes available when it is ready.",
+                    InfoBarSeverity.Informational);
+            else
+                ShowChatInfo("Choose a model", "Select a downloaded model above to load it and start chatting.",
+                    InfoBarSeverity.Informational);
         }
         catch (Exception) when (_closing.IsCancellationRequested)
         {
@@ -261,6 +383,7 @@ public sealed partial class MainWindow : Window
         catch (Exception) when (!_closing.IsCancellationRequested)
         {
             ConnectionInfo.Severity = InfoBarSeverity.Error;
+            _engineConnected = false;
             ConnectionInfo.Message = "Could not display local engine status.";
             ModelsSummary.Text = "Refresh after checking the engine.";
             ChatModelPicker.Items.Clear();
@@ -305,16 +428,21 @@ public sealed partial class MainWindow : Window
     private async void DownloadButton_Click(object sender, RoutedEventArgs args) =>
         await ManageModelAsync(ModelAction.Download);
 
-    private async Task ManageModelAsync(ModelAction action)
+    private async Task ManageModelAsync(ModelAction action, ModelInfo? model = null)
     {
-        var model = SelectedLibraryModel;
+        model ??= SelectedLibraryModel;
         if (model is null || _isManaging || _chatBusy || _isRefreshing
             || !model.Permits(action)
-            || _closing.IsCancellationRequested)
+            || _quitting || _closing.IsCancellationRequested)
             return;
 
         _isManaging = true;
         UpdateChatButtons();
+        if (model.Id == SelectedModelId && action == ModelAction.Load)
+        {
+            _chatLoadError = null;
+            ShowChatInfo("Loading model", "Requesting the selected model from the local engine…", InfoBarSeverity.Informational);
+        }
         try
         {
             ShowModelsInfo(await _backend.ChangeModelAsync(
@@ -326,6 +454,7 @@ public sealed partial class MainWindow : Window
         catch (Exception error) when (!_closing.IsCancellationRequested)
         {
             ShowModelsInfo(SafeError(error), InfoBarSeverity.Error);
+            if (model.Id == SelectedModelId) _chatLoadError = SafeError(error);
         }
         finally
         {
@@ -343,6 +472,7 @@ public sealed partial class MainWindow : Window
         string? modelId = SelectedModelId;
         string prompt = PromptBox.Text.Trim();
         if (_chatBusy || _isManaging || _isRefreshing || modelId is null
+            || _quitting || SelectedChatModel?.Status != "loaded"
             || prompt.Length == 0 || _closing.IsCancellationRequested)
             return;
 

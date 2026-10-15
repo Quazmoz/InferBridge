@@ -8,7 +8,9 @@ it over verified loopback HTTP.
 
 ## What it does
 
-- **Chat**: non-streaming chat with a loaded model, Ctrl+Enter to send,
+- **Chat**: the picker lists downloaded and loaded models with their state.
+  Selecting a downloaded model loads it through the engine; chat stays disabled
+  until the engine reports it loaded. Non-streaming chat, Ctrl+Enter to send,
   copyable conversation text and cancellation. History stays in memory
   (20 recent messages, bounded prompt budget). Cancelling the HTTP request
   does not prove server-side inference has stopped.
@@ -23,6 +25,9 @@ it over verified loopback HTTP.
 - **Engine**: connection status, **Start local engine**, and a session-only
   API-key field (a PasswordBox). The key stays in this window's memory and is
   never written to settings, process arguments, model files or browser storage.
+- **Web UI**: a persistent notice and **Open web UI** button show that advanced
+  settings, benchmarks and more features are available in the browser. The button
+  re-verifies the local engine and opens its loopback URL without keys in the URL.
 
 ## Engine handoff and safety
 
@@ -41,8 +46,13 @@ it over verified loopback HTTP.
 - One window per installation directory: another launch focuses the existing
   window (restoring it only if minimized) without starting a second engine
   owner. Portable installations in different folders stay independent.
-- Closing the window cancels its requests; the tray keeps the engine running.
-  The native client never owns engine shutdown or private tray credentials.
+- The window's **X** (or Alt+F4) asks whether to **Close window only**, **Quit
+  InferBridge**, or **Cancel**. Closing only cancels this window's requests and
+  keeps the engine, tray, downloads and web UI running. Quitting asks the tray to
+  stop the whole program through its existing same-user command file and waits
+  for its instance lock to be released. The window stays open on a shutdown
+  failure or timeout. The native client never reads private tray credentials or
+  kills processes. A pending launcher start is awaited before requesting quit.
 
 Session metadata discovery follows the Python tray's data roots: signed MSIX
 uses `%USERPROFILE%\InferBridgeStoreData`; an unpackaged installation uses
@@ -74,7 +84,8 @@ The dependency-free contract harness compiles the production
 and temporary directories. It covers data-root resolution, nonce/port
 verification, stale and malformed metadata, redirects, API-key challenges and
 throttling, guarded load/unload/download, engine refusal messages, the
-recommendation read, payload limits and cancellation. It runs on any OS with
+recommendation read, payload limits, cancellation, chat-picker states and graceful
+tray quit (including a stopped server and a pending engine start). It runs on any OS with
 the .NET 10 SDK (add `-p:EnableWindowsTargeting=true` off Windows):
 
 ```powershell

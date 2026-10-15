@@ -4,7 +4,19 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="InferBridge">
     <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
-        <NavigationView x:Name="MainNavigation"
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <InfoBar x:Name="WebUiInfo" Title="More features in the web UI"
+                 Message="Open the web UI in your browser for advanced settings, benchmarks, and more."
+                 IsOpen="True" IsClosable="False" Severity="Informational" Margin="12,8,12,0">
+            <InfoBar.ActionButton>
+                <Button x:Name="WebUiButton" Content="Open web UI" IsEnabled="False"
+                        Click="WebUiButton_Click" />
+            </InfoBar.ActionButton>
+        </InfoBar>
+        <NavigationView x:Name="MainNavigation" Grid.Row="1"
                         PaneDisplayMode="Left"
                         IsBackButtonVisible="Collapsed"
                         IsSettingsVisible="False"
@@ -84,11 +96,14 @@
                     </Grid.RowDefinitions>
                     <StackPanel Spacing="10">
                         <TextBlock Text="Chat" FontSize="28" FontWeight="SemiBold" />
-                        <ComboBox x:Name="ChatModelPicker" Header="Loaded model"
+                        <ComboBox x:Name="ChatModelPicker" Header="Chat model"
+                                  PlaceholderText="Choose a downloaded model"
                                   MinWidth="230" MaxWidth="460"
                                   HorizontalAlignment="Left"
                                   SelectionChanged="ChatModelPicker_SelectionChanged"
-                                  AutomationProperties.Name="Select a loaded inference model" />
+                                  AutomationProperties.Name="Select a downloaded or loaded inference model" />
+                        <TextBlock Text="Select a downloaded model to load it here. New downloads are available in Model library."
+                                   TextWrapping="Wrap" Opacity="0.8" />
                         <InfoBar x:Name="ChatInfo" IsOpen="True" IsClosable="False"
                                  Severity="Informational" Title="Getting ready"
                                  Message="Connect to your engine and load a model to begin." />

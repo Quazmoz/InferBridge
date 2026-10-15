@@ -356,6 +356,75 @@ internal static class BackendContractTests
                 "cancelled chat did not end promptly");
         }
 
+        foreach (string state in new[] { "loaded", "ready_to_load", "queued", "loading" })
+            Check(new ModelInfo("chat", "Chat", state).AvailableInChat,
+                "downloaded/loading model missing from chat picker");
+        foreach (string state in new[] { "not_downloaded", "converting", "error", "unknown" })
+            Check(!new ModelInfo("chat", "Chat", state).AvailableInChat,
+                "unavailable model offered in chat picker");
+
+        string lockFile = Path.Combine(directory, "desktop-instance.lock");
+        string commandFile = Path.Combine(directory, "tray-command.json");
+        var quitTransport = new StubHandler((request, _) => Task.FromResult(ValidResponse(request)));
+        using (var client = new BackendClient(quitTransport, metadata))
+        {
+            // A stopped server still has a tray controller. Quit via the local
+            // command protocol and wait for ownership to be released.
+            using (var owner = new FileStream(lockFile, FileMode.OpenOrCreate,
+                FileAccess.ReadWrite, FileShare.ReadWrite))
+            {
+                Task quit = client.QuitApplicationAsync(CancellationToken.None);
+                for (int retry = 0; retry < 100 && !File.Exists(commandFile); retry++)
+                    await Task.Delay(20);
+                Check(File.Exists(commandFile), "tray quit command was not written");
+                using (var command = JsonDocument.Parse(File.ReadAllText(commandFile)))
+                {
+                    Check(command.RootElement.GetProperty("command").GetString() == "quit",
+                        "quit used an unexpected tray command");
+                    Check(command.RootElement.EnumerateObject().Count() == 2,
+                        "quit command leaked credentials or session metadata");
+                }
+                Check(!quit.IsCompleted, "quit reported success while the tray still owned its lock");
+                owner.Dispose();
+                await quit.WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            Check(quitTransport.RequestPaths.Count == 0,
+                "tray quit contacted an HTTP control endpoint");
+            Check(!Directory.EnumerateFiles(directory, "tray-command-*.tmp").Any(),
+                "tray quit left a temporary command behind");
+            File.Delete(commandFile);
+            Task startingQuit = client.QuitApplicationAsync(CancellationToken.None, waitForStartup: true);
+            await Task.Delay(40);
+            Check(!startingQuit.IsCompleted, "quit left a pending engine launch behind");
+            using (var startingOwner = new FileStream(lockFile, FileMode.OpenOrCreate,
+                FileAccess.ReadWrite, FileShare.ReadWrite))
+            {
+                for (int retry = 0; retry < 100 && !File.Exists(commandFile); retry++)
+                    await Task.Delay(20);
+                Check(File.Exists(commandFile), "quit missed a newly started tray controller");
+                startingOwner.Dispose();
+                await startingQuit.WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            File.Delete(commandFile);
+            using (var cancelled = new CancellationTokenSource())
+            {
+                cancelled.Cancel();
+                await ThrowsAsync<OperationCanceledException>(
+                    () => client.QuitApplicationAsync(cancelled.Token), "cancelled quit still acted");
+            }
+            Check(!File.Exists(commandFile), "cancelled quit wrote a command");
+
+            // Do not claim to shut down a standalone server we do not own.
+            WriteMetadata(metadata);
+            await ThrowsAsync<InvalidOperationException>(
+                () => client.QuitApplicationAsync(CancellationToken.None),
+                "quit accepted a live engine without its tray controller");
+            Check(!File.Exists(commandFile), "standalone engine received a tray command");
+            File.Delete(metadata);
+            await client.QuitApplicationAsync(CancellationToken.None);
+            Check(!File.Exists(commandFile), "already stopped application received a stale quit command");
+        }
+        Console.WriteLine("Native tray quit and chat model state contracts: all cases passed.");
         Console.WriteLine("Native backend HTTP contract: all cases passed.");
     }
 
