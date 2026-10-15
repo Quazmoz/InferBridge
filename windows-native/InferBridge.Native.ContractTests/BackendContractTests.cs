@@ -190,6 +190,8 @@ internal static class BackendContractTests
                 using var parsed = JsonDocument.Parse(payload);
                 Check(parsed.RootElement.GetProperty("model").GetString() == "model-a",
                     "model mutation changed selected ID");
+                Check(parsed.RootElement.GetProperty("device").GetString() == "GPU",
+                    "selected GPU device was not forwarded to load");
             }
             else if (request.RequestUri.AbsolutePath == "/v1/models")
             {
@@ -203,6 +205,12 @@ internal static class BackendContractTests
         });
         using (var client = new BackendClient(actions, metadata))
         {
+            await ThrowsAsync<ArgumentException>(
+                () => client.ChangeModelAsync(new ModelInfo("model-a", "Model A", "ready_to_load"),
+                    ModelAction.Load, Key, CancellationToken.None, "untrusted-device"),
+                "invalid inference device");
+            Check(actions.RequestPaths.Count == 0,
+                "invalid device triggered an HTTP request");
             await ThrowsAsync<InvalidOperationException>(
                 () => client.ChangeModelAsync(
                     new ModelInfo("not-in-catalog", "Missing", "ready_to_load"),
@@ -212,7 +220,7 @@ internal static class BackendContractTests
                 "stale model selection triggered mutation");
             string result = await client.ChangeModelAsync(
                 new ModelInfo("model-a", "Model A", "ready_to_load"),
-                ModelAction.Load, Key, CancellationToken.None);
+                ModelAction.Load, Key, CancellationToken.None, "GPU");
             Check(result.Contains("Load requested", StringComparison.Ordinal),
                 "accepted load was reported as immediately complete");
             Check(actions.RequestPaths.Count(x => x == "/v1/models/load") == 1,
@@ -237,6 +245,8 @@ internal static class BackendContractTests
                 string model = parsed.RootElement.GetProperty("model").GetString()!;
                 Check(parsed.RootElement.GetProperty("load_after").GetBoolean(),
                     "download did not request a load afterwards");
+                Check(parsed.RootElement.GetProperty("device").GetString() == "NPU",
+                    "selected NPU device was not forwarded to conversion");
                 if (model == "gated")
                     return Json("""{"detail":{"code":"hf_access_required","message":"Accept the model license on Hugging Face first."}}""",
                         HttpStatusCode.Conflict);
@@ -247,7 +257,7 @@ internal static class BackendContractTests
         {
             string result = await client.ChangeModelAsync(
                 new ModelInfo("model-b", "Model B", "not_downloaded"),
-                ModelAction.Download, Key, CancellationToken.None);
+                ModelAction.Download, Key, CancellationToken.None, "NPU");
             Check(result.StartsWith("Download started", StringComparison.Ordinal),
                 "accepted download was not reported as started");
             try

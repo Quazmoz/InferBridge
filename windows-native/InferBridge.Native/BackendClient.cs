@@ -256,8 +256,11 @@ internal sealed class BackendClient : IDisposable
     }
 
     public async Task<string> ChangeModelAsync(
-        ModelInfo model, ModelAction action, string? apiKey, CancellationToken cancellationToken)
+        ModelInfo model, ModelAction action, string? apiKey, CancellationToken cancellationToken,
+        string? device = null)
     {
+        if (device is not null && device is not ("NPU" or "GPU" or "CPU"))
+            throw new ArgumentException("Unsupported inference device.", nameof(device));
         string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
         // Reconcile before mutation; do not act on a stale UI selection.
         using var modelsPayload = await GetJsonAsync(
@@ -278,11 +281,11 @@ internal sealed class BackendClient : IDisposable
         (string path, string body, TimeSpan deadline) = action switch
         {
             ModelAction.Load => ("/v1/models/load",
-                JsonSerializer.Serialize(new { model = model.Id }), TimeSpan.FromSeconds(20)),
+                JsonSerializer.Serialize(new { model = model.Id, device }), TimeSpan.FromSeconds(20)),
             ModelAction.Unload => ("/v1/models/unload",
                 JsonSerializer.Serialize(new { model = model.Id }), TimeSpan.FromSeconds(20)),
             _ => ("/v1/models/convert",
-                JsonSerializer.Serialize(new { model = model.Id, load_after = true }),
+                JsonSerializer.Serialize(new { model = model.Id, load_after = true, device }),
                 TimeSpan.FromSeconds(60)),
         };
         using var document = await PostJsonAsync(

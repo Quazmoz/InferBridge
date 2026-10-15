@@ -232,6 +232,10 @@ public sealed partial class MainWindow : Window
     private void ModelsList_SelectionChanged(
         object sender, SelectionChangedEventArgs args) => UpdateModelButtons();
 
+    private string? SelectedInferenceDevice =>
+        (LibraryDevicePicker.SelectedItem as ComboBoxItem)?.Tag as string is { Length: > 0 } device
+            ? device : null;
+
     private void UpdateModelButtons()
     {
         var model = SelectedLibraryModel;
@@ -239,6 +243,7 @@ public sealed partial class MainWindow : Window
         LoadButton.IsEnabled = idle && model?.CanLoad == true;
         UnloadButton.IsEnabled = idle && model?.CanUnload == true;
         DownloadButton.IsEnabled = idle && model?.CanDownload == true;
+        LibraryDevicePicker.IsEnabled = idle;
     }
 
     private void UpdateChatButtons()
@@ -446,7 +451,7 @@ public sealed partial class MainWindow : Window
         try
         {
             ShowModelsInfo(await _backend.ChangeModelAsync(
-                model, action, ApiKeyBox.Password, _closing.Token), InfoBarSeverity.Success);
+                model, action, ApiKeyBox.Password, _closing.Token, SelectedInferenceDevice), InfoBarSeverity.Success);
         }
         catch (Exception) when (_closing.IsCancellationRequested)
         {

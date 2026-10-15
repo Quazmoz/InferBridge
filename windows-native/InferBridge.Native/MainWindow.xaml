@@ -76,7 +76,17 @@
                               SelectionMode="Single"
                               SelectionChanged="ModelsList_SelectionChanged"
                               AutomationProperties.Name="Engine model inventory" />
-                    <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="10">
+                    <StackPanel Grid.Row="2" Spacing="8">
+                        <ComboBox x:Name="LibraryDevicePicker" Header="Inference device"
+                                  SelectedIndex="0" MinWidth="215" MaxWidth="280"
+                                  HorizontalAlignment="Left"
+                                  AutomationProperties.Name="Inference device for model loading">
+                            <ComboBoxItem Content="Automatic (engine default)" Tag="" />
+                            <ComboBoxItem Content="NPU" Tag="NPU" />
+                            <ComboBoxItem Content="GPU" Tag="GPU" />
+                            <ComboBoxItem Content="CPU" Tag="CPU" />
+                        </ComboBox>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
                         <Button x:Name="DownloadButton" Content="Download and load" IsEnabled="False"
                                 Style="{StaticResource AccentButtonStyle}"
                                 Click="DownloadButton_Click" />
@@ -86,6 +96,7 @@
                                 Click="UnloadButton_Click" />
                         <Button Content="Refresh" Click="RefreshButton_Click"
                                 AutomationProperties.Name="Refresh models" />
+                        </StackPanel>
                     </StackPanel>
                 </Grid>
                 <Grid x:Name="ChatPanel" RowSpacing="12">

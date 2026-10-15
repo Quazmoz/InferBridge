@@ -122,3 +122,7 @@ and maps it under `native\` next to the installed-mode engine; the manifest's
 application entrypoint is `native\InferBridge.Native.exe`. See
 [docs/MICROSOFT_STORE.md](../docs/MICROSOFT_STORE.md) for the release and
 submission steps.
+
+## Inference hardware selection
+
+In the native **Model library**, select **Inference device** before choosing **Load** or **Download and load**. The options are **Automatic (engine default)**, **NPU**, **GPU**, and **CPU**. This device preference is included in the existing model-load or conversion-and-load API request; it is not a separate inference engine. Automatic omits an explicit target, allowing the server to use its configured default. Hardware availability and model compatibility are still enforced by the Python/OpenVINO backend; selecting NPU or GPU does not guarantee it is supported on the PC or for the selected model. Change device by unloading and reloading the model. The chat model picker continues to select models rather than moving already loaded models between devices.
