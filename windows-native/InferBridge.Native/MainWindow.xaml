@@ -68,11 +68,12 @@
                         <Button x:Name="DownloadButton" Content="Download and load" IsEnabled="False"
                                 Style="{StaticResource AccentButtonStyle}"
                                 Click="DownloadButton_Click" />
-                        <Button x:Name="LoadButton" Content="Load selected" IsEnabled="False"
+                        <Button x:Name="LoadButton" Content="Load" IsEnabled="False"
                                 Click="LoadButton_Click" />
-                        <Button x:Name="UnloadButton" Content="Unload selected" IsEnabled="False"
+                        <Button x:Name="UnloadButton" Content="Unload" IsEnabled="False"
                                 Click="UnloadButton_Click" />
-                        <Button Content="Refresh models" Click="RefreshButton_Click" />
+                        <Button Content="Refresh" Click="RefreshButton_Click"
+                                AutomationProperties.Name="Refresh models" />
                     </StackPanel>
                 </Grid>
                 <Grid x:Name="ChatPanel" RowSpacing="12">

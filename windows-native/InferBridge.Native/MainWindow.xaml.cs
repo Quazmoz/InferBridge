@@ -1,10 +1,13 @@
 using System.Diagnostics;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
+using Windows.Graphics;
+using WinRT.Interop;
 
 namespace InferBridge.Native;
 
@@ -36,6 +39,14 @@ public sealed partial class MainWindow : Window
             presenter.PreferredMinimumWidth = 640;
             presenter.PreferredMinimumHeight = 480;
         }
+        // The OS default size clips the library actions; open at a comfortable
+        // size for this monitor's DPI, centered within its work area.
+        RectInt32 area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
+        double scale = GetDpiForWindow(WindowNative.GetWindowHandle(this)) / 96.0;
+        int width = Math.Min((int)(1100 * scale), area.Width);
+        int height = Math.Min((int)(760 * scale), area.Height);
+        AppWindow.MoveAndResize(new RectInt32(
+            area.X + (area.Width - width) / 2, area.Y + (area.Height - height) / 2, width, height));
         MainNavigation.SelectedItem = MainNavigation.MenuItems[0];
         _pollTimer.Tick += async (_, _) =>
         {
@@ -439,6 +450,9 @@ public sealed partial class MainWindow : Window
                 AutomationNotificationProcessing.ImportantMostRecent,
                 title + ". " + message, "InferBridge.ChatStatus");
     }
+
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(nint hWnd);
 
     private static string SafeError(Exception error) => error switch
     {
