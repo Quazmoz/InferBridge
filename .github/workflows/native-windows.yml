@@ -130,6 +130,15 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      - name: Install pinned release dependencies
+        # build_release.ps1 validates the version with the runner's Python, as in release.yml.
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements/release.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pip install --disable-pip-version-check --no-deps --no-build-isolation .
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Build installed-mode Python distribution
         shell: pwsh
         run: |
