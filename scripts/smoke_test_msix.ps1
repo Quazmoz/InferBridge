@@ -21,6 +21,7 @@ $Work = Join-Path ([IO.Path]::GetTempPath()) ("InferBridge-msix-smoke-" + [guid]
 New-Item $Work -ItemType Directory -Force | Out-Null
 if (-not $EvidenceDirectory) { $EvidenceDirectory = $Work }
 New-Item $EvidenceDirectory -ItemType Directory -Force | Out-Null
+$EvidenceDirectory = (Resolve-Path $EvidenceDirectory).Path  # appcert.exe needs absolute paths
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $Archive = [IO.Compression.ZipFile]::OpenRead($Package)
@@ -154,6 +155,43 @@ try {
     [void][PackageLauncher]::SetForegroundWindow($Window.MainWindowHandle)
     Start-Sleep -Seconds 2
     Save-Screenshot "native-window-connected.png"
+
+    # Drive the UI through UI Automation (as Narrator would): the Model library
+    # must list the packaged engine's catalog, which is the first-run path.
+    Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+    $Ui = [Windows.Automation.AutomationElement]::FromHandle($Window.MainWindowHandle)
+    function Find-ByName([string]$Name) {
+        $Condition = New-Object Windows.Automation.PropertyCondition(
+            [Windows.Automation.AutomationElement]::NameProperty, $Name)
+        $Ui.FindFirst([Windows.Automation.TreeScope]::Descendants, $Condition)
+    }
+    $LibraryTab = Find-ByName "Model library"
+    if (-not $LibraryTab) { throw "The Model library navigation item is not exposed to UI Automation." }
+    try {
+        $LibraryTab.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern).Select()
+    } catch [InvalidOperationException] {
+        $LibraryTab.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+    }
+    $Rows = Wait-Until {
+        $List = Find-ByName "Engine model inventory"
+        if (-not $List) { return $null }
+        $Items = $List.FindAll([Windows.Automation.TreeScope]::Children, [Windows.Automation.Condition]::TrueCondition)
+        if ($Items.Count -gt 0) { return ,$Items }
+        return $null
+    } "the native Model library to list the engine catalog"
+    Write-Host "Model library lists $($Rows.Count) models; first: '$($Rows[0].Current.Name)'"
+    try {
+        $Advice = Wait-Until {
+            $First = (Find-ByName "Engine model inventory").FindFirst(
+                [Windows.Automation.TreeScope]::Children, [Windows.Automation.Condition]::TrueCondition)
+            if ($First -and $First.Current.Name.StartsWith("Recommended")) { return $First.Current.Name }
+            return $null
+        } "the engine recommendation"
+        Write-Host "Recommendation shown: '$Advice'"
+    } catch {
+        Write-Warning "No recommendation shown (advice only): $_"
+    }
+    Save-Screenshot "native-model-library.png"
 
     # A second launch must focus the existing window, not open another.
     [void][PackageLauncher]::Launch($Aumid)
