@@ -304,6 +304,34 @@ internal sealed class BackendClient : IDisposable
     }
 
     /// <summary>The engine's hardware-aware first model, or null when it has none to offer.</summary>
+    public async Task<string> GetRuntimeSummaryAsync(
+        string? apiKey, CancellationToken cancellationToken)
+    {
+        string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
+        using var document = await GetJsonAsync(origin + "/v1/system/status",
+            apiKey, cancellationToken, TimeSpan.FromSeconds(10));
+        var root = document.RootElement;
+        if (!root.TryGetProperty("device", out var device)
+            || device.ValueKind != JsonValueKind.Object
+            || !device.TryGetProperty("loaded", out var loaded)
+            || loaded.ValueKind != JsonValueKind.Object)
+            throw new JsonException("Invalid active-device status.");
+        var entries = new List<string>();
+        foreach (var model in loaded.EnumerateObject())
+        {
+            if (entries.Count >= 32) break;
+            string name = model.Name;
+            if (name.Length is < 1 or > 128 || model.Value.ValueKind != JsonValueKind.String)
+                continue;
+            string target = model.Value.GetString() ?? "";
+            if (target.Length is < 1 or > 64) continue;
+            entries.Add(name + " → " + target);
+        }
+        return entries.Count == 0
+            ? "No models currently loaded."
+            : "Loaded model devices: " + string.Join("; ", entries);
+    }
+
     public async Task<DeviceInventory> GetDevicesAsync(string? apiKey, CancellationToken cancellationToken)
     {
         string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
