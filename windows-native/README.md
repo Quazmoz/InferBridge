@@ -89,6 +89,21 @@ Windows App Certification Kit.
 
 ## Packaging
 
+For a local **EXE installer** that opens the native app and bundles the engine,
+install Inno Setup 6 and run from the repository root:
+
+```powershell
+.\scripts\build_native_installer.ps1 -Python .\.venv\Scripts\python.exe
+```
+
+The unsigned evaluation installer and SHA-256 checksum are written to
+`artifacts/native-dev/`. It runs the native contract harness, the pinned engine
+build and packaged smoke tests before compiling the installer. Start-menu and
+optional desktop shortcuts open `native\InferBridge.Native.exe`; the engine
+bootstrap check still runs before Setup offers to launch it. It uses the existing
+InferBridge installation identity, so installing upgrades an existing EXE
+installation while preserving models and settings. This does not publish a release.
+
 `scripts/build_msix.ps1` publishes this project self-contained for win-x64
 and maps it under `native\` next to the installed-mode engine; the manifest's
 application entrypoint is `native\InferBridge.Native.exe`. See
