@@ -268,7 +268,7 @@ def test_native_model_library_selects_inference_device_and_forwards_to_backend()
     client = (PROJECT / "BackendClient.cs").read_text(encoding="utf-8")
     assert "SelectedInferenceDevice" in window
     assert "_closing.Token, SelectedInferenceDevice" in window
-    assert "LibraryDevicePicker.IsEnabled = idle;" in window
+    assert "LibraryDevicePicker.IsEnabled = idle && _devicesAvailable;" in window
     assert "new { model = model.Id, device }" in client
     assert "new { model = model.Id, load_after = true, device }" in client
     assert "Unsupported inference device." in client
