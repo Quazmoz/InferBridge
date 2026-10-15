@@ -270,7 +270,10 @@ public sealed partial class MainWindow : Window
                 ?? (ComboBoxItem)LibraryDevicePicker.Items[0];
             _devicesAvailable = true;
             _devicesScanned = true;
-            HardwareSummary.Text = "Engine default: " + inventory.Default
+            string loadedSummary = await _backend.GetRuntimeSummaryAsync(
+                ApiKeyBox.Password, _closing.Token);
+            if (_closing.IsCancellationRequested) return;
+            HardwareSummary.Text = loadedSummary + "\nEngine default: " + inventory.Default
                 + ". Detected devices: "
                 + (inventory.Available.Count > 0
                     ? string.Join(", ", inventory.Available) : "none reported")
