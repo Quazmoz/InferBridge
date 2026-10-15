@@ -21,13 +21,7 @@ internal static class EngineLauncher
 
         try
         {
-            var info = new ProcessStartInfo(EngineExecutable)
-            {
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                WorkingDirectory = EngineDirectory,
-            };
-            info.ArgumentList.Add("--no-browser");
+            var info = CreateStartInfo(Environment.GetEnvironmentVariable("OV_LLM_DATA_DIR"));
             using var process = Process.Start(info);
             if (process is null)
                 return (false, "Windows could not launch the local engine.");
@@ -36,11 +30,32 @@ internal static class EngineLauncher
             return (true, "Engine launch requested. Refresh status to verify readiness.");
         }
         catch (Exception error) when (
-            error is IOException or UnauthorizedAccessException
+            error is IOException or UnauthorizedAccessException or ArgumentException
             or System.ComponentModel.Win32Exception)
         {
             return (false,
-                "The local engine could not be started. Check its installation and permissions.");
+                "The local engine could not be started. Check its installation, data directory and permissions.");
         }
+    }
+
+    internal static ProcessStartInfo CreateStartInfo(string? dataDirectory)
+    {
+        var info = new ProcessStartInfo(EngineExecutable)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WorkingDirectory = EngineDirectory,
+        };
+        info.ArgumentList.Add("--no-browser");
+        // The Python desktop launcher resets inherited launch flags. Forward the
+        // shared data override explicitly so the client and engine find one session.
+        if (dataDirectory is not null)
+        {
+            if (!Path.IsPathFullyQualified(dataDirectory))
+                throw new ArgumentException("OV_LLM_DATA_DIR must be absolute.");
+            info.ArgumentList.Add("--data-dir");
+            info.ArgumentList.Add(Path.GetFullPath(dataDirectory));
+        }
+        return info;
     }
 }

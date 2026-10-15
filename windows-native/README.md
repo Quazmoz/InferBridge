@@ -51,6 +51,8 @@ root); a combined portable distribution with a sibling `portable.flag` uses
 `<portable root>\data`. `OV_LLM_DATA_DIR` is honored, and
 `INFERBRIDGE_NATIVE_DATA_DIR` overrides metadata lookup only and takes
 precedence. Overrides must be absolute; relative ones fail closed.
+The native engine launcher passes `OV_LLM_DATA_DIR` as an explicit `--data-dir`
+argument because the Python desktop launcher resets inherited launch flags.
 
 ## Development build
 

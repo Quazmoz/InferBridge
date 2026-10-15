@@ -64,6 +64,27 @@ try
     }
 
     Console.WriteLine("Native data-root contract: all cases passed.");
+    var defaultStart = EngineLauncher.CreateStartInfo(null);
+    if (!defaultStart.ArgumentList.SequenceEqual(new[] { "--no-browser" })
+        || defaultStart.UseShellExecute || !defaultStart.CreateNoWindow)
+        throw new InvalidOperationException("Default engine launch contract changed.");
+    string engineData = Path.Combine(root, "custom engine data");
+    var customStart = EngineLauncher.CreateStartInfo(engineData);
+    if (!customStart.ArgumentList.SequenceEqual(new[] { "--no-browser", "--data-dir", engineData }))
+        throw new InvalidOperationException("Engine data override was not passed as one argument.");
+    foreach (string invalid in new[] { "", "relative-root", @".\data" })
+    {
+        try
+        {
+            _ = EngineLauncher.CreateStartInfo(invalid);
+        }
+        catch (ArgumentException)
+        {
+            continue;
+        }
+        throw new InvalidOperationException("Relative engine data override was accepted.");
+    }
+    Console.WriteLine("Native engine launch contract: all cases passed.");
     await BackendContractTests.RunAsync(root);
     return 0;
 }

@@ -8,5 +8,6 @@
   <ItemGroup>
     <Compile Include="../InferBridge.Native/NativeDataPaths.cs" Link="NativeDataPaths.cs" />
     <Compile Include="../InferBridge.Native/BackendClient.cs" Link="BackendClient.cs" />
+    <Compile Include="../InferBridge.Native/EngineLauncher.cs" Link="EngineLauncher.cs" />
   </ItemGroup>
 </Project>
