@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using WinRT.Interop;
 
@@ -28,19 +29,16 @@ public partial class App : Application
         {
             // Secondary launches must focus the existing native window, never
             // create another UI or attempt to start the authoritative engine.
+            // Restore only when minimized; a plain restore would un-maximize it.
+            if (window.AppWindow.Presenter is OverlappedPresenter
+                { State: OverlappedPresenterState.Minimized } presenter)
+                presenter.Restore();
             window.Activate();
             nint handle = WindowNative.GetWindowHandle(window);
             if (handle != 0)
-            {
-                _ = ShowWindow(handle, 9); // SW_RESTORE
                 _ = SetForegroundWindow(handle);
-            }
         });
     }
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool ShowWindow(nint hWnd, int nCmdShow);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.UI.Dispatching;
@@ -8,8 +9,10 @@ namespace InferBridge.Native;
 
 internal static class Program
 {
+    // WinUI must start on an STA thread. Main stays synchronous: an async Main
+    // runs inside a compiler-generated entry point that drops [STAThread].
     [STAThread]
-    private static async Task Main(string[] args)
+    private static int Main(string[] args)
     {
         // Instance selection precedes WinUI initialization. The Python tray
         // remains the only process owner of the inference engine.
@@ -23,8 +26,12 @@ internal static class Program
         var primary = AppInstance.FindOrRegisterForKey("InferBridge.Native." + scope);
         if (!primary.IsCurrent)
         {
-            await primary.RedirectActivationToAsync(activation);
-            return;
+            // This launch holds the user's foreground rights; pass them on so the
+            // existing window can come to the front instead of only flashing.
+            _ = AllowSetForegroundWindow(primary.ProcessId);
+            // Redirect off the STA thread; the blocking wait still pumps COM.
+            Task.Run(() => primary.RedirectActivationToAsync(activation).AsTask()).Wait();
+            return 0;
         }
 
         primary.Activated += (_, _) =>
@@ -39,5 +46,10 @@ internal static class Program
                 new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread()));
             new App();
         });
+        return 0;
     }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool AllowSetForegroundWindow(uint processId);
 }
