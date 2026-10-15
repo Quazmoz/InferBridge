@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       full_combined_candidate:
-        description: "Build real Python + native unsigned MSIX (manual; no signing)"
+        description: "Build the real Store MSIX, install it with a temporary signature, smoke test it and run WACK"
         type: boolean
         required: false
         default: false
@@ -18,6 +18,8 @@ on:
       - "tests/test_msix_package.py"
       - "tests/test_native_windows_source_contract.py"
       - "packaging/msix/**"
+      - "app/store_window.py"
+      - "scripts/smoke_test_msix.ps1"
   pull_request:
     branches: ["dev"]
     paths:
@@ -28,6 +30,8 @@ on:
       - "tests/test_msix_package.py"
       - "tests/test_native_windows_source_contract.py"
       - "packaging/msix/**"
+      - "app/store_window.py"
+      - "scripts/smoke_test_msix.ps1"
 
 permissions:
   contents: read
@@ -107,11 +111,11 @@ jobs:
 
 
   combined-msix-evaluation:
-    name: Real Python + WinUI unsigned native-entrypoint MSIX (manual)
+    name: Store MSIX installed smoke test and WACK (manual)
     if: github.event_name == 'workflow_dispatch' && inputs.full_combined_candidate
     needs: winui-build
     runs-on: windows-latest
-    timeout-minutes: 120
+    timeout-minutes: 150
     steps:
       - name: Checkout source
         uses: actions/checkout@v7
@@ -136,20 +140,16 @@ jobs:
             throw "Installed-mode Python distribution build failed."
           }
 
-      - name: Publish native client and build unsigned evaluation package
+      - name: Build the Store MSIX with an evaluation identity
         shell: pwsh
         run: |
-          dotnet restore windows-native/InferBridge.Native/InferBridge.Native.csproj -p:Platform=x64 -p:RuntimeIdentifier=win-x64
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet publish windows-native/InferBridge.Native/InferBridge.Native.csproj --no-restore --configuration Release --runtime win-x64 --self-contained true -p:Platform=x64 -o artifacts/native-win-x64
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $version = (python scripts/release_tools.py canonical-version).Trim()
           $releasePython = (Get-ChildItem build/release-environments/*/Scripts/python.exe | Select-Object -First 1).FullName
           if (-not $releasePython) { throw "Pinned release Python not found." }
-          .\scripts\build_msix.ps1 -Version $version -Python $releasePython -DistributionPath dist\InferBridge -NativePublishDirectory artifacts/native-win-x64 -NativeEntrypointEvaluation -OutputDirectory artifacts/msix-native-evaluation -IdentityName "Quazmoz.InferBridge.Evaluation" -Publisher "CN=00000000-0000-0000-0000-000000000000" -PublisherDisplayName "InferBridge Evaluation"
-          if ($LASTEXITCODE -ne 0) { throw "Combined MSIX evaluation build failed." }
+          .\scripts\build_msix.ps1 -Version $version -Python $releasePython -DistributionPath dist\InferBridge -OutputDirectory artifacts/msix-candidate -IdentityName "Quazmoz.InferBridge.Evaluation" -Publisher "CN=00000000-0000-0000-0000-000000000000" -PublisherDisplayName "InferBridge Evaluation"
+          if ($LASTEXITCODE -ne 0) { throw "Store MSIX build failed." }
 
-      - name: Verify combined package contents and entrypoints
+      - name: Verify package contents and entrypoints
         shell: pwsh
         run: |
           @'
@@ -157,14 +157,14 @@ jobs:
           from zipfile import ZipFile
           import xml.etree.ElementTree as ET
 
-          packages = list(Path("artifacts/msix-native-evaluation").glob("*native-evaluation-unsigned.msix"))
-          assert len(packages) == 1, "Expected exactly one unsigned native evaluation MSIX"
+          packages = list(Path("artifacts/msix-candidate").glob("*.msix"))
+          assert len(packages) == 1, "Expected exactly one Store MSIX"
           with ZipFile(packages[0]) as archive:
               files = {name.replace("\\", "/").casefold() for name in archive.namelist()}
               for required in (
                   "inferbridge.exe", "native/inferbridge.native.exe",
                   "native/inferbridge.native.runtimeconfig.json",
-                  "native/coreclr.dll", "appxmanifest.xml",
+                  "native/coreclr.dll", "native/assets/inferbridge.ico", "appxmanifest.xml",
               ):
                   assert required in files, f"Missing packaged file: {required}"
               assert any(name.startswith("_internal/python") and name.endswith(".dll") for name in files)
@@ -172,13 +172,38 @@ jobs:
               foundation = "{http://schemas.microsoft.com/appx/manifest/foundation/windows10}"
               app = root.find(f"{foundation}Applications/{foundation}Application")
               assert app is not None and app.get("Executable") == r"native\InferBridge.Native.exe"
-          print("Structural MSIX checks passed (not installation/signing).")
+          print("Structural MSIX checks passed.")
           '@ | python -
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Save unsigned candidate (not Store-qualified)
+      - name: Install, launch and smoke test the package
+        shell: powershell
+        run: |
+          $package = (Get-ChildItem artifacts/msix-candidate/*.msix | Select-Object -First 1).FullName
+          .\scripts\smoke_test_msix.ps1 -Package $package -EvidenceDirectory artifacts/msix-smoke
+
+      - name: Windows App Certification Kit
+        id: wack
+        continue-on-error: true
+        shell: powershell
+        run: |
+          $package = (Get-ChildItem artifacts/msix-candidate/*.msix | Select-Object -First 1).FullName
+          .\scripts\smoke_test_msix.ps1 -Package $package -EvidenceDirectory artifacts/msix-wack -RunCertificationKit
+
+      - name: Save smoke-test and certification evidence
+        if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: inferbridge-native-msix-UNSIGNED-EVALUATION-NOT-STORE-READY
-          path: artifacts/msix-native-evaluation/*native-evaluation-unsigned.msix
+          name: inferbridge-msix-installed-evidence
+          path: |
+            artifacts/msix-smoke/
+            artifacts/msix-wack/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Save unsigned Store-layout package (evaluation identity; not for submission)
+        uses: actions/upload-artifact@v7
+        with:
+          name: inferbridge-msix-evaluation-identity
+          path: artifacts/msix-candidate/*.msix
           retention-days: 3
