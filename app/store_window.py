@@ -1,7 +1,9 @@
-"""A dedicated WebView2 window for the Microsoft Store edition.
+"""The application window for the Microsoft Store edition.
 
-The server and tray remain authoritative. This process owns only the UI window.
-Browser-based standalone and portable distributions are intentionally unchanged.
+The Store package bundles the native WinUI client under native/; a WebView2
+window is the fallback for packages built without it. The server and tray
+remain authoritative; the window process owns only the UI. Browser-based
+standalone and portable distributions are intentionally unchanged.
 """
 
 from __future__ import annotations
@@ -28,6 +30,12 @@ def _store_runtime_available() -> bool:
     return sys.platform == "win32" and is_packaged()
 
 
+def _native_client() -> Path | None:
+    """The WinUI client bundled under native/ in the Store package, if present."""
+    candidate = Path(sys.executable).resolve().parent / "native" / "InferBridge.Native.exe"
+    return candidate if candidate.is_file() else None
+
+
 def open_store_window(port: int, instance_nonce: str) -> bool:
     """Open the packaged UI in its own process, never a system-browser tab."""
     _validate_port(port)
@@ -35,22 +43,29 @@ def open_store_window(port: int, instance_nonce: str) -> bool:
         return False
     if not _store_runtime_available():
         return False
-    # Reuse the bundled launcher; this avoids injecting a URL or command into a
-    # shell, and the window child can only navigate to our loopback origin.
+    # Prefer the native WinUI client: it reads the verified session metadata
+    # itself and focuses its existing window on a repeated launch. Otherwise
+    # reuse the bundled launcher; neither path injects a URL or shell command.
+    native = _native_client()
+    command = (
+        [str(native)]
+        if native
+        else [
+            sys.executable,
+            "--window-child",
+            "--port",
+            str(port),
+            "--instance-nonce",
+            instance_nonce,
+        ]
+    )
     try:
         subprocess.Popen(
-            [
-                sys.executable,
-                "--window-child",
-                "--port",
-                str(port),
-                "--instance-nonce",
-                instance_nonce,
-            ],
+            command,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            cwd=str(Path(sys.executable).resolve().parent),
+            cwd=str(Path(command[0]).resolve().parent),
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         return True

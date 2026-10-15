@@ -82,3 +82,24 @@ def test_native_store_window_hosts_loopback_ui_with_edgechromium(tmp_path, monke
     assert started.call_args.kwargs["gui"] == "edgechromium"
     assert started.call_args.kwargs["private_mode"] is False
     assert started.call_args.kwargs["storage_path"] == str(tmp_path / "webview")
+
+
+def test_packaged_window_prefers_bundled_native_client(tmp_path, monkeypatch):
+    executable = tmp_path / "InferBridge.exe"
+    executable.write_bytes(b"MZ")
+    monkeypatch.setattr("app.store_window._store_runtime_available", lambda: True)
+    monkeypatch.setattr("app.store_window.sys.executable", str(executable))
+    started = Mock()
+    monkeypatch.setattr("app.store_window.subprocess.Popen", started)
+
+    # Without the native payload the WebView2 child remains the fallback.
+    assert open_store_window(8123, "known-session") is True
+    assert started.call_args.args[0][:2] == [str(executable), "--window-child"]
+
+    native = tmp_path / "native" / "InferBridge.Native.exe"
+    native.parent.mkdir()
+    native.write_bytes(b"MZ")
+    assert open_store_window(8123, "known-session") is True
+    # The native client reads verified session metadata itself: no URL, port or nonce.
+    assert started.call_args.args[0] == [str(native.resolve())]
+    assert started.call_args.kwargs["cwd"] == str(native.parent.resolve())

@@ -173,7 +173,14 @@ jobs:
           -Channel ${{ inputs.channel }} -ExternallySigned -Phase Finalize -MockSmokeTest
 
       # ---------------- Store package and outputs ----------------
+      - name: Install .NET 10 for the native Store client
+        if: inputs.msix
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
       - name: Build Microsoft Store MSIX
+        # Bundles the WinUI client (the package entrypoint) with the engine.
         if: inputs.msix
         env:
           INFERBRIDGE_MSIX_IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME || 'QuinnFavo.InferBridge' }}

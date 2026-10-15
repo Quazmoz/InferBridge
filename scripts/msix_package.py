@@ -1,7 +1,9 @@
-"""Stage the Microsoft Store MSIX layout for the PyInstaller one-directory build.
+"""Stage the Microsoft Store MSIX layout: the WinUI client plus the Python engine.
 
-Writes AppxManifest.xml, the tile assets, and a MakeAppx mapping file that points at the
-built files in place (no multi-gigabyte staging copy). scripts/build_msix.ps1 packs it.
+The package launches the native client from native/ and keeps the installed-mode
+PyInstaller engine at the root. Writes AppxManifest.xml, the tile assets, and a
+MakeAppx mapping file that points at the built files in place (no multi-gigabyte
+staging copy). scripts/build_msix.ps1 packs it.
 """
 
 from __future__ import annotations
@@ -42,7 +44,6 @@ def render_manifest(
     publisher: str,
     publisher_display_name: str,
     version: str,
-    native_entrypoint_evaluation: bool = False,
 ) -> str:
     if not _IDENTITY_RE.fullmatch(identity_name):
         raise ValueError("Identity name must be 3-50 letters, digits, periods, or hyphens.")
@@ -58,12 +59,6 @@ def render_manifest(
         "{{VERSION}}": msix_version(version),
     }
     manifest = TEMPLATE.read_text(encoding="utf-8")
-    if native_entrypoint_evaluation:
-        old = 'Executable="InferBridge.exe"'
-        if manifest.count(old) != 2:
-            raise RuntimeError("Store manifest entrypoint contract changed.")
-        # This affects only the generated candidate; the Store template is untouched.
-        manifest = manifest.replace(old, r'Executable="native\InferBridge.Native.exe"')
     for token, value in values.items():
         manifest = manifest.replace(token, value)
     if "{{" in manifest:
@@ -90,11 +85,7 @@ def write_assets(directory: Path) -> list[Path]:
 
 
 def native_entries(native_publish: Path) -> list[tuple[Path, str]]:
-    """Validate native publish output and map it under native/ in the MSIX.
-
-    This adds payload only; the Store manifest deliberately retains the Python
-    entrypoint until signed installed-package qualification is complete.
-    """
+    """Validate native publish output and map it under native/ in the MSIX."""
     if native_publish.is_symlink():
         raise RuntimeError("Native publish root must not be a symbolic link.")
     native_publish = native_publish.resolve()
@@ -126,8 +117,7 @@ def stage(
     publisher: str,
     publisher_display_name: str,
     version: str,
-    native_publish: Path | None = None,
-    native_entrypoint_evaluation: bool = False,
+    native_publish: Path,
 ) -> Path:
     if distribution.is_symlink():
         raise RuntimeError("Python distribution root must not be a symbolic link.")
@@ -135,28 +125,25 @@ def stage(
     output_dir = output_dir.resolve()
     if output_dir == distribution or output_dir.is_relative_to(distribution):
         raise ValueError("MSIX output must be outside the Python distribution.")
-    if native_entrypoint_evaluation and native_publish is None:
-        raise ValueError("Native entrypoint evaluation requires a native publish directory.")
     if not (distribution / "InferBridge.exe").is_file():
         raise FileNotFoundError(f"InferBridge.exe not found in {distribution}")
     if (distribution / "portable.flag").exists():
         raise RuntimeError("The Store package must be built from the installed-mode layout.")
-    native_payload: list[tuple[Path, str]] = []
-    if native_publish is not None:
-        if native_publish.is_symlink():
-            raise RuntimeError("Native publish root must not be a symbolic link.")
-        native_publish = native_publish.resolve()
-        if output_dir == native_publish or output_dir.is_relative_to(native_publish):
-            raise ValueError("MSIX output must be outside the native publish directory.")
-        if native_publish == distribution or native_publish.is_relative_to(distribution):
-            raise ValueError("Native publish output must be outside the Python distribution.")
-        if (distribution / "native").exists():
-            raise RuntimeError("The Python distribution already contains a native/ directory.")
-        native_payload = native_entries(native_publish)
-    if native_entrypoint_evaluation:
-        internal = distribution / "_internal"
-        if not internal.is_dir() or not any(internal.glob("python*.dll")):
-            raise FileNotFoundError("Native evaluation requires the installed Python runtime DLL.")
+    if native_publish.is_symlink():
+        raise RuntimeError("Native publish root must not be a symbolic link.")
+    native_publish = native_publish.resolve()
+    if output_dir == native_publish or output_dir.is_relative_to(native_publish):
+        raise ValueError("MSIX output must be outside the native publish directory.")
+    if native_publish == distribution or native_publish.is_relative_to(distribution):
+        raise ValueError("Native publish output must be outside the Python distribution.")
+    if (distribution / "native").exists():
+        raise RuntimeError("The Python distribution already contains a native/ directory.")
+    native_payload = native_entries(native_publish)
+    # The native client starts the bundled engine; a launcher without its
+    # runtime would leave the window permanently waiting for an engine.
+    internal = distribution / "_internal"
+    if not internal.is_dir() or not any(internal.glob("python*.dll")):
+        raise FileNotFoundError("The Store package requires the installed Python runtime DLL.")
 
     # Windows target paths are case-insensitive; reject collisions and symlinks
     # before emitting a partial staging layout.
@@ -182,7 +169,6 @@ def stage(
         publisher=publisher,
         publisher_display_name=publisher_display_name,
         version=version,
-        native_entrypoint_evaluation=native_entrypoint_evaluation,
     )
     output_dir.mkdir(parents=True, exist_ok=True)
     manifest = output_dir / "AppxManifest.xml"
@@ -200,12 +186,7 @@ def stage(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--distribution", required=True, type=Path)
-    parser.add_argument("--native-publish-dir", type=Path)
-    parser.add_argument(
-        "--native-entrypoint-evaluation",
-        action="store_true",
-        help="Isolated unsigned native launch candidate, never the shipping Store package.",
-    )
+    parser.add_argument("--native-publish-dir", required=True, type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--identity-name", required=True)
     parser.add_argument("--publisher", required=True)
@@ -221,7 +202,6 @@ def main(argv: list[str] | None = None) -> int:
             publisher_display_name=args.publisher_display_name,
             version=args.version,
             native_publish=args.native_publish_dir,
-            native_entrypoint_evaluation=args.native_entrypoint_evaluation,
         )
     )
     return 0

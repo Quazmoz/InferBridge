@@ -1,4 +1,4 @@
-"""The Store manifest must stay valid and match the installed-mode layout."""
+"""The Store manifest must stay valid and launch the native client beside the engine."""
 
 from __future__ import annotations
 
@@ -10,11 +10,44 @@ from app.paths import resolve_runtime_paths
 from scripts.msix_package import ASSETS, msix_version, native_entries, render_manifest, stage
 
 FOUNDATION = "{http://schemas.microsoft.com/appx/manifest/foundation/windows10}"
+DESKTOP = "{http://schemas.microsoft.com/appx/manifest/desktop/windows10}"
 IDENTITY = {
     "identity_name": "Quazmoz.InferBridge",
     "publisher": "CN=00000000-0000-0000-0000-000000000000",
     "publisher_display_name": 'Quazmoz & "Co"',
 }
+NATIVE_RUNTIME = (
+    "InferBridge.Native.exe",
+    "InferBridge.Native.deps.json",
+    "InferBridge.Native.runtimeconfig.json",
+    "coreclr.dll",
+)
+
+
+def _python_dist(root):
+    (root / "_internal").mkdir(parents=True)
+    (root / "InferBridge.exe").write_bytes(b"MZ")
+    (root / "_internal" / "python311.dll").write_bytes(b"MZ")
+    return root
+
+
+def _native_publish(root):
+    (root / "runtimes" / "win-x64").mkdir(parents=True)
+    for filename in NATIVE_RUNTIME:
+        (root / filename).write_bytes(b"MZ")
+    (root / "runtimes" / "win-x64" / "runtime.dll").write_bytes(b"MZ")
+    return root
+
+
+def _stage(tmp_path, output="msix", **overrides):
+    arguments = {
+        "distribution": tmp_path / "dist",
+        "native_publish": tmp_path / "native-publish",
+        "output_dir": tmp_path / output,
+        "version": "1.0.0",
+        **IDENTITY,
+    }
+    return stage(**{**arguments, **overrides})
 
 
 def test_semantic_versions_map_to_store_versions_with_zero_revision():
@@ -24,7 +57,7 @@ def test_semantic_versions_map_to_store_versions_with_zero_revision():
         msix_version("1.2.70000")
 
 
-def test_manifest_is_well_formed_and_escapes_partner_center_values():
+def test_manifest_launches_native_client_and_keeps_engine_startup_task():
     root = ET.fromstring(render_manifest(version="1.0.0", **IDENTITY))
     identity = root.find(f"{FOUNDATION}Identity")
     assert identity.get("Name") == "Quazmoz.InferBridge"
@@ -33,10 +66,14 @@ def test_manifest_is_well_formed_and_escapes_partner_center_values():
         'Quazmoz & "Co"'
     )
     application = root.find(f"{FOUNDATION}Applications/{FOUNDATION}Application")
-    assert application.get("Executable") == "InferBridge.exe"
+    # The Store rejected a browser-shell primary UI; the package opens the WinUI client.
+    assert application.get("Executable") == r"native\InferBridge.Native.exe"
+    startup = application.find(f"{FOUNDATION}Extensions/{DESKTOP}Extension")
+    assert startup.get("Executable") == "InferBridge.exe"
     capabilities = root.find(f"{FOUNDATION}Capabilities")
     assert [item.get("Name") for item in capabilities] == ["runFullTrust"]
-    assert "WriteVirtualization" not in ET.tostring(root, encoding="unicode")
+    text = ET.tostring(root, encoding="unicode")
+    assert "WriteVirtualization" not in text and "unvirtualizedResources" not in text
 
 
 def test_manifest_rejects_values_partner_center_would_not_issue():
@@ -46,21 +83,21 @@ def test_manifest_rejects_values_partner_center_would_not_issue():
         render_manifest(version="1.0.0", **{**IDENTITY, "identity_name": "a b"})
 
 
-def test_stage_maps_every_built_file_and_refuses_portable_layouts(tmp_path):
-    dist = tmp_path / "dist"
-    (dist / "_internal").mkdir(parents=True)
-    (dist / "InferBridge.exe").write_bytes(b"MZ")
-    (dist / "_internal" / "python311.dll").write_bytes(b"MZ")
+def test_stage_maps_engine_native_client_and_assets(tmp_path):
+    _python_dist(tmp_path / "dist")
+    _native_publish(tmp_path / "native-publish")
 
-    mapping = stage(distribution=dist, output_dir=tmp_path / "msix", version="1.0.0", **IDENTITY)
+    mapping = _stage(tmp_path)
 
     text = mapping.read_text(encoding="utf-8")
     assert '"InferBridge.exe"' in text and '"_internal\\python311.dll"' in text
+    assert '"native\\InferBridge.Native.exe"' in text
+    assert '"native\\runtimes\\win-x64\\runtime.dll"' in text
     assert all(f'"Assets\\{name}"' in text for name in ASSETS)
 
-    (dist / "portable.flag").write_text("portable")
+    (tmp_path / "dist" / "portable.flag").write_text("portable")
     with pytest.raises(RuntimeError, match="installed-mode"):
-        stage(distribution=dist, output_dir=tmp_path / "msix2", version="1.0.0", **IDENTITY)
+        _stage(tmp_path, output="msix2")
 
 
 def test_store_data_root_preserves_downloads_without_appdata_virtualization(tmp_path, monkeypatch):
@@ -79,194 +116,56 @@ def test_store_data_root_preserves_downloads_without_appdata_virtualization(tmp_
     )
 
 
-def test_native_payload_stages_without_changing_store_entrypoint(tmp_path):
-    dist = tmp_path / "python-dist"
-    dist.mkdir()
-    (dist / "InferBridge.exe").write_bytes(b"MZ")
+def test_stage_rejects_incomplete_native_or_engine_payload_without_partial_output(tmp_path):
+    dist = _python_dist(tmp_path / "dist")
     native = tmp_path / "native-publish"
-    (native / "runtimes" / "win-x64").mkdir(parents=True)
-    (native / "InferBridge.Native.exe").write_bytes(b"MZ")
-    (native / "InferBridge.Native.deps.json").write_text("{}")
-    (native / "InferBridge.Native.runtimeconfig.json").write_text("{}")
-    (native / "coreclr.dll").write_bytes(b"MZ")
-    (native / "runtimes" / "win-x64" / "runtime.dll").write_bytes(b"MZ")
-
-    mapping = stage(
-        distribution=dist,
-        native_publish=native,
-        output_dir=tmp_path / "msix-candidate",
-        version="1.0.0",
-        **IDENTITY,
-    )
-    text = mapping.read_text(encoding="utf-8")
-    assert '"InferBridge.exe"' in text
-    assert '"native\\InferBridge.Native.exe"' in text
-    assert '"native\\runtimes\\win-x64\\runtime.dll"' in text
-    manifest = ET.parse(mapping.parent / "AppxManifest.xml").getroot()
-    application = manifest.find(f"{FOUNDATION}Applications/{FOUNDATION}Application")
-    assert application.get("Executable") == "InferBridge.exe"
-    assert "unvirtualizedResources" not in ET.tostring(manifest, encoding="unicode")
-
-    (dist / "native").mkdir()
-    with pytest.raises(RuntimeError, match="already contains"):
-        stage(
-            distribution=dist,
-            native_publish=native,
-            output_dir=tmp_path / "msix-duplicate",
-            version="1.0.0",
-            **IDENTITY,
-        )
-
-
-def test_native_payload_rejects_missing_executable_and_nested_layout(tmp_path):
-    native = tmp_path / "native"
     native.mkdir()
     with pytest.raises(FileNotFoundError, match="InferBridge.Native.exe"):
         native_entries(native)
-
-    dist = tmp_path / "python-dist"
-    dist.mkdir()
-    (dist / "InferBridge.exe").write_bytes(b"MZ")
-    nested = dist / "staged-native"
-    nested.mkdir()
-    (nested / "InferBridge.Native.exe").write_bytes(b"MZ")
-    with pytest.raises(ValueError, match="outside"):
-        stage(
-            distribution=dist,
-            native_publish=nested,
-            output_dir=tmp_path / "msix",
-            version="1.0.0",
-            **IDENTITY,
-        )
-
-
-def test_native_evaluation_changes_only_generated_manifest_and_requires_complete_payload(tmp_path):
-    dist = tmp_path / "python-dist"
-    internal = dist / "_internal"
-    internal.mkdir(parents=True)
-    (dist / "InferBridge.exe").write_bytes(b"MZ")
-    (internal / "python311.dll").write_bytes(b"MZ")
-    native = tmp_path / "native-publish"
-    native.mkdir()
-    for filename in (
-        "InferBridge.Native.exe",
-        "InferBridge.Native.deps.json",
-        "InferBridge.Native.runtimeconfig.json",
-        "coreclr.dll",
-    ):
-        (native / filename).write_bytes(b"payload")
-
-    with pytest.raises(ValueError, match="requires a native publish"):
-        stage(
-            distribution=dist,
-            output_dir=tmp_path / "missing-native",
-            version="1.0.0",
-            native_entrypoint_evaluation=True,
-            **IDENTITY,
-        )
-
-    mapping = stage(
-        distribution=dist,
-        native_publish=native,
-        output_dir=tmp_path / "candidate",
-        version="1.0.0",
-        native_entrypoint_evaluation=True,
-        **IDENTITY,
-    )
-    manifest = ET.parse(mapping.parent / "AppxManifest.xml").getroot()
-    app = manifest.find(f"{FOUNDATION}Applications/{FOUNDATION}Application")
-    assert app.get("Executable") == r"native\InferBridge.Native.exe"
-    startup = app.find(
-        f"{FOUNDATION}Extensions/"
-        "{http://schemas.microsoft.com/appx/manifest/desktop/windows10}Extension"
-    )
-    assert startup is not None
-    assert startup.get("Executable") == r"native\InferBridge.Native.exe"
-    assert r'"native\InferBridge.Native.exe"' in mapping.read_text(encoding="utf-8")
-    assert r'"_internal\python311.dll"' in mapping.read_text(encoding="utf-8")
-
-    # No source template change; the normal Store entrypoint remains Python.
-    default = ET.fromstring(render_manifest(version="1.0.0", **IDENTITY))
-    assert (
-        default.find(f"{FOUNDATION}Applications/{FOUNDATION}Application").get("Executable")
-        == "InferBridge.exe"
-    )
-
-
-def test_native_evaluation_rejects_missing_runtime_without_partial_mapping(tmp_path):
-    dist = tmp_path / "python-dist"
-    dist.mkdir()
-    (dist / "InferBridge.exe").write_bytes(b"MZ")
-    native = tmp_path / "native"
-    native.mkdir()
     (native / "InferBridge.Native.exe").write_bytes(b"MZ")
-    output = tmp_path / "staging"
     with pytest.raises(FileNotFoundError, match="deps.json"):
-        stage(
-            distribution=dist,
-            native_publish=native,
-            output_dir=output,
-            version="1.0.0",
-            native_entrypoint_evaluation=True,
-            **IDENTITY,
-        )
-    assert not output.exists()
+        _stage(tmp_path, output="staging")
+    assert not (tmp_path / "staging").exists()
 
-    for filename in (
-        "InferBridge.Native.deps.json",
-        "InferBridge.Native.runtimeconfig.json",
-        "coreclr.dll",
-    ):
-        (native / filename).write_bytes(b"payload")
+    _native_publish(tmp_path / "native-ok")
+    (dist / "_internal" / "python311.dll").unlink()
     with pytest.raises(FileNotFoundError, match="Python runtime DLL"):
-        stage(
-            distribution=dist,
-            native_publish=native,
-            output_dir=output,
-            version="1.0.0",
-            native_entrypoint_evaluation=True,
-            **IDENTITY,
-        )
-    assert not output.exists()
+        _stage(tmp_path, output="staging", native_publish=tmp_path / "native-ok")
+    assert not (tmp_path / "staging").exists()
+
+
+def test_stage_rejects_overlapping_native_and_engine_layouts(tmp_path):
+    dist = _python_dist(tmp_path / "dist")
+    nested = _native_publish(dist / "staged-native")
+    with pytest.raises(ValueError, match="outside"):
+        _stage(tmp_path, native_publish=nested)
+
+    native = _native_publish(tmp_path / "native-publish")
+    (dist / "native").mkdir()
+    with pytest.raises(RuntimeError, match="already contains"):
+        _stage(tmp_path, native_publish=native)
 
 
 def test_staging_rejects_nested_output_and_case_insensitive_collisions(tmp_path):
-    dist = tmp_path / "dist"
-    dist.mkdir()
-    (dist / "InferBridge.exe").write_bytes(b"MZ")
+    dist = _python_dist(tmp_path / "dist")
+    _native_publish(tmp_path / "native-publish")
     with pytest.raises(ValueError, match="outside"):
-        stage(
-            distribution=dist,
-            output_dir=dist / "stage",
-            version="1.0.0",
-            **IDENTITY,
-        )
+        _stage(tmp_path, output_dir=dist / "stage")
 
     (dist / "ASSETS").mkdir()
     (dist / "ASSETS" / "StoreLogo.png").write_bytes(b"bad")
     with pytest.raises(RuntimeError, match="collides"):
-        stage(
-            distribution=dist,
-            output_dir=tmp_path / "stage",
-            version="1.0.0",
-            **IDENTITY,
-        )
+        _stage(tmp_path, output="stage")
     assert not (tmp_path / "stage").exists()
 
 
 def test_staging_rejects_symlinked_python_payload(tmp_path):
-    dist = tmp_path / "dist"
-    dist.mkdir()
-    (dist / "InferBridge.exe").write_bytes(b"MZ")
+    dist = _python_dist(tmp_path / "dist")
+    _native_publish(tmp_path / "native-publish")
     link = dist / "outside.txt"
     try:
         link.symlink_to(tmp_path / "anything")
     except (OSError, NotImplementedError):
         pytest.skip("Symbolic links not available in this test environment.")
     with pytest.raises(RuntimeError, match="symbolic links"):
-        stage(
-            distribution=dist,
-            output_dir=tmp_path / "msix",
-            version="1.0.0",
-            **IDENTITY,
-        )
+        _stage(tmp_path)

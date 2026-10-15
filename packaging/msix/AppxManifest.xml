@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Microsoft Store (MSIX) manifest for the PyInstaller one-directory build.
+  Microsoft Store (MSIX) manifest. The application is the native WinUI client under
+  native\; it starts the bundled PyInstaller engine (InferBridge.exe) beside it.
   scripts/msix_package.py fills the double-brace tokens; Identity Name, Publisher, and
   PublisherDisplayName must match Partner Center > Product identity exactly.
 
@@ -30,7 +31,7 @@
   </Resources>
 
   <Applications>
-    <Application Id="InferBridge" Executable="InferBridge.exe" EntryPoint="Windows.FullTrustApplication">
+    <Application Id="InferBridge" Executable="native\InferBridge.Native.exe" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
         DisplayName="InferBridge"
         Description="Local OpenAI-compatible AI server powered by OpenVINO for Intel CPU, GPU, and NPU."
@@ -40,7 +41,8 @@
         <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
       </uap:VisualElements>
       <Extensions>
-        <!-- Off by default; users turn it on in Settings > Apps > Startup. -->
+        <!-- Off by default; users turn it on in Settings > Apps > Startup. It starts the
+             engine and tray, which open the native window. -->
         <desktop:Extension Category="windows.startupTask" Executable="InferBridge.exe" EntryPoint="Windows.FullTrustApplication">
           <desktop:StartupTask TaskId="InferBridgeStartup" Enabled="false" DisplayName="InferBridge" />
         </desktop:Extension>

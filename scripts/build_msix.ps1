@@ -3,7 +3,6 @@ param(
     [Parameter(Mandatory = $true)][string]$Version,
     [string]$DistributionPath = "dist\InferBridge",
     [string]$NativePublishDirectory = "",
-    [switch]$NativeEntrypointEvaluation,
     [string]$OutputDirectory = "",
     [string]$IdentityName = $env:INFERBRIDGE_MSIX_IDENTITY_NAME,
     [string]$Publisher = $env:INFERBRIDGE_MSIX_PUBLISHER,
@@ -11,9 +10,11 @@ param(
     [string]$Python = "python"
 )
 
-# Packs the installed-mode PyInstaller layout into an unsigned MSIX for Microsoft Store
-# submission. The Store re-signs the package with a Microsoft certificate after
-# certification, so no certificate is involved here. See docs/MICROSOFT_STORE.md.
+# Packs the native WinUI client (native\, the application entrypoint) and the installed-mode
+# PyInstaller engine into an unsigned MSIX for Microsoft Store submission. Without
+# -NativePublishDirectory the native client is published here with the .NET 10 SDK.
+# The Store re-signs the package with a Microsoft certificate after certification,
+# so no certificate is involved here. See docs/MICROSOFT_STORE.md.
 
 $ErrorActionPreference = "Stop"
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
@@ -24,28 +25,23 @@ foreach ($Pair in @(@("IdentityName", $IdentityName), @("Publisher", $Publisher)
         throw "-$($Pair[0]) is required. Copy it from Partner Center > Product identity."
     }
 }
-if ($NativeEntrypointEvaluation -and -not $NativePublishDirectory) {
-    throw "-NativeEntrypointEvaluation requires -NativePublishDirectory."
-}
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $Root "artifacts\release-$Version" }
-$Stage = if ($NativeEntrypointEvaluation) {
-    Join-Path $Root "build\msix-native-evaluation"
-} else {
-    Join-Path $Root "build\msix"
+if (-not $NativePublishDirectory) {
+    $NativePublishDirectory = Join-Path $Root "build\native-win-x64"
+    Remove-Item $NativePublishDirectory -Recurse -Force -ErrorAction SilentlyContinue
+    & dotnet publish windows-native\InferBridge.Native\InferBridge.Native.csproj --configuration Release `
+        --runtime win-x64 --self-contained true -p:Platform=x64 -o $NativePublishDirectory
+    if ($LASTEXITCODE -ne 0) { throw "Native client publish failed. Install the .NET 10 SDK." }
 }
+$Stage = Join-Path $Root "build\msix"
 Remove-Item $Stage -Recurse -Force -ErrorAction SilentlyContinue
 
 $StageArguments = @(
     "scripts/msix_package.py", "--distribution", $DistributionPath, "--output-dir", $Stage,
     "--identity-name", $IdentityName, "--publisher", $Publisher,
-    "--publisher-display-name", $PublisherDisplayName, "--version", $Version
+    "--publisher-display-name", $PublisherDisplayName, "--version", $Version,
+    "--native-publish-dir", $NativePublishDirectory
 )
-if ($NativePublishDirectory) {
-    $StageArguments += @("--native-publish-dir", $NativePublishDirectory)
-}
-if ($NativeEntrypointEvaluation) {
-    $StageArguments += "--native-entrypoint-evaluation"
-}
 $Mapping = (& $Python @StageArguments | Select-Object -Last 1)
 if ($LASTEXITCODE -ne 0) { throw "MSIX staging failed." }
 
@@ -54,12 +50,7 @@ $MakeAppx = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\ma
 if (-not $MakeAppx) { throw "makeappx.exe was not found. Install the Windows 10/11 SDK." }
 
 New-Item $OutputDirectory -ItemType Directory -Force | Out-Null
-$PackageName = if ($NativeEntrypointEvaluation) {
-    "InferBridge-$Version-windows-x64-native-evaluation-unsigned.msix"
-} else {
-    "InferBridge-$Version-windows-x64.msix"
-}
-$Package = Join-Path $OutputDirectory $PackageName
+$Package = Join-Path $OutputDirectory "InferBridge-$Version-windows-x64.msix"
 & $MakeAppx.FullName pack /o /f $Mapping /p $Package | Out-Null
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path $Package)) { throw "makeappx pack failed." }
 Write-Host "Store package: $Package"
