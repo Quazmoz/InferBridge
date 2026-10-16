@@ -196,11 +196,19 @@
                     <StackPanel Spacing="10">
                         <TextBlock Text="Chat" FontSize="28" FontWeight="SemiBold" />
                         <TextBlock Text="Saved conversations" FontWeight="SemiBold" FontSize="16" />
+                        <TextBox x:Name="SavedChatsSearch" Header="Search saved conversations"
+                                 PlaceholderText="Search titles, models, and messages on this PC"
+                                 TextChanged="SavedChatsSearch_TextChanged" MaxLength="120"
+                                 MinWidth="230" MaxWidth="460"
+                                 HorizontalAlignment="Left"
+                                 AutomationProperties.Name="Search local saved conversations" />
                         <StackPanel Orientation="Horizontal" Spacing="10">
                             <ComboBox x:Name="SavedChatsPicker" PlaceholderText="Select a saved conversation"
                                       MinWidth="230" MaxWidth="430" HorizontalAlignment="Left"
                                       AutomationProperties.Name="Select a saved conversation"
                                       SelectionChanged="SavedChatsPicker_SelectionChanged" />
+                            <Button x:Name="RenameSavedChatButton" Content="Rename"
+                                    IsEnabled="False" Click="RenameSavedChatButton_Click" />
                             <Button x:Name="DeleteSavedChatButton" Content="Delete saved chat"
                                     IsEnabled="False" Click="DeleteSavedChatButton_Click" />
                         </StackPanel>

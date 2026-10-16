@@ -71,6 +71,8 @@ public sealed partial class MainWindow : Window
             SaveHistoryToggle.IsEnabled = false;
             _updatingSavedChats = false;
             SavedChatsPicker.IsEnabled = false;
+            SavedChatsSearch.IsEnabled = false;
+            RenameSavedChatButton.IsEnabled = false;
             DeleteSavedChatButton.IsEnabled = false;
             ShowChatInfo("Saved history unavailable",
                 "Could not read this installation's history storage. Existing files were not modified.",
@@ -529,7 +531,7 @@ public sealed partial class MainWindow : Window
     private void RefreshSavedChats(string? selectedId = null)
     {
         if (_conversationStore is null || !_historyAvailable) return;
-        var chats = _conversationStore.ReadAll();
+        var chats = _conversationStore.Find(SavedChatsSearch.Text);
         _updatingSavedChats = true;
         try
         {
@@ -544,10 +546,33 @@ public sealed partial class MainWindow : Window
                 SavedChatsPicker.Items.Add(item);
                 if (chat.Id == selectedId) SavedChatsPicker.SelectedItem = item;
             }
-            DeleteSavedChatButton.IsEnabled = !_chatBusy
+            bool canEdit = !_chatBusy && !_quitting
                 && SavedChatsPicker.SelectedItem is ComboBoxItem;
+            DeleteSavedChatButton.IsEnabled = canEdit;
+            RenameSavedChatButton.IsEnabled = canEdit;
         }
         finally { _updatingSavedChats = false; }
+    }
+
+    private void SavedChatsSearch_TextChanged(object sender, TextChangedEventArgs args)
+    {
+        if (_updatingSavedChats || !_historyAvailable) return;
+        try { RefreshSavedChats(); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException
+            or InvalidDataException or ArgumentException or System.Text.Json.JsonException)
+        {
+            // External edits or damaged files must not crash the UI or overwrite history.
+            _historyAvailable = false;
+            SavedChatsSearch.IsEnabled = false;
+            SavedChatsPicker.IsEnabled = false;
+            RenameSavedChatButton.IsEnabled = false;
+            DeleteSavedChatButton.IsEnabled = false;
+            SaveHistoryToggle.IsEnabled = false;
+            SaveHistoryToggle.IsChecked = false;
+            ShowChatInfo("Saved history unavailable",
+                "Could not safely read local history. Existing files were preserved.",
+                InfoBarSeverity.Warning);
+        }
     }
 
     private void SaveHistoryToggle_Changed(object sender, RoutedEventArgs args)
@@ -584,6 +609,10 @@ public sealed partial class MainWindow : Window
             _historyAvailable = false;
             SaveHistoryToggle.IsEnabled = false;
             SaveHistoryToggle.IsChecked = false;
+            SavedChatsSearch.IsEnabled = false;
+            SavedChatsPicker.IsEnabled = false;
+            RenameSavedChatButton.IsEnabled = false;
+            DeleteSavedChatButton.IsEnabled = false;
             ShowChatInfo("Chat generated, but not saved",
                 "History storage could not be written. The current chat remains open; existing files were preserved.",
                 InfoBarSeverity.Warning);
@@ -658,9 +687,67 @@ public sealed partial class MainWindow : Window
             _historyAvailable = false;
             SaveHistoryToggle.IsChecked = false;
             SaveHistoryToggle.IsEnabled = false;
+            SavedChatsSearch.IsEnabled = false;
+            SavedChatsPicker.IsEnabled = false;
+            RenameSavedChatButton.IsEnabled = false;
             DeleteSavedChatButton.IsEnabled = false;
             ShowChatInfo("Could not delete saved conversation",
                 "Local history was not safely updated. The existing file was preserved.",
+                InfoBarSeverity.Error);
+        }
+    }
+
+    private async void RenameSavedChatButton_Click(object sender, RoutedEventArgs args)
+    {
+        if (_chatBusy || _quitting || !_historyAvailable || _conversationStore is null
+            || SavedChatsPicker.SelectedItem is not ComboBoxItem
+                { Tag: NativeConversationStore.SavedChat saved }) return;
+        var name = new TextBox
+        {
+            Header = "Conversation title",
+            Text = saved.Title,
+            MaxLength = 80,
+            MinWidth = 300,
+        };
+        var dialog = new ContentDialog
+        {
+            XamlRoot = ((FrameworkElement)Content).XamlRoot,
+            Title = "Rename saved conversation",
+            Content = name,
+            PrimaryButtonText = "Save title",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        name.TextChanged += (_, _) =>
+            dialog.IsPrimaryButtonEnabled = !string.IsNullOrWhiteSpace(name.Text);
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        try
+        {
+            if (!_conversationStore.Rename(saved.Id, name.Text))
+                throw new IOException("Saved conversation is no longer available.");
+            SavedChatsSearch.Text = string.Empty;
+            RefreshSavedChats(saved.Id);
+            ShowChatInfo("Conversation renamed", "The title was saved locally.",
+                InfoBarSeverity.Success);
+        }
+        catch (ArgumentException)
+        {
+            ShowChatInfo("Invalid conversation title",
+                "Enter a readable title with up to 80 characters.",
+                InfoBarSeverity.Warning);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException
+            or InvalidDataException or System.Text.Json.JsonException)
+        {
+            _historyAvailable = false;
+            SaveHistoryToggle.IsChecked = false;
+            SaveHistoryToggle.IsEnabled = false;
+            SavedChatsSearch.IsEnabled = false;
+            SavedChatsPicker.IsEnabled = false;
+            RenameSavedChatButton.IsEnabled = false;
+            DeleteSavedChatButton.IsEnabled = false;
+            ShowChatInfo("Could not rename saved conversation",
+                "History storage was not safely updated; existing files were preserved.",
                 InfoBarSeverity.Error);
         }
     }
@@ -771,8 +858,11 @@ public sealed partial class MainWindow : Window
             && (_turns.Count == 0 || SelectedModelId == _conversationModelId);
         CancelButton.IsEnabled = _chatBusy;
         SavedChatsPicker.IsEnabled = !_chatBusy && !_quitting && _historyAvailable;
-        DeleteSavedChatButton.IsEnabled = !_chatBusy && !_quitting
-            && _historyAvailable && SavedChatsPicker.SelectedItem is ComboBoxItem;
+        SavedChatsSearch.IsEnabled = !_chatBusy && !_quitting && _historyAvailable;
+        bool canEditSavedChat = !_chatBusy && !_quitting && _historyAvailable
+            && SavedChatsPicker.SelectedItem is ComboBoxItem;
+        DeleteSavedChatButton.IsEnabled = canEditSavedChat;
+        RenameSavedChatButton.IsEnabled = canEditSavedChat;
         ChatModelPicker.IsEnabled = !_chatBusy && !_isManaging && !_isRefreshing && !_quitting;
         WebUiButton.IsEnabled = _engineConnected && !_quitting && !_openingWebUi;
         ScanHardwareButton.IsEnabled = _engineConnected && !_quitting && !_scanningDevices;

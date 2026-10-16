@@ -61,7 +61,8 @@ internal sealed class NativeConversationStore
         {
             if (chat is null || !Guid.TryParseExact(chat.Id, "N", out _)
                 || !ids.Add(chat.Id) || string.IsNullOrWhiteSpace(chat.ModelId)
-                || chat.ModelId.Length > 512 || chat.Title is null
+                || chat.ModelId.Length > 512 || string.IsNullOrWhiteSpace(chat.Title)
+                || chat.Title.Any(char.IsControl)
                 || chat.Title.Length is < 1 or > 80 || chat.Turns is null
                 || chat.Turns.Count is < 2 or > 20 || chat.Turns.Count % 2 != 0
                 || chat.UpdatedUtc == default
@@ -76,6 +77,21 @@ internal sealed class NativeConversationStore
             }
         }
         return envelope.Conversations;
+    }
+
+    // Local-only lookup: search stays on the user's PC, never the inference API.
+    internal IReadOnlyList<SavedChat> Find(string? query)
+    {
+        string search = query?.Trim() ?? string.Empty;
+        if (search.Length > 120)
+            throw new ArgumentException("Search query is too long.", nameof(query));
+        var chats = ReadAll();
+        if (search.Length == 0) return chats;
+        return chats.Where(chat =>
+            chat.Title.Contains(search, StringComparison.OrdinalIgnoreCase)
+            || chat.ModelId.Contains(search, StringComparison.OrdinalIgnoreCase)
+            || chat.Turns.Any(turn => turn.Content.Contains(
+                search, StringComparison.OrdinalIgnoreCase))).ToList();
     }
 
     internal static SavedChat Create(string id, string modelId, IReadOnlyList<ChatTurn> turns)
@@ -99,9 +115,32 @@ internal sealed class NativeConversationStore
 
     internal void Save(SavedChat chat)
     {
-        var chats = ReadAll().Where(row => row.Id != chat.Id).ToList();
+        var chats = ReadAll().ToList();
+        var existing = chats.FirstOrDefault(row => row.Id == chat.Id);
+        // Continuing a chat must not erase its user-edited title.
+        if (existing is not null) chat = chat with { Title = existing.Title };
+        chats.RemoveAll(row => row.Id == chat.Id);
         chats.Insert(0, chat);
         Write(chats.Take(MaximumConversations).ToList());
+    }
+
+    internal bool Rename(string id, string title)
+    {
+        if (!Guid.TryParseExact(id, "N", out _)) return false;
+        ArgumentNullException.ThrowIfNull(title);
+        string normalized = string.Join(" ", title.Split(
+            (char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        if (normalized.Length is < 1 or > 80 || normalized.Any(char.IsControl))
+            throw new ArgumentException("Title must contain 1–80 readable characters.", nameof(title));
+        var chats = ReadAll().ToList();
+        int index = chats.FindIndex(row => row.Id == id);
+        if (index < 0) return false;
+        if (chats[index].Title == normalized) return true;
+        var renamed = chats[index] with { Title = normalized, UpdatedUtc = DateTimeOffset.UtcNow };
+        chats.RemoveAt(index);
+        chats.Insert(0, renamed);
+        Write(chats);
+        return true;
     }
 
     internal bool Delete(string id)

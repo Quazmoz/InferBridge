@@ -39,14 +39,34 @@ internal static class NativeConversationContractTests
             && opened[0].Title == "How does the GPU work?",
             "restart did not recover the complete native transcript");
 
+        Check(storage.Find("gpu").Count == 1
+            && storage.Find("MODEL-A").Count == 1
+            && storage.Find("executed by the selected").Count == 1
+            && storage.Find("nothing-matches").Count == 0,
+            "local search did not cover titles, models, messages, or misses");
+        Check(storage.Rename(id, "  My    GPU\tNotes  "),
+            "existing conversation could not be renamed");
+        Check(storage.ReadAll()[0].Title == "My GPU Notes"
+            && storage.Find("my gpu notes").Count == 1,
+            "renamed title was not normalized or indexed");
+        Expect<ArgumentException>(() => storage.Rename(id, new string('x', 81)),
+            "overlong title was accepted");
+        Expect<ArgumentException>(() => storage.Rename(id, "   "),
+            "empty title was accepted");
+        Expect<ArgumentException>(() => storage.Find(new string('x', 121)),
+            "unbounded history search was accepted");
+        Check(!storage.Rename(Guid.NewGuid().ToString("N"), "Absent"),
+            "renaming a missing conversation unexpectedly succeeded");
+
         var extended = new List<ChatTurn>(turns)
         {
             new("user", "What about CPU?"),
             new("assistant", "CPU is supported as a target."),
         };
         storage.Save(NativeConversationStore.Create(id, "model-a", extended));
-        Check(storage.ReadAll().Count == 1 && storage.ReadAll()[0].Turns.Count == 4,
-            "saving the same chat duplicated or lost turns");
+        Check(storage.ReadAll().Count == 1 && storage.ReadAll()[0].Turns.Count == 4
+            && storage.ReadAll()[0].Title == "My GPU Notes",
+            "continuing a renamed chat lost its transcript or edited title");
         Check(!File.ReadAllText(filename).Contains("api-key", StringComparison.Ordinal),
             "history unexpectedly stored credentials");
         Check(!Directory.GetFiles(folder).Any(f => f.EndsWith(".tmp", StringComparison.Ordinal)),
