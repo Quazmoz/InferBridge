@@ -41,6 +41,19 @@ hash, release channel, and Azure run ID. The channel is `nightly` for `dev`,
 `beta` for `beta`, and `stable` for `main`. This JSON is an **audit aid**,
 not a signed attestation.
 
+**Azure Python version:** The unsigned Azure evaluation builder uses **64-bit Python 3.12**.
+OpenVINO, OpenVINO GenAI, and PyTorch pinned by `requirements/release.txt`
+publish Windows Python 3.12 wheels, but this is a **new candidate build
+environment**, not a previously qualified runtime. Its version is checked
+immediately after `UsePythonVersion@0`, and the pinned Ruff lint and formatting
+checks run before Inno Setup or the full ML dependency installation. The release
+builder repeats its original full checks after installing the pinned environment.
+No GitHub Windows workflow or production channel was upgraded as part of this
+Azure-only change. Verify `pip check`, full tests, packaged installer/portable
+smoke tests and model inference on real Windows hardware before considering
+Python 3.12 artifacts qualified. Python 3.13 is deferred until the full
+conversion and packaging stack is validated.
+
 **Manual branch selection:** The YAML currently lives on `dev`. Select `dev`
 to build and evaluate `dev` artifacts. To build an official `main` candidate,
 first promote the reviewed pipeline YAML to `main` under the repository's

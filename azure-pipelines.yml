@@ -50,9 +50,24 @@ jobs:
 
   - task: UsePythonVersion@0
     inputs:
-      versionSpec: '3.11'
+      versionSpec: '3.12'
       architecture: 'x64'
-    displayName: 'Use Python 3.11'
+    displayName: 'Use Python 3.12'
+
+  # Verify the candidate interpreter and cheap quality gates before installing
+  # the large pinned OpenVINO / PyTorch release environment or Inno Setup.
+  # Ruff version must match requirements/release.txt.
+  - pwsh: |
+      $ErrorActionPreference = 'Stop'
+      python -c "import sys; assert sys.version_info[:2] == (3, 12) and sys.maxsize > 2**32, 'Expected 64-bit Python 3.12'; print(sys.version)"
+      if ($LASTEXITCODE -ne 0) { throw 'Azure release interpreter must be 64-bit Python 3.12.' }
+      python -m pip install --disable-pip-version-check --no-deps ruff==0.16.10
+      if ($LASTEXITCODE -ne 0) { throw 'Pinned Ruff installation failed.' }
+      python -m ruff check .
+      if ($LASTEXITCODE -ne 0) { throw 'Ruff lint failed before release dependency installation.' }
+      python -m ruff format --check .
+      if ($LASTEXITCODE -ne 0) { throw 'Ruff formatting failed before release dependency installation.' }
+    displayName: 'Fast-fail Python 3.12 and Ruff checks'
 
   - pwsh: |
       $ErrorActionPreference = 'Stop'

@@ -72,6 +72,31 @@ def test_windows_lifecycle_manual_run_retains_qualified_dependency_contract() ->
     assert "--no-deps --no-build-isolation ." in lifecycle
 
 
+def test_azure_candidate_uses_python_312_and_fast_fails_pinned_quality_gates() -> None:
+    pipeline = _read("azure-pipelines.yml")
+    release_requirements = _read("requirements/release.txt")
+    pinned_ruff = next(
+        line for line in release_requirements.splitlines() if line.startswith("ruff==")
+    )
+
+    assert "versionSpec: '3.12'" in pipeline
+    assert "displayName: 'Use Python 3.12'" in pipeline
+    assert "sys.version_info[:2] == (3, 12)" in pipeline
+    assert "sys.maxsize > 2**32" in pipeline
+    assert f"python -m pip install --disable-pip-version-check --no-deps {pinned_ruff}" in pipeline
+    assert "python -m ruff check ." in pipeline
+    assert "python -m ruff format --check ." in pipeline
+
+    fast_fail = pipeline.index("displayName: 'Fast-fail Python 3.12 and Ruff checks'")
+    assert fast_fail < pipeline.index("displayName: 'Install Inno Setup'")
+    assert fast_fail < pipeline.index("displayName: 'Prepare qualified release dependencies'")
+
+    # The Azure candidate runtime must not silently migrate the independently
+    # qualified GitHub Windows workflows.
+    github_ci = _read(".github/workflows/ci.yml")
+    assert "Qualified Release Baseline (Windows / Python 3.11)" in github_ci
+
+
 def test_azure_build_binds_config_and_artifacts_to_selected_source_revision() -> None:
     pipeline = _read("azure-pipelines.yml")
 
