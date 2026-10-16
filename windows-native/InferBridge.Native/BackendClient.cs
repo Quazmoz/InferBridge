@@ -559,9 +559,10 @@ internal sealed class BackendClient : IDisposable
             {
                 var first = results[0];
                 string model = ReadString(first, "model_id");
-                string device = ReadString(first, "device");
-                if (model.Length is > 0 and <= 128 && device.Length is > 0 and <= 64)
-                    benchmark = model + " on " + device;
+                string summaryDevice = ReadString(first, "device");
+                if (model.Length is > 0 and <= 128
+                    && summaryDevice.Length is > 0 and <= 64)
+                    benchmark = model + " on " + summaryDevice;
             }
         }
 
