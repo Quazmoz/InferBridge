@@ -26,6 +26,11 @@ public sealed partial class MainWindow
     private bool CanUseGenerationOptions(string? modelId, GenerationOptions options, out string reason)
     {
         reason = "";
+        if (modelId is null)
+        {
+            reason = "Choose and load a generation model in Chat first.";
+            return false;
+        }
         try { options.Validate(); }
         catch (ArgumentException)
         {
@@ -72,10 +77,20 @@ public sealed partial class MainWindow
             SettingsCurrentModel.Text = "Selected model: " + modelId
                 + ". Engine limits not reported; the backend validates each request.";
         bool editable = !_chatBusy && !_quitting && !_closing.IsCancellationRequested;
+        bool generationModel = modelId is not null
+            && SelectedChatModel?.Status == "loaded"
+            && (!_modelPreparationAvailable
+                || !_modelPreparations.TryGetValue(modelId, out var known)
+                || known.Details?.Backend != "openvino-embeddings");
+        if (!generationModel && modelId is not null
+            && _modelPreparationAvailable
+            && _modelPreparations.TryGetValue(modelId, out var detected)
+            && detected.Details?.Backend == "openvino-embeddings")
+            SettingsCurrentModel.Text += " · Embedding models cannot generate chat.";
         MaxTokensBox.IsEnabled = editable;
         TemperatureBox.IsEnabled = editable;
         TopPBox.IsEnabled = editable;
-        ApplyGenerationSettingsButton.IsEnabled = editable;
+        ApplyGenerationSettingsButton.IsEnabled = editable && generationModel;
         ResetGenerationSettingsButton.IsEnabled = editable;
     }
 
