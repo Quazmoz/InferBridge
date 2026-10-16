@@ -35,6 +35,8 @@ public sealed partial class MainWindow : Window
     private bool _engineConnected;
     private bool _openingWebUi;
     private bool _scanningDevices;
+    private bool _operationsBusy;
+    private bool _operationsLoaded;
     private bool _devicesScanned;
     private bool _devicesAvailable;
     private string? _chatLoadError;
@@ -193,6 +195,115 @@ public sealed partial class MainWindow : Window
         OverviewPanel.Visibility = page == "overview" ? Visibility.Visible : Visibility.Collapsed;
         ModelsPanel.Visibility = page == "models" ? Visibility.Visible : Visibility.Collapsed;
         ChatPanel.Visibility = page == "chat" ? Visibility.Visible : Visibility.Collapsed;
+        OperationsPanel.Visibility = page == "operations" ? Visibility.Visible : Visibility.Collapsed;
+        if (page == "operations" && !_operationsLoaded)
+            _ = RefreshOperationsAsync();
+    }
+
+    private async void OperationsRefreshButton_Click(object sender, RoutedEventArgs args) =>
+        await RefreshOperationsAsync();
+
+    private async Task RefreshOperationsAsync()
+    {
+        if (_operationsBusy || _closing.IsCancellationRequested || _quitting) return;
+        _operationsBusy = true;
+        OperationsProgress.IsActive = true;
+        OperationsRefreshButton.IsEnabled = false;
+        DiagnosticsExportButton.IsEnabled = false;
+        try
+        {
+            DesktopOperationsInfo state = await _backend.GetDesktopOperationsAsync(
+                ApiKeyBox.Password, _closing.Token);
+            if (_closing.IsCancellationRequested) return;
+            _operationsLoaded = true;
+            OperationsInfo.Severity = state.ControllerAvailable
+                ? InfoBarSeverity.Success : InfoBarSeverity.Warning;
+            OperationsInfo.Message = state.ControllerAvailable
+                ? "Verified local desktop controller and engine."
+                : "Local engine is available, but the tray controller is unavailable.";
+            OperationsDetails.Text =
+                "InferBridge " + state.Version +
+                "\\nInstallation: " + state.InstallationMode +
+                "\\nServer: " + state.ServerStatus + " · port " + state.ServerPort +
+                "\\nTray controller: " + (state.ControllerAvailable ? "Available" : "Unavailable") +
+                "\\nStart with Windows: " + (state.StartWithWindows ? "Enabled" : "Disabled") +
+                "\\nInference mode: " + (state.Mock ? "Mock (no hardware inference)" : "Hardware backend");
+            OperationsBenchmarks.Text = state.BenchmarkRunning
+                ? "A benchmark is currently running. Refresh to check its result."
+                : state.LatestBenchmark;
+            DiagnosticsResult.Text = "Last diagnostics export: " + state.LastDiagnosticsExport;
+            DiagnosticsExportButton.IsEnabled = true;
+        }
+        catch (Exception) when (_closing.IsCancellationRequested) { }
+        catch (Exception error) when (!_closing.IsCancellationRequested)
+        {
+            _operationsLoaded = false;
+            OperationsInfo.Severity = InfoBarSeverity.Warning;
+            OperationsInfo.Message = "Could not read desktop operations: " + SafeError(error);
+            OperationsDetails.Text = "Reconnect to the local engine, then refresh.";
+            OperationsBenchmarks.Text = "Unavailable until the engine responds.";
+            DiagnosticsExportButton.IsEnabled = false;
+        }
+        finally
+        {
+            _operationsBusy = false;
+            if (!_closing.IsCancellationRequested)
+            {
+                OperationsProgress.IsActive = false;
+                OperationsRefreshButton.IsEnabled = true;
+            }
+        }
+    }
+
+    private async void DiagnosticsExportButton_Click(object sender, RoutedEventArgs args)
+    {
+        if (_operationsBusy || _closing.IsCancellationRequested || _quitting) return;
+        try
+        {
+            var dialog = new ContentDialog
+            {
+                XamlRoot = ((FrameworkElement)Content).XamlRoot,
+                Title = "Create a sanitized diagnostics ZIP?",
+                Content = "The engine saves a support archive locally. It includes sanitized status, configuration, model and hardware details, and logs. Prompts, conversations, keys, tokens and model files are excluded. Review the ZIP before sharing.",
+                PrimaryButtonText = "Create ZIP",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Close,
+            };
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary
+                || _closing.IsCancellationRequested) return;
+            _operationsBusy = true;
+            DiagnosticsExportButton.IsEnabled = false;
+            OperationsRefreshButton.IsEnabled = false;
+            OperationsProgress.IsActive = true;
+            DiagnosticsResult.Text = "Creating the local diagnostics archive…";
+            DiagnosticsExportInfo created = await _backend.ExportDiagnosticsAsync(
+                ApiKeyBox.Password, _closing.Token);
+            if (_closing.IsCancellationRequested) return;
+            DiagnosticsResult.Text = "Created " + created.Filename +
+                ". Review the local ZIP before attaching it to a support request." +
+                (created.CollectionErrors.Count > 0
+                    ? " Some diagnostic categories could not be collected (" +
+                      created.CollectionErrors.Count + ")." : "");
+            OperationsInfo.Severity = InfoBarSeverity.Success;
+            OperationsInfo.Message = "Diagnostics archive created on this computer.";
+        }
+        catch (Exception) when (_closing.IsCancellationRequested) { }
+        catch (Exception error) when (!_closing.IsCancellationRequested)
+        {
+            DiagnosticsResult.Text = "Export failed: " + SafeError(error);
+            OperationsInfo.Severity = InfoBarSeverity.Error;
+            OperationsInfo.Message = "No successful diagnostics export was confirmed.";
+        }
+        finally
+        {
+            _operationsBusy = false;
+            if (!_closing.IsCancellationRequested)
+            {
+                OperationsProgress.IsActive = false;
+                OperationsRefreshButton.IsEnabled = true;
+                DiagnosticsExportButton.IsEnabled = _operationsLoaded;
+            }
+        }
     }
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs args) =>
