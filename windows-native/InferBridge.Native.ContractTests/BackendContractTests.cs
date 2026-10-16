@@ -168,8 +168,9 @@ internal static class BackendContractTests
                     "model deletion was not a POST");
                 Check(request.Headers.Authorization?.Parameter == Key,
                     "model deletion omitted session authentication");
-                Check(request.Content!.ReadAsStringAsync().GetAwaiter().GetResult()
-                    .Contains("\\"model\\":\\"model-a\\"", StringComparison.Ordinal),
+                using var deletePayload = JsonDocument.Parse(
+                    request.Content!.ReadAsStringAsync().GetAwaiter().GetResult());
+                Check(deletePayload.RootElement.GetProperty("model").GetString() == "model-a",
                     "model deletion targeted the wrong model");
             }
             return Task.FromResult(ValidResponse(request));
