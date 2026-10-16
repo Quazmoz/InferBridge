@@ -322,7 +322,7 @@ def test_native_streaming_uses_verified_sse_and_rolls_back_failed_previews():
         ROOT / "windows-native" / "InferBridge.Native.ContractTests" / "BackendContractTests.cs"
     ).read_text(encoding="utf-8")
     assert "stream = true" in backend
-    assert "MediaTypeWithQualityHeaderValue("text/event-stream")" in backend
+    assert 'MediaTypeWithQualityHeaderValue("text/event-stream")' in backend
     assert "HttpCompletionOption.ResponseHeadersRead" in backend
     assert "AllowAutoRedirect = false" in backend
     assert "UseProxy = false" in backend
