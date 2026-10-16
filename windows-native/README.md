@@ -11,9 +11,10 @@ it over verified loopback HTTP.
 - **Chat**: the picker lists downloaded and loaded models with their state.
   Selecting a downloaded model loads it through the engine; chat stays disabled
   until the engine reports it loaded. Live SSE streaming chat, Ctrl+Enter to send,
-  copyable conversation text and cancellation. History stays in memory
+  copyable conversation text and cancellation. Unsaved history stays in memory
   (20 recent messages, bounded prompt budget). Chat previews appear as tokens arrive, but an incomplete, failed or cancelled reply is removed instead of saved into the in-memory conversation. Cancelling the HTTP request
   does not prove server-side inference has stopped.
+- **Saved conversations**: an opt-in native history toggle persists completed user/assistant exchanges as bounded, readable JSON in this installation's data root (`native-conversations.json`), separate from the web browser's local history. The toggle is off for new installations; existing saved files re-enable it on restart. A native picker restores saved conversations with their original model identity and a confirmed Delete action permanently removes a selected chat. Only completed streaming turns are committed. Writes use a temporary file and same-folder atomic replacement; unreadable or malformed history is never overwritten silently. Storage is **not encrypted**, not synced, and may be read by other processes with the same user account's filesystem permissions. Disable saving to stop new writes; delete individual saved conversations to remove them. Up to 40 conversations / 20 turns per conversation are retained.
 - **Model library**: the engine's catalog with readable states. The engine's
   hardware-based recommendation is listed first and preselected.
   **Download and load** uses the engine's convert route (download, convert,
@@ -32,9 +33,9 @@ it over verified loopback HTTP.
 
 ## Feature parity tracking
 
-The web GUI remains available independently. The native Windows app is real WinUI/XAML, not a WebView2 rendering of it. Current native coverage includes chat (bounded SSE streaming with cancellable partial previews), model selection/download/load/unload/delete, inference target selection, device scanning, engine connection, quick benchmark execution, native System Doctor checks and sanitized clipboard reports, and operations/diagnostics export.
+The web GUI remains available independently. The native Windows app is real WinUI/XAML, not a WebView2 rendering of it. Current native coverage includes chat (bounded SSE streaming with cancellable partial previews), model selection/download/load/unload/delete, inference target selection, device scanning, engine connection, quick benchmark execution, native System Doctor checks and sanitized clipboard reports, opt-in persistent saved conversations, and operations/diagnostics export.
 
-Still missing from the native frontend: durable multiple conversations and history, rich Markdown/code rendering, local vision and embeddings workflows, complete model recovery and Hugging Face account management, advanced System Doctor per-model details and remediation actions, multi-model benchmark comparisons/presets and history, context budget planning, storage manager, network/API administration, and other advanced settings. A present backend route does **not** imply that its native interface is implemented. Parity work should reuse existing authenticated backend services and keep the two frontends independently functional.
+Still missing from the native frontend: advanced history search/rename and browser/native history synchronization, rich Markdown/code rendering, local vision and embeddings workflows, complete model recovery and Hugging Face account management, advanced System Doctor per-model details and remediation actions, multi-model benchmark comparisons/presets and history, context budget planning, storage manager, network/API administration, and other advanced settings. A present backend route does **not** imply that its native interface is implemented. Parity work should reuse existing authenticated backend services and keep the two frontends independently functional.
 
 ## Engine handoff and safety
 
