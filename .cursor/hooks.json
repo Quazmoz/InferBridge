@@ -4,17 +4,17 @@
     "postToolUse": [
       {
         "matcher": "Read|Grep|Glob|Search|Shell",
-        "command": "node \"/Users/quinnfavo/Documents/git/InferBridge/.cursor/hooks/graft-hooks.cjs\" cursor-post-tool"
+        "command": "node \".cursor/hooks/graft-hooks.cjs\" cursor-post-tool"
       }
     ],
     "afterMCPExecution": [
       {
-        "command": "node \"/Users/quinnfavo/Documents/git/InferBridge/.cursor/hooks/graft-hooks.cjs\" cursor-mcp"
+        "command": "node \".cursor/hooks/graft-hooks.cjs\" cursor-mcp"
       }
     ],
     "sessionEnd": [
       {
-        "command": "node \"/Users/quinnfavo/Documents/git/InferBridge/.cursor/hooks/graft-hooks.cjs\" cursor-session-end"
+        "command": "node \".cursor/hooks/graft-hooks.cjs\" cursor-session-end"
       }
     ]
   }

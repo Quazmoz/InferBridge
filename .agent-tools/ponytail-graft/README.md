@@ -12,7 +12,7 @@ pin different versions and neither depends on a machine-wide install.
 
 | Package | Pinned version |
 |---|---|
-| `@nanonets/graft` | 0.18.0 |
+| `@nanonets/graft` | 0.23.0 |
 | `@dietrichgebert/ponytail` | 4.9.0 |
 
 Integrity comes from `.agent-tools/ponytail-graft/package-lock.json`; `npm ci`

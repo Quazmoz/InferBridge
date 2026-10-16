@@ -5,6 +5,6 @@
   },
   "dependencies": {
     "@dietrichgebert/ponytail": "4.9.0",
-    "@nanonets/graft": "0.18.0"
+    "@nanonets/graft": "0.23.0"
   }
 }
