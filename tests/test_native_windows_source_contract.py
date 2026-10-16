@@ -478,3 +478,24 @@ def test_native_discovery_to_custom_download_remains_winui_and_engine_owned():
     assert 'PrimaryButtonText = "Register and prepare"' in view
     assert "HuggingFaceDownloadContractTests.RunAsync(root)" in harness
     assert "WebView2" not in view
+
+
+def test_native_model_preparation_is_operation_scoped_and_engine_authoritative():
+    client = (PROJECT / "ModelPreparationClient.cs").read_text(encoding="utf-8")
+    view = (PROJECT / "MainWindow.ModelPreparation.cs").read_text(encoding="utf-8")
+    main = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    xaml = (PROJECT / "MainWindow.xaml").read_text(encoding="utf-8")
+    harness = (
+        ROOT / "windows-native" / "InferBridge.Native.ContractTests" / "Program.cs"
+    ).read_text(encoding="utf-8")
+
+    assert '"/v1/models/status"' in client
+    assert '"/v1/models/cancel"' in client
+    assert "current.OperationId != selected.OperationId" in client
+    assert "current.CanCancel" in client
+    assert "ReadString(result.RootElement, \"operation_id\")" in client
+    assert "CancelModelPreparationAsync" in view
+    assert "CancelPreparationButton_Click" in xaml
+    assert "RefreshModelPreparationsAsync()" in main
+    assert "ModelPreparationContractTests.RunAsync(root)" in harness
+    assert "WebView2" not in view

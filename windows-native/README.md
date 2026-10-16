@@ -20,6 +20,15 @@ it over verified loopback HTTP.
   **Download and load** uses the engine's convert route (download, convert,
   then load; it also retries a failed or cancelled preparation). **Load**, **Unload**, and confirmed **Delete local files** use the existing authenticated model APIs. Deletion is available only for unloaded, downloaded models and rechecks live model state before mutation. Progress comes from the
   engine's own status, refreshed every 8 seconds; the client never invents it.
+  When the Model library is visible, the separate native progress strip reads the
+  engine's versioned `/v1/models/status` snapshot and reports the selected model's
+  current preparation phase and reported percentage (or explicitly notes when no
+  percentage is available). **Cancel current preparation** is enabled only if the
+  engine reports a cancellable operation ID. After confirmation, the client
+  rechecks that same operation ID and capability before one authenticated
+  `/v1/models/cancel` request; a conflicting or ambiguous response never causes
+  automatic retry. Native OpenVINO loading may be non-interruptible; the engine
+  has the final authority, and incomplete files can require recovery.
   The engine's own refusal reasons (for example gated Hugging Face access) are
   shown as given, bounded to plain text.
 - **Storage & cache manager**: a native WinUI page reads the same desktop-only managed storage inventory as the browser: converted models, shared Hugging Face caches, incomplete preparation files, compiled OpenVINO cache, currently reclaimable bytes, and protected transaction backup totals. Only engine-authorized cleanup actions are enabled. Each cleanup requires a specific confirmation and a fresh engine-side capability and size recheck; the engine performs deletion with its existing path, symlink/junction, and lifecycle safeguards. The native client never selects arbitrary filesystem paths, follows links, or removes protected transaction backups.
@@ -40,6 +49,7 @@ it over verified loopback HTTP.
 |---|---|---|---|
 | Chat and model load/unload | Implemented | Implemented | Native SSE, cancellation, selected-device load; verify on real hardware |
 | Model library and download of catalog models | Implemented | Implemented | Native uses engine convert and lifecycle routes; gated access applies to both |
+| Live preparation stage, percentage and guarded cancellation | Implemented | Implemented in native controls | Uses `/v1/models/status` and identity-bound `/v1/models/cancel`; no native conversion queue; Windows qualification pending |
 | Interrupted model preparation recovery | Implemented | Implemented | Engine recovery ID and action rechecks; Windows CI qualification pending |
 | Storage/cache inventory and guarded cleanup | Implemented | Implemented | Engine owns destructive cleanup; Windows CI qualification pending |
 | Hugging Face account status/token verification/secure removal | Implemented | Implemented in native controls | Existing backend owns credentials; real HF account/DPAPI still need testing |
@@ -52,9 +62,9 @@ it over verified loopback HTTP.
 | Context budget, network/API and advanced settings | Implemented in WebGUI | WebGUI-only | Preserve backend API contracts while adding native surfaces |
 | Engine HF search/access and model queue | Backend-supported | Exposed by both where above | Gated publisher approval, hardware and actual conversion require live verification |
 
-**Qualification is outstanding** for the newest native account/search, recovery, and storage commits: the manual Windows workflow must successfully run on their final SHA. Mocked C# HTTP contracts and Python/XAML source tests are not substitutes for installing and exercising the WinUI app on Windows. Neither frontend includes a second inference engine or embeds the other.
+**Qualification is outstanding** for the newest native account/search, custom-model registration, lifecycle progress/cancellation, recovery, and storage commits: the manual Windows workflow must successfully run on their final SHA. Mocked C# HTTP contracts and Python/XAML source tests are not substitutes for installing and exercising the WinUI app on Windows. Neither frontend includes a second inference engine or embeds the other.
 
-**Native custom-model limitations:** the wizard deliberately excludes `trust_remote_code`, alternate conversion group-size/ratio/symmetric tuning, download cancellation before the backend conversion task is available, and compatibility claims. The WebGUI remains available for advanced conversion options. Re-selecting a previously queued model should happen in the engine-owned Model library, not by repeating the custom registration POST.
+**Native custom-model limitations:** the wizard deliberately excludes `trust_remote_code`, alternate conversion group-size/ratio/symmetric tuning, cancellation when the backend marks an operation non-cancellable, and compatibility claims. The WebGUI remains available for advanced conversion options. Re-selecting a previously queued model should happen in the engine-owned Model library, not by repeating the custom registration POST.
 
 ## Engine handoff and safety
 
@@ -99,6 +109,8 @@ Windows 10 19041+ or Windows 11 x64, with the .NET 10 SDK:
 dotnet build .\windows-native\InferBridge.Native\InferBridge.Native.csproj -c Release -p:Platform=x64
 dotnet run --project .\windows-native\InferBridge.Native\InferBridge.Native.csproj -p:Platform=x64
 ```
+
+To qualify native cancellation: start a test model conversion on a Windows machine; in **Model library** select that model, verify reported phase and percentage, then request cancellation while the engine permits it. Confirm the matching operation ends in `cancelled`, recovery or retry remains available as appropriate, and a completed/native-compilation operation cannot be cancelled. Repeat across engine restart and with a second frontend advancing the same model to verify stale operation IDs fail closed. Do not use important in-progress model data for destructive testing.
 
 To test native Hugging Face: start the engine, open **Hugging Face**, verify account status, add a disposable *read-scoped* user access token, test access, search a public model, open its page and review the repository. Select **Configure download**, confirm the device and settings, then queue the preparation and follow actual progress in **Model library**. Avoid large models when validating the first native flow; a successful queued response is not proof of successful conversion or inference. Disconnect the token and confirm the status is cleared. If the token comes from HF_TOKEN, removal remains disabled. For gated models, complete approval on the Hugging Face site; search metadata itself never proves permission or OpenVINO compatibility. Do not paste real tokens into issue reports or screenshots.
 

@@ -230,6 +230,8 @@ public sealed partial class MainWindow : Window
         string? page = (args.SelectedItem as NavigationViewItem)?.Tag?.ToString();
         OverviewPanel.Visibility = page == "overview" ? Visibility.Visible : Visibility.Collapsed;
         ModelsPanel.Visibility = page == "models" ? Visibility.Visible : Visibility.Collapsed;
+        if (page == "models" && _engineConnected && _rejectedApiKey is null)
+            _ = RefreshModelPreparationsAsync();
         HuggingFacePanel.Visibility = page == "huggingface" ? Visibility.Visible : Visibility.Collapsed;
         if (page == "huggingface" && !_hfLoaded)
             _ = RefreshHuggingFaceAsync();
@@ -1149,6 +1151,7 @@ public sealed partial class MainWindow : Window
         DownloadButton.IsEnabled = idle && model?.CanDownload == true;
         RecoverButton.IsEnabled = idle && _engineConnected && model is not null;
         LibraryDevicePicker.IsEnabled = idle && _devicesAvailable;
+        UpdateModelPreparationUi();
     }
 
     private void UpdateChatButtons()
@@ -1277,6 +1280,11 @@ public sealed partial class MainWindow : Window
                 }
             }
 
+            if (!status.Connected || status.RequiresAuthentication)
+                ResetModelPreparations();
+            else if (ModelsPanel.Visibility == Visibility.Visible)
+                await RefreshModelPreparationsAsync();
+
             ModelsSummary.Text = status.RequiresAuthentication
                 ? "Authentication required. Enter your API key on the Engine screen."
                 : status.Connected
@@ -1323,6 +1331,7 @@ public sealed partial class MainWindow : Window
         {
             ConnectionInfo.Severity = InfoBarSeverity.Error;
             _engineConnected = false;
+            ResetModelPreparations();
             ConnectionInfo.Message = "Could not display local engine status.";
             ModelsSummary.Text = "Refresh after checking the engine.";
             ChatModelPicker.Items.Clear();

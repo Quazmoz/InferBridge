@@ -88,6 +88,7 @@ try
     await BackendContractTests.RunAsync(root);
     await HuggingFaceContractTests.RunAsync(root);
     await HuggingFaceDownloadContractTests.RunAsync(root);
+    await ModelPreparationContractTests.RunAsync(root);
     NativeConversationContractTests.Run(root);
     return 0;
 }

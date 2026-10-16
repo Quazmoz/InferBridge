@@ -263,6 +263,15 @@
                         <Button Content="Refresh" Click="RefreshButton_Click"
                                 AutomationProperties.Name="Refresh models" />
                         </StackPanel>
+                        <TextBlock x:Name="ModelPreparationSummary" Text="Select a model to inspect preparation."
+                                   IsTextSelectionEnabled="True" TextWrapping="Wrap"
+                                   AutomationProperties.LiveSetting="Polite" />
+                        <ProgressBar x:Name="ModelPreparationPercent" Minimum="0" Maximum="100"
+                                     Value="0" Visibility="Collapsed" Height="6" />
+                        <Button x:Name="CancelPreparationButton" Content="Cancel current preparation"
+                                IsEnabled="False" HorizontalAlignment="Left"
+                                Click="CancelPreparationButton_Click"
+                                AutomationProperties.Name="Cancel selected model preparation" />
                         <Button x:Name="RecoverButton" Content="Review interrupted preparation"
                                 HorizontalAlignment="Left" IsEnabled="False"
                                 Click="RecoverButton_Click"
