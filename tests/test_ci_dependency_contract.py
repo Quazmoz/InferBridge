@@ -36,11 +36,17 @@ def test_dependabot_targets_dev_with_conservative_dependency_domains() -> None:
     assert '"ruff"' in config
 
 
-def test_ci_pr_filters_cover_all_promotion_branches() -> None:
-    ci = _read(".github/workflows/ci.yml")
-
-    assert 'push:\n    branches: ["main", "dev", "beta"]' in ci
-    assert 'pull_request:\n    branches: ["main", "dev", "beta"]' in ci
+def test_github_ci_stays_manual_only_to_conserve_runner_minutes() -> None:
+    for path in (
+        ".github/workflows/ci.yml",
+        ".github/workflows/native-windows.yml",
+        ".github/workflows/model-lifecycle-windows.yml",
+        ".github/workflows/release.yml",
+    ):
+        workflow = _read(path)
+        assert "  workflow_dispatch:" in workflow
+        assert "\n  push:" not in workflow
+        assert "\n  pull_request:" not in workflow
 
 
 def test_ci_distinguishes_qualified_baseline_from_latest_canary() -> None:
@@ -56,13 +62,43 @@ def test_ci_distinguishes_qualified_baseline_from_latest_canary() -> None:
     assert "github.base_ref == 'dev'" in ci
 
 
-def test_windows_lifecycle_covers_promotion_prs_with_release_pins() -> None:
+def test_windows_lifecycle_manual_run_retains_qualified_dependency_contract() -> None:
     lifecycle = _read(".github/workflows/model-lifecycle-windows.yml")
 
-    assert 'push:\n    branches: ["main", "dev", "beta"]' in lifecycle
-    assert 'pull_request:\n    branches: ["main", "dev", "beta"]' in lifecycle
-    assert '- "pyproject.toml"' in lifecycle
-    assert '- "requirements/release.txt"' in lifecycle
-    assert "requirements/release.txt\n            pyproject.toml" in lifecycle
+    assert "  workflow_dispatch:" in lifecycle
+    assert "Download, Convert, Load, Recover" in lifecycle
+    assert "requirements/release.txt\\n            pyproject.toml" in lifecycle
     assert "-r requirements/release.txt" in lifecycle
     assert "--no-deps --no-build-isolation ." in lifecycle
+
+
+def test_azure_build_binds_config_and_artifacts_to_selected_source_revision() -> None:
+    pipeline = _read("azure-pipelines.yml")
+
+    assert "trigger: none\\npr: none" in pipeline
+    assert "  - checkout: self" in pipeline
+    assert "    clean: true" in pipeline
+    assert "    persistCredentials: false" in pipeline
+    assert "git fetch" not in pipeline
+    assert "git checkout" not in pipeline
+    assert "refs/remotes/origin/main" not in pipeline
+
+    # The Azure-selected repository, branch, and commit must match the checkout.
+    for identity in ("BUILD_REPOSITORY_URI", "BUILD_SOURCEBRANCH", "BUILD_SOURCEVERSION"):
+        assert f"$env:{identity}" in pipeline
+    assert "BUILD_REASON -ne 'Manual'" in pipeline
+    assert "git rev-parse --verify HEAD" in pipeline
+    assert "$sha -ne $env:BUILD_SOURCEVERSION" in pipeline
+    assert "git diff --exit-code HEAD -- azure-pipelines.yml" in pipeline
+    assert "git status --porcelain" in pipeline
+    assert "Get-FileHash -LiteralPath 'azure-pipelines.yml' -Algorithm SHA256" in pipeline
+
+    # Mismatched artifact commit or checksums must block publication.
+    assert "scripts/verify_release_provenance.py" in pipeline
+    assert "--expected-commit $env:BUILD_SOURCEVERSION" in pipeline
+    assert "pipeline_config_sha256 = $env:INFERBRIDGE_PIPELINE_SHA256" in pipeline
+    assert "source_ref = $env:BUILD_SOURCEBRANCH" in pipeline
+    assert "source_commit = $env:BUILD_SOURCEVERSION.ToLowerInvariant()" in pipeline
+    assert "-Unsigned" in pipeline
+    assert "PublishPipelineArtifact@1" in pipeline
+    assert "condition: succeeded()" in pipeline
