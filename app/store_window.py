@@ -1,8 +1,9 @@
-"""The embedded Windows application window for packaged distributions.
+"""Microsoft Store UI window fallback.
 
-The Store package may bundle a WinUI client under native/. All frozen Windows
-builds can otherwise host the same browser UI in a WebView2 window; the server
-and tray remain authoritative and the window owns only presentation.
+The Store MSIX prefers its bundled native WinUI 3 client. WebView2 is a
+fallback only for an MSIX package without the native client. Normal Windows
+installer and portable builds use their native WinUI entrypoint independently
+of this Store-specific fallback. The server and tray remain authoritative.
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ def _validate_port(port: int) -> None:
 
 
 def _store_runtime_available() -> bool:
-    return sys.platform == "win32" and (is_packaged() or getattr(sys, "frozen", False))
+    return sys.platform == "win32" and is_packaged()
 
 
 def _native_client() -> Path | None:
@@ -77,7 +78,7 @@ def run_store_window(port: int, instance_nonce: str) -> int:
     """Run WebView2 on this child process's main STA/GUI thread."""
     _validate_port(port)
     if not _store_runtime_available():
-        raise RuntimeError("The embedded window requires a packaged Windows executable.")
+        raise RuntimeError("The Store window is available only to an installed MSIX package.")
     if not isinstance(instance_nonce, str) or not instance_nonce:
         raise RuntimeError("The Store window requires a valid server instance nonce.")
     instance = InstanceMetadata(
