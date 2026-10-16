@@ -1,5 +1,6 @@
 # Azure Pipelines evaluation builder for InferBridge.
-# This YAML is maintained on dev; the build intentionally checks out origin/main.
+# Build the Azure-selected source revision; no cross-branch checkout is permitted.
+# To build main, first promote this configuration to main, then queue a main-branch run.
 # Artifacts are unsigned and must not be treated as a qualified release.
 trigger: none
 pr: none
@@ -14,19 +15,38 @@ jobs:
   steps:
   - checkout: self
     clean: true
+    fetchDepth: 0
     persistCredentials: false
 
   - pwsh: |
       $ErrorActionPreference = 'Stop'
-      git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
-      if ($LASTEXITCODE -ne 0) { throw 'Unable to fetch main' }
-      git checkout --detach refs/remotes/origin/main
-      if ($LASTEXITCODE -ne 0) { throw 'Unable to check out main' }
-      $sha = (git rev-parse HEAD).Trim()
-      if ($LASTEXITCODE -ne 0 -or $sha -notmatch '^[0-9a-f]{40}$') { throw 'Invalid source commit' }
-      Write-Host "Building InferBridge main at $sha"
-      Write-Host "##vso[task.setvariable variable=INFERBRIDGE_SOURCE_SHA]$sha"
-    displayName: 'Select exact GitHub main source'
+      if ($env:BUILD_REASON -ne 'Manual') { throw 'Only manually queued builds are allowed.' }
+      if ($env:BUILD_REPOSITORY_URI -notmatch '^https://github\.com/Quazmoz/InferBridge(?:\.git)?/?$') {
+        throw 'Unexpected Azure source repository.'
+      }
+      if ($env:BUILD_SOURCEBRANCH -notin @('refs/heads/dev', 'refs/heads/main', 'refs/heads/beta')) {
+        throw 'Only the dev, main, or beta source branch can be built.'
+      }
+      if ($env:BUILD_SOURCEVERSION -notmatch '^[a-fA-F0-9]{40}$') {
+        throw 'The Azure source commit is missing or invalid.'
+      }
+      $sha = (git rev-parse --verify HEAD).Trim()
+      if ($LASTEXITCODE -ne 0 -or $sha -ne $env:BUILD_SOURCEVERSION) {
+        throw 'Checkout does not match the immutable Azure source commit.'
+      }
+      if (-not (Test-Path -LiteralPath 'azure-pipelines.yml' -PathType Leaf)) {
+        throw 'Pipeline YAML is not included in the selected commit.'
+      }
+      git diff --exit-code HEAD -- azure-pipelines.yml
+      if ($LASTEXITCODE -ne 0) { throw 'Pipeline YAML differs from the checked-out source.' }
+      $dirty = @(git status --porcelain --untracked-files=normal)
+      if ($LASTEXITCODE -ne 0 -or $dirty.Count -gt 0) {
+        throw 'Refusing to build a dirty source tree.'
+      }
+      $pipelineHash = (Get-FileHash -LiteralPath 'azure-pipelines.yml' -Algorithm SHA256).Hash.ToLowerInvariant()
+      Write-Host "Source $env:BUILD_SOURCEBRANCH at $sha; YAML SHA256 $pipelineHash"
+      Write-Host "##vso[task.setvariable variable=INFERBRIDGE_PIPELINE_SHA256]$pipelineHash"
+    displayName: 'Verify Azure source and pipeline configuration provenance'
 
   - task: UsePythonVersion@0
     inputs:
@@ -68,18 +88,24 @@ jobs:
       foreach ($item in @($installer, $portable, $checksums)) {
         if (-not (Test-Path -LiteralPath $item -PathType Leaf)) { throw "Missing release artifact: $item" }
       }
+      python scripts/verify_release_provenance.py --artifact-directory $output --version $version --channel stable --expected-commit $env:BUILD_SOURCEVERSION --source-model-manifest model_library_manifest.json
+      if ($LASTEXITCODE -ne 0) { throw 'Release provenance or checksums mismatch.' }
       $metadata = [ordered]@{
-        build_source = 'GitHub main'
-        commit = $env:INFERBRIDGE_SOURCE_SHA
+        schema_version = 1
+        repository = $env:BUILD_REPOSITORY_URI
+        source_ref = $env:BUILD_SOURCEBRANCH
+        source_commit = $env:BUILD_SOURCEVERSION.ToLowerInvariant()
+        pipeline_config = 'azure-pipelines.yml'
+        pipeline_config_sha256 = $env:INFERBRIDGE_PIPELINE_SHA256
         pipeline_run = $env:BUILD_BUILDID
         unsigned = $true
-        certification = 'evaluation only; real hardware and installation unverified'
+        certification = 'evaluation only; hardware and installed behavior unverified'
       }
       $metadata | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'azure-build-provenance.json') -Encoding utf8
-      Write-Host "Built unsigned $version from $env:INFERBRIDGE_SOURCE_SHA"
-    displayName: 'Build and validate unsigned Windows release'
+      Write-Host "Built unsigned $version from $env:BUILD_SOURCEBRANCH at $env:BUILD_SOURCEVERSION"
+    displayName: 'Build and verify unsigned Windows release'
     env:
-      INFERBRIDGE_SOURCE_SHA: $(INFERBRIDGE_SOURCE_SHA)
+      INFERBRIDGE_PIPELINE_SHA256: $(INFERBRIDGE_PIPELINE_SHA256)
 
   - task: PublishPipelineArtifact@1
     condition: succeeded()
