@@ -10,9 +10,9 @@ it over verified loopback HTTP.
 
 - **Chat**: the picker lists downloaded and loaded models with their state.
   Selecting a downloaded model loads it through the engine; chat stays disabled
-  until the engine reports it loaded. Non-streaming chat, Ctrl+Enter to send,
+  until the engine reports it loaded. Live SSE streaming chat, Ctrl+Enter to send,
   copyable conversation text and cancellation. History stays in memory
-  (20 recent messages, bounded prompt budget). Cancelling the HTTP request
+  (20 recent messages, bounded prompt budget). Chat previews appear as tokens arrive, but an incomplete, failed or cancelled reply is removed instead of saved into the in-memory conversation. Cancelling the HTTP request
   does not prove server-side inference has stopped.
 - **Model library**: the engine's catalog with readable states. The engine's
   hardware-based recommendation is listed first and preselected.
@@ -31,9 +31,9 @@ it over verified loopback HTTP.
 
 ## Feature parity tracking
 
-The web GUI remains available independently. The native Windows app is real WinUI/XAML, not a WebView2 rendering of it. Current native coverage includes chat (non-streaming), model selection/download/load/unload/delete, inference target selection, device scanning, engine connection, and operations/diagnostics export.
+The web GUI remains available independently. The native Windows app is real WinUI/XAML, not a WebView2 rendering of it. Current native coverage includes chat (bounded SSE streaming with cancellable partial previews), model selection/download/load/unload/delete, inference target selection, device scanning, engine connection, and operations/diagnostics export.
 
-Still missing from the native frontend: streaming chat, durable multiple conversations and history, rich Markdown/code rendering, local vision and embeddings workflows, complete model recovery and Hugging Face account management, full System Doctor detail, benchmark execution and comparisons, context budget planning, storage manager, network/API administration, and other advanced settings. A present backend route does **not** imply that its native interface is implemented. Parity work should reuse existing authenticated backend services and keep the two frontends independently functional.
+Still missing from the native frontend: durable multiple conversations and history, rich Markdown/code rendering, local vision and embeddings workflows, complete model recovery and Hugging Face account management, full System Doctor detail, benchmark execution and comparisons, context budget planning, storage manager, network/API administration, and other advanced settings. A present backend route does **not** imply that its native interface is implemented. Parity work should reuse existing authenticated backend services and keep the two frontends independently functional.
 
 ## Engine handoff and safety
 
@@ -90,7 +90,7 @@ The dependency-free contract harness compiles the production
 and temporary directories. It covers data-root resolution, nonce/port
 verification, stale and malformed metadata, redirects, API-key challenges and
 throttling, guarded load/unload/download, engine refusal messages, the
-recommendation read, payload limits, cancellation, chat-picker states and graceful
+recommendation read, payload and SSE limits, UTF-8 streaming, truncated/error responses, cancellation, chat-picker states and graceful
 tray quit (including a stopped server and a pending engine start). It runs on any OS with
 the .NET 10 SDK (add `-p:EnableWindowsTargeting=true` off Windows):
 
