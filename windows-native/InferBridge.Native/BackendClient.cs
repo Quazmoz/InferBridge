@@ -48,6 +48,20 @@ internal sealed record ModelRecommendation(string Id, string Reason);
 
 internal sealed record DeviceInventory(string Default, IReadOnlyList<string> Available, bool Mock);
 
+internal sealed record DesktopOperationsInfo(
+    string Version,
+    string InstallationMode,
+    string ServerStatus,
+    bool ControllerAvailable,
+    int ServerPort,
+    bool Mock,
+    bool StartWithWindows,
+    bool BenchmarkRunning,
+    string LatestBenchmark,
+    string LastDiagnosticsExport);
+
+internal sealed record DiagnosticsExportInfo(string Filename, IReadOnlyList<string> CollectionErrors);
+
 internal sealed record BackendSnapshot(
     bool Connected,
     string Message,
@@ -372,6 +386,87 @@ internal sealed class BackendClient : IDisposable
             return null;
         string reason = ReadString(root, "reason").Trim();
         return new ModelRecommendation(id, reason.Length <= 300 ? reason : reason[..300] + "…");
+    }
+
+    /// <summary>Native presentation over the same desktop-operations contract used by the web GUI.</summary>
+    public async Task<DesktopOperationsInfo> GetDesktopOperationsAsync(
+        string? apiKey, CancellationToken cancellationToken)
+    {
+        string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
+        using var document = await GetJsonAsync(
+            origin + "/v1/desktop/operations/status", apiKey,
+            cancellationToken, TimeSpan.FromSeconds(15));
+        var root = document.RootElement;
+        string status = ReadString(root, "server_status");
+        if (status.Length is < 1 or > 64
+            || !root.TryGetProperty("server_port", out var portValue)
+            || !portValue.TryGetInt32(out int port)
+            || port is < 1 or > 65535)
+            throw new JsonException("Invalid desktop operations status.");
+
+        string benchmark = "No saved benchmark";
+        if (root.TryGetProperty("benchmark", out var run)
+            && run.ValueKind == JsonValueKind.Object)
+        {
+            benchmark = "Latest benchmark available";
+            if (run.TryGetProperty("results", out var results)
+                && results.ValueKind == JsonValueKind.Array && results.GetArrayLength() > 0)
+            {
+                var first = results[0];
+                string model = ReadString(first, "model_id");
+                string device = ReadString(first, "device");
+                if (model.Length is > 0 and <= 128 && device.Length is > 0 and <= 64)
+                    benchmark = model + " on " + device;
+            }
+        }
+
+        return new DesktopOperationsInfo(
+            ReadString(root, "application_version") is { Length: > 0 and <= 64 } version
+                ? version : "Unknown",
+            ReadString(root, "installation_mode") is { Length: > 0 and <= 64 } mode
+                ? mode : "Unknown",
+            status,
+            root.TryGetProperty("controller_available", out var controller)
+                && controller.ValueKind == JsonValueKind.True,
+            port,
+            root.TryGetProperty("mock", out var mock) && mock.ValueKind == JsonValueKind.True,
+            root.TryGetProperty("start_with_windows", out var startup)
+                && startup.ValueKind == JsonValueKind.True,
+            root.TryGetProperty("benchmark_running", out var running)
+                && running.ValueKind == JsonValueKind.True,
+            benchmark,
+            ReadString(root, "last_diagnostics_export") is { Length: > 0 and <= 200 } latest
+                ? latest : "None");
+    }
+
+    /// <summary>Creates a sanitized ZIP on the engine host; never transfers the ZIP or secrets.</summary>
+    public async Task<DiagnosticsExportInfo> ExportDiagnosticsAsync(
+        string? apiKey, CancellationToken cancellationToken)
+    {
+        string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
+        using var document = await PostJsonAsync(
+            origin + "/v1/desktop/operations/diagnostics/export", "{}",
+            apiKey, cancellationToken, TimeSpan.FromSeconds(90), MaximumJsonBytes);
+        var root = document.RootElement;
+        string filename = ReadString(root, "filename");
+        if (ReadString(root, "status") != "created"
+            || filename.Length is < 5 or > 200
+            || filename != Path.GetFileName(filename)
+            || !filename.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            throw new JsonException("Invalid diagnostics export confirmation.");
+
+        var errors = new List<string>();
+        if (root.TryGetProperty("collection_errors", out var reported)
+            && reported.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in reported.EnumerateArray().Take(10))
+            {
+                if (item.ValueKind != JsonValueKind.String) continue;
+                string message = item.GetString() ?? "";
+                if (message.Length is > 0 and <= 200) errors.Add(message);
+            }
+        }
+        return new DiagnosticsExportInfo(filename, errors);
     }
 
     public async Task QuitApplicationAsync(CancellationToken cancellationToken, bool waitForStartup = false)
