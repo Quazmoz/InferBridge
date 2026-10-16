@@ -316,7 +316,7 @@ public sealed partial class MainWindow : Window
             StorageInfo.Severity = snapshot.Truncated
                 ? InfoBarSeverity.Warning : InfoBarSeverity.Informational;
             StorageInfo.Message = snapshot.Truncated
-                ? "Large inventory: only the first 200 entries are shown. Refresh after reducing storage."
+                ? "Large inventory: up to 60 entries per storage category are shown. All cleanup eligibility is rechecked."
                 : "Inventory refreshed. Actions marked unavailable are not executable.";
         }
         catch (Exception) when (_closing.IsCancellationRequested) { }
