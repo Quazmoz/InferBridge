@@ -718,24 +718,52 @@ public sealed partial class MainWindow : Window
 
         _chatBusy = true;
         _sendCancellation = CancellationTokenSource.CreateLinkedTokenSource(_closing.Token);
+        CancellationTokenSource send = _sendCancellation;
+        ListViewItem? userItem = null;
+        ListViewItem? assistantItem = null;
+        bool committed = false;
         UpdateChatButtons();
-        ShowChatInfo("Generating", "Waiting for the local model…", InfoBarSeverity.Informational);
+        ShowChatInfo("Generating", "Streaming locally from the selected model…",
+            InfoBarSeverity.Informational);
         try
         {
-            string answer = await _backend.CompleteChatAsync(
-                modelId, pending, ApiKeyBox.Password, _sendCancellation.Token);
-            // A late HTTP success must not commit a reply after the user has
-            // cancelled this request (server-side inference may still run).
+            // Display preview only. Until [DONE], neither the context nor the
+            // prompt is committed, and cancelled/error output is discarded.
+            userItem = AppendChat("You", prompt);
+            assistantItem = AppendChat("InferBridge", "Generating…");
+            long lastPreviewTick = 0;
+            string answer = await _backend.StreamChatAsync(
+                modelId, pending, ApiKeyBox.Password, partial =>
+                {
+                    long now = Environment.TickCount64;
+                    if (now - lastPreviewTick < 60) return; // Bound UI work during fast streams.
+                    lastPreviewTick = now;
+                    string preview = partial.Length > 8000
+                        ? partial[..8000] + "\n… Preview truncated." : partial;
+                    DispatcherQueue.TryEnqueue(() =>
+                    {
+                        if (_closing.IsCancellationRequested || send.IsCancellationRequested
+                            || !ReferenceEquals(_sendCancellation, send) || !_chatBusy)
+                            return;
+                        if (assistantItem?.Content is TextBlock text)
+                        {
+                            text.Text = "InferBridge\n" + preview;
+                            ChatHistory.ScrollIntoView(assistantItem);
+                        }
+                    });
+                }, send.Token);
+            // A late HTTP success must not commit a reply after cancellation.
             if (_closing.IsCancellationRequested || _sendCancellation?.IsCancellationRequested != false)
                 return;
             _conversationModelId = modelId;
             _turns.Clear();
             _turns.AddRange(pending);
             _turns.Add(new ChatTurn("assistant", answer[..Math.Min(answer.Length, 8000)]));
-            AppendChat("You", prompt);
-            AppendChat("InferBridge", answer.Length > 8000
-                ? answer[..8000] + "\n… Response truncated for the native conversation."
-                : answer);
+            if (assistantItem?.Content is TextBlock finalText)
+                finalText.Text = "InferBridge\n" + (answer.Length > 8000
+                    ? answer[..8000] + "\n… Response truncated for the native conversation."
+                    : answer);
+            committed = true;
             PromptBox.Text = string.Empty;
             ShowChatInfo("Response complete", "Generated locally.", InfoBarSeverity.Success);
             _ = PromptBox.Focus(FocusState.Programmatic);
@@ -755,7 +783,12 @@ public sealed partial class MainWindow : Window
         }
         finally
         {
-            _sendCancellation?.Dispose();
+            if (!_closing.IsCancellationRequested && !committed)
+            {
+                if (assistantItem is not null) ChatHistory.Items.Remove(assistantItem);
+                if (userItem is not null) ChatHistory.Items.Remove(userItem);
+            }
+            send.Dispose();
             _sendCancellation = null;
             _chatBusy = false;
             if (!_closing.IsCancellationRequested)
@@ -775,9 +808,9 @@ public sealed partial class MainWindow : Window
             InfoBarSeverity.Informational);
     }
 
-    private void AppendChat(string speaker, string message)
+    private ListViewItem AppendChat(string speaker, string message)
     {
-        ChatHistory.Items.Add(new ListViewItem
+        var item = new ListViewItem
         {
             Content = new TextBlock
             {
@@ -786,8 +819,10 @@ public sealed partial class MainWindow : Window
                 IsTextSelectionEnabled = true,
                 Margin = new Thickness(8),
             },
-        });
-        ChatHistory.ScrollIntoView(ChatHistory.Items[ChatHistory.Items.Count - 1]);
+        };
+        ChatHistory.Items.Add(item);
+        ChatHistory.ScrollIntoView(item);
+        return item;
     }
 
     // Separate from the summary, which every refresh rewrites, so action results stay visible.
