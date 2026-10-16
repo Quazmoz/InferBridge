@@ -90,7 +90,7 @@ internal static class HuggingFaceContractTests
                 Assert(request.Method == HttpMethod.Get, "model search mutated state");
                 Assert(request.RequestUri.Query.Contains("query=Smol%20Model", StringComparison.Ordinal),
                     "model query not URL encoded");
-                return Json("""[{"id":"org/Smol-Model","backend":"openvino-genai","pipeline_tag":"text-generation","downloads":100,"likes":11}]""");
+                return Json("""[{"id":"org/Smol-Model","suggested_local_id":"org-smol-model","backend":"openvino-genai","pipeline_tag":"text-generation","downloads":100,"likes":11}]""");
             }
             return Common(request);
         });
@@ -168,6 +168,17 @@ internal static class HuggingFaceContractTests
             await RejectsAsync<JsonException>(() =>
                 client.GetHuggingFaceAccountAsync(ApiKey, CancellationToken.None));
         }
+
+        // Search candidates must include the backend's own filesystem-safe ID,
+        // rather than letting the frontend guess an ID for a missing field.
+        var missingSuggestedId = new Transport((request, _) => Task.FromResult(
+            request.RequestUri!.AbsolutePath == "/v1/models/search-hf"
+                ? Json("""[{"id":"org/model","backend":"openvino-genai","pipeline_tag":"text-generation","downloads":1,"likes":0}]""")
+                : Common(request)));
+        using (var client = new BackendClient(missingSuggestedId, metadata))
+            await RejectsAsync<JsonException>(() =>
+                client.SearchHuggingFaceAsync(
+                    "model", "text-generation", ApiKey, CancellationToken.None));
 
         var oversized = new Transport((request, _) => Task.FromResult(
             request.RequestUri!.AbsolutePath == "/v1/models/search-hf"

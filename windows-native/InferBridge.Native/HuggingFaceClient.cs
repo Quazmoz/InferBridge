@@ -10,11 +10,16 @@ internal sealed record HuggingFaceAccount(
     bool Configured, bool Removable, string State, string Username, string Source);
 
 internal sealed record HuggingFaceModel(
-    string Id, string Backend, string Task, long Downloads, long Likes)
+    string Id, string SuggestedLocalId, string Backend, string Task, long Downloads, long Likes)
 {
     // Search metadata is not hardware compatibility or gated-license evidence.
     public string ModelUrl => "https://huggingface.co/" + Id;
 }
+
+internal sealed record HuggingFaceDownloadRequest(
+    string LocalId, string Name, string SourceModel, string Backend,
+    string WeightFormat, string Device, int ContextTokens,
+    int OutputTokens, bool LoadAfter);
 
 internal sealed class HuggingFaceCredentialException(string message) : Exception(message);
 
@@ -152,6 +157,10 @@ internal sealed partial class BackendClient
             string id = ReadString(entry, "id");
             if (id.Length > 240 || !HuggingFaceId.IsMatch(id))
                 continue;
+            string suggested = ReadString(entry, "suggested_local_id");
+            if (suggested.Length is < 1 or > 128
+                || !LocalModelId.IsMatch(suggested))
+                throw new JsonException("Invalid local model ID suggestion.");
             string backend = ReadString(entry, "backend");
             if (backend is not ("openvino-genai" or "openvino-embeddings"
                 or "openvino-vlm"))
@@ -165,9 +174,96 @@ internal sealed partial class BackendClient
                     throw new JsonException("Invalid Hugging Face model count.");
                 return count;
             }
-            results.Add(new HuggingFaceModel(id, backend, kind,
+            results.Add(new HuggingFaceModel(id, suggested, backend, kind,
                 Count(entry, "downloads"), Count(entry, "likes")));
         }
         return results;
     }
+    private static readonly Regex LocalModelId = new(
+        @"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+        RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// Register a remote discovery candidate using the existing conversion queue.
+    /// Recheck device and catalog immediately before mutation. Do not retry after
+    /// a timeout: the engine might have registered and queued successfully.
+    /// </summary>
+    public async Task<string> QueueHuggingFaceModelAsync(
+        HuggingFaceDownloadRequest selection, string? apiKey,
+        CancellationToken cancellationToken)
+    {
+        if (!LocalModelId.IsMatch(selection.LocalId)
+            || selection.LocalId.Length > 128
+            || selection.Name.Length is < 1 or > 160
+            || string.IsNullOrWhiteSpace(selection.Name)
+            || selection.Name.Any(char.IsControl)
+            || selection.SourceModel.Length > 240
+            || !HuggingFaceId.IsMatch(selection.SourceModel)
+            || selection.Backend is not ("openvino-genai" or "openvino-embeddings"
+                or "openvino-vlm")
+            || selection.WeightFormat is not ("int4" or "int8" or "fp16")
+            || selection.Device is not ("CPU" or "GPU" or "NPU")
+            || selection.ContextTokens is < 128 or > 262144
+            || (selection.Backend == "openvino-embeddings"
+                ? selection.OutputTokens != 0
+                : selection.OutputTokens < 1
+                    || selection.OutputTokens >= selection.ContextTokens))
+            throw new ArgumentException("Review the model ID, device and conversion settings.");
+
+        DeviceInventory devices = await GetDevicesAsync(apiKey, cancellationToken);
+        if (!devices.Available.Any(found =>
+            found == selection.Device
+            || found.StartsWith(selection.Device + ".", StringComparison.Ordinal)))
+            throw new EngineRequestException(
+                "The selected device is no longer available. Scan hardware again.");
+
+        string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
+        using var catalog = await GetJsonAsync(origin + "/v1/models",
+            apiKey, cancellationToken, TimeSpan.FromSeconds(10));
+        if (catalog.RootElement.ValueKind != JsonValueKind.Object
+            || !catalog.RootElement.TryGetProperty("data", out var entries)
+            || entries.ValueKind != JsonValueKind.Array)
+            throw new JsonException("Invalid current model catalog.");
+
+        // Existing IDs are never overwritten or silently requeued. After a
+        // timeout, refresh the Model library rather than replaying the POST.
+        if (entries.EnumerateArray().Any(entry =>
+            ReadString(entry, "id") == selection.LocalId))
+            throw new EngineRequestException(
+                "This local model ID is already registered. Use the Model library.");
+
+        using var response = await PostJsonAsync(
+            origin + "/v1/models/download-custom",
+            JsonSerializer.Serialize(new
+            {
+                model_id = selection.LocalId,
+                name = selection.Name,
+                source_model = selection.SourceModel,
+                backend = selection.Backend,
+                weight_format = selection.WeightFormat,
+                recommended_device = selection.Device,
+                max_context_len = selection.ContextTokens,
+                max_output_tokens = selection.OutputTokens,
+                load_after = selection.LoadAfter,
+                trust_remote_code = false,
+                description = "Hugging Face model registered from native InferBridge.",
+            }), apiKey, cancellationToken, TimeSpan.FromSeconds(65), MaximumJsonBytes);
+
+        JsonElement result = response.RootElement;
+        if (result.ValueKind != JsonValueKind.Object
+            || !result.TryGetProperty("model", out var model)
+            || ReadString(model, "id") != selection.LocalId
+            || ReadString(model, "source_model") != selection.SourceModel
+            || ReadString(model, "backend") != selection.Backend
+            || ReadString(result, "status") is not ("queued_convert" or "converting"
+                or "queued" or "loading" or "loaded" or "ready_to_load"))
+            throw new JsonException(
+                "The engine did not confirm model registration. Refresh the library.");
+
+        return "Engine accepted " + selection.LocalId
+            + " for download/conversion"
+            + (selection.LoadAfter ? " and loading." : ".")
+            + " View actual progress in the Model library.";
+    }
+
 }

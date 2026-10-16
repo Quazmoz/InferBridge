@@ -87,6 +87,7 @@ try
     Console.WriteLine("Native engine launch contract: all cases passed.");
     await BackendContractTests.RunAsync(root);
     await HuggingFaceContractTests.RunAsync(root);
+    await HuggingFaceDownloadContractTests.RunAsync(root);
     NativeConversationContractTests.Run(root);
     return 0;
 }

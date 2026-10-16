@@ -459,3 +459,22 @@ def test_native_huggingface_page_uses_real_controls_and_backend_credential_owner
     assert "MaxLength = 503" in native
     assert "secretBox.Password = string.Empty;" in native
     assert "HuggingFaceContractTests.RunAsync(root)" in harness
+
+
+def test_native_discovery_to_custom_download_remains_winui_and_engine_owned():
+    client = (PROJECT / "HuggingFaceClient.cs").read_text(encoding="utf-8")
+    view = (PROJECT / "MainWindow.HuggingFace.cs").read_text(encoding="utf-8")
+    harness = (
+        ROOT / "windows-native" / "InferBridge.Native.ContractTests" / "Program.cs"
+    ).read_text(encoding="utf-8")
+
+    assert '"/v1/models/download-custom"' in client
+    assert "GetDevicesAsync(apiKey, cancellationToken)" in client
+    assert 'origin + "/v1/models"' in client
+    assert "trust_remote_code = false" in client
+    assert "QueueHuggingFaceModelAsync" in client
+    assert "HfPrepareModel_Click" in view
+    assert "new ContentDialog" in view
+    assert 'PrimaryButtonText = "Register and prepare"' in view
+    assert "HuggingFaceDownloadContractTests.RunAsync(root)" in harness
+    assert "WebView2" not in view
