@@ -294,6 +294,10 @@ def test_native_operations_and_model_deletion_are_native_and_guarded():
         node.get(xaml_ns + "Name"): node.tag for node in root.iter() if node.get(xaml_ns + "Name")
     }
     assert named["OperationsPanel"] == XAML + "ScrollViewer"
+    assert named["DoctorPanel"] == XAML + "ScrollViewer"
+    assert named["DoctorRefreshButton"] == XAML + "Button"
+    assert named["DoctorCopyButton"] == XAML + "Button"
+    assert named["DoctorChecks"] == XAML + "ItemsControl"
     assert named["OperationsRefreshButton"] == XAML + "Button"
     assert named["DiagnosticsExportButton"] == XAML + "Button"
     assert named["QuickBenchmarkButton"] == XAML + "Button"
@@ -301,6 +305,10 @@ def test_native_operations_and_model_deletion_are_native_and_guarded():
     window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
     backend = (PROJECT / "BackendClient.cs").read_text(encoding="utf-8")
     assert 'page == "operations"' in window
+    assert 'page == "doctor"' in window
+    assert "RunSystemDoctorAsync" in window
+    assert "DoctorCopyButton_Click" in window
+    assert "Clipboard.SetContent(package)" in window
     assert "GetDesktopOperationsAsync" in window
     assert "ExportDiagnosticsAsync" in window
     assert "RunQuickBenchmarkAsync" in window
@@ -318,6 +326,10 @@ def test_native_operations_and_model_deletion_are_native_and_guarded():
     assert "max_tokens = 32" in backend
     assert "runs = 1" in backend
     assert "RequireVerifiedOriginAsync" in backend
+    assert '"/v1/system/status"' in backend
+    assert '"/v1/devices"' in backend
+    assert "MaximumChatBytes" in backend
+    assert "report" in backend
     assert "X-Desktop-Control" not in backend
     assert not any("WebView" in node.tag for node in root.iter())
 
