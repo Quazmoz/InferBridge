@@ -52,6 +52,8 @@ internal static class BackendContractTests
             "/v1/models" => Json(
                 """{"data":[{"id":"model-a","name":"Model A","status":"ready_to_load"},{"id":"model-b","name":"Model B","status":"not_downloaded"},{"id":"gated","name":"Gated","status":"not_downloaded"}]}"""),
             "/v1/system/status" => Json("""{"device":{"loaded":{"model-a":"GPU.0"}}}"""),
+            "/v1/desktop/operations/status" => Json("""{"application_version":"1.0.0","installation_mode":"installed","server_status":"ready","server_port":18765,"controller_available":true,"mock":true,"start_with_windows":false,"benchmark_running":false,"benchmark":{"results":[{"model_id":"model-a","device":"GPU.0"}]},"last_diagnostics_export":"previous-diagnostics.zip"}"""),
+            "/v1/desktop/operations/diagnostics/export" => Json("""{"status":"created","filename":"inferbridge-diagnostics.zip","collection_errors":["Optional sensor unavailable"]}"""),
             "/v1/devices" => Json("""{"default_device":"AUTO","available":["CPU","GPU.0","NPU"],"mock":false}"""),
             "/v1/models/load" => Json("""{"status":"accepted"}"""),
             "/v1/models/convert" => Json("""{"status":"queued_convert"}"""),
@@ -114,6 +116,47 @@ internal static class BackendContractTests
                 && devices.Available.SequenceEqual(new[] { "CPU", "GPU.0", "NPU" }),
                 "physical device discovery failed");
         }
+
+        // Native operations reuse the authenticated verified engine; export is an
+        // explicit POST and never receives private tray credentials.
+        var operationsTransport = new StubHandler((request, _) =>
+        {
+            if (request.RequestUri!.AbsolutePath.StartsWith("/v1/desktop/operations/",
+                StringComparison.Ordinal))
+            {
+                Check(request.Headers.Authorization?.Parameter == Key,
+                    "desktop operations did not use the session API key");
+                Check(!request.Headers.Contains("X-Desktop-Control"),
+                    "native client attempted private tray control");
+                Check(request.Method == (request.RequestUri.AbsolutePath.EndsWith("/export",
+                    StringComparison.Ordinal) ? HttpMethod.Post : HttpMethod.Get),
+                    "desktop operations used the wrong HTTP method");
+            }
+            return Task.FromResult(ValidResponse(request));
+        });
+        using (var client = new BackendClient(operationsTransport, metadata))
+        {
+            var status = await client.GetDesktopOperationsAsync(Key, CancellationToken.None);
+            Check(status.Version == "1.0.0" && status.ControllerAvailable && status.Mock
+                && status.ServerPort == Port && status.LatestBenchmark == "model-a on GPU.0",
+                "native operations status is incorrect");
+            var exported = await client.ExportDiagnosticsAsync(Key, CancellationToken.None);
+            Check(exported.Filename == "inferbridge-diagnostics.zip"
+                && exported.CollectionErrors.Count == 1,
+                "native diagnostics confirmation is incorrect");
+        }
+        Check(operationsTransport.RequestPaths.Count(path =>
+                path == "/v1/desktop/operations/diagnostics/export") == 1,
+            "diagnostics export was duplicated");
+
+        var invalidExport = new StubHandler((request, _) => Task.FromResult(
+            request.RequestUri!.AbsolutePath == "/v1/desktop/operations/diagnostics/export"
+                ? Json("""{"status":"created","filename":"../unsafe.zip"}""")
+                : ValidResponse(request)));
+        using (var client = new BackendClient(invalidExport, metadata))
+            await ThrowsAsync<JsonException>(
+                () => client.ExportDiagnosticsAsync(Key, CancellationToken.None),
+                "diagnostics export accepted a path instead of a filename");
 
         // Stale metadata must not attach to a listener at a reused port.
         WriteMetadata(metadata, nonce: "previous-session-nonce");
