@@ -12,6 +12,7 @@ internal sealed record ModelInfo(string Id, string Name, string Status)
 {
     public bool CanLoad => Status == "ready_to_load";
     public bool CanUnload => Status == "loaded";
+    public bool CanDelete => Status == "ready_to_load";
     public bool AvailableInChat => CanLoad || CanUnload || Status is "queued" or "loading";
     // The engine's convert route downloads, converts, then loads; on a model whose
     // files already exist it simply retries the load after a failure/cancellation.
@@ -400,6 +401,7 @@ internal sealed class BackendClient : IDisposable
         string status = ReadString(root, "server_status");
         if (status.Length is < 1 or > 64
             || !root.TryGetProperty("server_port", out var portValue)
+            || portValue.ValueKind != JsonValueKind.Number
             || !portValue.TryGetInt32(out int port)
             || port is < 1 or > 65535)
             throw new JsonException("Invalid desktop operations status.");
@@ -467,6 +469,35 @@ internal sealed class BackendClient : IDisposable
             }
         }
         return new DiagnosticsExportInfo(filename, errors);
+    }
+
+    /// <summary>Remove local files only after confirming the model is still unloaded.</summary>
+    public async Task<string> DeleteModelAsync(
+        ModelInfo model, string? apiKey, CancellationToken cancellationToken)
+    {
+        if (!model.CanDelete)
+            throw new InvalidOperationException("Unload the model before deleting its local files.");
+        string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
+        using var inventory = await GetJsonAsync(
+            origin + "/v1/models", apiKey, cancellationToken, TimeSpan.FromSeconds(4));
+        if (!inventory.RootElement.TryGetProperty("data", out var entries)
+            || entries.ValueKind != JsonValueKind.Array)
+            throw new JsonException("Invalid current model inventory.");
+        if (!entries.EnumerateArray().Any(entry =>
+            ReadString(entry, "id") == model.Id
+            && ReadString(entry, "status") == "ready_to_load"))
+            throw new InvalidOperationException(
+                "The model is no longer confirmed unloaded. Refresh before deleting.");
+
+        using var document = await PostJsonAsync(
+            origin + "/v1/models/delete", JsonSerializer.Serialize(new { model = model.Id }),
+            apiKey, cancellationToken, TimeSpan.FromSeconds(60), MaximumJsonBytes);
+        return ReadString(document.RootElement, "status") switch
+        {
+            "deleted" => "Local files deleted for " + model.Name + ".",
+            "noop" => "No local model files remain for " + model.Name + ".",
+            _ => throw new JsonException("The engine did not confirm model deletion."),
+        };
     }
 
     public async Task QuitApplicationAsync(CancellationToken cancellationToken, bool waitForStartup = false)
