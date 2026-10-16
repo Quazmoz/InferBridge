@@ -37,7 +37,9 @@ After packaging, it runs `scripts/verify_release_provenance.py` against the prod
 release manifest, summary, model-library manifest, and artifact checksums using
 Azure's `Build.SourceVersion`. It publishes the unsigned binaries alongside
 `azure-build-provenance.json` identifying the source ref, commit, pipeline YAML
-hash, and Azure run ID. This JSON is an **audit aid**, not a signed attestation.
+hash, release channel, and Azure run ID. The channel is `nightly` for `dev`,
+`beta` for `beta`, and `stable` for `main`. This JSON is an **audit aid**,
+not a signed attestation.
 
 **Manual branch selection:** The YAML currently lives on `dev`. Select `dev`
 to build and evaluate `dev` artifacts. To build an official `main` candidate,
