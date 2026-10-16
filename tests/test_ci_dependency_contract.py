@@ -100,5 +100,9 @@ def test_azure_build_binds_config_and_artifacts_to_selected_source_revision() ->
     assert "source_ref = $env:BUILD_SOURCEBRANCH" in pipeline
     assert "source_commit = $env:BUILD_SOURCEVERSION.ToLowerInvariant()" in pipeline
     assert "-Unsigned" in pipeline
+    assert "'refs/heads/main' { 'stable' }" in pipeline
+    assert "'refs/heads/beta' { 'beta' }" in pipeline
+    assert "'refs/heads/dev'  { 'nightly' }" in pipeline
+    assert "--channel $channel --expected-commit $env:BUILD_SOURCEVERSION" in pipeline
     assert "PublishPipelineArtifact@1" in pipeline
     assert "condition: succeeded()" in pipeline
