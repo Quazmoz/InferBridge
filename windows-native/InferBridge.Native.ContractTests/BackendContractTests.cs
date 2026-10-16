@@ -57,6 +57,7 @@ internal static class BackendContractTests
             "/v1/devices" => Json("""{"default_device":"AUTO","available":["CPU","GPU.0","NPU"],"mock":false}"""),
             "/v1/models/load" => Json("""{"status":"accepted"}"""),
             "/v1/models/convert" => Json("""{"status":"queued_convert"}"""),
+            "/v1/models/delete" => Json("""{"status":"deleted"}"""),
             "/v1/onboarding/recommendation" => Json(
                 """{"model_id":"model-b","reason":"Fits this PC's memory.","compatibility":"compatible"}"""),
             "/v1/chat/completions" => Json(
@@ -157,6 +158,49 @@ internal static class BackendContractTests
             await ThrowsAsync<JsonException>(
                 () => client.ExportDiagnosticsAsync(Key, CancellationToken.None),
                 "diagnostics export accepted a path instead of a filename");
+
+        // Destructive model actions are explicit, verified, and refuse stale state.
+        var deleteTransport = new StubHandler((request, _) =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/v1/models/delete")
+            {
+                Check(request.Method == HttpMethod.Post,
+                    "model deletion was not a POST");
+                Check(request.Headers.Authorization?.Parameter == Key,
+                    "model deletion omitted session authentication");
+                Check(request.Content!.ReadAsStringAsync().GetAwaiter().GetResult()
+                    .Contains("\\"model\\":\\"model-a\\"", StringComparison.Ordinal),
+                    "model deletion targeted the wrong model");
+            }
+            return Task.FromResult(ValidResponse(request));
+        });
+        using (var client = new BackendClient(deleteTransport, metadata))
+        {
+            var model = new ModelInfo("model-a", "Model A", "ready_to_load");
+            Check(model.CanDelete, "unloaded model cannot be deleted");
+            Check((await client.DeleteModelAsync(model, Key, CancellationToken.None))
+                .Contains("deleted", StringComparison.Ordinal),
+                "model delete did not confirm backend action");
+            await ThrowsAsync<InvalidOperationException>(
+                () => client.DeleteModelAsync(
+                    new ModelInfo("model-a", "Model A", "loaded"), Key, CancellationToken.None),
+                "loaded model deletion was accepted");
+        }
+        Check(deleteTransport.RequestPaths.Count(path => path == "/v1/models/delete") == 1,
+            "guarded model deletion made an unexpected mutation");
+
+        var changedModel = new StubHandler((request, _) => Task.FromResult(
+            request.RequestUri!.AbsolutePath == "/v1/models"
+                ? Json("""{"data":[{"id":"model-a","name":"Model A","status":"loaded"}]}""")
+                : ValidResponse(request)));
+        using (var client = new BackendClient(changedModel, metadata))
+            await ThrowsAsync<InvalidOperationException>(
+                () => client.DeleteModelAsync(
+                    new ModelInfo("model-a", "Model A", "ready_to_load"),
+                    Key, CancellationToken.None),
+                "stale model selection was permitted to delete");
+        Check(!changedModel.RequestPaths.Contains("/v1/models/delete"),
+            "stale model state triggered deletion");
 
         // Stale metadata must not attach to a listener at a reused port.
         WriteMetadata(metadata, nonce: "previous-session-nonce");
