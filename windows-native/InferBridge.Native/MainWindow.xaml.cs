@@ -223,11 +223,11 @@ public sealed partial class MainWindow : Window
                 : "Local engine is available, but the tray controller is unavailable.";
             OperationsDetails.Text =
                 "InferBridge " + state.Version +
-                "\\nInstallation: " + state.InstallationMode +
-                "\\nServer: " + state.ServerStatus + " · port " + state.ServerPort +
-                "\\nTray controller: " + (state.ControllerAvailable ? "Available" : "Unavailable") +
-                "\\nStart with Windows: " + (state.StartWithWindows ? "Enabled" : "Disabled") +
-                "\\nInference mode: " + (state.Mock ? "Mock (no hardware inference)" : "Hardware backend");
+                "\nInstallation: " + state.InstallationMode +
+                "\nServer: " + state.ServerStatus + " · port " + state.ServerPort +
+                "\nTray controller: " + (state.ControllerAvailable ? "Available" : "Unavailable") +
+                "\nStart with Windows: " + (state.StartWithWindows ? "Enabled" : "Disabled") +
+                "\nInference mode: " + (state.Mock ? "Mock (no hardware inference)" : "Hardware backend");
             OperationsBenchmarks.Text = state.BenchmarkRunning
                 ? "A benchmark is currently running. Refresh to check its result."
                 : state.LatestBenchmark;
