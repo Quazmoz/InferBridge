@@ -385,4 +385,3 @@ def test_native_saved_conversations_are_opt_in_and_atomic():
     assert "Guid.TryParseExact" in store
     assert "native-conversations.json" in store
     assert "Password" not in store
-
