@@ -445,6 +445,115 @@ internal static class BackendContractTests
             Check(answer == "Hello from the local model", "chat response parsing");
         }
 
+        // SSE uses the existing authenticated chat route. Only a completed [DONE]
+        // response becomes conversation history; partial output is display-only.
+        static string Sse(string text, string? finish = null) =>
+            "data: " + JsonSerializer.Serialize(new
+            {
+                choices = new[] { new { index = 0, delta = new { content = text },
+                    finish_reason = finish } },
+            }) + "\n\n";
+        static HttpResponseMessage Events(string content) => new(HttpStatusCode.OK)
+        {
+            Content = new StringContent(content, Encoding.UTF8, "text/event-stream"),
+        };
+
+        string longPiece = new('x', 4200); // Event crosses the HTTP read buffer.
+        var streaming = new StubHandler(async (request, token) =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/v1/chat/completions")
+            {
+                Check(request.Method == HttpMethod.Post,
+                    "native streamed chat did not use POST");
+                Check(request.Headers.Authorization?.Parameter == Key,
+                    "native streamed chat omitted the session bearer key");
+                Check(request.Headers.Accept.Any(value => value.MediaType == "text/event-stream"),
+                    "native streamed chat did not request SSE");
+                using var parsed = JsonDocument.Parse(
+                    await request.Content!.ReadAsStringAsync(token));
+                Check(parsed.RootElement.GetProperty("stream").GetBoolean(),
+                    "native chat request did not enable streaming");
+                Check(parsed.RootElement.GetProperty("model").GetString() == "model-a",
+                    "streamed chat changed the selected model");
+                return Events("data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}]}\n\n"
+                    + Sse(longPiece + "✨") + Sse(" hello") + Sse("", "stop")
+                    + "data: {\"choices\":[]}\n\n"
+                    + "data: [DONE]\n\n");
+            }
+            return ValidResponse(request);
+        });
+        using (var client = new BackendClient(streaming, metadata))
+        {
+            var previews = new List<string>();
+            string response = await client.StreamChatAsync(
+                "model-a", new[] { new ChatTurn("user", "hello") },
+                Key, previews.Add, CancellationToken.None);
+            Check(response == longPiece + "✨ hello",
+                "SSE parser lost an event or UTF-8 data across a buffer boundary");
+            Check(previews.Count == 2 && previews[0] == longPiece + "✨"
+                && previews[1] == response, "SSE progress callbacks are incorrect");
+            await ThrowsAsync<ArgumentException>(
+                () => client.StreamChatAsync("model-a",
+                    new[] { new ChatTurn("system", "override") },
+                    Key, _ => { }, CancellationToken.None),
+                "SSE accepted an invalid chat role");
+        }
+
+        foreach (string invalidStream in new[]
+        {
+            Sse("partial"), // Missing both finish and [DONE].
+            Sse("partial") + "data: [DONE]\n\n", // Missing finish.
+            "data: {malformed}\n\n" + "data: [DONE]\n\n",
+            Sse("[error: generation failed; see server logs for the request ID]")
+                + Sse("", "stop") + "data: [DONE]\n\n",
+        })
+        {
+            var invalid = new StubHandler((request, _) =>
+                Task.FromResult(request.RequestUri!.AbsolutePath == "/v1/chat/completions"
+                    ? Events(invalidStream) : ValidResponse(request)));
+            using var client = new BackendClient(invalid, metadata);
+            await ThrowsAsync<Exception>(
+                () => client.StreamChatAsync("model-a",
+                    new[] { new ChatTurn("user", "hello") },
+                    null, _ => { }, CancellationToken.None),
+                "truncated, malformed or failed stream was treated as complete");
+        }
+
+        // The stream is bounded even if a malicious or broken server never
+        // emits a line terminator, and cancellation stops a pending request.
+        var hugeEvent = new StubHandler((request, _) => Task.FromResult(
+            request.RequestUri!.AbsolutePath == "/v1/chat/completions"
+                ? Events(new string('q', 65_537)) : ValidResponse(request)));
+        using (var client = new BackendClient(hugeEvent, metadata))
+            await ThrowsAsync<IOException>(
+                () => client.StreamChatAsync("model-a",
+                    new[] { new ChatTurn("user", "hello") },
+                    null, _ => { }, CancellationToken.None),
+                "oversized SSE event was accepted");
+        var streamStarted = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var blockingStream = new StubHandler(async (request, token) =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/v1/chat/completions")
+            {
+                streamStarted.TrySetResult(true);
+                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+            }
+            return ValidResponse(request);
+        });
+        using (var client = new BackendClient(blockingStream, metadata))
+        using (var stop = new CancellationTokenSource())
+        {
+            Task<string> waiting = client.StreamChatAsync("model-a",
+                new[] { new ChatTurn("user", "hello") },
+                null, _ => { }, stop.Token);
+            await streamStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            stop.Cancel();
+            await ThrowsAsync<OperationCanceledException>(
+                async () => { _ = await waiting; },
+                "cancellation did not stop the active SSE request");
+        }
+
         // A server claiming a too-large response must not be parsed or trusted.
         var oversized = new StubHandler((request, _) =>
             Task.FromResult(request.RequestUri!.AbsolutePath == "/v1/models"
