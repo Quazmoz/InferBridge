@@ -25,6 +25,38 @@ One-time setup:
 
 Locally, the same phases work with any external signer: run each phase with identical arguments in the same checkout and replace the file between phases.
 
+## Azure DevOps provenance boundary (unsigned evaluation builds)
+
+The manual [Azure pipeline](../azure-pipelines.yml) runs against the **same Git commit**
+that Azure DevOps selects for the pipeline definition. The pipeline uses `checkout: self`,
+does **not** switch branches after checkout, and fails before installing dependencies if
+the Azure-provided repository, branch, or source commit differs from the checkout.
+It requires a clean checkout and records the checked-in YAML's SHA-256 hash.
+
+After packaging, it runs `scripts/verify_release_provenance.py` against the produced
+release manifest, summary, model-library manifest, and artifact checksums using
+Azure's `Build.SourceVersion`. It publishes the unsigned binaries alongside
+`azure-build-provenance.json` identifying the source ref, commit, pipeline YAML
+hash, and Azure run ID. This JSON is an **audit aid**, not a signed attestation.
+
+**Manual branch selection:** The YAML currently lives on `dev`. Select `dev`
+to build and evaluate `dev` artifacts. To build an official `main` candidate,
+first promote the reviewed pipeline YAML to `main` under the repository's
+branch policy, then queue the Azure pipeline with `main` selected. Do not
+select `dev` and fetch `main` inside the job: that produces misleading
+origin metadata. No release is published automatically.
+
+**SignPath is not enabled in Azure.** If approved for SignPath Foundation,
+configure the **Azure DevOps trusted build system** and SignPath extension /
+service connection, require SignPath origin verification on the real Azure
+build run, restrict release signing policy to `main`, and require manual
+maintainer approval. SignPath must verify origin through its Azure DevOps
+connector (not self-reported JSON). Its signing task also requires artifacts
+to have been stored on Azure DevOps before submission. Keep the signed launcher
+and installer in the existing `Launcher -> Package -> Finalize` order and
+verify both signatures before publishing. Do not add signing secrets or enable
+signing in the unsigned evaluation pipeline.
+
 ## Code signing policy
 
 Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).
