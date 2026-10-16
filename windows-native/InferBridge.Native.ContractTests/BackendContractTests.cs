@@ -382,6 +382,34 @@ internal static class BackendContractTests
                 () => client.GetModelRecoveryAsync("model-a", Key, CancellationToken.None),
                 "recovery details accepted a different model identity");
 
+        int revokedPermissionPosts = 0;
+        var revokedRecovery = new StubHandler((request, _) =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/v1/models/recovery/model-a")
+                return Task.FromResult(Json(RecoveryPayload.Replace(
+                    "\"resume\":true", "\"resume\":false")));
+            if (request.RequestUri.AbsolutePath == "/v1/models/recovery/action")
+                revokedPermissionPosts++;
+            return Task.FromResult(ValidResponse(request));
+        });
+        using (var client = new BackendClient(revokedRecovery, metadata))
+        {
+            var previouslyAllowed = new ModelRecoveryInfo("model-a", "Model A", "rec-123",
+                "conversion", "download", "reusable", "incomplete", "resume", "",
+                Array.Empty<string>(), new[] { "resume" });
+            await ThrowsAsync<InvalidOperationException>(
+                () => client.ApplyModelRecoveryAsync(
+                    previouslyAllowed, "resume", null, Key, CancellationToken.None),
+                "revoked engine recovery permission was ignored");
+            await ThrowsAsync<ArgumentException>(
+                () => client.ApplyModelRecoveryAsync(
+                    previouslyAllowed, "resume", "UNTRUSTED",
+                    Key, CancellationToken.None),
+                "unrecognized inference device was sent to recovery");
+        }
+        Check(revokedPermissionPosts == 0,
+            "invalid or revoked recovery capability reached the mutation endpoint");
+
         // Destructive model actions are explicit, verified, and refuse stale state.
         var deleteTransport = new StubHandler((request, _) =>
         {

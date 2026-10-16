@@ -101,10 +101,11 @@ the .NET 10 SDK (add `-p:EnableWindowsTargeting=true` off Windows):
 dotnet run --project .\windows-native\InferBridge.Native.ContractTests\InferBridge.Native.ContractTests.csproj -c Release
 ```
 
-The native Windows workflow is manually dispatched on `dev`; it does not automatically run on every development push. Dispatch it to qualify native changes. `tests/test_native_windows_source_contract.py` guards the XAML controls and
-key safeguards. The **Native Windows frontend** workflow builds and publishes
-the client on every relevant `dev` push; dispatched manually with
-*full_combined_candidate*, it also builds the Store MSIX and runs
+`tests/test_native_windows_source_contract.py` guards the XAML controls and
+key safeguards. The **Native Windows frontend** workflow now runs on manual
+dispatch rather than every `dev` push. Its standard run builds and publishes a
+Windows evaluation artifact. Dispatched with *full_combined_candidate*, it also
+builds the Store MSIX and runs
 `scripts/smoke_test_msix.ps1` (install, package-identity launch, native
 window, verified engine session, single-window relaunch, screenshots) and the
 Windows App Certification Kit.
