@@ -65,6 +65,13 @@ internal sealed record DesktopOperationsInfo(
 
 internal sealed record DiagnosticsExportInfo(string Filename, IReadOnlyList<string> CollectionErrors);
 
+internal sealed record DoctorCheck(string Level, string Title, string Detail, string NextStep);
+
+internal sealed record DoctorReport(
+    string Overall, int Errors, int Warnings, string Devices,
+    string ModelSummary, IReadOnlyList<DoctorCheck> Checks, string SupportReport);
+
+
 internal sealed record BackendSnapshot(
     bool Connected,
     string Message,
@@ -591,6 +598,192 @@ internal sealed class BackendClient : IDisposable
                 && activeDevice.ValueKind == JsonValueKind.Object
                 && ReadString(activeDevice, "actual_device") is { Length: > 0 and <= 64 } device
                 ? device : null);
+    }
+
+    /// <summary>
+    /// System Doctor uses the same two read-only, authenticated status routes as
+    /// the web GUI. Only allowlisted device and numeric data reaches the report:
+    /// no local paths, prompts, credentials, or backend model-error strings.
+    /// </summary>
+    public async Task<DoctorReport> RunSystemDoctorAsync(
+        string? apiKey, CancellationToken cancellationToken)
+    {
+        string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
+        using var statusPayload = await GetJsonAsync(
+            origin + "/v1/system/status", apiKey, cancellationToken,
+            TimeSpan.FromSeconds(15), MaximumChatBytes);
+        using var devicesPayload = await GetJsonAsync(
+            origin + "/v1/devices", apiKey, cancellationToken,
+            TimeSpan.FromSeconds(15));
+        JsonElement status = statusPayload.RootElement;
+        JsonElement devices = devicesPayload.RootElement;
+        if (status.ValueKind != JsonValueKind.Object
+            || devices.ValueKind != JsonValueKind.Object
+            || !status.TryGetProperty("memory", out var memory)
+            || memory.ValueKind != JsonValueKind.Object
+            || !status.TryGetProperty("disk", out var disk)
+            || disk.ValueKind != JsonValueKind.Object
+            || !status.TryGetProperty("models", out var models)
+            || models.ValueKind != JsonValueKind.Object
+            || !models.TryGetProperty("available", out var modelsList)
+            || modelsList.ValueKind != JsonValueKind.Array
+            || !status.TryGetProperty("device", out var deviceStatus)
+            || deviceStatus.ValueKind != JsonValueKind.Object
+            || !devices.TryGetProperty("available", out var deviceList)
+            || deviceList.ValueKind != JsonValueKind.Array)
+            throw new JsonException("Incomplete System Doctor response.");
+
+        var available = new List<string>();
+        foreach (var device in deviceList.EnumerateArray())
+        {
+            if (available.Count >= 32) break;
+            if (device.ValueKind != JsonValueKind.String) continue;
+            string name = (device.GetString() ?? "").ToUpperInvariant();
+            if (System.Text.RegularExpressions.Regex.IsMatch(name,
+                @"^(CPU|GPU|NPU)(\.[0-9]{1,3})?$")
+                && !available.Contains(name, StringComparer.Ordinal))
+                available.Add(name);
+        }
+        bool mock = devices.TryGetProperty("mock", out var mockFlag)
+            && mockFlag.ValueKind == JsonValueKind.True;
+        bool runtime = devices.TryGetProperty("openvino_available", out var ovFlag)
+            && ovFlag.ValueKind == JsonValueKind.True;
+        int catalog = 0, converted = 0, loaded = 0, failures = 0;
+        foreach (var model in modelsList.EnumerateArray())
+        {
+            if (catalog >= 2000) break;
+            if (model.ValueKind != JsonValueKind.Object) continue;
+            catalog++;
+            if (model.TryGetProperty("is_loaded", out var isLoaded)
+                && isLoaded.ValueKind == JsonValueKind.True) loaded++;
+            if (!mock && model.TryGetProperty("is_downloaded", out var isDownloaded)
+                && isDownloaded.ValueKind == JsonValueKind.True) converted++;
+            if (ReadString(model, "status") == "error") failures++;
+        }
+        static double Metric(JsonElement owner, string property)
+        {
+            if (owner.ValueKind != JsonValueKind.Object
+                || !owner.TryGetProperty(property, out var number)
+                || number.ValueKind != JsonValueKind.Number
+                || !number.TryGetDouble(out double value)
+                || !double.IsFinite(value) || value < 0)
+                return 0;
+            return value;
+        }
+        static string Gb(double value) => value.ToString("0.#",
+            System.Globalization.CultureInfo.InvariantCulture) + " GB";
+        double availableRam = Metric(memory, "available_gb");
+        double totalRam = Metric(memory, "total_gb");
+        double freeDisk = Metric(disk, "free_gb");
+        double modelsDisk = Metric(disk, "models_gb");
+        bool npu = available.Any(d => d == "NPU" || d.StartsWith("NPU.", StringComparison.Ordinal));
+
+        var checks = new List<DoctorCheck>();
+        void Add(string level, string title, string detail, string next = "") =>
+            checks.Add(new DoctorCheck(level, title, detail, next));
+        Add("pass", "Local engine reachable", "Verified session and authenticated status endpoints responded.");
+        if (mock)
+            Add("warning", "Mock inference mode", "Results are simulated; this does not verify OpenVINO hardware.",
+                "Disable mock mode and restart the engine to test real hardware.");
+        else if (!runtime)
+            Add("error", "OpenVINO runtime unavailable", "The engine did not detect OpenVINO.",
+                "Repair OpenVINO dependencies and restart InferBridge.");
+        else
+            Add("pass", "OpenVINO runtime", "The engine reports a working OpenVINO runtime.");
+        if (available.Count == 0)
+            Add("error", "No inference devices", "No CPU, GPU, or NPU targets were detected.",
+                "Repair the OpenVINO installation and hardware drivers.");
+        else
+            Add("pass", "Inference devices", string.Join(", ", available));
+        if (npu)
+            Add("pass", "NPU visible", "OpenVINO reports an Intel NPU device.");
+        else
+            Add("warning", "NPU not detected", "The NPU may be absent or its driver unavailable.",
+                "On compatible hardware, update the Intel NPU driver, reboot, and run checks again.");
+
+        string requested = ReadString(deviceStatus, "default").Trim().ToUpperInvariant();
+        string target = requested.Length <= 96
+            && System.Text.RegularExpressions.Regex.IsMatch(
+                requested, @"^(AUTO|CPU|GPU|NPU)(\.[0-9]{1,3})?$")
+            ? requested : "Custom/advanced";
+        if (target != "AUTO" && target != "Custom/advanced"
+            && !available.Any(d => d.Split('.')[0] == target.Split('.')[0]))
+            Add("warning", "Default device unavailable", "The requested device is not in the detected inventory.",
+                "Select a detected load target or repair the driver.");
+        else
+            Add("pass", "Default load target", target);
+        var activeRoutes = new List<string>();
+        if (deviceStatus.TryGetProperty("loaded", out var routes)
+            && routes.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var route in routes.EnumerateObject().Take(2000))
+            {
+                if (route.Value.ValueKind != JsonValueKind.String) continue;
+                string candidate = route.Value.GetString()?.ToUpperInvariant() ?? "";
+                if (candidate.Length is > 0 and <= 96)
+                    activeRoutes.Add(candidate);
+            }
+        }
+        if (activeRoutes.Any(r => r.StartsWith("AUTO", StringComparison.Ordinal)
+            || r.StartsWith("MULTI", StringComparison.Ordinal)
+            || r.StartsWith("HETERO", StringComparison.Ordinal)))
+            Add("warning", "Fallback routing in use", "AUTO/MULTI/HETERO may select a different device.",
+                "Use an explicit hardware target when strict placement matters.");
+        else if (activeRoutes.Count > 0)
+            Add("pass", "Explicit runtime routing", "Active models have non-fallback execution targets.");
+        else
+            Add("info", "No active route", "Load a converted model to inspect its running device.");
+        if (failures > 0)
+            Add("error", "Model preparation errors", failures + " model(s) reported an error.",
+                "Review Model library and retry preparation after correcting the cause.");
+        if (mock)
+            Add("warning", "Model conversion unverified", "Mock mode cannot confirm local OpenVINO IR.");
+        else if (converted == 0)
+            Add("warning", "No converted models", "No local model is marked ready for OpenVINO.",
+                "Download and convert a model in Model library.");
+        else
+            Add("pass", "Converted models", converted + " of " + catalog + " model(s) are prepared.");
+        if (availableRam <= 0)
+            Add("info", "Memory telemetry unavailable", "The engine did not report available RAM.");
+        else if (availableRam < 2)
+            Add("error", "Low available RAM", Gb(availableRam) + " available of " + Gb(totalRam) + ".",
+                "Close large applications or load a smaller model.");
+        else if (availableRam < 6)
+            Add("warning", "Limited available RAM", Gb(availableRam) + " available of " + Gb(totalRam) + ".",
+                "Prefer a smaller INT4 model and shorter context.");
+        else
+            Add("pass", "Available RAM", Gb(availableRam) + " available of " + Gb(totalRam) + ".");
+        if (freeDisk <= 0)
+            Add("info", "Disk telemetry unavailable", "No free-space reading was reported.");
+        else if (freeDisk < 3)
+            Add("error", "Low model storage", Gb(freeDisk) + " free on the model volume.",
+                "Free disk space before converting models.");
+        else if (freeDisk < 12)
+            Add("warning", "Limited model storage", Gb(freeDisk) + " free on the model volume.",
+                "Make space before converting larger models.");
+        else
+            Add("pass", "Model storage", Gb(freeDisk) + " free; " + Gb(modelsDisk) + " in converted models.");
+
+        int errors = checks.Count(c => c.Level == "error");
+        int warnings = checks.Count(c => c.Level == "warning");
+        string overall = errors > 0 ? "Action required"
+            : warnings > 0 ? "Ready with warnings" : "System looks ready";
+        string devicesText = available.Count == 0 ? "None detected" : string.Join(", ", available);
+        string modelsText = mock
+            ? catalog + " catalog models (conversion simulated); " + loaded + " loaded"
+            : converted + "/" + catalog + " converted; " + loaded + " loaded; " + failures + " errors";
+        string report = "InferBridge System Doctor\nOverall: " + overall
+            + "\nDevices: " + devicesText + "\nNPU visible: " + (npu ? "Yes" : "No")
+            + "\nDefault load target: " + target
+            + "\nModels: " + modelsText + "\n"
+            + "RAM available: " + Gb(availableRam) + " / " + Gb(totalRam)
+            + "\nDisk free: " + Gb(freeDisk) + "\nChecks:\n"
+            + string.Join("\n", checks.Select(c => "- [" + c.Level + "] "
+                + c.Title + ": " + c.Detail
+                + (c.NextStep.Length > 0 ? " Next: " + c.NextStep : "")))
+            + "\nPrivacy: API keys, prompts, conversations, model errors, and local paths are excluded.";
+        return new DoctorReport(overall, errors, warnings, devicesText,
+            modelsText, checks, report);
     }
 
     /// <summary>One explicitly requested 32-token measurement on a verified loaded model.</summary>
