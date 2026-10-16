@@ -23,7 +23,7 @@ it over verified loopback HTTP.
   When the Model library is visible, the separate native progress strip reads the
   engine's versioned `/v1/models/status` snapshot and reports the selected model's
   current preparation phase and reported percentage (or explicitly notes when no
-  percentage is available). **Cancel current preparation** is enabled only if the
+  percentage is available). Selected model details are also drawn from that same engine snapshot: declared backend, Hugging Face source (only when it has a safe repository ID), weight format, configured device preference, current runtime device, reported context/output limits, and vision support. Unknown fields are labelled *Not reported*, not inferred from model names or assumed to be compatible. **Cancel current preparation** is enabled only if the
   engine reports a cancellable operation ID. After confirmation, the client
   rechecks that same operation ID and capability before one authenticated
   `/v1/models/cancel` request; a conflicting or ambiguous response never causes
@@ -50,6 +50,7 @@ it over verified loopback HTTP.
 | Chat and model load/unload | Implemented | Implemented | Native SSE, cancellation, selected-device load; verify on real hardware |
 | Model library and download of catalog models | Implemented | Implemented | Native uses engine convert and lifecycle routes; gated access applies to both |
 | Live preparation stage, percentage and guarded cancellation | Implemented | Implemented in native controls | Uses `/v1/models/status` and identity-bound `/v1/models/cancel`; no native conversion queue; Windows qualification pending |
+| Selected model configuration and active device details | Implemented | Implemented in native controls | Structured engine metadata; unknown fields safely hidden; device preference is not hardware proof |
 | Interrupted model preparation recovery | Implemented | Implemented | Engine recovery ID and action rechecks; Windows CI qualification pending |
 | Storage/cache inventory and guarded cleanup | Implemented | Implemented | Engine owns destructive cleanup; Windows CI qualification pending |
 | Hugging Face account status/token verification/secure removal | Implemented | Implemented in native controls | Existing backend owns credentials; real HF account/DPAPI still need testing |
@@ -109,6 +110,8 @@ Windows 10 19041+ or Windows 11 x64, with the .NET 10 SDK:
 dotnet build .\windows-native\InferBridge.Native\InferBridge.Native.csproj -c Release -p:Platform=x64
 dotnet run --project .\windows-native\InferBridge.Native\InferBridge.Native.csproj -p:Platform=x64
 ```
+
+To qualify native model details: select catalog, downloaded, and actively loaded models. Compare model backend, source, format, configured preference, actual device, context/output limits and vision capability against `GET /v1/models/status`. Confirm that unavailable device/metadata is labelled *Not reported*, not invented, and switching engine sessions does not display stale details or enable old cancellation permissions.
 
 To qualify native cancellation: start a test model conversion on a Windows machine; in **Model library** select that model, verify reported phase and percentage, then request cancellation while the engine permits it. Confirm the matching operation ends in `cancelled`, recovery or retry remains available as appropriate, and a completed/native-compilation operation cannot be cancelled. Repeat across engine restart and with a second frontend advancing the same model to verify stale operation IDs fail closed. Do not use important in-progress model data for destructive testing.
 

@@ -12,6 +12,10 @@ internal static class ModelPreparationContractTests
     private const string Ready = """
         {"schema_version":1,"models":{"available":[{"id":"model-a",
         "status":"converting","can_cancel":true,"cancel_mode":"conversion",
+        "backend":"openvino-genai","source_model":"org/safe-model",
+        "weight_format":"int4","recommended_device":"AUTO:GPU,CPU",
+        "device":"GPU.0","max_context_len":4096,"max_output_tokens":512,
+        "supports_vision":false,
         "progress":{"phase":"downloading","operation_id":"op:77","revision":2,"percent":45.5}},
         {"id":"model-b","status":"loading","can_cancel":false,
         "progress":{"phase":"loading","operation_id":"op:88","percent":null}}]}}
@@ -98,6 +102,17 @@ internal static class ModelPreparationContractTests
                     { CanCancel: true, Phase: "downloading", Percent: 45.5 }
                 && items["model-b"] is { CanCancel: false, Percent: null },
                 "progress contract not parsed accurately");
+            Check(items["model-a"].Details is
+                {
+                    Backend: "openvino-genai",
+                    SourceRepository: "org/safe-model",
+                    WeightFormat: "int4",
+                    ConfiguredDevice: "AUTO:GPU,CPU",
+                    RuntimeDevice: "GPU.0",
+                    ContextTokens: 4096,
+                    OutputTokens: 512,
+                    SupportsVision: false,
+                }, "engine model configuration and runtime metadata not parsed");
             var message = await client.CancelModelPreparationAsync(
                 items["model-a"], Key, CancellationToken.None);
             Check(message.Contains("confirmed", StringComparison.Ordinal),
@@ -172,6 +187,51 @@ internal static class ModelPreparationContractTests
         using (var client = new BackendClient(strange, metadata))
             Check((await client.GetModelPreparationsAsync(Key, CancellationToken.None))
                 ["model-a"].Phase == "unknown", "untrusted stage shown in UI");
+
+        // Optional metadata is always advisory: malformed values cannot turn
+        // a valid cancellation snapshot into unsafe user-visible text or a
+        // disabled read-only model library.
+        var untrusted = new Transport((request, _) => Task.FromResult(Standard(request,
+            Ready.Replace("\"source_model\":\"org/safe-model\"",
+                  "\"source_model\":\"C:\\\\Users\\\\secrets\\\\hf_token\"",
+                  StringComparison.Ordinal)
+                .Replace("\"recommended_device\":\"AUTO:GPU,CPU\"",
+                  "\"recommended_device\":\"GPU/unsafe\"",
+                  StringComparison.Ordinal)
+                .Replace("\"backend\":\"openvino-genai\"",
+                  "\"backend\":\"<script>\"",
+                  StringComparison.Ordinal)
+                .Replace("\"max_context_len\":4096",
+                  "\"max_context_len\":-1",
+                  StringComparison.Ordinal)
+                .Replace("\"device\":\"GPU.0\"",
+                  "\"device\":\"./secret\"",
+                  StringComparison.Ordinal))));
+        using (var client = new BackendClient(untrusted, metadata))
+        {
+            var model = (await client.GetModelPreparationsAsync(
+                Key, CancellationToken.None))["model-a"];
+            Check(model.CanCancel && model.Details is
+                {
+                    Backend: "Not reported",
+                    SourceRepository: "Not reported",
+                    ConfiguredDevice: "Not reported",
+                    RuntimeDevice: "Not reported",
+                    ContextTokens: null,
+                }, "untrusted metadata reached the native model details");
+        }
+
+        var tokenShaped = new Transport((request, _) => Task.FromResult(Standard(request,
+            Ready.Replace("\"source_model\":\"org/safe-model\"",
+                  "\"source_model\":\"org/hf_1234567890123456\"",
+                  StringComparison.Ordinal))));
+        using (var client = new BackendClient(tokenShaped, metadata))
+        {
+            var details = (await client.GetModelPreparationsAsync(
+                Key, CancellationToken.None))["model-a"].Details;
+            Check(details?.SourceRepository == "Not reported",
+                "token-shaped source repository reached the native UI");
+        }
 
         var refused = new Transport((request, _) => Task.FromResult(
             request.RequestUri!.AbsolutePath == "/v1/models/cancel"

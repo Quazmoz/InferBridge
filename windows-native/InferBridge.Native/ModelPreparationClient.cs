@@ -3,9 +3,17 @@ using System.Text.RegularExpressions;
 
 namespace InferBridge.Native;
 
+internal sealed record ModelLibraryDetails(
+    string Backend, string WeightFormat, string SourceRepository,
+    string ConfiguredDevice, string RuntimeDevice, int? ContextTokens,
+    int? OutputTokens, bool? SupportsVision);
+
 internal sealed record ModelPreparationInfo(
     string ModelId, string? OperationId, string Phase,
-    double? Percent, bool CanCancel, string CancelReason);
+    double? Percent, bool CanCancel, string CancelReason)
+{
+    public ModelLibraryDetails? Details { get; init; }
+}
 
 internal sealed partial class BackendClient
 {
@@ -16,6 +24,59 @@ internal sealed partial class BackendClient
     [
         "queued", "resolving", "downloading", "converting", "finalizing",
     ];
+
+    // Optional registry metadata is advisory. Unknown or malformed fields must
+    // never become unsafe text in a native UI or invalidate cancellation state.
+    private static ModelLibraryDetails ParseLibraryDetails(JsonElement item)
+    {
+        static string Allowed(string value, string[] choices) =>
+            choices.Contains(value, StringComparer.Ordinal) ? value : "Not reported";
+        static string Device(string value)
+        {
+            static bool Physical(string token) =>
+                Regex.IsMatch(token, @"^(CPU|GPU|NPU)(\.[0-9]{1,3})?$",
+                    RegexOptions.CultureInvariant);
+            if (value.Length is < 1 or > 64) return "Not reported";
+            if (Physical(value) || value == "AUTO") return value;
+            string[] expression = value.Split(':', 2);
+            if (expression.Length != 2
+                || expression[0] is not ("AUTO" or "MULTI" or "HETERO"))
+                return "Not reported";
+            string[] physical = expression[1].Split(',');
+            return physical.Length is > 0 and <= 8 && physical.All(Physical)
+                ? value : "Not reported";
+        }
+        static int? Budget(JsonElement entry, string key, int minimum, int maximum)
+        {
+            return entry.TryGetProperty(key, out var raw)
+                && raw.ValueKind == JsonValueKind.Number
+                && raw.TryGetInt32(out int size)
+                && size >= minimum && size <= maximum ? size : null;
+        }
+        string source = ReadString(item, "source_model");
+        if (source.Length > 240 ||
+            !Regex.IsMatch(source,
+                @"^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}/[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$",
+                RegexOptions.CultureInvariant)
+            || Regex.IsMatch(source, @"hf_[A-Za-z0-9]{8,}",
+                RegexOptions.CultureInvariant))
+            source = "Not reported";
+        bool? vision = null;
+        if (item.TryGetProperty("supports_vision", out var flag))
+        {
+            if (flag.ValueKind == JsonValueKind.True) vision = true;
+            if (flag.ValueKind == JsonValueKind.False) vision = false;
+        }
+        return new ModelLibraryDetails(
+            Allowed(ReadString(item, "backend"),
+                ["openvino-genai", "openvino-embeddings", "openvino-vlm"]),
+            Allowed(ReadString(item, "weight_format"), ["int4", "int8", "fp16"]),
+            source, Device(ReadString(item, "recommended_device")),
+            Device(ReadString(item, "device")),
+            Budget(item, "max_context_len", 128, 262144),
+            Budget(item, "max_output_tokens", 0, 65536),
+            vision);
+    }
 
     private static ModelPreparationInfo ParsePreparation(JsonElement item)
     {
@@ -68,7 +129,10 @@ internal sealed partial class BackendClient
         return new ModelPreparationInfo(modelId,
             operationId.Length > 0 ? operationId : null,
             phase, percent, cancel,
-            cancel ? "" : "The engine does not offer cancellation for this stage.");
+            cancel ? "" : "The engine does not offer cancellation for this stage.")
+        {
+            Details = ParseLibraryDetails(item),
+        };
     }
 
     private static IReadOnlyDictionary<string, ModelPreparationInfo> ParsePreparations(JsonElement root)

@@ -499,3 +499,26 @@ def test_native_model_preparation_is_operation_scoped_and_engine_authoritative()
     assert "RefreshModelPreparationsAsync()" in main
     assert "ModelPreparationContractTests.RunAsync(root)" in harness
     assert "WebView2" not in view
+
+
+def test_native_model_details_and_session_invalidation_contract():
+    client = (PROJECT / "ModelPreparationClient.cs").read_text(encoding="utf-8")
+    view = (PROJECT / "MainWindow.ModelPreparation.cs").read_text(encoding="utf-8")
+    xaml = (PROJECT / "MainWindow.xaml").read_text(encoding="utf-8")
+    tests = (
+        ROOT / "windows-native" / "InferBridge.Native.ContractTests"
+        / "ModelPreparationContractTests.cs"
+    ).read_text(encoding="utf-8")
+
+    assert "ParseLibraryDetails" in client
+    assert "SourceRepository" in client
+    assert "ConfiguredDevice" in client
+    assert "RuntimeDevice" in client
+    assert "Budget(item, \"max_context_len\", 128, 262144)" in client
+    assert "Not reported" in client
+    assert "_modelPreparationEpoch++" in view
+    assert "epoch != _modelPreparationEpoch" in view
+    assert "ApiKeyBox.Password != requestedKey" in view
+    assert 'x:Name="ModelDetailsSummary"' in xaml
+    assert "ModelDetailsSummary.Text" in view
+    assert "untrusted metadata reached the native model details" in tests

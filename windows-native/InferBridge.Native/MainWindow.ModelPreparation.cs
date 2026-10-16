@@ -9,9 +9,12 @@ public sealed partial class MainWindow
         new Dictionary<string, ModelPreparationInfo>(StringComparer.Ordinal);
     private bool _modelPreparationRefreshing;
     private bool _modelPreparationAvailable;
+    private long _modelPreparationEpoch;
 
     private void ResetModelPreparations()
     {
+        // Invalidate an in-flight response from a previous engine/API-key session.
+        _modelPreparationEpoch++;
         _modelPreparations = new Dictionary<string, ModelPreparationInfo>(StringComparer.Ordinal);
         _modelPreparationAvailable = false;
         UpdateModelPreparationUi();
@@ -39,6 +42,28 @@ public sealed partial class MainWindow
                                 : " · Cancellation unavailable at this stage");
         if (ModelPreparationSummary.Text != label)
             ModelPreparationSummary.Text = label;
+        string details = "";
+        if (hasProgress && operation!.Details is ModelLibraryDetails info)
+        {
+            static string Budget(int? value) =>
+                value?.ToString("N0",
+                    System.Globalization.CultureInfo.InvariantCulture)
+                    ?? "Not reported";
+            details = "Backend: " + info.Backend
+                + " · Weight format: " + info.WeightFormat
+                + "\nHugging Face source: " + info.SourceRepository
+                + "\nConfigured device preference: " + info.ConfiguredDevice
+                + " · Active runtime device: " + info.RuntimeDevice
+                + "\nContext limit: " + Budget(info.ContextTokens)
+                + " · Output token limit: " + Budget(info.OutputTokens)
+                + "\nVision capability: " + (info.SupportsVision is true
+                    ? "Reported" : info.SupportsVision is false
+                    ? "Not reported as supported" : "Unknown")
+                + "\nDevice preferences and model metadata do not certify local hardware compatibility.";
+        }
+        if (ModelDetailsSummary.Text != details)
+            ModelDetailsSummary.Text = details;
+
         bool showPercent = hasProgress
             && operation!.OperationId is not null
             && operation.Percent is not null;
@@ -59,19 +84,25 @@ public sealed partial class MainWindow
             || !_engineConnected || _rejectedApiKey is not null)
             return;
         _modelPreparationRefreshing = true;
+        long epoch = _modelPreparationEpoch;
+        string requestedKey = ApiKeyBox.Password;
         UpdateModelPreparationUi();
         try
         {
             var current = await _backend.GetModelPreparationsAsync(
-                ApiKeyBox.Password, _closing.Token);
-            if (_closing.IsCancellationRequested) return;
+                requestedKey, _closing.Token);
+            if (_closing.IsCancellationRequested || epoch != _modelPreparationEpoch
+                || !_engineConnected || _rejectedApiKey is not null
+                || ApiKeyBox.Password != requestedKey)
+                return;
             _modelPreparations = current;
             _modelPreparationAvailable = true;
         }
         catch (Exception) when (_closing.IsCancellationRequested) { }
         catch (Exception) when (!_closing.IsCancellationRequested)
         {
-            // Fail closed: a stale capability must never survive a failed read.
+            // Fail closed without letting a failed old request erase a newer session.
+            if (epoch != _modelPreparationEpoch) return;
             _modelPreparations = new Dictionary<string, ModelPreparationInfo>(
                 StringComparer.Ordinal);
             _modelPreparationAvailable = false;
