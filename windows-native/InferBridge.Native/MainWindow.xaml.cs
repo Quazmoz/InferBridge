@@ -37,6 +37,8 @@ public sealed partial class MainWindow : Window
     private bool _scanningDevices;
     private bool _operationsBusy;
     private bool _operationsLoaded;
+    private string? _quickBenchmarkModelId;
+    private string? _quickBenchmarkDevice;
     private bool _devicesScanned;
     private bool _devicesAvailable;
     private string? _chatLoadError;
@@ -210,6 +212,7 @@ public sealed partial class MainWindow : Window
         OperationsProgress.IsActive = true;
         OperationsRefreshButton.IsEnabled = false;
         DiagnosticsExportButton.IsEnabled = false;
+        QuickBenchmarkButton.IsEnabled = false;
         try
         {
             DesktopOperationsInfo state = await _backend.GetDesktopOperationsAsync(
@@ -233,6 +236,11 @@ public sealed partial class MainWindow : Window
                 : state.LatestBenchmark;
             DiagnosticsResult.Text = "Last diagnostics export: " + state.LastDiagnosticsExport;
             DiagnosticsExportButton.IsEnabled = true;
+            _quickBenchmarkModelId = state.ActiveModelId;
+            _quickBenchmarkDevice = state.ActualDevice;
+            if (string.IsNullOrWhiteSpace(_quickBenchmarkModelId)
+                || string.IsNullOrWhiteSpace(_quickBenchmarkDevice))
+                BenchmarkRunResult.Text = "Load a generation model to enable a local benchmark.";
         }
         catch (Exception) when (_closing.IsCancellationRequested) { }
         catch (Exception error) when (!_closing.IsCancellationRequested)
@@ -243,6 +251,8 @@ public sealed partial class MainWindow : Window
             OperationsDetails.Text = "Reconnect to the local engine, then refresh.";
             OperationsBenchmarks.Text = "Unavailable until the engine responds.";
             DiagnosticsExportButton.IsEnabled = false;
+            _quickBenchmarkModelId = null;
+            _quickBenchmarkDevice = null;
         }
         finally
         {
@@ -251,6 +261,64 @@ public sealed partial class MainWindow : Window
             {
                 OperationsProgress.IsActive = false;
                 OperationsRefreshButton.IsEnabled = true;
+                QuickBenchmarkButton.IsEnabled = _operationsLoaded
+                    && !string.IsNullOrWhiteSpace(_quickBenchmarkModelId)
+                    && !string.IsNullOrWhiteSpace(_quickBenchmarkDevice);
+            }
+        }
+    }
+
+    private async void QuickBenchmarkButton_Click(object sender, RoutedEventArgs args)
+    {
+        if (_operationsBusy || _quitting || _closing.IsCancellationRequested
+            || string.IsNullOrWhiteSpace(_quickBenchmarkModelId)
+            || string.IsNullOrWhiteSpace(_quickBenchmarkDevice)) return;
+        string model = _quickBenchmarkModelId;
+        string device = _quickBenchmarkDevice;
+        try
+        {
+            var dialog = new ContentDialog
+            {
+                XamlRoot = ((FrameworkElement)Content).XamlRoot,
+                Title = "Run a local quick benchmark?",
+                Content = "Measure " + model + " on " + device +
+                    " with one 32-token generation. This may take several minutes, use substantial system resources, and keep running on the engine if the window closes. No model download or conversion is requested.",
+                PrimaryButtonText = "Run benchmark",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Close,
+            };
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary
+                || _closing.IsCancellationRequested) return;
+            _operationsBusy = true;
+            OperationsRefreshButton.IsEnabled = false;
+            DiagnosticsExportButton.IsEnabled = false;
+            QuickBenchmarkButton.IsEnabled = false;
+            OperationsProgress.IsActive = true;
+            BenchmarkRunResult.Text = "Benchmark running on the selected loaded model…";
+            string result = await _backend.RunQuickBenchmarkAsync(
+                model, device, ApiKeyBox.Password, _closing.Token);
+            if (_closing.IsCancellationRequested) return;
+            BenchmarkRunResult.Text = result;
+            OperationsInfo.Severity = InfoBarSeverity.Informational;
+            OperationsInfo.Message = "Benchmark request finished. See measured results below.";
+        }
+        catch (Exception) when (_closing.IsCancellationRequested) { }
+        catch (Exception error) when (!_closing.IsCancellationRequested)
+        {
+            BenchmarkRunResult.Text = "Benchmark could not complete: " + SafeError(error);
+        }
+        finally
+        {
+            _operationsBusy = false;
+            if (!_closing.IsCancellationRequested)
+            {
+                OperationsProgress.IsActive = false;
+                OperationsRefreshButton.IsEnabled = true;
+                DiagnosticsExportButton.IsEnabled = _operationsLoaded;
+                QuickBenchmarkButton.IsEnabled = _operationsLoaded
+                    && !string.IsNullOrWhiteSpace(_quickBenchmarkModelId)
+                    && !string.IsNullOrWhiteSpace(_quickBenchmarkDevice);
+                await RefreshOperationsAsync();
             }
         }
     }
@@ -302,6 +370,9 @@ public sealed partial class MainWindow : Window
                 OperationsProgress.IsActive = false;
                 OperationsRefreshButton.IsEnabled = true;
                 DiagnosticsExportButton.IsEnabled = _operationsLoaded;
+                QuickBenchmarkButton.IsEnabled = _operationsLoaded
+                    && !string.IsNullOrWhiteSpace(_quickBenchmarkModelId)
+                    && !string.IsNullOrWhiteSpace(_quickBenchmarkDevice);
             }
         }
     }
