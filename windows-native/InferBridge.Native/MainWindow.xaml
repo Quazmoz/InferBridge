@@ -28,6 +28,7 @@
                 <NavigationViewItem Icon="Home" Content="Engine" Tag="overview" />
                 <NavigationViewItem Icon="Setting" Content="Operations &amp; diagnostics" Tag="operations" />
                 <NavigationViewItem Icon="Repair" Content="System Doctor" Tag="doctor" />
+                <NavigationViewItem Icon="Save" Content="Storage &amp; cache" Tag="storage" />
             </NavigationView.MenuItems>
             <Grid Padding="24,12,24,20">
                 <ScrollViewer x:Name="OverviewPanel" Visibility="Collapsed">
@@ -145,6 +146,32 @@
                                 Click="DiagnosticsExportButton_Click" />
                         <TextBlock x:Name="DiagnosticsResult" TextWrapping="Wrap"
                                    AutomationProperties.LiveSetting="Polite" />
+                    </StackPanel>
+                </ScrollViewer>
+                <ScrollViewer x:Name="StoragePanel" Visibility="Collapsed">
+                    <StackPanel MaxWidth="800" HorizontalAlignment="Left" Spacing="14">
+                        <TextBlock Text="Storage &amp; cache" FontSize="28"
+                                   FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock Text="Inspect managed model files, reusable Hugging Face downloads, interrupted preparation and compiled OpenVINO caches. All measurements and cleanup decisions come from the existing local engine."
+                                   TextWrapping="Wrap" Opacity="0.8" />
+                        <InfoBar x:Name="StorageInfo" Title="Storage manager"
+                                 IsOpen="True" IsClosable="False"
+                                 Severity="Informational"
+                                 Message="Open Storage to inspect managed files. No files are removed automatically." />
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Button x:Name="StorageRefreshButton" Content="Refresh inventory"
+                                    Click="StorageRefreshButton_Click" />
+                            <ProgressRing x:Name="StorageProgress" IsActive="False"
+                                          Width="26" Height="26" />
+                        </StackPanel>
+                        <TextBlock x:Name="StorageSummary" IsTextSelectionEnabled="True"
+                                   TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
+                                   Text="Connect to the local engine to view managed storage." />
+                        <TextBlock Text="Managed files and cleanup options"
+                                   FontSize="18" FontWeight="SemiBold" />
+                        <StackPanel x:Name="StorageRows" Spacing="12" />
+                        <TextBlock Text="Cleanup is never automatic. Unavailable actions remain disabled. Protected transaction backups are not eligible for removal. Source cache cleanup requires a future download; clearing compiled cache can slow the next load."
+                                   TextWrapping="Wrap" Opacity="0.8" />
                     </StackPanel>
                 </ScrollViewer>
                 <Grid x:Name="ModelsPanel" Visibility="Collapsed" RowSpacing="12">

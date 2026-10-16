@@ -54,6 +54,14 @@ internal sealed record ModelRecoveryInfo(
     public bool CanRun(string action) => AvailableActions.Contains(action);
 }
 
+internal sealed record StorageCleanupOption(
+    string Action, string? ModelId, string Name, string Detail,
+    long SizeBytes, long ReclaimableBytes, bool Available, string Reason);
+
+internal sealed record StorageInventory(
+    long ManagedBytes, long ReclaimableBytes, long ProtectedBytes,
+    IReadOnlyList<StorageCleanupOption> Options, bool Truncated);
+
 internal sealed record ModelRecommendation(string Id, string Reason);
 
 internal sealed record DeviceInventory(string Default, IReadOnlyList<string> Available, bool Mock);
@@ -995,6 +1003,192 @@ internal sealed class BackendClient : IDisposable
         return status == "cleaned"
             ? "Incomplete model files were cleaned. Refresh the model library."
             : "Recovery started. Follow progress in the model library.";
+    }
+
+    private static readonly string[] StorageActions =
+    [
+        "delete_converted_model", "remove_huggingface_cache",
+        "remove_incomplete_data", "clear_compiled_cache",
+    ];
+
+    private static long RequireStorageBytes(JsonElement value, string name)
+    {
+        if (value.ValueKind != JsonValueKind.Object
+            || !value.TryGetProperty(name, out var number)
+            || number.ValueKind != JsonValueKind.Number
+            || !number.TryGetInt64(out long size) || size < 0)
+            throw new JsonException("Invalid storage size in engine inventory.");
+        return size;
+    }
+
+    private static StorageInventory ParseStorageInventory(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object
+            || !root.TryGetProperty("schema_version", out var version)
+            || version.ValueKind != JsonValueKind.Number
+            || !version.TryGetInt32(out int schemaVersion) || schemaVersion != 1
+            || !root.TryGetProperty("totals", out var totals)
+            || !root.TryGetProperty("notes", out var notes)
+            || notes.ValueKind != JsonValueKind.Object
+            || !notes.TryGetProperty("paths_exposed", out var pathsExposed)
+            || pathsExposed.ValueKind != JsonValueKind.False
+            || !notes.TryGetProperty("transaction_backups_protected", out var backupsProtected)
+            || backupsProtected.ValueKind != JsonValueKind.True)
+            throw new JsonException("Unrecognized or unsafe storage inventory contract.");
+
+        long managed = RequireStorageBytes(totals, "managed_storage_bytes");
+        long reclaimable = RequireStorageBytes(totals, "currently_reclaimable_bytes");
+        long protectedBytes = RequireStorageBytes(totals, "protected_transaction_backup_bytes");
+        if (reclaimable > managed || protectedBytes > managed)
+            throw new JsonException("Inconsistent storage inventory totals.");
+
+        var options = new List<StorageCleanupOption>();
+        bool truncated = false;
+        static string Label(string text, int length = 180)
+        {
+            text = string.Join(' ', text.Split((char[]?)null,
+                StringSplitOptions.RemoveEmptyEntries));
+            return text.Length > length ? text[..length] + "…" : text;
+        }
+
+        void Append(JsonElement row, string expectedAction, string? modelId,
+            string name, string detail, string sizeProperty)
+        {
+            if (options.Count >= 200) { truncated = true; return; }
+            if (row.ValueKind != JsonValueKind.Object
+                || !row.TryGetProperty("cleanup", out var cleanup)
+                || cleanup.ValueKind != JsonValueKind.Object
+                || ReadString(cleanup, "action") != expectedAction
+                || !cleanup.TryGetProperty("available", out var permitted)
+                || permitted.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                throw new JsonException("Invalid storage cleanup capability.");
+            if (expectedAction != "clear_compiled_cache")
+                ValidateRecoveryModelId(modelId ?? "");
+            else if (modelId is not null)
+                throw new JsonException("Compiled cache cleanup must be global.");
+
+            long size = RequireStorageBytes(row, sizeProperty);
+            long availableBytes = RequireStorageBytes(cleanup, "reclaimable_bytes");
+            if (availableBytes > size || (permitted.ValueKind == JsonValueKind.True
+                && availableBytes == 0))
+                throw new JsonException("Inconsistent storage cleanup capability.");
+            options.Add(new StorageCleanupOption(expectedAction, modelId,
+                Label(name), Label(detail), size, availableBytes,
+                permitted.ValueKind == JsonValueKind.True,
+                Label(ReadString(cleanup, "reason"), 250)));
+        }
+
+        void ReadRows(string collection, string action, string idProperty,
+            string nameProperty, string sizeProperty)
+        {
+            if (!root.TryGetProperty(collection, out var rows)
+                || rows.ValueKind != JsonValueKind.Array)
+                throw new JsonException("Missing storage inventory section.");
+            foreach (var row in rows.EnumerateArray())
+            {
+                string? id = ReadString(row, idProperty);
+                string name = ReadString(row, nameProperty);
+                if (collection == "source_caches")
+                {
+                    if (!row.TryGetProperty("cleanup", out var cleanup))
+                        throw new JsonException("Missing Hugging Face cache cleanup details.");
+                    id = ReadString(cleanup, "model_id");
+                }
+                if (string.IsNullOrWhiteSpace(name)) name = id ?? "Managed storage";
+                string detail = collection switch
+                {
+                    "models" => "Converted OpenVINO model",
+                    "source_caches" => "Reusable Hugging Face source files"
+                        + (row.TryGetProperty("shared", out var shared)
+                            && shared.ValueKind == JsonValueKind.True
+                            ? " · shared by multiple models" : ""),
+                    _ => "Incomplete preparation and recovery data",
+                };
+                if (collection == "models"
+                    && row.TryGetProperty("conversion_health", out var health)
+                    && health.ValueKind == JsonValueKind.Object)
+                    detail += " · " + ReadString(health, "label");
+                if (collection == "recovery_items")
+                    detail += " · " + RequireStorageBytes(
+                        row, "protected_backup_bytes") + " protected backup bytes";
+                Append(row, action, id, name, detail, sizeProperty);
+            }
+        }
+
+        ReadRows("models", "delete_converted_model", "model_id", "name",
+            "converted_size_bytes");
+        ReadRows("source_caches", "remove_huggingface_cache", "model_id",
+            "source_model", "size_bytes");
+        ReadRows("recovery_items", "remove_incomplete_data", "model_id",
+            "name", "size_bytes");
+        if (!root.TryGetProperty("compiled_cache", out var compiled)
+            || compiled.ValueKind != JsonValueKind.Object)
+            throw new JsonException("Missing compiled cache inventory.");
+        Append(compiled, "clear_compiled_cache", null,
+            "OpenVINO compiled cache", "Next model load may take longer", "size_bytes");
+        return new StorageInventory(managed, reclaimable, protectedBytes,
+            options, truncated);
+    }
+
+    /// <summary>Read native storage data without exposing engine filesystem paths.</summary>
+    public async Task<StorageInventory> GetStorageInventoryAsync(
+        string? apiKey, CancellationToken cancellationToken)
+    {
+        string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
+        using var response = await GetJsonAsync(origin + "/v1/storage", apiKey,
+            cancellationToken, TimeSpan.FromSeconds(20));
+        return ParseStorageInventory(response.RootElement);
+    }
+
+    /// <summary>
+    /// Recheck the exact storage capability and measured reclaimable bytes after
+    /// confirmation. The Python engine still arbitrates concurrent file changes.
+    /// Never retry a timeout-after-success automatically.
+    /// </summary>
+    public async Task<string> CleanupStorageAsync(
+        StorageCleanupOption selected, string? apiKey, CancellationToken cancellationToken)
+    {
+        if (!StorageActions.Contains(selected.Action) || !selected.Available
+            || selected.ReclaimableBytes <= 0)
+            throw new ArgumentException("Selected cleanup is not available.");
+        if (selected.Action == "clear_compiled_cache")
+        {
+            if (selected.ModelId is not null)
+                throw new ArgumentException("Global cleanup cannot target a model.");
+        }
+        else ValidateRecoveryModelId(selected.ModelId ?? "");
+
+        string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
+        using var fresh = await GetJsonAsync(origin + "/v1/storage", apiKey,
+            cancellationToken, TimeSpan.FromSeconds(20));
+        StorageInventory inventory = ParseStorageInventory(fresh.RootElement);
+        var current = inventory.Options.SingleOrDefault(item =>
+            item.Action == selected.Action && item.ModelId == selected.ModelId);
+        if (current is null || !current.Available
+            || current.ReclaimableBytes != selected.ReclaimableBytes
+            || current.SizeBytes != selected.SizeBytes)
+            throw new InvalidOperationException(
+                "Storage state changed. Refresh the inventory before cleaning.");
+
+        using var request = new HttpRequestMessage(HttpMethod.Post,
+            origin + "/v1/storage/cleanup");
+        request.Headers.Add("X-OV-LLM-UI", "1");
+        SetAuth(request, apiKey);
+        request.Content = new StringContent(JsonSerializer.Serialize(new
+        {
+            action = selected.Action,
+            model_id = selected.ModelId,
+        }), Encoding.UTF8, "application/json");
+        using var result = await RequestJsonAsync(request, cancellationToken,
+            TimeSpan.FromSeconds(120), MaximumJsonBytes);
+        if (ReadString(result.RootElement, "status") != "completed"
+            || ReadString(result.RootElement, "action") != selected.Action
+            || (selected.ModelId is not null
+                && ReadString(result.RootElement, "model_id") != selected.ModelId))
+            throw new JsonException("The engine did not confirm the requested storage cleanup.");
+        long freed = RequireStorageBytes(result.RootElement, "freed_bytes");
+        return "Engine confirmed cleanup. Freed " + (freed / 1024d / 1024d).ToString(
+            "0.##", System.Globalization.CultureInfo.InvariantCulture) + " MiB.";
     }
 
     /// <summary>Remove local files only after confirming the model is still unloaded.</summary>

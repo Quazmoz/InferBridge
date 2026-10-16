@@ -410,6 +410,139 @@ internal static class BackendContractTests
         Check(revokedPermissionPosts == 0,
             "invalid or revoked recovery capability reached the mutation endpoint");
 
+        // Native storage management consumes only typed, path-free inventory.
+        // Every cleanup rechecks server capabilities and sends the explicit UI
+        // header required by the desktop-only Python route.
+        const string StoragePayload =
+            """
+            {
+              "schema_version":1,
+              "totals":{"managed_storage_bytes":100,"currently_reclaimable_bytes":60,
+                        "protected_transaction_backup_bytes":30},
+              "models":[{"model_id":"model-a","name":"Model A","converted_size_bytes":30,
+                         "cleanup":{"action":"delete_converted_model",
+                                    "available":true,"reclaimable_bytes":30,"reason":""}}],
+              "source_caches":[{"source_model":"org/model-a","size_bytes":20,
+                         "cleanup":{"action":"remove_huggingface_cache","model_id":"model-a",
+                                    "available":true,"reclaimable_bytes":20,"reason":""}}],
+              "recovery_items":[{"model_id":"model-a","name":"Model A","size_bytes":10,"protected_backup_bytes":30,
+                         "cleanup":{"action":"remove_incomplete_data",
+                                    "available":false,"reclaimable_bytes":10,
+                                    "reason":"Model is loaded"}}],
+              "compiled_cache":{"size_bytes":10,
+                         "cleanup":{"action":"clear_compiled_cache",
+                                    "available":true,"reclaimable_bytes":10,"reason":""}},
+              "notes":{"paths_exposed":false,"transaction_backups_protected":true}
+            }
+            """;
+        int inventoryReads = 0;
+        var storageTransport = new StubHandler(async (request, token) =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/v1/storage")
+            {
+                inventoryReads++;
+                Check(request.Method == HttpMethod.Get
+                    && request.Headers.Authorization?.Parameter == Key,
+                    "storage inventory was not authenticated read-only");
+                Check(!request.Headers.Contains("X-Desktop-Control"),
+                    "storage inventory used private tray credentials");
+                return Json(StoragePayload);
+            }
+            if (request.RequestUri.AbsolutePath == "/v1/storage/cleanup")
+            {
+                Check(request.Method == HttpMethod.Post && inventoryReads >= 2
+                    && request.Headers.Authorization?.Parameter == Key
+                    && request.Headers.TryGetValues("X-OV-LLM-UI", out var uiValues)
+                    && uiValues.Single() == "1"
+                    && !request.Headers.Contains("X-Desktop-Control"),
+                    "cleanup bypassed local UI header, recheck or API key");
+                using var posted = JsonDocument.Parse(
+                    await request.Content!.ReadAsStringAsync(token));
+                JsonElement body = posted.RootElement;
+                Check(body.GetProperty("action").GetString() == "remove_huggingface_cache"
+                    && body.GetProperty("model_id").GetString() == "model-a",
+                    "storage cleanup targeted the wrong action or catalog model");
+                return Json(
+                    """{"status":"completed","action":"remove_huggingface_cache","model_id":"model-a","freed_bytes":20}""");
+            }
+            return ValidResponse(request);
+        });
+        using (var client = new BackendClient(storageTransport, metadata))
+        {
+            StorageInventory inventory = await client.GetStorageInventoryAsync(
+                Key, CancellationToken.None);
+            Check(inventory.ManagedBytes == 100 && inventory.ReclaimableBytes == 60
+                && inventory.ProtectedBytes == 30 && inventory.Options.Count == 4,
+                "native storage inventory totals or cleanup entries were corrupted");
+            Check(inventory.Options.Count(option => option.Available) == 3
+                && inventory.Options.Any(option =>
+                    option.Action == "remove_incomplete_data" && !option.Available),
+                "engine-disabled cleanup became available in native UI");
+            var cache = inventory.Options.Single(option =>
+                option.Action == "remove_huggingface_cache");
+            Check((await client.CleanupStorageAsync(cache, Key, CancellationToken.None))
+                .Contains("confirmed cleanup", StringComparison.OrdinalIgnoreCase),
+                "native cleanup accepted no authoritative confirmation");
+            await ThrowsAsync<ArgumentException>(
+                () => client.CleanupStorageAsync(
+                    inventory.Options.Single(o => o.Action == "remove_incomplete_data"),
+                    Key, CancellationToken.None),
+                "disabled storage cleanup reached the engine");
+            await ThrowsAsync<ArgumentException>(
+                () => client.CleanupStorageAsync(
+                    cache with { Action = "remove_arbitrary_path" },
+                    Key, CancellationToken.None),
+                "unknown cleanup action reached the engine");
+            await ThrowsAsync<ArgumentException>(
+                () => client.CleanupStorageAsync(
+                    cache with { ModelId = "../escape" },
+                    Key, CancellationToken.None),
+                "arbitrary storage path reached cleanup API");
+        }
+        Check(storageTransport.RequestPaths.Count(p => p == "/v1/storage/cleanup") == 1,
+            "invalid native cleanup caused an unexpected mutation");
+
+        int staleStoragePosts = 0;
+        var changedStorage = new StubHandler((request, _) =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/v1/storage")
+                return Task.FromResult(Json(StoragePayload.Replace(
+                    "\"reclaimable_bytes\":20", "\"reclaimable_bytes\":15")));
+            if (request.RequestUri.AbsolutePath == "/v1/storage/cleanup")
+                staleStoragePosts++;
+            return Task.FromResult(ValidResponse(request));
+        });
+        using (var client = new BackendClient(changedStorage, metadata))
+        {
+            var stale = new StorageCleanupOption("remove_huggingface_cache",
+                "model-a", "org/model-a", "Reusable source", 20, 20, true, "");
+            await ThrowsAsync<InvalidOperationException>(
+                () => client.CleanupStorageAsync(stale, Key, CancellationToken.None),
+                "stale storage estimate was accepted without refresh");
+        }
+        Check(staleStoragePosts == 0, "stale cleanup sent a destructive request");
+
+        var unsafeStorage = new StubHandler((request, _) => Task.FromResult(
+            request.RequestUri!.AbsolutePath == "/v1/storage"
+                ? Json(StoragePayload.Replace(
+                    "\"paths_exposed\":false", "\"paths_exposed\":true"))
+                : ValidResponse(request)));
+        using (var client = new BackendClient(unsafeStorage, metadata))
+            await ThrowsAsync<JsonException>(
+                () => client.GetStorageInventoryAsync(Key, CancellationToken.None),
+                "inventory exposing engine paths was treated as safe");
+
+        var missingCleanup = new StubHandler((request, _) => Task.FromResult(
+            request.RequestUri!.AbsolutePath == "/v1/storage"
+                ? Json(StoragePayload.Replace(
+                    "\"action\":\"delete_converted_model\"",
+                    "\"action\":\"unexpected_action\""))
+                : ValidResponse(request)));
+        using (var client = new BackendClient(missingCleanup, metadata))
+            await ThrowsAsync<JsonException>(
+                () => client.GetStorageInventoryAsync(Key, CancellationToken.None),
+                "unexpected storage cleanup capability was accepted");
+
         // Destructive model actions are explicit, verified, and refuse stale state.
         var deleteTransport = new StubHandler((request, _) =>
         {

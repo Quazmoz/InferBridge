@@ -404,3 +404,31 @@ def test_native_recovery_uses_xaml_and_verified_backend_action_contract():
     assert "selected.RecoveryId != current.RecoveryId" in client
     assert "RequireVerifiedOriginAsync" in client
     assert not any("WebView" in node.tag for node in root.iter())
+
+
+def test_native_storage_manager_uses_winui_and_guarded_engine_cleanup():
+    root = ET.parse(PROJECT / "MainWindow.xaml").getroot()
+    xaml_ns = "{http://schemas.microsoft.com/winfx/2006/xaml}"
+    named = {
+        node.get(xaml_ns + "Name"): node.tag for node in root.iter() if node.get(xaml_ns + "Name")
+    }
+    assert named["StoragePanel"] == XAML + "ScrollViewer"
+    assert named["StorageRows"] == XAML + "StackPanel"
+    assert named["StorageRefreshButton"] == XAML + "Button"
+    assert any(node.get("Tag") == "storage" for node in root.iter())
+    window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    client = (PROJECT / "BackendClient.cs").read_text(encoding="utf-8")
+    for handler in (
+        "StorageRefreshButton_Click",
+        "StorageCleanupButton_Click",
+        "RefreshStorageAsync",
+    ):
+        assert handler in window
+    assert "selected.ReclaimableBytes" in window
+    assert "GetStorageInventoryAsync" in client
+    assert "CleanupStorageAsync" in client
+    assert "RequireVerifiedOriginAsync" in client
+    assert 'request.Headers.Add("X-OV-LLM-UI", "1")' in client
+    assert "current.ReclaimableBytes != selected.ReclaimableBytes" in client
+    assert "current.SizeBytes != selected.SizeBytes" in client
+    assert not any("WebView" in node.tag for node in root.iter())

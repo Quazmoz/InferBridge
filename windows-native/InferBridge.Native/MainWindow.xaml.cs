@@ -44,6 +44,8 @@ public sealed partial class MainWindow : Window
     private bool _operationsLoaded;
     private bool _doctorBusy;
     private bool _doctorLoaded;
+    private bool _storageBusy;
+    private bool _storageLoaded;
     private DoctorReport? _doctorReport;
     private string? _quickBenchmarkModelId;
     private string? _quickBenchmarkDevice;
@@ -235,6 +237,176 @@ public sealed partial class MainWindow : Window
         DoctorPanel.Visibility = page == "doctor" ? Visibility.Visible : Visibility.Collapsed;
         if (page == "doctor" && !_doctorLoaded)
             _ = RefreshDoctorAsync();
+        StoragePanel.Visibility = page == "storage" ? Visibility.Visible : Visibility.Collapsed;
+        if (page == "storage" && !_storageLoaded)
+            _ = RefreshStorageAsync();
+    }
+
+    private static string FormatStorageBytes(long bytes)
+    {
+        if (bytes < 1024) return bytes + " B";
+        double amount = bytes;
+        string[] units = ["B", "KiB", "MiB", "GiB", "TiB"];
+        int index = 0;
+        while (amount >= 1024 && index < units.Length - 1)
+        {
+            amount /= 1024;
+            index++;
+        }
+        return amount.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)
+            + " " + units[index];
+    }
+
+    private async void StorageRefreshButton_Click(object sender, RoutedEventArgs args) =>
+        await RefreshStorageAsync();
+
+    private async Task RefreshStorageAsync()
+    {
+        if (_storageBusy || _quitting || _closing.IsCancellationRequested) return;
+        _storageBusy = true;
+        StorageRefreshButton.IsEnabled = false;
+        StorageProgress.IsActive = true;
+        try
+        {
+            StorageInventory snapshot = await _backend.GetStorageInventoryAsync(
+                ApiKeyBox.Password, _closing.Token);
+            if (_closing.IsCancellationRequested) return;
+            _storageLoaded = true;
+            StorageSummary.Text = "Managed storage: " + FormatStorageBytes(snapshot.ManagedBytes)
+                + "\nCurrently reclaimable: " + FormatStorageBytes(snapshot.ReclaimableBytes)
+                + "\nProtected transaction backups: "
+                + FormatStorageBytes(snapshot.ProtectedBytes);
+            StorageRows.Children.Clear();
+            foreach (StorageCleanupOption option in snapshot.Options)
+            {
+                var row = new StackPanel { Spacing = 4 };
+                row.Children.Add(new TextBlock
+                {
+                    Text = option.Name + " · " + FormatStorageBytes(option.SizeBytes),
+                    TextWrapping = TextWrapping.Wrap,
+                    IsTextSelectionEnabled = true,
+                });
+                row.Children.Add(new TextBlock
+                {
+                    Text = option.Detail + " · "
+                        + (option.Available
+                            ? FormatStorageBytes(option.ReclaimableBytes) + " reclaimable"
+                            : option.Reason.Length > 0 ? option.Reason : "Not currently reclaimable"),
+                    TextWrapping = TextWrapping.Wrap,
+                    Opacity = 0.8,
+                });
+                var button = new Button
+                {
+                    Content = option.Action switch
+                    {
+                        "delete_converted_model" => "Delete converted model",
+                        "remove_huggingface_cache" => "Remove source cache",
+                        "remove_incomplete_data" => "Remove incomplete preparation files",
+                        "clear_compiled_cache" => "Clear compiled cache",
+                        _ => "Unavailable",
+                    },
+                    Tag = option,
+                    IsEnabled = option.Available,
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                };
+                button.Click += StorageCleanupButton_Click;
+                row.Children.Add(button);
+                StorageRows.Children.Add(row);
+            }
+            StorageInfo.Severity = snapshot.Truncated
+                ? InfoBarSeverity.Warning : InfoBarSeverity.Informational;
+            StorageInfo.Message = snapshot.Truncated
+                ? "Large inventory: only the first 200 entries are shown. Refresh after reducing storage."
+                : "Inventory refreshed. Actions marked unavailable are not executable.";
+        }
+        catch (Exception) when (_closing.IsCancellationRequested) { }
+        catch (Exception error) when (!_closing.IsCancellationRequested)
+        {
+            _storageLoaded = false;
+            StorageRows.Children.Clear(); // stale cleanup options must not remain actionable.
+            StorageSummary.Text = "Storage inventory unavailable.";
+            StorageInfo.Severity = InfoBarSeverity.Warning;
+            StorageInfo.Message = SafeError(error);
+        }
+        finally
+        {
+            _storageBusy = false;
+            if (!_closing.IsCancellationRequested)
+            {
+                StorageProgress.IsActive = false;
+                StorageRefreshButton.IsEnabled = !_quitting;
+            }
+        }
+    }
+
+    private async void StorageCleanupButton_Click(object sender, RoutedEventArgs args)
+    {
+        if (sender is not Button { Tag: StorageCleanupOption selected }
+            || !selected.Available || _storageBusy || _isManaging || _chatBusy
+            || _isRefreshing || _quitting || _closing.IsCancellationRequested) return;
+        _storageBusy = true;
+        _isManaging = true;
+        StorageRefreshButton.IsEnabled = false;
+        UpdateChatButtons();
+        string? message = null;
+        InfoBarSeverity severity = InfoBarSeverity.Informational;
+        bool requestedCleanup = false;
+        try
+        {
+            string consequence = selected.Action switch
+            {
+                "delete_converted_model" =>
+                    "The converted model must be prepared again before use.",
+                "remove_huggingface_cache" =>
+                    "A future conversion will download these source files again.",
+                "remove_incomplete_data" =>
+                    "Incomplete files and recovery metadata will be removed. Protected transaction backups stay intact.",
+                "clear_compiled_cache" =>
+                    "The next model load may be slower while OpenVINO recompiles.",
+                _ => throw new InvalidOperationException("Unsupported storage action."),
+            };
+            var confirmation = new ContentDialog
+            {
+                XamlRoot = ((FrameworkElement)Content).XamlRoot,
+                Title = "Confirm managed storage cleanup",
+                Content = selected.Name + "\n\nPotentially reclaim "
+                    + FormatStorageBytes(selected.ReclaimableBytes) + ".\n\n"
+                    + consequence + "\n\nThe engine will recheck file safety before deleting anything.",
+                PrimaryButtonText = "Remove selected files",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Close,
+            };
+            if (await confirmation.ShowAsync() != ContentDialogResult.Primary
+                || _closing.IsCancellationRequested) return;
+            requestedCleanup = true;
+            message = await _backend.CleanupStorageAsync(
+                selected, ApiKeyBox.Password, _closing.Token);
+            severity = InfoBarSeverity.Success;
+        }
+        catch (Exception) when (_closing.IsCancellationRequested) { }
+        catch (Exception error) when (!_closing.IsCancellationRequested)
+        {
+            message = "Cleanup not confirmed. " + SafeError(error)
+                + " Refresh the inventory before retrying; a timed-out request may already have succeeded.";
+            severity = InfoBarSeverity.Warning;
+        }
+        finally
+        {
+            _isManaging = false;
+            _storageBusy = false;
+            if (!_closing.IsCancellationRequested)
+            {
+                UpdateChatButtons();
+                // Read authoritative state after an attempt, including timeouts.
+                if (requestedCleanup) await RefreshStorageAsync();
+                else StorageRefreshButton.IsEnabled = !_quitting;
+                if (message is not null)
+                {
+                    StorageInfo.Severity = severity;
+                    StorageInfo.Message = message;
+                }
+            }
+        }
     }
 
     private async void DoctorRefreshButton_Click(object sender, RoutedEventArgs args) =>
