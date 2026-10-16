@@ -7,82 +7,84 @@ pr: none
 pool:
   vmImage: 'windows-2022'
 
-timeoutInMinutes: 60
+jobs:
+- job: windows_release
+  displayName: 'Build unsigned InferBridge Windows release'
+  timeoutInMinutes: 60
+  steps:
+  - checkout: self
+    clean: true
+    persistCredentials: false
 
-steps:
-- checkout: self
-  clean: true
-  persistCredentials: false
+  - pwsh: |
+      $ErrorActionPreference = 'Stop'
+      git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+      if ($LASTEXITCODE -ne 0) { throw 'Unable to fetch main' }
+      git checkout --detach refs/remotes/origin/main
+      if ($LASTEXITCODE -ne 0) { throw 'Unable to check out main' }
+      $sha = (git rev-parse HEAD).Trim()
+      if ($LASTEXITCODE -ne 0 -or $sha -notmatch '^[0-9a-f]{40}$') { throw 'Invalid source commit' }
+      Write-Host "Building InferBridge main at $sha"
+      Write-Host "##vso[task.setvariable variable=INFERBRIDGE_SOURCE_SHA]$sha"
+    displayName: 'Select exact GitHub main source'
 
-- pwsh: |
-    $ErrorActionPreference = 'Stop'
-    git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
-    if ($LASTEXITCODE -ne 0) { throw 'Unable to fetch main' }
-    git checkout --detach refs/remotes/origin/main
-    if ($LASTEXITCODE -ne 0) { throw 'Unable to check out main' }
-    $sha = (git rev-parse HEAD).Trim()
-    if ($LASTEXITCODE -ne 0 -or $sha -notmatch '^[0-9a-f]{40}$') { throw 'Invalid source commit' }
-    Write-Host "Building InferBridge main at $sha"
-    Write-Host "##vso[task.setvariable variable=INFERBRIDGE_SOURCE_SHA]$sha"
-  displayName: 'Select exact GitHub main source'
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.11'
+      architecture: 'x64'
+    displayName: 'Use Python 3.11'
 
-- task: UsePythonVersion@0
-  inputs:
-    versionSpec: '3.11'
-    architecture: 'x64'
-  displayName: 'Use Python 3.11'
+  - pwsh: |
+      $ErrorActionPreference = 'Stop'
+      choco install innosetup --no-progress -y
+      if ($LASTEXITCODE -ne 0) { throw "Inno Setup installation failed: $LASTEXITCODE" }
+      $iscc = @(
+        "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+        "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+      ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+      if (-not $iscc) { throw 'Inno Setup compiler not found after installation' }
+    displayName: 'Install Inno Setup'
 
-- pwsh: |
-    $ErrorActionPreference = 'Stop'
-    choco install innosetup --no-progress -y
-    if ($LASTEXITCODE -ne 0) { throw "Inno Setup installation failed: $LASTEXITCODE" }
-    $iscc = @(
-      "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
-      "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
-    ) | Where-Object { Test-Path $_ } | Select-Object -First 1
-    if (-not $iscc) { throw 'Inno Setup compiler not found after installation' }
-  displayName: 'Install Inno Setup'
+  - pwsh: |
+      $ErrorActionPreference = 'Stop'
+      python -m pip install --disable-pip-version-check -r requirements/release.txt
+      if ($LASTEXITCODE -ne 0) { throw 'Release dependency installation failed' }
+      python -m pip install --disable-pip-version-check --no-deps --no-build-isolation .
+      if ($LASTEXITCODE -ne 0) { throw 'Project installation failed' }
+    displayName: 'Prepare qualified release dependencies'
 
-- pwsh: |
-    $ErrorActionPreference = 'Stop'
-    python -m pip install --disable-pip-version-check -r requirements/release.txt
-    if ($LASTEXITCODE -ne 0) { throw 'Release dependency installation failed' }
-    python -m pip install --disable-pip-version-check --no-deps --no-build-isolation .
-    if ($LASTEXITCODE -ne 0) { throw 'Project installation failed' }
-  displayName: 'Prepare qualified release dependencies'
+  - pwsh: |
+      $ErrorActionPreference = 'Stop'
+      $version = (python scripts/release_tools.py canonical-version).Trim()
+      if ($LASTEXITCODE -ne 0 -or $version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.+-]+)?$') {
+        throw "Unexpected version: $version"
+      }
+      $output = Join-Path $env:BUILD_ARTIFACTSTAGINGDIRECTORY 'release'
+      & ./scripts/build_release.ps1 -Version $version -Channel stable -Unsigned -Clean -OutputDirectory $output -Python python
+      if ($LASTEXITCODE -ne 0) { throw "Release build failed with exit code $LASTEXITCODE" }
+      $installer = Join-Path $output "InferBridge-$version-windows-x64-installer.exe"
+      $portable = Join-Path $output "InferBridge-$version-windows-x64-portable.zip"
+      $checksums = Join-Path $output "InferBridge-$version-checksums.txt"
+      foreach ($item in @($installer, $portable, $checksums)) {
+        if (-not (Test-Path -LiteralPath $item -PathType Leaf)) { throw "Missing release artifact: $item" }
+      }
+      $metadata = [ordered]@{
+        build_source = 'GitHub main'
+        commit = $env:INFERBRIDGE_SOURCE_SHA
+        pipeline_run = $env:BUILD_BUILDID
+        unsigned = $true
+        certification = 'evaluation only; real hardware and installation unverified'
+      }
+      $metadata | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'azure-build-provenance.json') -Encoding utf8
+      Write-Host "Built unsigned $version from $env:INFERBRIDGE_SOURCE_SHA"
+    displayName: 'Build and validate unsigned Windows release'
+    env:
+      INFERBRIDGE_SOURCE_SHA: $(INFERBRIDGE_SOURCE_SHA)
 
-- pwsh: |
-    $ErrorActionPreference = 'Stop'
-    $version = (python scripts/release_tools.py canonical-version).Trim()
-    if ($LASTEXITCODE -ne 0 -or $version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.+-]+)?$') {
-      throw "Unexpected version: $version"
-    }
-    $output = Join-Path $env:BUILD_ARTIFACTSTAGINGDIRECTORY 'release'
-    & ./scripts/build_release.ps1 -Version $version -Channel stable -Unsigned -Clean -OutputDirectory $output -Python python
-    if ($LASTEXITCODE -ne 0) { throw "Release build failed with exit code $LASTEXITCODE" }
-    $installer = Join-Path $output "InferBridge-$version-windows-x64-installer.exe"
-    $portable = Join-Path $output "InferBridge-$version-windows-x64-portable.zip"
-    $checksums = Join-Path $output "InferBridge-$version-checksums.txt"
-    foreach ($item in @($installer, $portable, $checksums)) {
-      if (-not (Test-Path -LiteralPath $item -PathType Leaf)) { throw "Missing release artifact: $item" }
-    }
-    $metadata = [ordered]@{
-      build_source = 'GitHub main'
-      commit = $env:INFERBRIDGE_SOURCE_SHA
-      pipeline_run = $env:BUILD_BUILDID
-      unsigned = $true
-      certification = 'evaluation only; real hardware and installation unverified'
-    }
-    $metadata | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'azure-build-provenance.json') -Encoding utf8
-    Write-Host "Built unsigned $version from $env:INFERBRIDGE_SOURCE_SHA"
-  displayName: 'Build and validate unsigned Windows release'
-  env:
-    INFERBRIDGE_SOURCE_SHA: $(INFERBRIDGE_SOURCE_SHA)
-
-- task: PublishPipelineArtifact@1
-  condition: succeeded()
-  inputs:
-    targetPath: '$(Build.ArtifactStagingDirectory)/release'
-    artifact: 'inferbridge-windows-x64-unsigned'
-    publishLocation: 'pipeline'
-  displayName: 'Publish installer, portable ZIP, checksums and evidence to Azure'
+  - task: PublishPipelineArtifact@1
+    condition: succeeded()
+    inputs:
+      targetPath: '$(Build.ArtifactStagingDirectory)/release'
+      artifact: 'inferbridge-windows-x64-unsigned'
+      publishLocation: 'pipeline'
+    displayName: 'Publish installer, portable ZIP, checksums and evidence to Azure'
