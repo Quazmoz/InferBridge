@@ -51,11 +51,11 @@ internal static class BackendContractTests
             "/health/live" => Json("""{"status":"ok"}"""),
             "/v1/models" => Json(
                 """{"data":[{"id":"model-a","name":"Model A","status":"ready_to_load"},{"id":"model-b","name":"Model B","status":"not_downloaded"},{"id":"gated","name":"Gated","status":"not_downloaded"}]}"""),
-            "/v1/system/status" => Json("""{"device":{"loaded":{"model-a":"GPU.0"}}}"""),
+            "/v1/system/status" => Json("""{"memory":{"available_gb":8,"total_gb":16},"disk":{"free_gb":23,"models_gb":4,"models_dir":"C:\\private\\local-path"},"device":{"default":"GPU","loaded":{"model-a":"GPU.0"}},"models":{"available":[{"id":"model-a","name":"Model A","status":"loaded","is_loaded":true,"is_downloaded":true},{"id":"model-b","status":"not_downloaded","is_downloaded":false}]},"events":[{"message":"private prompt: hf_secret"}]}"""),
             "/v1/desktop/operations/status" => Json("""{"application_version":"1.0.0","installation_mode":"installed","server_status":"ready","server_port":18765,"controller_available":true,"mock":true,"start_with_windows":false,"benchmark_running":false,"benchmark":{"results":[{"model_id":"model-a","device":"GPU.0"}]},"last_diagnostics_export":"previous-diagnostics.zip","active_model":{"id":"model-a","actual_device":"GPU.0"}}"""),
             "/v1/desktop/operations/diagnostics/export" => Json("""{"status":"created","filename":"inferbridge-diagnostics.zip","collection_errors":["Optional sensor unavailable"]}"""),
             "/v1/benchmarks/run" => Json("""{"results":[{"model_id":"model-a","requested_device":"GPU.0","actual_device":"GPU.0","success":true,"decode_tokens_sec":42.5,"time_to_first_token_ms":120.2,"total_latency_ms":501.3}]}"""),
-            "/v1/devices" => Json("""{"default_device":"AUTO","available":["CPU","GPU.0","NPU"],"mock":false}"""),
+            "/v1/devices" => Json("""{"default_device":"AUTO","available":["CPU","GPU.0","NPU"],"mock":false,"openvino_available":true}"""),
             "/v1/models/load" => Json("""{"status":"accepted"}"""),
             "/v1/models/convert" => Json("""{"status":"queued_convert"}"""),
             "/v1/models/delete" => Json("""{"status":"deleted"}"""),
@@ -159,6 +159,74 @@ internal static class BackendContractTests
             await ThrowsAsync<JsonException>(
                 () => client.ExportDiagnosticsAsync(Key, CancellationToken.None),
                 "diagnostics export accepted a path instead of a filename");
+
+        // Native System Doctor checks are read-only, authenticated and discard
+        // backend fields capable of containing paths, prompts, keys or errors.
+        var doctorTransport = new StubHandler((request, _) =>
+        {
+            if (request.RequestUri!.AbsolutePath is "/v1/system/status" or "/v1/devices")
+            {
+                Check(request.Method == HttpMethod.Get,
+                    "System Doctor unexpectedly mutated engine state");
+                Check(request.Headers.Authorization?.Parameter == Key,
+                    "System Doctor omitted API authentication");
+                Check(!request.Headers.Contains("X-Desktop-Control"),
+                    "System Doctor used private tray control");
+            }
+            return Task.FromResult(ValidResponse(request));
+        });
+        using (var client = new BackendClient(doctorTransport, metadata))
+        {
+            var report = await client.RunSystemDoctorAsync(Key, CancellationToken.None);
+            Check(report.Errors == 0 && report.Warnings == 0
+                && report.Overall == "System looks ready",
+                "healthy System Doctor report misclassified runtime");
+            Check(report.Devices.Contains("NPU", StringComparison.Ordinal)
+                && report.ModelSummary.Contains("1/2 converted", StringComparison.Ordinal),
+                "System Doctor discarded hardware or readiness metrics");
+            Check(report.Checks.Any(check => check.Title == "NPU visible")
+                && report.Checks.Any(check => check.Title == "Explicit runtime routing"),
+                "System Doctor omitted hardware placement evidence");
+            Check(!report.SupportReport.Contains("C:\\private", StringComparison.Ordinal)
+                && !report.SupportReport.Contains("hf_secret", StringComparison.Ordinal)
+                && !report.SupportReport.Contains("private prompt", StringComparison.Ordinal)
+                && !report.SupportReport.Contains("model-a", StringComparison.Ordinal),
+                "System Doctor support report disclosed private backend fields");
+        }
+        Check(doctorTransport.RequestPaths.Count(path => path == "/v1/system/status") == 1
+            && doctorTransport.RequestPaths.Count(path => path == "/v1/devices") == 1,
+            "System Doctor made unexpected requests");
+
+        var unhealthyDoctor = new StubHandler((request, _) => Task.FromResult(
+            request.RequestUri!.AbsolutePath switch
+            {
+                "/v1/system/status" => Json(
+                    """{"memory":{"available_gb":1,"total_gb":16},"disk":{"free_gb":2},"device":{"default":"NPU","loaded":{"model-x":"AUTO:GPU,CPU"}},"models":{"available":[{"id":"private","status":"error","error":"C:\\secret\\token.txt"},{"is_downloaded":true}]}}"""),
+                "/v1/devices" => Json(
+                    """{"openvino_available":false,"mock":true,"available":["CPU"]}"""),
+                _ => ValidResponse(request),
+            }));
+        using (var client = new BackendClient(unhealthyDoctor, metadata))
+        {
+            var report = await client.RunSystemDoctorAsync(null, CancellationToken.None);
+            Check(report.Errors >= 3 && report.Warnings >= 3
+                && report.Overall == "Action required",
+                "System Doctor missed runtime/memory/disk/model failures");
+            Check(report.Checks.Any(check => check.Title == "Fallback routing in use")
+                && report.Checks.Any(check => check.Title == "NPU not detected"),
+                "System Doctor missed fallback routing and absent NPU");
+            Check(!report.SupportReport.Contains("secret", StringComparison.OrdinalIgnoreCase)
+                && !report.SupportReport.Contains("private", StringComparison.OrdinalIgnoreCase),
+                "malicious model-error content leaked into the support report");
+        }
+        var malformedDoctor = new StubHandler((request, _) => Task.FromResult(
+            request.RequestUri!.AbsolutePath == "/v1/system/status"
+                ? Json("""{"disk":{"free_gb":3},"device":{}}""")
+                : ValidResponse(request)));
+        using (var client = new BackendClient(malformedDoctor, metadata))
+            await ThrowsAsync<JsonException>(
+                () => client.RunSystemDoctorAsync(null, CancellationToken.None),
+                "System Doctor accepted incomplete schema");
 
         // A quick native benchmark uses the existing authenticated API and
         // only measures the exact loaded model/device the user confirmed.
