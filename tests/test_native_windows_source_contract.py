@@ -49,9 +49,7 @@ def test_native_chat_uses_real_accessible_xaml_controls():
     root = ET.parse(PROJECT / "MainWindow.xaml").getroot()
     xaml_ns = "{http://schemas.microsoft.com/winfx/2006/xaml}"
     named = {
-        node.get(xaml_ns + "Name"): node.tag
-        for node in root.iter()
-        if node.get(xaml_ns + "Name")
+        node.get(xaml_ns + "Name"): node.tag for node in root.iter() if node.get(xaml_ns + "Name")
     }
     assert named["ChatModelPicker"] == XAML + "ComboBox"
     assert named["ChatHistory"] == XAML + "ListView"
@@ -493,7 +491,7 @@ def test_native_model_preparation_is_operation_scoped_and_engine_authoritative()
     assert '"/v1/models/cancel"' in client
     assert "current.OperationId != selected.OperationId" in client
     assert "current.CanCancel" in client
-    assert "ReadString(result.RootElement, \"operation_id\")" in client
+    assert 'ReadString(result.RootElement, "operation_id")' in client
     assert "CancelModelPreparationAsync" in view
     assert "CancelPreparationButton_Click" in xaml
     assert "RefreshModelPreparationsAsync()" in main
