@@ -17,17 +17,23 @@ it over verified loopback HTTP.
 - **Model library**: the engine's catalog with readable states. The engine's
   hardware-based recommendation is listed first and preselected.
   **Download and load** uses the engine's convert route (download, convert,
-  then load; it also retries a failed or cancelled preparation). **Load** and
-  **Unload** use the existing authenticated model APIs. Progress comes from the
+  then load; it also retries a failed or cancelled preparation). **Load**, **Unload**, and confirmed **Delete local files** use the existing authenticated model APIs. Deletion is available only for unloaded, downloaded models and rechecks live model state before mutation. Progress comes from the
   engine's own status, refreshed every 8 seconds; the client never invents it.
   The engine's own refusal reasons (for example gated Hugging Face access) are
   shown as given, bounded to plain text.
+- **Operations & diagnostics**: a native WinUI screen reads the same verified desktop-operations status used by the web GUI: application version, installation mode, controller availability, server state, startup preference and benchmark state. A separately confirmed action requests the engine's existing privacy-sanitized diagnostic ZIP export. The native client never reads private tray-control credentials or downloads the archive into its process.
 - **Engine**: connection status, **Start local engine**, and a session-only
   API-key field (a PasswordBox). The key stays in this window's memory and is
   never written to settings, process arguments, model files or browser storage.
 - **Web UI**: a persistent notice and **Open web UI** button show that advanced
   settings, benchmarks and more features are available in the browser. The button
   re-verifies the local engine and opens its loopback URL without keys in the URL.
+
+## Feature parity tracking
+
+The web GUI remains available independently. The native Windows app is real WinUI/XAML, not a WebView2 rendering of it. Current native coverage includes chat (non-streaming), model selection/download/load/unload/delete, inference target selection, device scanning, engine connection, and operations/diagnostics export.
+
+Still missing from the native frontend: streaming chat, durable multiple conversations and history, rich Markdown/code rendering, local vision and embeddings workflows, complete model recovery and Hugging Face account management, full System Doctor detail, benchmark execution and comparisons, context budget planning, storage manager, network/API administration, and other advanced settings. A present backend route does **not** imply that its native interface is implemented. Parity work should reuse existing authenticated backend services and keep the two frontends independently functional.
 
 ## Engine handoff and safety
 
