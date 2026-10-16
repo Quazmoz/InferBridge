@@ -290,9 +290,7 @@ def test_native_operations_and_model_deletion_are_native_and_guarded():
     root = ET.parse(PROJECT / "MainWindow.xaml").getroot()
     xaml_ns = "{http://schemas.microsoft.com/winfx/2006/xaml}"
     named = {
-        node.get(xaml_ns + "Name"): node.tag
-        for node in root.iter()
-        if node.get(xaml_ns + "Name")
+        node.get(xaml_ns + "Name"): node.tag for node in root.iter() if node.get(xaml_ns + "Name")
     }
     assert named["OperationsPanel"] == XAML + "ScrollViewer"
     assert named["OperationsRefreshButton"] == XAML + "Button"
@@ -314,4 +312,3 @@ def test_native_operations_and_model_deletion_are_native_and_guarded():
     assert "RequireVerifiedOriginAsync" in backend
     assert "X-Desktop-Control" not in backend
     assert not any("WebView" in node.tag for node in root.iter())
-
