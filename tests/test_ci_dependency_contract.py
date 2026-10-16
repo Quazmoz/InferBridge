@@ -67,7 +67,7 @@ def test_windows_lifecycle_manual_run_retains_qualified_dependency_contract() ->
 
     assert "  workflow_dispatch:" in lifecycle
     assert "Download, Convert, Load, Recover" in lifecycle
-    assert "requirements/release.txt\\n            pyproject.toml" in lifecycle
+    assert "requirements/release.txt\n            pyproject.toml" in lifecycle
     assert "-r requirements/release.txt" in lifecycle
     assert "--no-deps --no-build-isolation ." in lifecycle
 
@@ -75,7 +75,7 @@ def test_windows_lifecycle_manual_run_retains_qualified_dependency_contract() ->
 def test_azure_build_binds_config_and_artifacts_to_selected_source_revision() -> None:
     pipeline = _read("azure-pipelines.yml")
 
-    assert "trigger: none\\npr: none" in pipeline
+    assert "trigger: none\npr: none" in pipeline
     assert "  - checkout: self" in pipeline
     assert "    clean: true" in pipeline
     assert "    persistCredentials: false" in pipeline
