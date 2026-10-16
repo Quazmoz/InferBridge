@@ -26,6 +26,7 @@
                 <NavigationViewItem Icon="Message" Content="Chat" Tag="chat" />
                 <NavigationViewItem Icon="Library" Content="Model library" Tag="models" />
                 <NavigationViewItem Icon="Home" Content="Engine" Tag="overview" />
+                <NavigationViewItem Icon="Setting" Content="Operations &amp; diagnostics" Tag="operations" />
             </NavigationView.MenuItems>
             <Grid Padding="24,12,24,20">
                 <ScrollViewer x:Name="OverviewPanel" Visibility="Collapsed">
@@ -64,6 +65,42 @@
                                  IsOpen="True" IsClosable="False"
                                  Severity="Informational"
                                  Message="This is a WinUI 3 client. It does not embed a web page or own a second inference engine." />
+                    </StackPanel>
+                </ScrollViewer>
+                <ScrollViewer x:Name="OperationsPanel" Visibility="Collapsed">
+                    <StackPanel MaxWidth="760" HorizontalAlignment="Left" Spacing="16">
+                        <TextBlock Text="Operations &amp; diagnostics" FontSize="28"
+                                   FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock Text="Native controls for the same local engine operations available in the web GUI."
+                                   TextWrapping="Wrap" Opacity="0.8" />
+                        <InfoBar x:Name="OperationsInfo" Title="Engine operations"
+                                 IsOpen="True" IsClosable="False"
+                                 Message="Open this page to inspect the current engine state."
+                                 Severity="Informational" />
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Button x:Name="OperationsRefreshButton" Content="Refresh operations"
+                                    Click="OperationsRefreshButton_Click" />
+                            <ProgressRing x:Name="OperationsProgress" IsActive="False"
+                                          Width="28" Height="28" />
+                        </StackPanel>
+                        <TextBlock Text="Engine &amp; installation" FontSize="18" FontWeight="SemiBold" />
+                        <TextBlock x:Name="OperationsDetails" TextWrapping="Wrap"
+                                   IsTextSelectionEnabled="True"
+                                   AutomationProperties.LiveSetting="Polite"
+                                   Text="Connect to the local engine to view its status." />
+                        <TextBlock Text="Hardware benchmarks" FontSize="18" FontWeight="SemiBold" />
+                        <TextBlock x:Name="OperationsBenchmarks" TextWrapping="Wrap"
+                                   IsTextSelectionEnabled="True"
+                                   Text="The engine has not reported benchmark status." />
+                        <TextBlock Text="Privacy-safe support diagnostics" FontSize="18"
+                                   FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock Text="Create a local ZIP containing sanitized configuration, hardware information, model state, benchmark summaries and operational logs. Prompts, chat history, API keys, tokens, model weights and source images are excluded. Review the ZIP before sharing it."
+                                   TextWrapping="Wrap" Opacity="0.8" />
+                        <Button x:Name="DiagnosticsExportButton" Content="Export diagnostics ZIP"
+                                IsEnabled="False" HorizontalAlignment="Left"
+                                Click="DiagnosticsExportButton_Click" />
+                        <TextBlock x:Name="DiagnosticsResult" TextWrapping="Wrap"
+                                   AutomationProperties.LiveSetting="Polite" />
                     </StackPanel>
                 </ScrollViewer>
                 <Grid x:Name="ModelsPanel" Visibility="Collapsed" RowSpacing="12">
