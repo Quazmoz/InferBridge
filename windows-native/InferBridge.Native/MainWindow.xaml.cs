@@ -19,6 +19,10 @@ public sealed partial class MainWindow : Window
     private readonly DispatcherTimer _pollTimer = new() { Interval = TimeSpan.FromSeconds(8) };
     private readonly Stopwatch _startupElapsed = new();
     private readonly List<ChatTurn> _turns = new();
+    private readonly NativeConversationStore? _conversationStore;
+    private string _currentConversationId = Guid.NewGuid().ToString("N");
+    private bool _updatingSavedChats;
+    private bool _historyAvailable = true;
     private IReadOnlyList<ModelInfo> _shownModels = Array.Empty<ModelInfo>();
     private CancellationTokenSource? _sendCancellation;
     private bool _isRefreshing;
@@ -50,6 +54,28 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        try
+        {
+            _conversationStore = NativeConversationStore.ForCurrentInstallation();
+            RefreshSavedChats();
+            _updatingSavedChats = true;
+            SaveHistoryToggle.IsChecked = _conversationStore.Exists;
+            _updatingSavedChats = false;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException
+            or InvalidDataException or ArgumentException or System.Text.Json.JsonException)
+        {
+            _historyAvailable = false;
+            _updatingSavedChats = true;
+            SaveHistoryToggle.IsChecked = false;
+            SaveHistoryToggle.IsEnabled = false;
+            _updatingSavedChats = false;
+            SavedChatsPicker.IsEnabled = false;
+            DeleteSavedChatButton.IsEnabled = false;
+            ShowChatInfo("Saved history unavailable",
+                "Could not read this installation's history storage. Existing files were not modified.",
+                InfoBarSeverity.Warning);
+        }
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "InferBridge.ico"));
         if (AppWindow.Presenter is OverlappedPresenter presenter)
         {
@@ -500,6 +526,145 @@ public sealed partial class MainWindow : Window
         await RefreshAsync();
     }
 
+    private void RefreshSavedChats(string? selectedId = null)
+    {
+        if (_conversationStore is null || !_historyAvailable) return;
+        var chats = _conversationStore.ReadAll();
+        _updatingSavedChats = true;
+        try
+        {
+            SavedChatsPicker.Items.Clear();
+            foreach (var chat in chats)
+            {
+                var item = new ComboBoxItem
+                {
+                    Content = chat.Title + " · " + chat.UpdatedUtc.ToLocalTime().ToString("g"),
+                    Tag = chat,
+                };
+                SavedChatsPicker.Items.Add(item);
+                if (chat.Id == selectedId) SavedChatsPicker.SelectedItem = item;
+            }
+            DeleteSavedChatButton.IsEnabled = !_chatBusy
+                && SavedChatsPicker.SelectedItem is ComboBoxItem;
+        }
+        finally { _updatingSavedChats = false; }
+    }
+
+    private void SaveHistoryToggle_Changed(object sender, RoutedEventArgs args)
+    {
+        if (_updatingSavedChats || !_historyAvailable || _conversationStore is null) return;
+        if (SaveHistoryToggle.IsChecked == true && _turns.Count > 0
+            && _conversationModelId is not null)
+        {
+            if (!TrySaveCurrentChat()) return;
+        }
+        ShowChatInfo("Local history preference",
+            SaveHistoryToggle.IsChecked == true
+                ? "Completed chats are saved locally as readable JSON. Disable this to stop saving new replies."
+                : "Saving is paused. Previously saved chats remain until explicitly deleted.",
+            InfoBarSeverity.Informational);
+    }
+
+    private bool TrySaveCurrentChat()
+    {
+        if (_conversationStore is null || !_historyAvailable
+            || SaveHistoryToggle.IsChecked != true
+            || _turns.Count == 0 || _conversationModelId is null)
+            return true;
+        try
+        {
+            _conversationStore.Save(NativeConversationStore.Create(
+                _currentConversationId, _conversationModelId, _turns));
+            RefreshSavedChats(_currentConversationId);
+            return true;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException
+            or InvalidDataException or ArgumentException or System.Text.Json.JsonException)
+        {
+            _historyAvailable = false;
+            SaveHistoryToggle.IsEnabled = false;
+            SaveHistoryToggle.IsChecked = false;
+            ShowChatInfo("Chat generated, but not saved",
+                "History storage could not be written. The current chat remains open; existing files were preserved.",
+                InfoBarSeverity.Warning);
+            return false;
+        }
+    }
+
+    private async void SavedChatsPicker_SelectionChanged(
+        object sender, SelectionChangedEventArgs args)
+    {
+        if (_updatingSavedChats || _chatBusy || _closing.IsCancellationRequested) return;
+        if (SavedChatsPicker.SelectedItem is not ComboBoxItem { Tag: NativeConversationStore.SavedChat saved })
+            return;
+        _currentConversationId = saved.Id;
+        _conversationModelId = saved.ModelId;
+        _turns.Clear();
+        _turns.AddRange(saved.Turns);
+        ChatHistory.Items.Clear();
+        foreach (var turn in saved.Turns)
+            AppendChat(turn.Role == "user" ? "You" : "InferBridge", turn.Content);
+        PromptBox.Text = string.Empty;
+        // Never mix a restored transcript with a different model. Loading an
+        // unavailable model remains an explicit Model library operation.
+        var option = ChatModelPicker.Items.Cast<ComboBoxItem>()
+            .FirstOrDefault(item => (string?)item.Tag == saved.ModelId);
+        _updatingModelPicker = true;
+        try { ChatModelPicker.SelectedItem = option; }
+        finally { _updatingModelPicker = false; }
+        UpdateChatButtons();
+        ShowChatInfo("Conversation restored", option is null
+            ? "This conversation's model is not available. Install it before continuing."
+            : "Saved conversation restored. Its original model is selected.",
+            InfoBarSeverity.Informational);
+        if (SelectedChatModel is { CanLoad: true } model)
+            await ManageModelAsync(ModelAction.Load, model);
+    }
+
+    private async void DeleteSavedChatButton_Click(object sender, RoutedEventArgs args)
+    {
+        if (_chatBusy || !_historyAvailable || _conversationStore is null
+            || SavedChatsPicker.SelectedItem is not ComboBoxItem
+                { Tag: NativeConversationStore.SavedChat saved }) return;
+        try
+        {
+            var confirmation = new ContentDialog
+            {
+                XamlRoot = ((FrameworkElement)Content).XamlRoot,
+                Title = "Delete this saved conversation?",
+                Content = "Permanently delete \"" + saved.Title +
+                    "\" from this installation's local history? This cannot be undone.",
+                PrimaryButtonText = "Delete saved chat",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Close,
+            };
+            if (await confirmation.ShowAsync() != ContentDialogResult.Primary) return;
+            if (!_conversationStore.Delete(saved.Id))
+                throw new IOException("Saved chat is no longer available.");
+            if (saved.Id == _currentConversationId)
+            {
+                _turns.Clear();
+                ChatHistory.Items.Clear();
+                _currentConversationId = Guid.NewGuid().ToString("N");
+                _conversationModelId = SelectedModelId;
+            }
+            RefreshSavedChats();
+            ShowChatInfo("Saved conversation deleted", "Local saved file updated.",
+                InfoBarSeverity.Success);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException
+            or InvalidDataException or ArgumentException or System.Text.Json.JsonException)
+        {
+            _historyAvailable = false;
+            SaveHistoryToggle.IsChecked = false;
+            SaveHistoryToggle.IsEnabled = false;
+            DeleteSavedChatButton.IsEnabled = false;
+            ShowChatInfo("Could not delete saved conversation",
+                "Local history was not safely updated. The existing file was preserved.",
+                InfoBarSeverity.Error);
+        }
+    }
+
     private async void ChatModelPicker_SelectionChanged(
         object sender, SelectionChangedEventArgs args)
     {
@@ -511,7 +676,9 @@ public sealed partial class MainWindow : Window
         {
             _turns.Clear();
             ChatHistory.Items.Clear();
+            _currentConversationId = Guid.NewGuid().ToString("N");
             _conversationModelId = modelId;
+            RefreshSavedChats();
         }
         UpdateChatButtons();
         if (SelectedChatModel is { CanLoad: true } model)
@@ -600,8 +767,12 @@ public sealed partial class MainWindow : Window
     private void UpdateChatButtons()
     {
         SendButton.IsEnabled = !_chatBusy && !_isManaging && !_isRefreshing && !_quitting
-            && SelectedChatModel?.Status == "loaded";
+            && SelectedChatModel?.Status == "loaded"
+            && (_turns.Count == 0 || SelectedModelId == _conversationModelId);
         CancelButton.IsEnabled = _chatBusy;
+        SavedChatsPicker.IsEnabled = !_chatBusy && !_quitting && _historyAvailable;
+        DeleteSavedChatButton.IsEnabled = !_chatBusy && !_quitting
+            && _historyAvailable && SavedChatsPicker.SelectedItem is ComboBoxItem;
         ChatModelPicker.IsEnabled = !_chatBusy && !_isManaging && !_isRefreshing && !_quitting;
         WebUiButton.IsEnabled = _engineConnected && !_quitting && !_openingWebUi;
         ScanHardwareButton.IsEnabled = _engineConnected && !_quitting && !_scanningDevices;
@@ -880,6 +1051,7 @@ public sealed partial class MainWindow : Window
         string prompt = PromptBox.Text.Trim();
         if (_chatBusy || _isManaging || _isRefreshing || modelId is null
             || _quitting || SelectedChatModel?.Status != "loaded"
+            || (_turns.Count > 0 && modelId != _conversationModelId)
             || prompt.Length == 0 || _closing.IsCancellationRequested)
             return;
 
@@ -940,7 +1112,11 @@ public sealed partial class MainWindow : Window
                     : answer);
             committed = true;
             PromptBox.Text = string.Empty;
-            ShowChatInfo("Response complete", "Generated locally.", InfoBarSeverity.Success);
+            if (TrySaveCurrentChat())
+                ShowChatInfo("Response complete",
+                    SaveHistoryToggle.IsChecked == true
+                        ? "Generated and saved locally." : "Generated locally (not saved).",
+                    InfoBarSeverity.Success);
             _ = PromptBox.Focus(FocusState.Programmatic);
         }
         catch (OperationCanceledException) when (!_closing.IsCancellationRequested)
@@ -979,7 +1155,10 @@ public sealed partial class MainWindow : Window
         if (_chatBusy) return;
         _turns.Clear();
         ChatHistory.Items.Clear();
-        ShowChatInfo("New chat", "Conversation cleared from this window.",
+        _currentConversationId = Guid.NewGuid().ToString("N");
+        _conversationModelId = SelectedModelId;
+        RefreshSavedChats();
+        ShowChatInfo("New chat", "A fresh conversation is ready. Previously saved chats remain in the picker.",
             InfoBarSeverity.Informational);
     }
 
