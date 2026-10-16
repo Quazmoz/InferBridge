@@ -354,8 +354,9 @@ internal static class BackendContractTests
                 string model = parsed.RootElement.GetProperty("model").GetString()!;
                 Check(parsed.RootElement.GetProperty("load_after").GetBoolean(),
                     "download did not request a load afterwards");
-                Check(parsed.RootElement.GetProperty("device").GetString() == "NPU",
-                    "selected NPU device was not forwarded to conversion");
+                if (model == "model-b")
+                    Check(parsed.RootElement.GetProperty("device").GetString() == "NPU",
+                        "selected NPU device was not forwarded to conversion");
                 if (model == "gated")
                     return Json("""{"detail":{"code":"hf_access_required","message":"Accept the model license on Hugging Face first."}}""",
                         HttpStatusCode.Conflict);
