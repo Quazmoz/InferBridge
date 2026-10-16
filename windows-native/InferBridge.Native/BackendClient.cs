@@ -59,7 +59,9 @@ internal sealed record DesktopOperationsInfo(
     bool StartWithWindows,
     bool BenchmarkRunning,
     string LatestBenchmark,
-    string LastDiagnosticsExport);
+    string LastDiagnosticsExport,
+    string? ActiveModelId,
+    string? ActualDevice);
 
 internal sealed record DiagnosticsExportInfo(string Filename, IReadOnlyList<string> CollectionErrors);
 
@@ -579,7 +581,76 @@ internal sealed class BackendClient : IDisposable
                 && running.ValueKind == JsonValueKind.True,
             benchmark,
             ReadString(root, "last_diagnostics_export") is { Length: > 0 and <= 200 } latest
-                ? latest : "None");
+                ? latest : "None",
+            root.TryGetProperty("active_model", out var active)
+                && active.ValueKind == JsonValueKind.Object
+                && ReadString(active, "id") is { Length: > 0 and <= 128 } modelId
+                ? modelId : null,
+            root.TryGetProperty("active_model", out var activeDevice)
+                && activeDevice.ValueKind == JsonValueKind.Object
+                && ReadString(activeDevice, "actual_device") is { Length: > 0 and <= 64 } device
+                ? device : null);
+    }
+
+    /// <summary>One explicitly requested 32-token measurement on a verified loaded model.</summary>
+    public async Task<string> RunQuickBenchmarkAsync(
+        string confirmedModelId, string confirmedDevice, string? apiKey,
+        CancellationToken cancellationToken)
+    {
+        var state = await GetDesktopOperationsAsync(apiKey, cancellationToken);
+        if (state.ActiveModelId != confirmedModelId
+            || state.ActualDevice != confirmedDevice
+            || string.IsNullOrWhiteSpace(confirmedModelId)
+            || string.IsNullOrWhiteSpace(confirmedDevice)
+            || state.BenchmarkRunning)
+            throw new InvalidOperationException(
+                "The loaded model or device changed. Refresh before running a benchmark.");
+        string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
+        using var document = await PostJsonAsync(
+            origin + "/v1/benchmarks/run",
+            JsonSerializer.Serialize(new
+            {
+                model = confirmedModelId,
+                devices = new[] { confirmedDevice },
+                max_tokens = 32,
+                runs = 1,
+            }),
+            apiKey, cancellationToken, TimeSpan.FromMinutes(8), MaximumChatBytes);
+        var root = document.RootElement;
+        if (root.ValueKind != JsonValueKind.Object
+            || !root.TryGetProperty("results", out var rows)
+            || rows.ValueKind != JsonValueKind.Array
+            || rows.GetArrayLength() != 1)
+            throw new JsonException("Unexpected benchmark result shape.");
+        var result = rows[0];
+        if (result.ValueKind != JsonValueKind.Object
+            || ReadString(result, "model_id") != confirmedModelId
+            || ReadString(result, "requested_device") != confirmedDevice
+            || !result.TryGetProperty("success", out var success)
+            || success.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+            throw new JsonException("The benchmark did not confirm its model and device.");
+        if (success.ValueKind == JsonValueKind.False)
+            return "The engine could not measure " + confirmedModelId +
+                " on " + confirmedDevice + ". Review System Doctor or the model status.";
+        string actual = ReadString(result, "actual_device");
+        if (actual.Length is < 1 or > 64)
+            actual = "unreported";
+        string Metric(string field, string suffix)
+        {
+            if (!result.TryGetProperty(field, out var value)
+                || value.ValueKind != JsonValueKind.Number
+                || !value.TryGetDouble(out double measured)
+                || !double.IsFinite(measured) || measured < 0)
+                return "Unavailable";
+            return measured.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)
+                + suffix;
+        }
+        return "Measured " + confirmedModelId +
+            "\nRequested: " + confirmedDevice + " · Actual: " + actual +
+            "\nDecode speed: " + Metric("decode_tokens_sec", " tokens/s") +
+            "\nTime to first token: " + Metric("time_to_first_token_ms", " ms") +
+            "\nTotal latency: " + Metric("total_latency_ms", " ms") +
+            "\nSaved to the engine's benchmark history.";
     }
 
     /// <summary>Creates a sanitized ZIP on the engine host; never transfers the ZIP or secrets.</summary>
