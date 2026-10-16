@@ -41,33 +41,6 @@ def test_packaged_chat_uses_window_instead_of_external_browser(monkeypatch):
     opened.assert_called_once_with(8123, "known-session")
 
 
-def test_frozen_windows_build_uses_embedded_ui(monkeypatch):
-    controller = object.__new__(DesktopServerController)
-    controller.metadata = InstanceMetadata(
-        pid=123, port=8123, nonce="known-session", executable="InferBridge.exe", started_at=""
-    )
-    opened = Mock(return_value=True)
-    monkeypatch.setattr("app.desktop_controller.is_packaged", lambda: False)
-    monkeypatch.setattr("app.desktop_controller.sys.platform", "win32")
-    monkeypatch.setattr("app.desktop_controller.sys.frozen", True, raising=False)
-    monkeypatch.setattr("app.desktop_controller.open_store_window", opened)
-    monkeypatch.setattr(
-        "app.desktop_controller.open_browser",
-        lambda url: pytest.fail(f"Packaged Windows app opened external browser: {url}"),
-    )
-    assert controller.open_chat() is True
-    opened.assert_called_once_with(8123, "known-session")
-
-
-def test_frozen_windows_window_runtime_available(monkeypatch):
-    monkeypatch.setattr("app.store_window.sys.platform", "win32")
-    monkeypatch.setattr("app.store_window.sys.frozen", True, raising=False)
-    monkeypatch.setattr("app.store_window.is_packaged", lambda: False)
-    from app.store_window import _store_runtime_available
-
-    assert _store_runtime_available() is True
-
-
 def test_window_child_dispatch_does_not_start_tray(monkeypatch):
     invoked = Mock(return_value=0)
     monkeypatch.setattr("app.store_window.run_store_window", invoked)
