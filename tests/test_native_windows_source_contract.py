@@ -358,3 +358,31 @@ def test_native_streaming_uses_verified_sse_and_rolls_back_failed_previews():
     assert "ChatHistory.Items.Remove(userItem)" in window
     assert "SSE progress callbacks are incorrect" in contracts
     assert "cancellation did not stop the active SSE request" in contracts
+
+
+def test_native_saved_conversations_are_opt_in_and_atomic():
+    root = ET.parse(PROJECT / "MainWindow.xaml").getroot()
+    xaml_ns = "{http://schemas.microsoft.com/winfx/2006/xaml}"
+    names = {
+        node.get(xaml_ns + "Name"): node.tag for node in root.iter() if node.get(xaml_ns + "Name")
+    }
+    assert names["SavedChatsPicker"] == XAML + "ComboBox"
+    assert names["SaveHistoryToggle"] == XAML + "CheckBox"
+    assert names["DeleteSavedChatButton"] == XAML + "Button"
+    window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    store = (PROJECT / "NativeConversationStore.cs").read_text(encoding="utf-8")
+    assert "NativeConversationStore.ForCurrentInstallation()" in window
+    assert "SaveHistoryToggle.IsChecked == true" in window
+    assert "TrySaveCurrentChat()" in window
+    assert "SavedChatsPicker_SelectionChanged" in window
+    assert "DeleteSavedChatButton_Click" in window
+    assert "if (!_closing.IsCancellationRequested && !committed)" in window
+    assert "File.Move(temporary, _path, overwrite: true)" in store
+    assert "MaximumFileBytes" in store
+    assert "MaximumConversations" in store
+    assert "Invalid saved turn; original file preserved." in store
+    assert "RejectReparsePoint" in store
+    assert "Guid.TryParseExact" in store
+    assert "native-conversations.json" in store
+    assert "Password" not in store
+
