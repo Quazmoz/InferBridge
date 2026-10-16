@@ -195,6 +195,21 @@
                     </Grid.RowDefinitions>
                     <StackPanel Spacing="10">
                         <TextBlock Text="Chat" FontSize="28" FontWeight="SemiBold" />
+                        <TextBlock Text="Saved conversations" FontWeight="SemiBold" FontSize="16" />
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <ComboBox x:Name="SavedChatsPicker" PlaceholderText="Select a saved conversation"
+                                      MinWidth="230" MaxWidth="430" HorizontalAlignment="Left"
+                                      AutomationProperties.Name="Select a saved conversation"
+                                      SelectionChanged="SavedChatsPicker_SelectionChanged" />
+                            <Button x:Name="DeleteSavedChatButton" Content="Delete saved chat"
+                                    IsEnabled="False" Click="DeleteSavedChatButton_Click" />
+                        </StackPanel>
+                        <CheckBox x:Name="SaveHistoryToggle"
+                                  Content="Save completed chats locally (plain text on this PC)"
+                                  Checked="SaveHistoryToggle_Changed"
+                                  Unchecked="SaveHistoryToggle_Changed" />
+                        <TextBlock Text="Off by default. When enabled, completed chats are saved in this installation's local data folder, separate from browser history. Other apps with access to your account may read these files."
+                                   TextWrapping="Wrap" Opacity="0.8" />
                         <ComboBox x:Name="ChatModelPicker" Header="Chat model"
                                   PlaceholderText="Choose a downloaded model"
                                   MinWidth="230" MaxWidth="460"
