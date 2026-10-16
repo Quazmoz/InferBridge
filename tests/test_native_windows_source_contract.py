@@ -321,21 +321,21 @@ def test_native_streaming_uses_verified_sse_and_rolls_back_failed_previews():
     contracts = (
         ROOT / "windows-native" / "InferBridge.Native.ContractTests" / "BackendContractTests.cs"
     ).read_text(encoding="utf-8")
-    assert 'stream = true' in backend
-    assert 'MediaTypeWithQualityHeaderValue("text/event-stream")' in backend
-    assert 'HttpCompletionOption.ResponseHeadersRead' in backend
-    assert 'AllowAutoRedirect = false' in backend
-    assert 'UseProxy = false' in backend
-    assert 'RequireVerifiedOriginAsync' in backend
-    assert 'maximumLineBytes' in backend
-    assert 'maximumAnswerChars' in backend
-    assert 'if (!done || !finished)' in backend
-    assert 'limit.Token.ThrowIfCancellationRequested()' in backend
-    assert 'onPartial(answer.ToString())' in backend
-    assert 'string answer = await _backend.StreamChatAsync(' in window
-    assert 'DispatcherQueue.TryEnqueue' in window
-    assert 'if (!_closing.IsCancellationRequested && !committed)' in window
-    assert 'ChatHistory.Items.Remove(assistantItem)' in window
-    assert 'ChatHistory.Items.Remove(userItem)' in window
-    assert 'SSE progress callbacks are incorrect' in contracts
-    assert 'cancellation did not stop the active SSE request' in contracts
+    assert "stream = true" in backend
+    assert "MediaTypeWithQualityHeaderValue("text/event-stream")" in backend
+    assert "HttpCompletionOption.ResponseHeadersRead" in backend
+    assert "AllowAutoRedirect = false" in backend
+    assert "UseProxy = false" in backend
+    assert "RequireVerifiedOriginAsync" in backend
+    assert "maximumLineBytes" in backend
+    assert "maximumAnswerChars" in backend
+    assert "if (!done || !finished)" in backend
+    assert "limit.Token.ThrowIfCancellationRequested()" in backend
+    assert "onPartial(answer.ToString())" in backend
+    assert "string answer = await _backend.StreamChatAsync(" in window
+    assert "DispatcherQueue.TryEnqueue" in window
+    assert "if (!_closing.IsCancellationRequested && !committed)" in window
+    assert "ChatHistory.Items.Remove(assistantItem)" in window
+    assert "ChatHistory.Items.Remove(userItem)" in window
+    assert "SSE progress callbacks are incorrect" in contracts
+    assert "cancellation did not stop the active SSE request" in contracts
