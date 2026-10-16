@@ -27,6 +27,7 @@
                 <NavigationViewItem Icon="Library" Content="Model library" Tag="models" />
                 <NavigationViewItem Icon="Home" Content="Engine" Tag="overview" />
                 <NavigationViewItem Icon="Setting" Content="Operations &amp; diagnostics" Tag="operations" />
+                <NavigationViewItem Icon="Repair" Content="System Doctor" Tag="doctor" />
             </NavigationView.MenuItems>
             <Grid Padding="24,12,24,20">
                 <ScrollViewer x:Name="OverviewPanel" Visibility="Collapsed">
@@ -65,6 +66,43 @@
                                  IsOpen="True" IsClosable="False"
                                  Severity="Informational"
                                  Message="This is a WinUI 3 client. It does not embed a web page or own a second inference engine." />
+                    </StackPanel>
+                </ScrollViewer>
+                <ScrollViewer x:Name="DoctorPanel" Visibility="Collapsed">
+                    <StackPanel MaxWidth="800" HorizontalAlignment="Left" Spacing="14">
+                        <TextBlock Text="System Doctor" FontSize="28" FontWeight="SemiBold" />
+                        <TextBlock Text="Run read-only checks using the same engine and device endpoints as the web GUI. Results reflect this machine, not a separate native inference engine."
+                                   TextWrapping="Wrap" Opacity="0.8" />
+                        <InfoBar x:Name="DoctorInfo" Title="System Doctor"
+                                 IsOpen="True" IsClosable="False"
+                                 Severity="Informational"
+                                 Message="Select Run checks to inspect the local runtime." />
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Button x:Name="DoctorRefreshButton" Content="Run checks again"
+                                    Click="DoctorRefreshButton_Click" />
+                            <Button x:Name="DoctorCopyButton" Content="Copy sanitized support report"
+                                    IsEnabled="False" Click="DoctorCopyButton_Click" />
+                            <ProgressRing x:Name="DoctorProgress" Width="26" Height="26"
+                                          IsActive="False" />
+                        </StackPanel>
+                        <TextBlock x:Name="DoctorSummary" TextWrapping="Wrap"
+                                   AutomationProperties.LiveSetting="Polite"
+                                   IsTextSelectionEnabled="True"
+                                   Text="Open System Doctor to inspect hardware and runtime readiness." />
+                        <TextBlock Text="Detected OpenVINO devices" FontSize="18"
+                                   FontWeight="SemiBold" />
+                        <TextBlock x:Name="DoctorDevices" TextWrapping="Wrap"
+                                   IsTextSelectionEnabled="True" Text="Not checked" />
+                        <TextBlock Text="Model readiness" FontSize="18"
+                                   FontWeight="SemiBold" />
+                        <TextBlock x:Name="DoctorModels" TextWrapping="Wrap"
+                                   IsTextSelectionEnabled="True" Text="Not checked" />
+                        <TextBlock Text="Checks and recommended actions" FontSize="18"
+                                   FontWeight="SemiBold" />
+                        <ItemsControl x:Name="DoctorChecks"
+                                      AutomationProperties.Name="System Doctor health checks" />
+                        <TextBlock Text="The support report excludes credentials, prompts, chat content, model errors, and local file paths. Review copied text before sharing."
+                                   TextWrapping="Wrap" Opacity="0.8" />
                     </StackPanel>
                 </ScrollViewer>
                 <ScrollViewer x:Name="OperationsPanel" Visibility="Collapsed">
