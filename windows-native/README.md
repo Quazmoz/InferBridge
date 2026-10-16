@@ -22,6 +22,7 @@ it over verified loopback HTTP.
   engine's own status, refreshed every 8 seconds; the client never invents it.
   The engine's own refusal reasons (for example gated Hugging Face access) are
   shown as given, bounded to plain text.
+- **Model recovery**: the native Model library can inspect sanitized interrupted-preparation details, review the engine's allowed actions, resume or retry interrupted work, restart from download, or remove incomplete output. The selected recovery ID and action permissions are rechecked against the verified backend immediately before the request; stale recovery is rejected. Destructive cleanup requires a second explicit confirmation. The backend owns all cleanup and conversion; the native client never deletes model directories or caches directly.
 - **System Doctor**: dedicated WinUI health page uses the same authenticated `/v1/system/status` and `/v1/devices` reads as the browser doctor. It reports OpenVINO runtime mode, CPU/GPU/NPU visibility, active routing/fallback, model conversion and errors, RAM and model-volume storage thresholds, plus recommended fixes. Checks are re-runnable; the native clipboard action copies only an allowlisted support summary without credentials, prompts, model errors or local paths. Mock mode is explicitly shown as unverified hardware.
 - **Operations & diagnostics**: a native WinUI screen reads the same verified desktop-operations status used by the web GUI: application version, installation mode, controller availability, server state, startup preference and benchmark state. A separately confirmed action requests the engine's existing privacy-sanitized diagnostic ZIP export. **Run quick benchmark** measures one 32-token generation for the exact currently loaded model and actual device (reverified before posting), with measured decode speed, TTFT and latency when available; mock results are synthetic. The native client never reads private tray-control credentials or downloads the archive into its process.
 - **Engine**: connection status, **Start local engine**, and a session-only
@@ -33,9 +34,9 @@ it over verified loopback HTTP.
 
 ## Feature parity tracking
 
-The web GUI remains available independently. The native Windows app is real WinUI/XAML, not a WebView2 rendering of it. Current native coverage includes chat (bounded SSE streaming with cancellable partial previews), model selection/download/load/unload/delete, inference target selection, device scanning, engine connection, quick benchmark execution, native System Doctor checks and sanitized clipboard reports, opt-in persistent saved conversations with local search and rename, and operations/diagnostics export.
+The web GUI remains available independently. The native Windows app is real WinUI/XAML, not a WebView2 rendering of it. Current native coverage includes chat (bounded SSE streaming with cancellable partial previews), model selection/download/load/unload/delete and guarded preparation recovery, inference target selection, device scanning, engine connection, quick benchmark execution, native System Doctor checks and sanitized clipboard reports, opt-in persistent saved conversations with local search and rename, and operations/diagnostics export.
 
-Still missing from the native frontend: browser/native history synchronization, rich Markdown/code rendering, local vision and embeddings workflows, complete model recovery and Hugging Face account management, advanced System Doctor per-model details and remediation actions, multi-model benchmark comparisons/presets and history, context budget planning, storage manager, network/API administration, and other advanced settings. A present backend route does **not** imply that its native interface is implemented. Parity work should reuse existing authenticated backend services and keep the two frontends independently functional.
+Still missing from the native frontend: browser/native history synchronization, rich Markdown/code rendering, local vision and embeddings workflows, Hugging Face account management, advanced System Doctor per-model details and remediation actions, multi-model benchmark comparisons/presets and history, context budget planning, storage manager, network/API administration, and other advanced settings. A present backend route does **not** imply that its native interface is implemented. Parity work should reuse existing authenticated backend services and keep the two frontends independently functional.
 
 ## Engine handoff and safety
 
@@ -100,7 +101,7 @@ the .NET 10 SDK (add `-p:EnableWindowsTargeting=true` off Windows):
 dotnet run --project .\windows-native\InferBridge.Native.ContractTests\InferBridge.Native.ContractTests.csproj -c Release
 ```
 
-`tests/test_native_windows_source_contract.py` guards the XAML controls and
+The native Windows workflow is manually dispatched on `dev`; it does not automatically run on every development push. Dispatch it to qualify native changes. `tests/test_native_windows_source_contract.py` guards the XAML controls and
 key safeguards. The **Native Windows frontend** workflow builds and publishes
 the client on every relevant `dev` push; dispatched manually with
 *full_combined_candidate*, it also builds the Store MSIX and runs

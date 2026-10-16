@@ -185,6 +185,10 @@
                         <Button Content="Refresh" Click="RefreshButton_Click"
                                 AutomationProperties.Name="Refresh models" />
                         </StackPanel>
+                        <Button x:Name="RecoverButton" Content="Review interrupted preparation"
+                                HorizontalAlignment="Left" IsEnabled="False"
+                                Click="RecoverButton_Click"
+                                AutomationProperties.Name="Inspect and recover selected model" />
                     </StackPanel>
                 </Grid>
                 <Grid x:Name="ChatPanel" RowSpacing="12">

@@ -45,6 +45,15 @@ internal sealed class EngineRequestException(string message) : InvalidOperationE
 
 internal sealed record ChatTurn(string Role, string Content);
 
+internal sealed record ModelRecoveryInfo(
+    string ModelId, string ModelName, string RecoveryId, string FailedStage,
+    string LastCompletedStage, string DownloadedFiles, string ConversionOutput,
+    string RecommendedAction, string FailureMessage, IReadOnlyList<string> LogTail,
+    IReadOnlyList<string> AvailableActions)
+{
+    public bool CanRun(string action) => AvailableActions.Contains(action);
+}
+
 internal sealed record ModelRecommendation(string Id, string Reason);
 
 internal sealed record DeviceInventory(string Default, IReadOnlyList<string> Available, bool Mock);
@@ -875,6 +884,117 @@ internal sealed class BackendClient : IDisposable
             }
         }
         return new DiagnosticsExportInfo(filename, errors);
+    }
+
+    private static readonly string[] RecoveryActions =
+    [
+        "resume", "retry_failed_stage", "restart_download", "remove_incomplete_files",
+    ];
+
+    private static void ValidateRecoveryModelId(string modelId)
+    {
+        if (string.IsNullOrEmpty(modelId) || modelId.Length > 128
+            || !char.IsAsciiLetterOrDigit(modelId[0])
+            || modelId.Skip(1).Any(c => !char.IsAsciiLetterOrDigit(c)
+                && c is not ('.' or '_' or '-')))
+            throw new ArgumentException("Invalid catalog model identifier.", nameof(modelId));
+    }
+
+    private static ModelRecoveryInfo ParseRecovery(JsonElement root, string expectedModelId)
+    {
+        if (root.ValueKind != JsonValueKind.Object
+            || !root.TryGetProperty("available", out var available)
+            || available.ValueKind != JsonValueKind.True
+            || ReadString(root, "model_id") != expectedModelId)
+            throw new JsonException("Invalid model recovery identity.");
+
+        string recoveryId = ReadString(root, "recovery_id");
+        if (recoveryId.Length is < 1 or > 128 || recoveryId.Any(char.IsControl))
+            throw new JsonException("Invalid recovery state identifier.");
+        if (!root.TryGetProperty("actions", out var capabilities)
+            || capabilities.ValueKind != JsonValueKind.Object)
+            throw new JsonException("Missing engine recovery capabilities.");
+        var actions = RecoveryActions.Where(name =>
+            capabilities.TryGetProperty(name, out var state)
+            && state.ValueKind == JsonValueKind.True).ToArray();
+
+        static string Limit(string value, int max) =>
+            value.Length > max ? value[..max] + "…" : value;
+        string name = ReadString(root, "model_name");
+        string message = "";
+        var logs = new List<string>();
+        if (root.TryGetProperty("failure_details", out var failure)
+            && failure.ValueKind == JsonValueKind.Object)
+        {
+            message = Limit(ReadString(failure, "message"), 350);
+            if (failure.TryGetProperty("log_tail", out var tail)
+                && tail.ValueKind == JsonValueKind.Array)
+                foreach (var row in tail.EnumerateArray().Take(10))
+                    if (row.ValueKind == JsonValueKind.String)
+                        logs.Add(Limit(row.GetString() ?? "", 250));
+        }
+        string recommended = ReadString(root, "recommended_action");
+        return new ModelRecoveryInfo(expectedModelId,
+            name.Length is > 0 and <= 200 ? name : expectedModelId, recoveryId,
+            Limit(ReadString(root, "failed_stage"), 80),
+            Limit(ReadString(root, "last_completed_stage"), 80),
+            Limit(ReadString(root, "downloaded_files"), 80),
+            Limit(ReadString(root, "conversion_output"), 80),
+            actions.Contains(recommended) ? recommended : "",
+            message, logs, actions);
+    }
+
+    /// <summary>Read sanitized recovery details from the verified local engine.</summary>
+    public async Task<ModelRecoveryInfo> GetModelRecoveryAsync(
+        string modelId, string? apiKey, CancellationToken cancellationToken)
+    {
+        ValidateRecoveryModelId(modelId);
+        string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
+        using var payload = await GetJsonAsync(
+            origin + "/v1/models/recovery/" + Uri.EscapeDataString(modelId),
+            apiKey, cancellationToken, TimeSpan.FromSeconds(10));
+        return ParseRecovery(payload.RootElement, modelId);
+    }
+
+    /// <summary>
+    /// Recheck the engine's recovery identity and capabilities immediately before
+    /// user-confirmed mutation. Never retry an ambiguous timeout automatically.
+    /// </summary>
+    public async Task<string> ApplyModelRecoveryAsync(
+        ModelRecoveryInfo selected, string action, string? device, string? apiKey,
+        CancellationToken cancellationToken)
+    {
+        ValidateRecoveryModelId(selected.ModelId);
+        if (!RecoveryActions.Contains(action) || !selected.CanRun(action))
+            throw new ArgumentException("This recovery action is unavailable.", nameof(action));
+        if (device is not null && device is not ("NPU" or "GPU" or "CPU"))
+            throw new ArgumentException("Unsupported inference device.", nameof(device));
+        string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
+        using var currentPayload = await GetJsonAsync(
+            origin + "/v1/models/recovery/" + Uri.EscapeDataString(selected.ModelId),
+            apiKey, cancellationToken, TimeSpan.FromSeconds(10));
+        var current = ParseRecovery(currentPayload.RootElement, selected.ModelId);
+        if (selected.RecoveryId != current.RecoveryId || !current.CanRun(action))
+            throw new InvalidOperationException(
+                "Recovery state changed. Review the latest details before acting.");
+        using var result = await PostJsonAsync(
+            origin + "/v1/models/recovery/action",
+            JsonSerializer.Serialize(new
+            {
+                model = selected.ModelId,
+                recovery_id = selected.RecoveryId,
+                action,
+                device = action == "remove_incomplete_files" ? null : device,
+            }),
+            apiKey, cancellationToken, TimeSpan.FromSeconds(120), MaximumJsonBytes);
+        string status = ReadString(result.RootElement, "status");
+        if (ReadString(result.RootElement, "action") != action
+            || status is not ("started" or "cleaned")
+            || (action == "remove_incomplete_files" ? status != "cleaned" : status != "started"))
+            throw new JsonException("The engine did not confirm the recovery operation.");
+        return status == "cleaned"
+            ? "Incomplete model files were cleaned. Refresh the model library."
+            : "Recovery started. Follow progress in the model library.";
     }
 
     /// <summary>Remove local files only after confirming the model is still unloaded.</summary>

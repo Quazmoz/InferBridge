@@ -282,6 +282,106 @@ internal static class BackendContractTests
         Check(!changedBenchmark.RequestPaths.Contains("/v1/benchmarks/run"),
             "benchmark ran without a verified loaded model");
 
+        // Native recovery rechecks the server-owned recovery ID and allowed
+        // actions before mutation, without exposing tray-control credentials.
+        const string RecoveryPayload =
+            """
+            {"available":true,"schema_version":1,"recovery_id":"rec-123","model_id":"model-a",
+             "model_name":"Model A","failed_stage":"conversion","last_completed_stage":"download",
+             "downloaded_files":"reusable","conversion_output":"incomplete",
+             "recommended_action":"resume",
+             "actions":{"resume":true,"retry_failed_stage":true,"restart_download":true,
+                        "remove_incomplete_files":true},
+             "failure_details":{"message":"Download interrupted","log_tail":["safe error"]}}
+            """;
+        int recoveryReads = 0;
+        var recoveryTransport = new StubHandler(async (request, token) =>
+        {
+            if (request.RequestUri!.AbsolutePath.StartsWith("/v1/models/recovery",
+                StringComparison.Ordinal))
+            {
+                Check(request.Headers.Authorization?.Parameter == Key,
+                    "model recovery omitted session authentication");
+                Check(!request.Headers.Contains("X-Desktop-Control"),
+                    "model recovery used private tray credential");
+            }
+            if (request.RequestUri.AbsolutePath == "/v1/models/recovery/model-a")
+            {
+                Check(request.Method == HttpMethod.Get,
+                    "recovery details must be a read-only GET");
+                recoveryReads++;
+                return Json(RecoveryPayload);
+            }
+            if (request.RequestUri.AbsolutePath == "/v1/models/recovery/action")
+            {
+                Check(request.Method == HttpMethod.Post && recoveryReads >= 2,
+                    "recovery action skipped authoritative state recheck");
+                using var posted = JsonDocument.Parse(
+                    await request.Content!.ReadAsStringAsync(token));
+                var body = posted.RootElement;
+                Check(body.GetProperty("model").GetString() == "model-a"
+                    && body.GetProperty("recovery_id").GetString() == "rec-123"
+                    && body.GetProperty("action").GetString() == "resume"
+                    && body.GetProperty("device").GetString() == "CPU",
+                    "recovery action sent incorrect model, lease, or device");
+                return Json("""{"status":"started","action":"resume","message":"Queued"}""");
+            }
+            return ValidResponse(request);
+        });
+        using (var client = new BackendClient(recoveryTransport, metadata))
+        {
+            var state = await client.GetModelRecoveryAsync(
+                "model-a", Key, CancellationToken.None);
+            Check(state.ModelId == "model-a" && state.RecoveryId == "rec-123"
+                && state.RecommendedAction == "resume" && state.CanRun("restart_download")
+                && state.LogTail.SequenceEqual(new[] { "safe error" }),
+                "native recovery details were not parsed accurately");
+            await ThrowsAsync<ArgumentException>(
+                () => client.GetModelRecoveryAsync("../model-a", Key, CancellationToken.None),
+                "recovery identifier accepted path traversal");
+            Check((await client.ApplyModelRecoveryAsync(
+                state, "resume", "CPU", Key, CancellationToken.None)).Contains("started",
+                    StringComparison.OrdinalIgnoreCase),
+                "recovery did not confirm actual engine status");
+            await ThrowsAsync<ArgumentException>(
+                () => client.ApplyModelRecoveryAsync(
+                    state, "unknown", null, Key, CancellationToken.None),
+                "unknown recovery action was accepted");
+        }
+        Check(recoveryTransport.RequestPaths.Count(p => p == "/v1/models/recovery/action") == 1,
+            "invalid recovery action reached the engine");
+
+        int changedStatePosts = 0;
+        var changedRecovery = new StubHandler((request, _) =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/v1/models/recovery/model-a")
+                return Task.FromResult(Json(RecoveryPayload.Replace("rec-123", "rec-new")));
+            if (request.RequestUri.AbsolutePath == "/v1/models/recovery/action")
+                changedStatePosts++;
+            return Task.FromResult(ValidResponse(request));
+        });
+        using (var client = new BackendClient(changedRecovery, metadata))
+        {
+            var oldState = new ModelRecoveryInfo("model-a", "Model A", "rec-123",
+                "conversion", "download", "reusable", "incomplete", "resume", "",
+                Array.Empty<string>(), new[] { "resume" });
+            await ThrowsAsync<InvalidOperationException>(
+                () => client.ApplyModelRecoveryAsync(
+                    oldState, "resume", null, Key, CancellationToken.None),
+                "stale recovery identity was allowed to mutate files");
+        }
+        Check(changedStatePosts == 0, "stale recovery performed a mutation");
+
+        var malformedRecovery = new StubHandler((request, _) => Task.FromResult(
+            request.RequestUri!.AbsolutePath == "/v1/models/recovery/model-a"
+                ? Json(RecoveryPayload.Replace("\"model_id\":\"model-a\"",
+                    "\"model_id\":\"some-other-model\""))
+                : ValidResponse(request)));
+        using (var client = new BackendClient(malformedRecovery, metadata))
+            await ThrowsAsync<JsonException>(
+                () => client.GetModelRecoveryAsync("model-a", Key, CancellationToken.None),
+                "recovery details accepted a different model identity");
+
         // Destructive model actions are explicit, verified, and refuse stale state.
         var deleteTransport = new StubHandler((request, _) =>
         {

@@ -775,6 +775,130 @@ public sealed partial class MainWindow : Window
     private void ModelsList_SelectionChanged(
         object sender, SelectionChangedEventArgs args) => UpdateModelButtons();
 
+    private async void RecoverButton_Click(object sender, RoutedEventArgs args)
+    {
+        ModelInfo? model = SelectedLibraryModel;
+        if (model is null || !_engineConnected || _isManaging || _isRefreshing
+            || _chatBusy || _quitting || _closing.IsCancellationRequested) return;
+        _isManaging = true;
+        UpdateChatButtons();
+        try
+        {
+            ModelRecoveryInfo recovery = await _backend.GetModelRecoveryAsync(
+                model.Id, ApiKeyBox.Password, _closing.Token);
+            if (_closing.IsCancellationRequested) return;
+
+            string[] actions =
+            [
+                "resume", "retry_failed_stage", "restart_download", "remove_incomplete_files",
+            ];
+            static string ActionTitle(string action) => action switch
+            {
+                "resume" => "Resume preparation",
+                "retry_failed_stage" => "Retry failed stage",
+                "restart_download" => "Restart from download (remove cached source)",
+                "remove_incomplete_files" => "Remove incomplete output only",
+                _ => "Unknown action",
+            };
+
+            var layout = new StackPanel { Spacing = 10, MaxWidth = 540 };
+            layout.Children.Add(new TextBlock
+            {
+                Text = "Failed stage: " + recovery.FailedStage
+                    + "\nLast completed: " + recovery.LastCompletedStage
+                    + "\nCached source files: " + recovery.DownloadedFiles
+                    + "\nConverted output: " + recovery.ConversionOutput
+                    + (recovery.RecommendedAction.Length > 0
+                        ? "\nEngine recommendation: " + ActionTitle(recovery.RecommendedAction)
+                        : ""),
+                TextWrapping = TextWrapping.Wrap,
+                IsTextSelectionEnabled = true,
+            });
+            if (recovery.FailureMessage.Length > 0 || recovery.LogTail.Count > 0)
+                layout.Children.Add(new TextBlock
+                {
+                    Text = "Sanitized failure details:\n" + recovery.FailureMessage
+                        + (recovery.LogTail.Count > 0
+                            ? "\n" + string.Join("\n", recovery.LogTail) : ""),
+                    TextWrapping = TextWrapping.Wrap,
+                    IsTextSelectionEnabled = true,
+                });
+            var picker = new ComboBox
+            {
+                Header = "Recovery action",
+                MinWidth = 280,
+                HorizontalAlignment = HorizontalAlignment.Left,
+            };
+            foreach (string action in actions.Where(recovery.CanRun)
+                .OrderBy(name => name != recovery.RecommendedAction))
+                picker.Items.Add(new ComboBoxItem { Content = ActionTitle(action), Tag = action });
+            if (picker.Items.Count > 0) picker.SelectedIndex = 0;
+            layout.Children.Add(picker);
+            if (picker.Items.Count == 0)
+                layout.Children.Add(new TextBlock
+                {
+                    Text = "No safe recovery action is currently available.",
+                    TextWrapping = TextWrapping.Wrap,
+                });
+            var scroll = new ScrollViewer
+            {
+                MaxHeight = 430,
+                Content = layout,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            };
+            var review = new ContentDialog
+            {
+                XamlRoot = ((FrameworkElement)Content).XamlRoot,
+                Title = "Recovery: " + recovery.ModelName,
+                Content = scroll,
+                PrimaryButtonText = "Continue",
+                IsPrimaryButtonEnabled = picker.Items.Count > 0,
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Close,
+            };
+            if (await review.ShowAsync() != ContentDialogResult.Primary
+                || _closing.IsCancellationRequested) return;
+            string? action = (picker.SelectedItem as ComboBoxItem)?.Tag as string;
+            if (action is null || !recovery.CanRun(action)) return;
+
+            if (action is "restart_download" or "remove_incomplete_files")
+            {
+                var confirmation = new ContentDialog
+                {
+                    XamlRoot = ((FrameworkElement)Content).XamlRoot,
+                    Title = "Confirm file removal",
+                    Content = action == "restart_download"
+                        ? "Delete reusable source cache files and incomplete output for "
+                            + recovery.ModelName + "? This forces a fresh download."
+                        : "Permanently remove incomplete conversion output for "
+                            + recovery.ModelName + "? Reusable source cache is preserved.",
+                    PrimaryButtonText = "Confirm removal",
+                    CloseButtonText = "Cancel",
+                    DefaultButton = ContentDialogButton.Close,
+                };
+                if (await confirmation.ShowAsync() != ContentDialogResult.Primary
+                    || _closing.IsCancellationRequested) return;
+            }
+            ShowModelsInfo(await _backend.ApplyModelRecoveryAsync(
+                recovery, action, SelectedInferenceDevice, ApiKeyBox.Password,
+                _closing.Token), InfoBarSeverity.Success);
+        }
+        catch (Exception) when (_closing.IsCancellationRequested) { }
+        catch (Exception error) when (!_closing.IsCancellationRequested)
+        {
+            ShowModelsInfo(SafeError(error), InfoBarSeverity.Warning);
+        }
+        finally
+        {
+            _isManaging = false;
+            if (!_closing.IsCancellationRequested)
+            {
+                UpdateChatButtons();
+                await RefreshAsync();
+            }
+        }
+    }
+
     private string? SelectedInferenceDevice =>
         (LibraryDevicePicker.SelectedItem as ComboBoxItem)?.Tag as string is { Length: > 0 } device
             ? device : null;
@@ -848,6 +972,7 @@ public sealed partial class MainWindow : Window
         UnloadButton.IsEnabled = idle && model?.CanUnload == true;
         DeleteButton.IsEnabled = idle && model?.CanDelete == true;
         DownloadButton.IsEnabled = idle && model?.CanDownload == true;
+        RecoverButton.IsEnabled = idle && _engineConnected && model is not null;
         LibraryDevicePicker.IsEnabled = idle && _devicesAvailable;
     }
 

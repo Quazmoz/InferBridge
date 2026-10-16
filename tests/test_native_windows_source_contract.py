@@ -385,3 +385,22 @@ def test_native_saved_conversations_are_opt_in_and_atomic():
     assert "Guid.TryParseExact" in store
     assert "native-conversations.json" in store
     assert "Password" not in store
+
+
+def test_native_recovery_uses_xaml_and_verified_backend_action_contract():
+    root = ET.parse(PROJECT / "MainWindow.xaml").getroot()
+    xaml_ns = "{http://schemas.microsoft.com/winfx/2006/xaml}"
+    named = {
+        node.get(xaml_ns + "Name"): node.tag for node in root.iter() if node.get(xaml_ns + "Name")
+    }
+    assert named["RecoverButton"] == XAML + "Button"
+    window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    client = (PROJECT / "BackendClient.cs").read_text(encoding="utf-8")
+    assert "RecoverButton_Click" in window
+    assert "GetModelRecoveryAsync" in window
+    assert "ApplyModelRecoveryAsync" in window
+    assert 'action is "restart_download" or "remove_incomplete_files"' in window
+    assert "/v1/models/recovery/action" in client
+    assert "selected.RecoveryId != current.RecoveryId" in client
+    assert "RequireVerifiedOriginAsync" in client
+    assert not any("WebView" in node.tag for node in root.iter())
