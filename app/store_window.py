@@ -1,9 +1,9 @@
 """Microsoft Store UI window fallback.
 
 The Store MSIX prefers its bundled native WinUI 3 client. WebView2 is a
-fallback only for an MSIX package without the native client. Normal Windows
-installer and portable builds use their native WinUI entrypoint independently
-of this Store-specific fallback. The server and tray remain authoritative.
+fallback only for an MSIX package without the native client. The dedicated
+native EXE installer launches WinUI independently; legacy browser-based builds
+retain their existing behavior. The server and tray remain authoritative.
 """
 
 from __future__ import annotations
