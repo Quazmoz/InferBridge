@@ -1084,8 +1084,17 @@ internal sealed class BackendClient : IDisposable
             if (!root.TryGetProperty(collection, out var rows)
                 || rows.ValueKind != JsonValueKind.Array)
                 throw new JsonException("Missing storage inventory section.");
+            int shownInSection = 0;
             foreach (var row in rows.EnumerateArray())
             {
+                if (row.ValueKind != JsonValueKind.Object)
+                    throw new JsonException("Invalid storage inventory item.");
+                long size = RequireStorageBytes(row, sizeProperty);
+                // Avoid filling the native UI with catalog entries that own no files.
+                if (collection == "models" && size == 0) continue;
+                // Bound WinUI controls without hiding all later storage categories.
+                if (shownInSection >= 60) { truncated = true; continue; }
+                shownInSection++;
                 string? id = ReadString(row, idProperty);
                 string name = ReadString(row, nameProperty);
                 if (collection == "source_caches")

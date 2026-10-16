@@ -502,6 +502,44 @@ internal static class BackendContractTests
         Check(storageTransport.RequestPaths.Count(p => p == "/v1/storage/cleanup") == 1,
             "invalid native cleanup caused an unexpected mutation");
 
+        // Global compiled-cache cleanup must never acquire an arbitrary model target.
+        int compiledPosts = 0;
+        var compiledStorage = new StubHandler(async (request, token) =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/v1/storage")
+                return Json(StoragePayload);
+            if (request.RequestUri.AbsolutePath == "/v1/storage/cleanup")
+            {
+                compiledPosts++;
+                Check(request.Headers.TryGetValues("X-OV-LLM-UI", out var values)
+                    && values.Single() == "1",
+                    "compiled-cache cleanup omitted local UI header");
+                using var post = JsonDocument.Parse(
+                    await request.Content!.ReadAsStringAsync(token));
+                Check(post.RootElement.GetProperty("action").GetString() ==
+                    "clear_compiled_cache"
+                    && post.RootElement.GetProperty("model_id").ValueKind == JsonValueKind.Null,
+                    "global compiled-cache cleanup accepted model scope");
+                return Json(
+                    """{"status":"completed","action":"clear_compiled_cache","model_id":null,"freed_bytes":10}""");
+            }
+            return ValidResponse(request);
+        });
+        using (var client = new BackendClient(compiledStorage, metadata))
+        {
+            var inventory = await client.GetStorageInventoryAsync(Key, CancellationToken.None);
+            var compiled = inventory.Options.Single(o => o.Action == "clear_compiled_cache");
+            Check((await client.CleanupStorageAsync(compiled, Key, CancellationToken.None))
+                .Contains("confirmed cleanup", StringComparison.OrdinalIgnoreCase),
+                "global compiled cache cleanup was not verified");
+            await ThrowsAsync<ArgumentException>(
+                () => client.CleanupStorageAsync(
+                    compiled with { ModelId = "model-a" },
+                    Key, CancellationToken.None),
+                "compiled-cache cleanup accepted an invented model scope");
+        }
+        Check(compiledPosts == 1, "invalid global cleanup caused extra mutations");
+
         int staleStoragePosts = 0;
         var changedStorage = new StubHandler((request, _) =>
         {
