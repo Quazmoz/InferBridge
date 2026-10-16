@@ -92,6 +92,12 @@
                         <TextBlock x:Name="OperationsBenchmarks" TextWrapping="Wrap"
                                    IsTextSelectionEnabled="True"
                                    Text="The engine has not reported benchmark status." />
+                        <TextBlock Text="Quick benchmark runs one local measurement (32 generated tokens) on the currently loaded model and actual device. It may use significant CPU, GPU, NPU, memory and time. Mock results are synthetic." TextWrapping="Wrap" Opacity="0.8" />
+                        <Button x:Name="QuickBenchmarkButton" Content="Run quick benchmark" IsEnabled="False"
+                                HorizontalAlignment="Left" Click="QuickBenchmarkButton_Click" />
+                        <TextBlock x:Name="BenchmarkRunResult" TextWrapping="Wrap"
+                                   IsTextSelectionEnabled="True"
+                                   AutomationProperties.LiveSetting="Polite" />
                         <TextBlock Text="Privacy-safe support diagnostics" FontSize="18"
                                    FontWeight="SemiBold" TextWrapping="Wrap" />
                         <TextBlock Text="Create a local ZIP containing sanitized configuration, hardware information, model state, benchmark summaries and operational logs. Prompts, chat history, API keys, tokens, model weights and source images are excluded. Review the ZIP before sharing it."
