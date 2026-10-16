@@ -286,6 +286,7 @@ def test_native_device_discovery_shows_available_hardware():
     assert '"/v1/devices"' in client
     assert "RequireVerifiedOriginAsync" in client
 
+
 def test_native_operations_and_model_deletion_are_native_and_guarded():
     root = ET.parse(PROJECT / "MainWindow.xaml").getroot()
     xaml_ns = "{http://schemas.microsoft.com/winfx/2006/xaml}"
