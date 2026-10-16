@@ -844,6 +844,10 @@ internal static class BackendContractTests
                 Check(root.GetProperty("model").GetString() == "model-a",
                     "chat model changed");
                 Check(!root.GetProperty("stream").GetBoolean(), "unexpected streaming enabled");
+                Check(root.GetProperty("max_tokens").GetInt32() == 512
+                    && root.GetProperty("temperature").GetDouble() == 0.7
+                    && root.GetProperty("top_p").GetDouble() == 1,
+                    "non-stream chat defaults diverged from backend");
                 Check(root.GetProperty("messages")[0].GetProperty("role").GetString() == "user",
                     "chat role changed");
             }
@@ -881,6 +885,7 @@ internal static class BackendContractTests
         };
 
         string longPiece = new('x', 4200); // Event crosses the HTTP read buffer.
+        bool sawCustomOptions = false;
         var streaming = new StubHandler(async (request, token) =>
         {
             if (request.RequestUri!.AbsolutePath == "/v1/chat/completions")
@@ -897,6 +902,19 @@ internal static class BackendContractTests
                     "native chat request did not enable streaming");
                 Check(parsed.RootElement.GetProperty("model").GetString() == "model-a",
                     "streamed chat changed the selected model");
+                var payload = parsed.RootElement;
+                int tokens = payload.GetProperty("max_tokens").GetInt32();
+                double temperature = payload.GetProperty("temperature").GetDouble();
+                double topP = payload.GetProperty("top_p").GetDouble();
+                if (tokens == 384)
+                {
+                    Check(temperature == 0.2 && topP == 0.85,
+                        "custom SSE generation parameters were not serialized");
+                    sawCustomOptions = true;
+                }
+                else
+                    Check(tokens == 512 && temperature == 0.7 && topP == 1,
+                        "streaming chat defaults diverged from backend");
                 return Events("data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}]}\n\n"
                     + Sse(longPiece + "✨") + Sse(" hello") + Sse("", "stop")
                     + "data: {\"choices\":[]}\n\n"
@@ -914,6 +932,30 @@ internal static class BackendContractTests
                 "SSE parser lost an event or UTF-8 data across a buffer boundary");
             Check(previews.Count == 2 && previews[0] == longPiece + "✨"
                 && previews[1] == response, "SSE progress callbacks are incorrect");
+            string configured = await client.StreamChatAsync(
+                "model-a", new[] { new ChatTurn("user", "custom") },
+                Key, _ => { }, CancellationToken.None,
+                GenerationOptions.FromNumbers(384, 0.2, 0.85));
+            Check(configured == response && sawCustomOptions,
+                "custom inference settings did not reach authenticated SSE endpoint");
+            foreach (var invalid in new[]
+            {
+                new GenerationOptions(0, 0.7, 1),
+                new GenerationOptions(4097, 0.7, 1),
+                new GenerationOptions(64, double.NaN, 1),
+                new GenerationOptions(64, double.PositiveInfinity, 1),
+                new GenerationOptions(64, 2.1, 1),
+                new GenerationOptions(64, 0.7, -0.1),
+            })
+                await ThrowsAsync<ArgumentException>(
+                    () => client.StreamChatAsync("model-a",
+                        new[] { new ChatTurn("user", "invalid") },
+                        Key, _ => { }, CancellationToken.None, invalid),
+                    "invalid generation settings reached the network");
+            bool fractionRejected = false;
+            try { _ = GenerationOptions.FromNumbers(12.5, 0.7, 1); }
+            catch (ArgumentException) { fractionRejected = true; }
+            Check(fractionRejected, "fractional output token limit was accepted");
             await ThrowsAsync<ArgumentException>(
                 () => client.StreamChatAsync("model-a",
                     new[] { new ChatTurn("system", "override") },

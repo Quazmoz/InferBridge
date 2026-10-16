@@ -236,6 +236,10 @@ public sealed partial class MainWindow : Window
         if (page == "huggingface" && !_hfLoaded)
             _ = RefreshHuggingFaceAsync();
         ChatPanel.Visibility = page == "chat" ? Visibility.Visible : Visibility.Collapsed;
+        SettingsPanel.Visibility = page == "settings" ? Visibility.Visible : Visibility.Collapsed;
+        if (page == "settings" && _engineConnected && _rejectedApiKey is null)
+            _ = RefreshModelPreparationsAsync();
+        UpdateGenerationSettingsInfo();
         OperationsPanel.Visibility = page == "operations" ? Visibility.Visible : Visibility.Collapsed;
         if (page == "operations" && !_operationsLoaded)
             _ = RefreshOperationsAsync();
@@ -807,6 +811,7 @@ public sealed partial class MainWindow : Window
         _conversationModelId = saved.ModelId;
         _turns.Clear();
         _turns.AddRange(saved.Turns);
+        ResetGenerationSettings();
         ChatHistory.Items.Clear();
         foreach (var turn in saved.Turns)
             AppendChat(turn.Role == "user" ? "You" : "InferBridge", turn.Content);
@@ -942,6 +947,7 @@ public sealed partial class MainWindow : Window
             ChatHistory.Items.Clear();
             _currentConversationId = Guid.NewGuid().ToString("N");
             _conversationModelId = modelId;
+            ResetGenerationSettings();
             RefreshSavedChats();
         }
         UpdateChatButtons();
@@ -1171,6 +1177,7 @@ public sealed partial class MainWindow : Window
         ScanHardwareButton.IsEnabled = _engineConnected && !_quitting && !_scanningDevices;
         PromptBox.IsEnabled = !_chatBusy;
         ChatProgress.IsActive = _chatBusy;
+        UpdateGenerationSettingsInfo();
         UpdateModelButtons();
         UpdateHuggingFaceButtons();
     }
@@ -1282,7 +1289,8 @@ public sealed partial class MainWindow : Window
 
             if (!status.Connected || status.RequiresAuthentication)
                 ResetModelPreparations();
-            else if (ModelsPanel.Visibility == Visibility.Visible)
+            else if (ModelsPanel.Visibility == Visibility.Visible
+                || SettingsPanel.Visibility == Visibility.Visible)
                 await RefreshModelPreparationsAsync();
 
             ModelsSummary.Text = status.RequiresAuthentication
@@ -1473,6 +1481,12 @@ public sealed partial class MainWindow : Window
             pending.RemoveRange(0, Math.Min(2, pending.Count - 1));
         }
 
+        if (!CanUseGenerationOptions(modelId, _generationOptions, out string reason))
+        {
+            ShowChatInfo("Unsupported inference options", reason, InfoBarSeverity.Warning);
+            return;
+        }
+        GenerationOptions generation = _generationOptions;
         _chatBusy = true;
         _sendCancellation = CancellationTokenSource.CreateLinkedTokenSource(_closing.Token);
         CancellationTokenSource send = _sendCancellation;
@@ -1508,7 +1522,7 @@ public sealed partial class MainWindow : Window
                             ChatHistory.ScrollIntoView(assistantItem);
                         }
                     });
-                }, send.Token);
+                }, send.Token, generation);
             // A late HTTP success must not commit a reply after cancellation.
             if (_closing.IsCancellationRequested || _sendCancellation?.IsCancellationRequested != false)
                 return;
@@ -1567,6 +1581,7 @@ public sealed partial class MainWindow : Window
         ChatHistory.Items.Clear();
         _currentConversationId = Guid.NewGuid().ToString("N");
         _conversationModelId = SelectedModelId;
+        ResetGenerationSettings();
         RefreshSavedChats();
         ShowChatInfo("New chat", "A fresh conversation is ready. Previously saved chats remain in the picker.",
             InfoBarSeverity.Informational);

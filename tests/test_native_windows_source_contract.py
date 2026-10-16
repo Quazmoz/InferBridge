@@ -142,6 +142,31 @@ def test_native_backend_resolves_python_tray_data_roots_instead_of_store_only():
     assert "InferBridge.Native.ContractTests.csproj" in workflow
 
 
+def test_native_generation_controls_use_winui_and_existing_chat_contract():
+    xaml = (PROJECT / "MainWindow.xaml").read_text(encoding="utf-8")
+    window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    options = (PROJECT / "MainWindow.GenerationSettings.cs").read_text(encoding="utf-8")
+    client = (PROJECT / "BackendClient.cs").read_text(encoding="utf-8")
+    for name in (
+        "SettingsPanel",
+        "MaxTokensBox",
+        "TemperatureBox",
+        "TopPBox",
+        "ApplyGenerationSettingsButton",
+        "ResetGenerationSettingsButton",
+    ):
+        assert f'x:Name="{name}"' in xaml
+    assert 'Click="ApplyGenerationSettingsButton_Click"' in xaml
+    assert 'Click="ResetGenerationSettingsButton_Click"' in xaml
+    assert "GenerationOptions.FromNumbers" in options
+    assert "CanUseGenerationOptions" in options
+    assert "ResetGenerationSettings();" in window
+    assert "send.Token, generation" in window
+    assert "max_tokens = generation.MaxTokens" in client
+    assert "temperature = generation.Temperature" in client
+    assert "top_p = generation.TopP" in client
+
+
 def test_native_chat_disallows_late_success_after_user_cancellation():
     window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
     response = window.index("string answer = await _backend.StreamChatAsync(")

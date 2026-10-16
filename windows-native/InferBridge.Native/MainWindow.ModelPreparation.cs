@@ -110,7 +110,11 @@ public sealed partial class MainWindow
         finally
         {
             _modelPreparationRefreshing = false;
-            if (!_closing.IsCancellationRequested) UpdateModelPreparationUi();
+            if (!_closing.IsCancellationRequested)
+            {
+                UpdateModelPreparationUi();
+                UpdateGenerationSettingsInfo();
+            }
         }
     }
 

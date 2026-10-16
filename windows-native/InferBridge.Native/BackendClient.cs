@@ -45,6 +45,30 @@ internal sealed class EngineRequestException(string message) : InvalidOperationE
 
 internal sealed record ChatTurn(string Role, string Content);
 
+// These request-scoped options are validated before contacting the Python engine.
+internal sealed record GenerationOptions(int MaxTokens, double Temperature, double TopP)
+{
+    public static GenerationOptions Default => new(512, 0.7, 1.0);
+
+    public static GenerationOptions FromNumbers(double tokens, double temperature, double topP)
+    {
+        if (!double.IsFinite(tokens) || tokens != Math.Truncate(tokens)
+            || tokens is < 1 or > 4096)
+            throw new ArgumentException("Maximum tokens must be a whole number from 1 to 4096.");
+        var options = new GenerationOptions((int)tokens, temperature, topP);
+        options.Validate();
+        return options;
+    }
+
+    public void Validate()
+    {
+        if (MaxTokens is < 1 or > 4096
+            || !double.IsFinite(Temperature) || Temperature is < 0 or > 2
+            || !double.IsFinite(TopP) || TopP is < 0 or > 1)
+            throw new ArgumentException("Tokens: 1–4096; temperature: 0–2; top-p: 0–1.");
+    }
+}
+
 internal sealed record ModelRecoveryInfo(
     string ModelId, string ModelName, string RecoveryId, string FailedStage,
     string LastCompletedStage, string DownloadedFiles, string ConversionOutput,
@@ -259,9 +283,11 @@ internal sealed partial class BackendClient : IDisposable
 
     public async Task<string> CompleteChatAsync(
         string modelId, IReadOnlyList<ChatTurn> turns, string? apiKey,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, GenerationOptions? options = null)
     {
         ValidateChatTurns(modelId, turns);
+        var generation = options ?? GenerationOptions.Default;
+        generation.Validate();
 
         string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
         var messages = turns.Select(t => new { role = t.Role, content = t.Content }).ToArray();
@@ -270,7 +296,9 @@ internal sealed partial class BackendClient : IDisposable
             model = modelId,
             messages,
             stream = false,
-            max_tokens = 512,
+            max_tokens = generation.MaxTokens,
+            temperature = generation.Temperature,
+            top_p = generation.TopP,
         });
         using var document = await PostJsonAsync(
             origin + "/v1/chat/completions", body, apiKey,
@@ -310,9 +338,12 @@ internal sealed partial class BackendClient : IDisposable
     /// </summary>
     public async Task<string> StreamChatAsync(
         string modelId, IReadOnlyList<ChatTurn> turns, string? apiKey,
-        Action<string> onPartial, CancellationToken cancellationToken)
+        Action<string> onPartial, CancellationToken cancellationToken,
+        GenerationOptions? options = null)
     {
         ValidateChatTurns(modelId, turns);
+        var generation = options ?? GenerationOptions.Default;
+        generation.Validate();
         ArgumentNullException.ThrowIfNull(onPartial);
         string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
         using var request = new HttpRequestMessage(
@@ -323,7 +354,9 @@ internal sealed partial class BackendClient : IDisposable
             model = modelId,
             messages = turns.Select(t => new { role = t.Role, content = t.Content }).ToArray(),
             stream = true,
-            max_tokens = 512,
+            max_tokens = generation.MaxTokens,
+            temperature = generation.Temperature,
+            top_p = generation.TopP,
         }), Encoding.UTF8, "application/json");
         SetAuth(request, apiKey);
 

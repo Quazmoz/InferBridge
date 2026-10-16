@@ -30,6 +30,7 @@
                 <NavigationViewItem Icon="Setting" Content="Operations &amp; diagnostics" Tag="operations" />
                 <NavigationViewItem Icon="Repair" Content="System Doctor" Tag="doctor" />
                 <NavigationViewItem Icon="Save" Content="Storage &amp; cache" Tag="storage" />
+                <NavigationViewItem x:Name="SettingsNavigationItem" Icon="Setting" Content="Settings" Tag="settings" />
             </NavigationView.MenuItems>
             <Grid Padding="24,12,24,20">
                 <ScrollViewer x:Name="OverviewPanel" Visibility="Collapsed">
@@ -284,6 +285,40 @@
                                 AutomationProperties.Name="Inspect and recover selected model" />
                     </StackPanel>
                 </Grid>
+                <ScrollViewer x:Name="SettingsPanel" Visibility="Collapsed">
+                    <StackPanel MaxWidth="760" HorizontalAlignment="Left" Spacing="14">
+                        <TextBlock Text="Settings" FontSize="28" FontWeight="SemiBold" />
+                        <TextBlock Text="Inference for this conversation" FontSize="18" FontWeight="SemiBold" />
+                        <TextBlock Text="Apply settings to future messages in the current native chat. Changes are not saved to disk or the engine, and reset when you switch models, start a new chat or restore history." TextWrapping="Wrap" Opacity="0.8" />
+                        <InfoBar x:Name="GenerationSettingsInfo" Title="Engine defaults"
+                                 Message="Adjust and apply controls for this chat."
+                                 IsOpen="True" IsClosable="False" Severity="Informational" />
+                        <TextBlock x:Name="SettingsCurrentModel" TextWrapping="Wrap"
+                                   AutomationProperties.LiveSetting="Polite" />
+                        <NumberBox x:Name="MaxTokensBox" Header="Maximum generated tokens"
+                                   Value="512" Minimum="1" Maximum="4096" SmallChange="64"
+                                   SpinButtonPlacementMode="Compact" ValidationMode="Disabled"
+                                   AutomationProperties.Name="Maximum output tokens" />
+                        <TextBlock Text="Engine default: 512. Actual generation can be shorter when context space is limited." TextWrapping="Wrap" Opacity="0.8" />
+                        <NumberBox x:Name="TemperatureBox" Header="Temperature"
+                                   Value="0.7" Minimum="0" Maximum="2" SmallChange="0.1"
+                                   SpinButtonPlacementMode="Compact" ValidationMode="Disabled"
+                                   AutomationProperties.Name="Temperature from zero to two" />
+                        <TextBlock Text="Engine default: 0.7. Zero disables sampling; higher values increase variation." TextWrapping="Wrap" Opacity="0.8" />
+                        <NumberBox x:Name="TopPBox" Header="Top-p sampling"
+                                   Value="1" Minimum="0" Maximum="1" SmallChange="0.05"
+                                   SpinButtonPlacementMode="Compact" ValidationMode="Disabled"
+                                   AutomationProperties.Name="Top-p from zero to one" />
+                        <TextBlock Text="Engine default: 1.0. Lower values restrict nucleus sampling." TextWrapping="Wrap" Opacity="0.8" />
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Button x:Name="ApplyGenerationSettingsButton" Content="Apply to this chat"
+                                    Click="ApplyGenerationSettingsButton_Click" />
+                            <Button x:Name="ResetGenerationSettingsButton" Content="Reset to engine defaults"
+                                    Click="ResetGenerationSettingsButton_Click" />
+                        </StackPanel>
+                        <TextBlock Text="Select load devices in Model library. Persistent server configuration, model context, top-k, and repetition penalty cannot be modified through the existing chat API." TextWrapping="Wrap" Opacity="0.8" />
+                    </StackPanel>
+                </ScrollViewer>
                 <Grid x:Name="ChatPanel" RowSpacing="12">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -325,6 +360,11 @@
                                   AutomationProperties.Name="Select a downloaded or loaded inference model" />
                         <TextBlock Text="Select a downloaded model to load it here. New downloads are available in Model library."
                                    TextWrapping="Wrap" Opacity="0.8" />
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Button Content="Inference settings" Click="OpenGenerationSettingsButton_Click" />
+                            <TextBlock x:Name="ChatGenerationSummary" VerticalAlignment="Center"
+                                       TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+                        </StackPanel>
                         <InfoBar x:Name="ChatInfo" IsOpen="True" IsClosable="False"
                                  Severity="Informational" Title="Getting ready"
                                  Message="Connect to your engine and load a model to begin." />
