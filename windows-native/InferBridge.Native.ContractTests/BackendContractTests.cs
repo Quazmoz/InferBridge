@@ -52,8 +52,9 @@ internal static class BackendContractTests
             "/v1/models" => Json(
                 """{"data":[{"id":"model-a","name":"Model A","status":"ready_to_load"},{"id":"model-b","name":"Model B","status":"not_downloaded"},{"id":"gated","name":"Gated","status":"not_downloaded"}]}"""),
             "/v1/system/status" => Json("""{"device":{"loaded":{"model-a":"GPU.0"}}}"""),
-            "/v1/desktop/operations/status" => Json("""{"application_version":"1.0.0","installation_mode":"installed","server_status":"ready","server_port":18765,"controller_available":true,"mock":true,"start_with_windows":false,"benchmark_running":false,"benchmark":{"results":[{"model_id":"model-a","device":"GPU.0"}]},"last_diagnostics_export":"previous-diagnostics.zip"}"""),
+            "/v1/desktop/operations/status" => Json("""{"application_version":"1.0.0","installation_mode":"installed","server_status":"ready","server_port":18765,"controller_available":true,"mock":true,"start_with_windows":false,"benchmark_running":false,"benchmark":{"results":[{"model_id":"model-a","device":"GPU.0"}]},"last_diagnostics_export":"previous-diagnostics.zip","active_model":{"id":"model-a","actual_device":"GPU.0"}}"""),
             "/v1/desktop/operations/diagnostics/export" => Json("""{"status":"created","filename":"inferbridge-diagnostics.zip","collection_errors":["Optional sensor unavailable"]}"""),
+            "/v1/benchmarks/run" => Json("""{"results":[{"model_id":"model-a","requested_device":"GPU.0","actual_device":"GPU.0","success":true,"decode_tokens_sec":42.5,"time_to_first_token_ms":120.2,"total_latency_ms":501.3}]}"""),
             "/v1/devices" => Json("""{"default_device":"AUTO","available":["CPU","GPU.0","NPU"],"mock":false}"""),
             "/v1/models/load" => Json("""{"status":"accepted"}"""),
             "/v1/models/convert" => Json("""{"status":"queued_convert"}"""),
@@ -158,6 +159,60 @@ internal static class BackendContractTests
             await ThrowsAsync<JsonException>(
                 () => client.ExportDiagnosticsAsync(Key, CancellationToken.None),
                 "diagnostics export accepted a path instead of a filename");
+
+        // A quick native benchmark uses the existing authenticated API and
+        // only measures the exact loaded model/device the user confirmed.
+        var benchmarkTransport = new StubHandler(async (request, token) =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/v1/benchmarks/run")
+            {
+                Check(request.Method == HttpMethod.Post,
+                    "native benchmark did not use POST");
+                Check(request.Headers.Authorization?.Parameter == Key,
+                    "native benchmark omitted bearer authentication");
+                Check(!request.Headers.Contains("X-Desktop-Control"),
+                    "native benchmark used private tray control");
+                using var payload = JsonDocument.Parse(
+                    await request.Content!.ReadAsStringAsync(token));
+                var root = payload.RootElement;
+                Check(root.GetProperty("model").GetString() == "model-a"
+                    && root.GetProperty("devices")[0].GetString() == "GPU.0"
+                    && root.GetProperty("runs").GetInt32() == 1
+                    && root.GetProperty("max_tokens").GetInt32() == 32,
+                    "native benchmark did not enforce bounded quick preset");
+            }
+            return ValidResponse(request);
+        });
+        using (var client = new BackendClient(benchmarkTransport, metadata))
+        {
+            var state = await client.GetDesktopOperationsAsync(Key, CancellationToken.None);
+            Check(state.ActiveModelId == "model-a" && state.ActualDevice == "GPU.0",
+                "native benchmark preflight did not report the actual loaded target");
+            string report = await client.RunQuickBenchmarkAsync(
+                "model-a", "GPU.0", Key, CancellationToken.None);
+            Check(report.Contains("42.5 tokens/s", StringComparison.Ordinal)
+                && report.Contains("120.2 ms", StringComparison.Ordinal)
+                && report.Contains("Actual: GPU.0", StringComparison.Ordinal),
+                "native benchmark did not present measured metrics");
+            await ThrowsAsync<InvalidOperationException>(
+                () => client.RunQuickBenchmarkAsync(
+                    "different-model", "GPU.0", Key, CancellationToken.None),
+                "benchmark accepted a different model than the active one");
+        }
+        Check(benchmarkTransport.RequestPaths.Count(path => path == "/v1/benchmarks/run") == 1,
+            "stale benchmark preflight still posted a generation run");
+
+        var changedBenchmark = new StubHandler((request, _) => Task.FromResult(
+            request.RequestUri!.AbsolutePath == "/v1/desktop/operations/status"
+                ? Json("""{"application_version":"1.0","server_status":"ready","server_port":18765,"benchmark_running":false,"active_model":null}""")
+                : ValidResponse(request)));
+        using (var client = new BackendClient(changedBenchmark, metadata))
+            await ThrowsAsync<InvalidOperationException>(
+                () => client.RunQuickBenchmarkAsync(
+                    "model-a", "GPU.0", Key, CancellationToken.None),
+                "benchmark started after model unload");
+        Check(!changedBenchmark.RequestPaths.Contains("/v1/benchmarks/run"),
+            "benchmark ran without a verified loaded model");
 
         // Destructive model actions are explicit, verified, and refuse stale state.
         var deleteTransport = new StubHandler((request, _) =>
