@@ -136,6 +136,8 @@
                                 Click="LoadButton_Click" />
                         <Button x:Name="UnloadButton" Content="Unload" IsEnabled="False"
                                 Click="UnloadButton_Click" />
+                        <Button x:Name="DeleteButton" Content="Delete local files" IsEnabled="False"
+                                Click="DeleteButton_Click" />
                         <Button Content="Refresh" Click="RefreshButton_Click"
                                 AutomationProperties.Name="Refresh models" />
                         </StackPanel>
