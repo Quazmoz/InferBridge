@@ -15,11 +15,12 @@ public sealed partial class MainWindow
     private void UpdateHuggingFaceButtons()
     {
         bool idle = !_hfBusy && !_quitting && !_closing.IsCancellationRequested;
+        bool authorized = _engineConnected && _rejectedApiKey is null;
         HfRefreshButton.IsEnabled = idle;
-        HfConnectButton.IsEnabled = idle && _engineConnected;
-        HfTestButton.IsEnabled = idle && _engineConnected && _hfAccount?.Configured == true;
-        HfRemoveButton.IsEnabled = idle && _engineConnected && _hfAccount?.Removable == true;
-        HfSearchButton.IsEnabled = idle && !_hfSearching && _engineConnected;
+        HfConnectButton.IsEnabled = idle && authorized;
+        HfTestButton.IsEnabled = idle && authorized && _hfAccount?.Configured == true;
+        HfRemoveButton.IsEnabled = idle && authorized && _hfAccount?.Removable == true;
+        HfSearchButton.IsEnabled = idle && !_hfSearching && authorized;
     }
 
     private void ShowHuggingFaceStatus(HuggingFaceAccount account)

@@ -1184,11 +1184,16 @@ public sealed partial class MainWindow : Window
         {
             string apiKey = ApiKeyBox.Password;
             var status = await _backend.InspectAsync(_closing.Token, apiKey);
+            bool wasConnected = _engineConnected;
             _engineConnected = status.Connected;
-            if (!status.Connected)
+            if ((!status.Connected || status.RequiresAuthentication)
+                && (_hfLoaded || wasConnected))
             {
                 _hfLoaded = false;
                 _hfAccount = null;
+                HfAccountText.Text = "Engine unavailable or authorization required. Refresh account after reconnecting.";
+                HfInfo.Severity = InfoBarSeverity.Warning;
+                HfInfo.Message = "Hugging Face account status is no longer verified for this engine session.";
             }
             if (!status.Connected || status.RequiresAuthentication)
             {
