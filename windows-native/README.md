@@ -21,6 +21,7 @@ it over verified loopback HTTP.
   engine's own status, refreshed every 8 seconds; the client never invents it.
   The engine's own refusal reasons (for example gated Hugging Face access) are
   shown as given, bounded to plain text.
+- **System Doctor**: dedicated WinUI health page uses the same authenticated `/v1/system/status` and `/v1/devices` reads as the browser doctor. It reports OpenVINO runtime mode, CPU/GPU/NPU visibility, active routing/fallback, model conversion and errors, RAM and model-volume storage thresholds, plus recommended fixes. Checks are re-runnable; the native clipboard action copies only an allowlisted support summary without credentials, prompts, model errors or local paths. Mock mode is explicitly shown as unverified hardware.
 - **Operations & diagnostics**: a native WinUI screen reads the same verified desktop-operations status used by the web GUI: application version, installation mode, controller availability, server state, startup preference and benchmark state. A separately confirmed action requests the engine's existing privacy-sanitized diagnostic ZIP export. **Run quick benchmark** measures one 32-token generation for the exact currently loaded model and actual device (reverified before posting), with measured decode speed, TTFT and latency when available; mock results are synthetic. The native client never reads private tray-control credentials or downloads the archive into its process.
 - **Engine**: connection status, **Start local engine**, and a session-only
   API-key field (a PasswordBox). The key stays in this window's memory and is
@@ -31,9 +32,9 @@ it over verified loopback HTTP.
 
 ## Feature parity tracking
 
-The web GUI remains available independently. The native Windows app is real WinUI/XAML, not a WebView2 rendering of it. Current native coverage includes chat (bounded SSE streaming with cancellable partial previews), model selection/download/load/unload/delete, inference target selection, device scanning, engine connection, quick benchmark execution, and operations/diagnostics export.
+The web GUI remains available independently. The native Windows app is real WinUI/XAML, not a WebView2 rendering of it. Current native coverage includes chat (bounded SSE streaming with cancellable partial previews), model selection/download/load/unload/delete, inference target selection, device scanning, engine connection, quick benchmark execution, native System Doctor checks and sanitized clipboard reports, and operations/diagnostics export.
 
-Still missing from the native frontend: durable multiple conversations and history, rich Markdown/code rendering, local vision and embeddings workflows, complete model recovery and Hugging Face account management, full System Doctor detail, multi-model benchmark comparisons/presets and history, context budget planning, storage manager, network/API administration, and other advanced settings. A present backend route does **not** imply that its native interface is implemented. Parity work should reuse existing authenticated backend services and keep the two frontends independently functional.
+Still missing from the native frontend: durable multiple conversations and history, rich Markdown/code rendering, local vision and embeddings workflows, complete model recovery and Hugging Face account management, advanced System Doctor per-model details and remediation actions, multi-model benchmark comparisons/presets and history, context budget planning, storage manager, network/API administration, and other advanced settings. A present backend route does **not** imply that its native interface is implemented. Parity work should reuse existing authenticated backend services and keep the two frontends independently functional.
 
 ## Engine handoff and safety
 
