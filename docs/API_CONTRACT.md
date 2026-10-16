@@ -130,8 +130,13 @@ The selected model must use the `openvino-embeddings` backend. Text-generation m
 
 | Method | Route | Purpose |
 |---|---|---|
+| `GET` | `/v1/huggingface/status` | Sanitized account/source state, no token value. |
+| `POST` | `/v1/huggingface/token` | Verify read token against Hugging Face and store in backend (Windows DPAPI). |
+| `POST` | `/v1/huggingface/test` | Revalidate currently configured credentials. |
+| `DELETE` | `/v1/huggingface/token` | Remove backend-stored token, not environment-owned credentials. |
+| `POST` | `/v1/huggingface/preflight` | Check publisher/model access before conversion. |
 | `POST` | `/v1/models/register` | Add a custom catalog entry. |
-| `GET` | `/v1/models/search-hf` | Search compatible Hugging Face models. |
+| `GET` | `/v1/models/search-hf` | Search Hugging Face metadata candidates; local hardware compatibility is not guaranteed. |
 | `POST` | `/v1/models/download-custom` | Register, convert, and optionally load a custom model. |
 | `POST` | `/v1/models/convert` | Convert a catalog model in the background. |
 | `POST` | `/v1/models/load` | Load a converted model on a selected device. |
@@ -145,6 +150,8 @@ The selected model must use the `openvino-embeddings` backend. Text-generation m
 | `GET` | `/v1/benchmarks/latest` | Return the latest run and recommendation. |
 | `DELETE` | `/v1/benchmarks` | Clear saved benchmark runs. |
 | `POST` | `/v1/chat/export` | Export a supplied conversation as Markdown. |
+
+The Hugging Face search endpoint queries remote metadata only. It does not prove local OpenVINO compatibility, remote-code safety, permission to access a gated model, available disk space, or that a model was downloaded. The backend owns token verification/persistence, gated preflight and model conversion for both frontends. Never log, cache, or display submitted tokens in a frontend.
 
 Model conversion and loading are asynchronous. Clients should poll `/v1/system/status` and inspect the matching catalog entry until `is_loaded` is true or an error state is returned.
 

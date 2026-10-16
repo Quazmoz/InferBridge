@@ -49,7 +49,9 @@ def test_native_chat_uses_real_accessible_xaml_controls():
     root = ET.parse(PROJECT / "MainWindow.xaml").getroot()
     xaml_ns = "{http://schemas.microsoft.com/winfx/2006/xaml}"
     named = {
-        node.get(xaml_ns + "Name"): node.tag for node in root.iter() if node.get(xaml_ns + "Name")
+        node.get(xaml_ns + "Name"): node.tag
+        for node in root.iter()
+        if node.get(xaml_ns + "Name")
     }
     assert named["ChatModelPicker"] == XAML + "ComboBox"
     assert named["ChatHistory"] == XAML + "ListView"
@@ -432,3 +434,28 @@ def test_native_storage_manager_uses_winui_and_guarded_engine_cleanup():
     assert "current.ReclaimableBytes != selected.ReclaimableBytes" in client
     assert "current.SizeBytes != selected.SizeBytes" in client
     assert not any("WebView" in node.tag for node in root.iter())
+
+
+def test_native_huggingface_page_uses_real_controls_and_backend_credential_owner():
+    root = ET.parse(PROJECT / "MainWindow.xaml").getroot()
+    xaml_ns = "{http://schemas.microsoft.com/winfx/2006/xaml}"
+    names = {
+        node.get(xaml_ns + "Name"): node.tag for node in root.iter() if node.get(xaml_ns + "Name")
+    }
+    assert names["HuggingFacePanel"] == XAML + "ScrollViewer"
+    assert names["HfSearchBox"] == XAML + "TextBox"
+    assert names["HfSearchResults"] == XAML + "StackPanel"
+    assert not any("WebView" in node.tag for node in root.iter())
+
+    client = (PROJECT / "HuggingFaceClient.cs").read_text(encoding="utf-8")
+    native = (PROJECT / "MainWindow.HuggingFace.cs").read_text(encoding="utf-8")
+    harness = (
+        ROOT / "windows-native" / "InferBridge.Native.ContractTests" / "Program.cs"
+    ).read_text(encoding="utf-8")
+    assert '"/v1/huggingface/status"' in client
+    assert '"/v1/huggingface/token"' in client
+    assert '"/v1/models/search-hf?query="' in client
+    assert "RequireVerifiedOriginAsync" in client
+    assert "MaxLength = 503" in native
+    assert "secretBox.Password = string.Empty;" in native
+    assert "HuggingFaceContractTests.RunAsync(root)" in harness

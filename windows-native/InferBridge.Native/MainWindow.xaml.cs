@@ -230,6 +230,9 @@ public sealed partial class MainWindow : Window
         string? page = (args.SelectedItem as NavigationViewItem)?.Tag?.ToString();
         OverviewPanel.Visibility = page == "overview" ? Visibility.Visible : Visibility.Collapsed;
         ModelsPanel.Visibility = page == "models" ? Visibility.Visible : Visibility.Collapsed;
+        HuggingFacePanel.Visibility = page == "huggingface" ? Visibility.Visible : Visibility.Collapsed;
+        if (page == "huggingface" && !_hfLoaded)
+            _ = RefreshHuggingFaceAsync();
         ChatPanel.Visibility = page == "chat" ? Visibility.Visible : Visibility.Collapsed;
         OperationsPanel.Visibility = page == "operations" ? Visibility.Visible : Visibility.Collapsed;
         if (page == "operations" && !_operationsLoaded)
@@ -1166,6 +1169,7 @@ public sealed partial class MainWindow : Window
         PromptBox.IsEnabled = !_chatBusy;
         ChatProgress.IsActive = _chatBusy;
         UpdateModelButtons();
+        UpdateHuggingFaceButtons();
     }
 
     private async Task RefreshAsync()
@@ -1181,6 +1185,11 @@ public sealed partial class MainWindow : Window
             string apiKey = ApiKeyBox.Password;
             var status = await _backend.InspectAsync(_closing.Token, apiKey);
             _engineConnected = status.Connected;
+            if (!status.Connected)
+            {
+                _hfLoaded = false;
+                _hfAccount = null;
+            }
             if (!status.Connected || status.RequiresAuthentication)
             {
                 _devicesScanned = false;

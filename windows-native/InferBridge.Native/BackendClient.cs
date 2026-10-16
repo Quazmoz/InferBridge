@@ -104,7 +104,7 @@ internal sealed record BackendSnapshot(
 /// Session-only client for the authoritative loopback engine. No proxy, redirects,
 /// alternate hostname, persistent key, or private tray-control credential.
 /// </summary>
-internal sealed class BackendClient : IDisposable
+internal sealed partial class BackendClient : IDisposable
 {
     private const int MaximumJsonBytes = 256 * 1024;
     private const int MaximumChatBytes = 1024 * 1024;

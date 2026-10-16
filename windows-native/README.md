@@ -23,6 +23,7 @@ it over verified loopback HTTP.
   The engine's own refusal reasons (for example gated Hugging Face access) are
   shown as given, bounded to plain text.
 - **Storage & cache manager**: a native WinUI page reads the same desktop-only managed storage inventory as the browser: converted models, shared Hugging Face caches, incomplete preparation files, compiled OpenVINO cache, currently reclaimable bytes, and protected transaction backup totals. Only engine-authorized cleanup actions are enabled. Each cleanup requires a specific confirmation and a fresh engine-side capability and size recheck; the engine performs deletion with its existing path, symlink/junction, and lifecycle safeguards. The native client never selects arbitrary filesystem paths, follows links, or removes protected transaction backups.
+- **Hugging Face account & discovery**: the dedicated native WinUI page reads account state, verifies a configured token, adds/replaces a read-scoped token via an ephemeral password dialog, and confirms removal of a locally stored token. All credential verification and DPAPI persistence remain in the existing Python backend; environment-managed tokens cannot be removed from the client. The page also searches the same Hugging Face endpoint used by the WebGUI for text-generation, embedding, and image-text models and displays bounded model metadata. Model links open in the external browser without credentials. Search is **discovery only**: results are not certified for local CPU/GPU/NPU or accepted license terms. Registering a discovered model and queueing a conversion remain WebGUI-only; native Model library download/load continues to work for models already in the engine's catalog.
 - **Model recovery**: the native Model library can inspect sanitized interrupted-preparation details, review the engine's allowed actions, resume or retry interrupted work, restart from download, or remove incomplete output. The selected recovery ID and action permissions are rechecked against the verified backend immediately before the request; stale recovery is rejected. Destructive cleanup requires a second explicit confirmation. The backend owns all cleanup and conversion; the native client never deletes model directories or caches directly.
 - **System Doctor**: dedicated WinUI health page uses the same authenticated `/v1/system/status` and `/v1/devices` reads as the browser doctor. It reports OpenVINO runtime mode, CPU/GPU/NPU visibility, active routing/fallback, model conversion and errors, RAM and model-volume storage thresholds, plus recommended fixes. Checks are re-runnable; the native clipboard action copies only an allowlisted support summary without credentials, prompts, model errors or local paths. Mock mode is explicitly shown as unverified hardware.
 - **Operations & diagnostics**: a native WinUI screen reads the same verified desktop-operations status used by the web GUI: application version, installation mode, controller availability, server state, startup preference and benchmark state. A separately confirmed action requests the engine's existing privacy-sanitized diagnostic ZIP export. **Run quick benchmark** measures one 32-token generation for the exact currently loaded model and actual device (reverified before posting), with measured decode speed, TTFT and latency when available; mock results are synthetic. The native client never reads private tray-control credentials or downloads the archive into its process.
@@ -35,9 +36,23 @@ it over verified loopback HTTP.
 
 ## Feature parity tracking
 
-The web GUI remains available independently. The native Windows app is real WinUI/XAML, not a WebView2 rendering of it. Current native coverage includes chat (bounded SSE streaming with cancellable partial previews), model selection/download/load/unload/delete and guarded preparation recovery, native storage/cache inventory and cleanup, inference target selection, device scanning, engine connection, quick benchmark execution, native System Doctor checks and sanitized clipboard reports, opt-in persistent saved conversations with local search and rename, and operations/diagnostics export.
+| Capability | WebGUI | Native Windows | Evidence / remaining work |
+|---|---|---|---|
+| Chat and model load/unload | Implemented | Implemented | Native SSE, cancellation, selected-device load; verify on real hardware |
+| Model library and download of catalog models | Implemented | Implemented | Native uses engine convert and lifecycle routes; gated access applies to both |
+| Interrupted model preparation recovery | Implemented | Implemented | Engine recovery ID and action rechecks; Windows CI qualification pending |
+| Storage/cache inventory and guarded cleanup | Implemented | Implemented | Engine owns destructive cleanup; Windows CI qualification pending |
+| Hugging Face account status/token verification/secure removal | Implemented | Implemented in native controls | Existing backend owns credentials; real HF account/DPAPI still need testing |
+| Hugging Face remote model search | Implemented | Implemented in native controls | Search results are not evidence of compatibility, license approval, local download or load |
+| Register a newly discovered remote model and convert | Implemented | WebGUI-only | Native results link to the remote model page; no native custom-model registration wizard yet |
+| Conversation history | Implemented | Partially implemented | Native saves/searches/renames local history, not synchronized with browser |
+| System Doctor and runtime status | Implemented | Partially implemented | Native summary/report; advanced per-model remediation remains WebGUI-only |
+| Benchmarking and diagnostics | Implemented | Partially implemented | Native quick benchmark and diagnostics export; comparison/history remain WebGUI-only |
+| Rich Markdown, multimodal/vision, embeddings interfaces | Implemented or partial in WebGUI | WebGUI-only | Backend capability depends on installed model/runtime |
+| Context budget, network/API and advanced settings | Implemented in WebGUI | WebGUI-only | Preserve backend API contracts while adding native surfaces |
+| Engine HF search/access and model queue | Backend-supported | Exposed by both where above | Gated publisher approval, hardware and actual conversion require live verification |
 
-Still missing from the native frontend: browser/native history synchronization, rich Markdown/code rendering, local vision and embeddings workflows, Hugging Face account management, advanced System Doctor per-model details and remediation actions, multi-model benchmark comparisons/presets and history, context budget planning, network/API administration, and other advanced settings. A present backend route does **not** imply that its native interface is implemented. Parity work should reuse existing authenticated backend services and keep the two frontends independently functional.
+**Qualification is outstanding** for the newest native account/search, recovery, and storage commits: the manual Windows workflow must successfully run on their final SHA. Mocked C# HTTP contracts and Python/XAML source tests are not substitutes for installing and exercising the WinUI app on Windows. Neither frontend includes a second inference engine or embeds the other.
 
 ## Engine handoff and safety
 
@@ -83,6 +98,8 @@ dotnet build .\windows-native\InferBridge.Native\InferBridge.Native.csproj -c Re
 dotnet run --project .\windows-native\InferBridge.Native\InferBridge.Native.csproj -p:Platform=x64
 ```
 
+To test native Hugging Face: start the engine, open **Hugging Face**, verify account status, add a disposable *read-scoped* user access token, test access, search a public model and open its page. Disconnect the token and confirm the status is cleared. If the token comes from HF_TOKEN, removal remains disabled. For gated models, complete approval on the Hugging Face site; search metadata itself never proves permission or OpenVINO compatibility. Do not paste real tokens into issue reports or screenshots.
+
 For a source build, start the Python desktop engine separately (the
 **Start local engine** button only targets a bundled sibling `InferBridge.exe`)
 and, if needed, set `INFERBRIDGE_NATIVE_DATA_DIR` to its data root.
@@ -90,7 +107,7 @@ and, if needed, set `INFERBRIDGE_NATIVE_DATA_DIR` to its data root.
 ## Tests
 
 The dependency-free contract harness compiles the production
-`BackendClient.cs` and `NativeDataPaths.cs` with an in-memory HTTP transport
+`BackendClient.cs`, `HuggingFaceClient.cs`, and `NativeDataPaths.cs` with an in-memory HTTP transport
 and temporary directories. It covers data-root resolution, nonce/port
 verification, stale and malformed metadata, redirects, API-key challenges and
 throttling, guarded load/unload/download, engine refusal messages, the
@@ -101,6 +118,8 @@ the .NET 10 SDK (add `-p:EnableWindowsTargeting=true` off Windows):
 ```powershell
 dotnet run --project .\windows-native\InferBridge.Native.ContractTests\InferBridge.Native.ContractTests.csproj -c Release
 ```
+
+The Hugging Face contract cases exercise authenticated account requests, invalid and environment-managed tokens, token rejection redaction, bounded search metadata, cancellation and API failures with a mocked transport. They do not contact Hugging Face or verify DPAPI persistence.
 
 `tests/test_native_windows_source_contract.py` guards the XAML controls and
 key safeguards. The **Native Windows frontend** workflow now runs on manual

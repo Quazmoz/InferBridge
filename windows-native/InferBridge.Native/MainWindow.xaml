@@ -25,6 +25,7 @@
             <NavigationView.MenuItems>
                 <NavigationViewItem Icon="Message" Content="Chat" Tag="chat" />
                 <NavigationViewItem Icon="Library" Content="Model library" Tag="models" />
+                <NavigationViewItem Icon="Find" Content="Hugging Face" Tag="huggingface" />
                 <NavigationViewItem Icon="Home" Content="Engine" Tag="overview" />
                 <NavigationViewItem Icon="Setting" Content="Operations &amp; diagnostics" Tag="operations" />
                 <NavigationViewItem Icon="Repair" Content="System Doctor" Tag="doctor" />
@@ -171,6 +172,56 @@
                                    FontSize="18" FontWeight="SemiBold" />
                         <StackPanel x:Name="StorageRows" Spacing="12" />
                         <TextBlock Text="Cleanup is never automatic. Unavailable actions remain disabled. Protected transaction backups are not eligible for removal. Source cache cleanup requires a future download; clearing compiled cache can slow the next load."
+                                   TextWrapping="Wrap" Opacity="0.8" />
+                    </StackPanel>
+                </ScrollViewer>
+                <ScrollViewer x:Name="HuggingFacePanel" Visibility="Collapsed">
+                    <StackPanel MaxWidth="800" HorizontalAlignment="Left" Spacing="14">
+                        <TextBlock Text="Hugging Face" FontSize="28" FontWeight="SemiBold" />
+                        <TextBlock Text="Connect your account and discover models through the existing InferBridge engine. Search results are not hardware compatibility or model-license approvals."
+                                   TextWrapping="Wrap" Opacity="0.8" />
+                        <InfoBar x:Name="HfInfo" IsOpen="True" IsClosable="False"
+                                 Severity="Informational" Title="Hugging Face access"
+                                 Message="Open this page to inspect the engine's account status." />
+                        <ProgressRing x:Name="HfProgress" Width="26" Height="26"
+                                      HorizontalAlignment="Left" IsActive="False" />
+                        <TextBlock x:Name="HfAccountText" TextWrapping="Wrap"
+                                   AutomationProperties.LiveSetting="Polite"
+                                   Text="Not checked" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button x:Name="HfRefreshButton" Content="Refresh account"
+                                    Click="HfRefreshButton_Click" />
+                            <Button x:Name="HfConnectButton" Content="Add or replace token"
+                                    Click="HfConnectButton_Click" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button x:Name="HfTestButton" Content="Test access"
+                                    Click="HfTestButton_Click" IsEnabled="False" />
+                            <Button x:Name="HfRemoveButton" Content="Remove stored token"
+                                    Click="HfRemoveButton_Click" IsEnabled="False" />
+                        </StackPanel>
+                        <TextBlock Text="Use a Hugging Face user access token with read permission. InferBridge owns the credential in its existing Windows DPAPI-backed backend store. Environment-managed HF_TOKEN credentials cannot be removed here. Gated models may also require accepting their license on huggingface.co."
+                                   TextWrapping="Wrap" Opacity="0.8" />
+                        <TextBlock Text="Discover models" FontSize="18" FontWeight="SemiBold" />
+                        <TextBox x:Name="HfSearchBox" Header="Model name or repository"
+                                 PlaceholderText="e.g. SmolLM"
+                                 MaxLength="200" HorizontalAlignment="Stretch"
+                                 AutomationProperties.Name="Search Hugging Face models" />
+                        <ComboBox x:Name="HfTaskPicker" Header="Model task"
+                                  SelectedIndex="0" MinWidth="220" HorizontalAlignment="Left">
+                            <ComboBoxItem Content="Text generation" Tag="text-generation" />
+                            <ComboBoxItem Content="Embeddings" Tag="embeddings" />
+                            <ComboBoxItem Content="Image and text" Tag="image-text-to-text" />
+                        </ComboBox>
+                        <Button x:Name="HfSearchButton" Content="Search Hugging Face"
+                                Click="HfSearchButton_Click" IsEnabled="False"
+                                HorizontalAlignment="Left"
+                                Style="{StaticResource AccentButtonStyle}" />
+                        <TextBlock x:Name="HfSearchSummary" TextWrapping="Wrap"
+                                   AutomationProperties.LiveSetting="Polite"
+                                   Text="Search is available when your local engine is connected." />
+                        <StackPanel x:Name="HfSearchResults" Spacing="12" />
+                        <TextBlock Text="Review model size, access restrictions, remote-code requirements, and compatibility before using the Model library to download or load. Discovery results are remote models, not installed models."
                                    TextWrapping="Wrap" Opacity="0.8" />
                     </StackPanel>
                 </ScrollViewer>
