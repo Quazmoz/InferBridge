@@ -6,6 +6,7 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.Graphics;
 using WinRT.Interop;
 
@@ -37,6 +38,9 @@ public sealed partial class MainWindow : Window
     private bool _scanningDevices;
     private bool _operationsBusy;
     private bool _operationsLoaded;
+    private bool _doctorBusy;
+    private bool _doctorLoaded;
+    private DoctorReport? _doctorReport;
     private string? _quickBenchmarkModelId;
     private string? _quickBenchmarkDevice;
     private bool _devicesScanned;
@@ -200,6 +204,106 @@ public sealed partial class MainWindow : Window
         OperationsPanel.Visibility = page == "operations" ? Visibility.Visible : Visibility.Collapsed;
         if (page == "operations" && !_operationsLoaded)
             _ = RefreshOperationsAsync();
+        DoctorPanel.Visibility = page == "doctor" ? Visibility.Visible : Visibility.Collapsed;
+        if (page == "doctor" && !_doctorLoaded)
+            _ = RefreshDoctorAsync();
+    }
+
+    private async void DoctorRefreshButton_Click(object sender, RoutedEventArgs args) =>
+        await RefreshDoctorAsync();
+
+    private async Task RefreshDoctorAsync()
+    {
+        if (_doctorBusy || _closing.IsCancellationRequested || _quitting) return;
+        _doctorBusy = true;
+        _doctorReport = null;
+        DoctorRefreshButton.IsEnabled = false;
+        DoctorCopyButton.IsEnabled = false;
+        DoctorProgress.IsActive = true;
+        DoctorInfo.Severity = InfoBarSeverity.Informational;
+        DoctorInfo.Message = "Checking engine, OpenVINO devices, model state, memory and storage…";
+        try
+        {
+            DoctorReport report = await _backend.RunSystemDoctorAsync(
+                ApiKeyBox.Password, _closing.Token);
+            if (_closing.IsCancellationRequested) return;
+            _doctorReport = report;
+            _doctorLoaded = true;
+            DoctorSummary.Text = report.Overall + " · " + report.Errors +
+                " errors · " + report.Warnings + " warnings";
+            DoctorInfo.Severity = report.Errors > 0 ? InfoBarSeverity.Error
+                : report.Warnings > 0 ? InfoBarSeverity.Warning : InfoBarSeverity.Success;
+            DoctorInfo.Message = "Read-only System Doctor checks finished.";
+            DoctorDevices.Text = report.Devices;
+            DoctorModels.Text = report.ModelSummary;
+            DoctorChecks.Items.Clear();
+            foreach (DoctorCheck check in report.Checks)
+            {
+                var item = new StackPanel { Spacing = 3, Margin = new Thickness(0, 0, 0, 14) };
+                item.Children.Add(new TextBlock
+                {
+                    Text = "[" + check.Level.ToUpperInvariant() + "] " + check.Title,
+                    FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                    TextWrapping = TextWrapping.Wrap,
+                });
+                item.Children.Add(new TextBlock
+                {
+                    Text = check.Detail,
+                    TextWrapping = TextWrapping.Wrap,
+                    IsTextSelectionEnabled = true,
+                });
+                if (check.NextStep.Length > 0)
+                    item.Children.Add(new TextBlock
+                    {
+                        Text = "Next: " + check.NextStep,
+                        TextWrapping = TextWrapping.Wrap,
+                        IsTextSelectionEnabled = true,
+                        Opacity = 0.8,
+                    });
+                DoctorChecks.Items.Add(item);
+            }
+            DoctorCopyButton.IsEnabled = true;
+        }
+        catch (Exception) when (_closing.IsCancellationRequested) { }
+        catch (Exception error) when (!_closing.IsCancellationRequested)
+        {
+            _doctorLoaded = false;
+            DoctorInfo.Severity = InfoBarSeverity.Error;
+            DoctorInfo.Message = "Unable to complete System Doctor: " + SafeError(error);
+            DoctorSummary.Text = "Status unavailable. Reconnect to the engine and retry.";
+            DoctorDevices.Text = "Not checked";
+            DoctorModels.Text = "Not checked";
+            DoctorChecks.Items.Clear();
+        }
+        finally
+        {
+            _doctorBusy = false;
+            if (!_closing.IsCancellationRequested)
+            {
+                DoctorProgress.IsActive = false;
+                DoctorRefreshButton.IsEnabled = true;
+            }
+        }
+    }
+
+    private void DoctorCopyButton_Click(object sender, RoutedEventArgs args)
+    {
+        if (_doctorBusy || _quitting || _closing.IsCancellationRequested
+            || _doctorReport is null) return;
+        try
+        {
+            var package = new DataPackage();
+            package.SetText(_doctorReport.SupportReport);
+            Clipboard.SetContent(package);
+            Clipboard.Flush();
+            DoctorInfo.Severity = InfoBarSeverity.Success;
+            DoctorInfo.Message = "Sanitized report copied. Review it before sharing.";
+        }
+        catch (Exception error) when (!_closing.IsCancellationRequested)
+        {
+            DoctorInfo.Severity = InfoBarSeverity.Error;
+            DoctorInfo.Message = "Could not copy the report: " + SafeError(error);
+        }
     }
 
     private async void OperationsRefreshButton_Click(object sender, RoutedEventArgs args) =>
