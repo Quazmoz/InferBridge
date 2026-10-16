@@ -987,11 +987,12 @@ internal sealed class BackendClient : IDisposable
     }
 
     private async Task<JsonDocument> GetJsonAsync(
-        string url, string? apiKey, CancellationToken cancellationToken, TimeSpan deadline)
+        string url, string? apiKey, CancellationToken cancellationToken, TimeSpan deadline,
+        int maximumBytes = MaximumJsonBytes)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         SetAuth(request, apiKey);
-        return await RequestJsonAsync(request, cancellationToken, deadline, MaximumJsonBytes);
+        return await RequestJsonAsync(request, cancellationToken, deadline, maximumBytes);
     }
 
     private async Task<JsonDocument> PostJsonAsync(
