@@ -504,7 +504,9 @@ def test_native_model_details_and_session_invalidation_contract():
     view = (PROJECT / "MainWindow.ModelPreparation.cs").read_text(encoding="utf-8")
     xaml = (PROJECT / "MainWindow.xaml").read_text(encoding="utf-8")
     tests = (
-        ROOT / "windows-native" / "InferBridge.Native.ContractTests"
+        ROOT
+        / "windows-native"
+        / "InferBridge.Native.ContractTests"
         / "ModelPreparationContractTests.cs"
     ).read_text(encoding="utf-8")
 
@@ -512,7 +514,7 @@ def test_native_model_details_and_session_invalidation_contract():
     assert "SourceRepository" in client
     assert "ConfiguredDevice" in client
     assert "RuntimeDevice" in client
-    assert "Budget(item, \"max_context_len\", 128, 262144)" in client
+    assert 'Budget(item, "max_context_len", 128, 262144)' in client
     assert "Not reported" in client
     assert "_modelPreparationEpoch++" in view
     assert "epoch != _modelPreparationEpoch" in view
