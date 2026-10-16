@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Text.Json;
 
 namespace InferBridge.Native;
@@ -235,12 +236,7 @@ internal sealed class BackendClient : IDisposable
         string modelId, IReadOnlyList<ChatTurn> turns, string? apiKey,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(modelId) || modelId.Length > 512
-            || turns.Count is < 1 or > 20
-            || turns.Any(t => (t.Role != "user" && t.Role != "assistant")
-                || t.Content.Length is < 1 or > 8000)
-            || turns.Sum(t => t.Content.Length) > 32000)
-            throw new ArgumentException("Chat context is empty or exceeds the native client limit.");
+        ValidateChatTurns(modelId, turns);
 
         string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
         var messages = turns.Select(t => new { role = t.Role, content = t.Content }).ToArray();
@@ -270,6 +266,152 @@ internal sealed class BackendClient : IDisposable
         if (string.IsNullOrWhiteSpace(answer))
             throw new JsonException("The engine returned an empty answer.");
         return answer;
+    }
+
+    private static void ValidateChatTurns(string modelId, IReadOnlyList<ChatTurn> turns)
+    {
+        if (string.IsNullOrWhiteSpace(modelId) || modelId.Length > 512
+            || turns.Count is < 1 or > 20
+            || turns.Any(t => (t.Role != "user" && t.Role != "assistant")
+                || t.Content.Length is < 1 or > 8000)
+            || turns.Sum(t => t.Content.Length) > 32000)
+            throw new ArgumentException("Chat context is empty or exceeds the native client limit.");
+    }
+
+    /// <summary>
+    /// Consume the existing OpenAI SSE stream over a verified loopback connection.
+    /// A partial callback is presentation-only: no reply is complete without a
+    /// finish chunk and [DONE]. Cancelling closes the response body.
+    /// </summary>
+    public async Task<string> StreamChatAsync(
+        string modelId, IReadOnlyList<ChatTurn> turns, string? apiKey,
+        Action<string> onPartial, CancellationToken cancellationToken)
+    {
+        ValidateChatTurns(modelId, turns);
+        ArgumentNullException.ThrowIfNull(onPartial);
+        string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post, origin + "/v1/chat/completions");
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
+        request.Content = new StringContent(JsonSerializer.Serialize(new
+        {
+            model = modelId,
+            messages = turns.Select(t => new { role = t.Role, content = t.Content }).ToArray(),
+            stream = true,
+            max_tokens = 512,
+        }), Encoding.UTF8, "application/json");
+        SetAuth(request, apiKey);
+
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        limit.CancelAfter(TimeSpan.FromSeconds(120));
+        using var response = await _http.SendAsync(
+            request, HttpCompletionOption.ResponseHeadersRead, limit.Token);
+        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+            throw new UnauthorizedAccessException("The engine rejected the API key.");
+        if (response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.NotFound
+            or HttpStatusCode.Conflict)
+            throw new EngineRequestException(await ReadRefusalAsync(response, limit.Token));
+        response.EnsureSuccessStatusCode();
+        if (!string.Equals(response.Content.Headers.ContentType?.MediaType,
+            "text/event-stream", StringComparison.OrdinalIgnoreCase))
+            throw new JsonException("The engine did not return a chat event stream.");
+        if (response.Content.Headers.ContentLength > MaximumChatBytes)
+            throw new IOException("The engine chat stream is too large.");
+
+        const int maximumLineBytes = 64 * 1024;
+        const int maximumAnswerChars = 32_000;
+        await using var source = await response.Content.ReadAsStreamAsync(limit.Token);
+        using var lineBytes = new MemoryStream();
+        var utf8 = new UTF8Encoding(false, true);
+        var answer = new StringBuilder();
+        string? pendingData = null;
+        bool done = false;
+        bool finished = false;
+        int totalBytes = 0;
+
+        void ProcessEvent(string payload)
+        {
+            if (payload == "[DONE]")
+            {
+                done = true;
+                return;
+            }
+            using var document = JsonDocument.Parse(payload, new JsonDocumentOptions
+            {
+                MaxDepth = 16,
+            });
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object
+                || !root.TryGetProperty("choices", out var choices)
+                || choices.ValueKind != JsonValueKind.Array)
+                throw new JsonException("Invalid streaming chat event.");
+            if (choices.GetArrayLength() == 0) return; // Optional usage event.
+            var choice = choices[0];
+            if (choice.ValueKind != JsonValueKind.Object)
+                throw new JsonException("Invalid streaming chat choice.");
+            if (choice.TryGetProperty("finish_reason", out var reason)
+                && reason.ValueKind == JsonValueKind.String)
+                finished = true;
+            if (!choice.TryGetProperty("delta", out var delta)
+                || delta.ValueKind != JsonValueKind.Object
+                || !delta.TryGetProperty("content", out var content)
+                || content.ValueKind == JsonValueKind.Null)
+                return; // Role-only or finish chunk.
+            if (content.ValueKind != JsonValueKind.String)
+                throw new JsonException("Invalid streaming chat content.");
+            string text = content.GetString() ?? "";
+            if (text.Contains("[error: generation failed; see server logs for the request ID]",
+                    StringComparison.Ordinal))
+                throw new EngineRequestException("Local generation failed. Check engine logs.");
+            if (answer.Length + text.Length > maximumAnswerChars)
+                throw new IOException("The chat reply exceeds the native context limit.");
+            answer.Append(text);
+            if (text.Length > 0) onPartial(answer.ToString());
+        }
+
+        byte[] buffer = new byte[4096];
+        while (!done)
+        {
+            int read = await source.ReadAsync(buffer, limit.Token);
+            if (read == 0) break;
+            totalBytes += read;
+            if (totalBytes > MaximumChatBytes)
+                throw new IOException("The engine chat stream is too large.");
+            for (int i = 0; i < read; i++)
+            {
+                byte value = buffer[i];
+                if (value != (byte)'\n')
+                {
+                    if (lineBytes.Length >= maximumLineBytes)
+                        throw new IOException("An engine stream event is too large.");
+                    lineBytes.WriteByte(value);
+                    continue;
+                }
+                string line = utf8.GetString(lineBytes.ToArray()).TrimEnd('\r');
+                lineBytes.SetLength(0);
+                if (line.Length == 0)
+                {
+                    if (pendingData is not null) ProcessEvent(pendingData);
+                    pendingData = null;
+                }
+                else if (line.StartsWith("data:", StringComparison.Ordinal))
+                {
+                    string data = line[5..].TrimStart(' ');
+                    pendingData = pendingData is null ? data : pendingData + "\n" + data;
+                    if (pendingData.Length > maximumLineBytes)
+                        throw new IOException("An engine stream event is too large.");
+                }
+                else if (!line.StartsWith(':') && !line.StartsWith("event:", StringComparison.Ordinal))
+                    throw new JsonException("Unexpected engine stream field.");
+                if (done) break;
+            }
+        }
+        limit.Token.ThrowIfCancellationRequested();
+        if (!done || !finished)
+            throw new IOException("The engine disconnected before completing the chat stream.");
+        if (answer.Length == 0)
+            throw new JsonException("The engine returned an empty streamed answer.");
+        return answer.ToString();
     }
 
     public async Task<string> ChangeModelAsync(
