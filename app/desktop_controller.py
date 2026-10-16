@@ -369,7 +369,7 @@ class DesktopServerController:
         origin = self.origin
         if not origin:
             return False
-        if is_packaged() or (sys.platform == "win32" and getattr(sys, "frozen", False)):
+        if is_packaged():
             return bool(
                 self.metadata and open_store_window(self.metadata.port, self.metadata.nonce)
             )
