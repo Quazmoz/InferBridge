@@ -285,3 +285,33 @@ def test_native_device_discovery_shows_available_hardware():
     assert "inventory.Available.Any" in window
     assert '"/v1/devices"' in client
     assert "RequireVerifiedOriginAsync" in client
+
+def test_native_operations_and_model_deletion_are_native_and_guarded():
+    root = ET.parse(PROJECT / "MainWindow.xaml").getroot()
+    xaml_ns = "{http://schemas.microsoft.com/winfx/2006/xaml}"
+    named = {
+        node.get(xaml_ns + "Name"): node.tag
+        for node in root.iter()
+        if node.get(xaml_ns + "Name")
+    }
+    assert named["OperationsPanel"] == XAML + "ScrollViewer"
+    assert named["OperationsRefreshButton"] == XAML + "Button"
+    assert named["DiagnosticsExportButton"] == XAML + "Button"
+    assert named["DeleteButton"] == XAML + "Button"
+    window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    backend = (PROJECT / "BackendClient.cs").read_text(encoding="utf-8")
+    assert 'page == "operations"' in window
+    assert "GetDesktopOperationsAsync" in window
+    assert "ExportDiagnosticsAsync" in window
+    assert "await dialog.ShowAsync() != ContentDialogResult.Primary" in window
+    assert "model?.CanDelete == true" in window
+    assert "DeleteModelAsync" in window
+    assert "if (!model.CanDelete)" in backend
+    assert 'ReadString(entry, "status") == "ready_to_load"' in backend
+    assert '"/v1/models/delete"' in backend
+    assert '"/v1/desktop/operations/status"' in backend
+    assert '"/v1/desktop/operations/diagnostics/export"' in backend
+    assert "RequireVerifiedOriginAsync" in backend
+    assert "X-Desktop-Control" not in backend
+    assert not any("WebView" in node.tag for node in root.iter())
+
