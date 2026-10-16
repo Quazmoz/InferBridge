@@ -417,6 +417,7 @@ public sealed partial class MainWindow : Window
         bool idle = !_isManaging && !_chatBusy && !_isRefreshing && !_quitting;
         LoadButton.IsEnabled = idle && model?.CanLoad == true;
         UnloadButton.IsEnabled = idle && model?.CanUnload == true;
+        DeleteButton.IsEnabled = idle && model?.CanDelete == true;
         DownloadButton.IsEnabled = idle && model?.CanDownload == true;
         LibraryDevicePicker.IsEnabled = idle && _devicesAvailable;
     }
@@ -615,6 +616,46 @@ public sealed partial class MainWindow : Window
 
     private async void UnloadButton_Click(object sender, RoutedEventArgs args) =>
         await ManageModelAsync(ModelAction.Unload);
+
+    private async void DeleteButton_Click(object sender, RoutedEventArgs args)
+    {
+        ModelInfo? model = SelectedLibraryModel;
+        if (model?.CanDelete != true || _isManaging || _isRefreshing || _chatBusy
+            || _quitting || _closing.IsCancellationRequested) return;
+        try
+        {
+            var dialog = new ContentDialog
+            {
+                XamlRoot = ((FrameworkElement)Content).XamlRoot,
+                Title = "Delete local model files?",
+                Content = "Delete downloaded files for " + model.Name +
+                    "? This frees local storage and cannot be undone. You can download the model again later. The model must remain unloaded.",
+                PrimaryButtonText = "Delete files",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Close,
+            };
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary
+                || _closing.IsCancellationRequested) return;
+            _isManaging = true;
+            UpdateChatButtons();
+            ShowModelsInfo(await _backend.DeleteModelAsync(
+                model, ApiKeyBox.Password, _closing.Token), InfoBarSeverity.Success);
+        }
+        catch (Exception) when (_closing.IsCancellationRequested) { }
+        catch (Exception error) when (!_closing.IsCancellationRequested)
+        {
+            ShowModelsInfo(SafeError(error), InfoBarSeverity.Error);
+        }
+        finally
+        {
+            _isManaging = false;
+            if (!_closing.IsCancellationRequested)
+            {
+                UpdateChatButtons();
+                await RefreshAsync();
+            }
+        }
+    }
 
     private async void DownloadButton_Click(object sender, RoutedEventArgs args) =>
         await ManageModelAsync(ModelAction.Download);
