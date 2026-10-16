@@ -99,6 +99,10 @@ internal static class NativeConversationContractTests
             "a malformed conversation file was silently accepted");
         Expect<InvalidDataException>(() => storage.Save(first),
             "corrupted history was silently overwritten");
+        Expect<InvalidDataException>(() => storage.Find("gpu"),
+            "searching malformed history must not return partial results");
+        Expect<InvalidDataException>(() => storage.Rename(id, "Should not persist"),
+            "renaming malformed history must not replace the original file");
         Check(File.ReadAllBytes(filename).SequenceEqual(corrupted),
             "save modified a malformed history file");
         File.WriteAllBytes(filename, original);

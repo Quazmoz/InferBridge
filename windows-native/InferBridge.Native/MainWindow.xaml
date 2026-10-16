@@ -202,15 +202,17 @@
                                  MinWidth="230" MaxWidth="460"
                                  HorizontalAlignment="Left"
                                  AutomationProperties.Name="Search local saved conversations" />
-                        <StackPanel Orientation="Horizontal" Spacing="10">
+                        <StackPanel Spacing="8">
                             <ComboBox x:Name="SavedChatsPicker" PlaceholderText="Select a saved conversation"
                                       MinWidth="230" MaxWidth="430" HorizontalAlignment="Left"
                                       AutomationProperties.Name="Select a saved conversation"
                                       SelectionChanged="SavedChatsPicker_SelectionChanged" />
-                            <Button x:Name="RenameSavedChatButton" Content="Rename"
-                                    IsEnabled="False" Click="RenameSavedChatButton_Click" />
-                            <Button x:Name="DeleteSavedChatButton" Content="Delete saved chat"
-                                    IsEnabled="False" Click="DeleteSavedChatButton_Click" />
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <Button x:Name="RenameSavedChatButton" Content="Rename"
+                                        IsEnabled="False" Click="RenameSavedChatButton_Click" />
+                                <Button x:Name="DeleteSavedChatButton" Content="Delete saved chat"
+                                        IsEnabled="False" Click="DeleteSavedChatButton_Click" />
+                            </StackPanel>
                         </StackPanel>
                         <CheckBox x:Name="SaveHistoryToggle"
                                   Content="Save completed chats locally (plain text on this PC)"
