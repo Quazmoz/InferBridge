@@ -79,8 +79,14 @@ jobs:
       if ($LASTEXITCODE -ne 0 -or $version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.+-]+)?$') {
         throw "Unexpected version: $version"
       }
+      $channel = switch ($env:BUILD_SOURCEBRANCH) {
+        'refs/heads/main' { 'stable' }
+        'refs/heads/beta' { 'beta' }
+        'refs/heads/dev'  { 'nightly' }
+        default { throw 'Unsupported release channel source branch.' }
+      }
       $output = Join-Path $env:BUILD_ARTIFACTSTAGINGDIRECTORY 'release'
-      & ./scripts/build_release.ps1 -Version $version -Channel stable -Unsigned -Clean -OutputDirectory $output -Python python
+      & ./scripts/build_release.ps1 -Version $version -Channel $channel -Unsigned -Clean -OutputDirectory $output -Python python
       if ($LASTEXITCODE -ne 0) { throw "Release build failed with exit code $LASTEXITCODE" }
       $installer = Join-Path $output "InferBridge-$version-windows-x64-installer.exe"
       $portable = Join-Path $output "InferBridge-$version-windows-x64-portable.zip"
@@ -88,10 +94,11 @@ jobs:
       foreach ($item in @($installer, $portable, $checksums)) {
         if (-not (Test-Path -LiteralPath $item -PathType Leaf)) { throw "Missing release artifact: $item" }
       }
-      python scripts/verify_release_provenance.py --artifact-directory $output --version $version --channel stable --expected-commit $env:BUILD_SOURCEVERSION --source-model-manifest model_library_manifest.json
+      python scripts/verify_release_provenance.py --artifact-directory $output --version $version --channel $channel --expected-commit $env:BUILD_SOURCEVERSION --source-model-manifest model_library_manifest.json
       if ($LASTEXITCODE -ne 0) { throw 'Release provenance or checksums mismatch.' }
       $metadata = [ordered]@{
         schema_version = 1
+        channel = $channel
         repository = $env:BUILD_REPOSITORY_URI
         source_ref = $env:BUILD_SOURCEBRANCH
         source_commit = $env:BUILD_SOURCEVERSION.ToLowerInvariant()
