@@ -84,3 +84,47 @@ def test_installer_bootstrap_probe_is_noninteractive_and_never_restart_registere
     assert '"--native-smoke"' in restart_guard
     assert '"--bootstrap-smoke"' in restart_guard
     assert "arguments & helper_modes" in restart_guard
+
+def test_frozen_root_exe_opens_native_frontend_without_starting_browser(tmp_path, monkeypatch):
+    import subprocess
+
+    engine = tmp_path / "InferBridge.exe"
+    engine.write_bytes(b"engine")
+    native = tmp_path / "native" / "InferBridge.Native.exe"
+    native.parent.mkdir()
+    native.write_bytes(b"winui")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(engine))
+    launches = []
+    monkeypatch.setattr(
+        subprocess, "Popen", lambda arguments, **options: launches.append((arguments, options))
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "app.desktop_launcher",
+        SimpleNamespace(main=lambda _args: (_ for _ in ()).throw(AssertionError("browser launched"))),
+    )
+
+    assert frozen_entrypoint.run([]) == 0
+    assert launches == [([str(native)], {"cwd": str(native.parent)})]
+
+
+def test_frozen_engine_cli_mode_never_redirects_to_native(tmp_path, monkeypatch):
+    import subprocess
+
+    engine = tmp_path / "InferBridge.exe"
+    engine.write_bytes(b"engine")
+    native = tmp_path / "native" / "InferBridge.Native.exe"
+    native.parent.mkdir()
+    native.write_bytes(b"winui")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(engine))
+    monkeypatch.setattr(
+        subprocess, "Popen", lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("CLI mode launched native")
+        )
+    )
+    monkeypatch.setitem(
+        sys.modules, "app.desktop_launcher", SimpleNamespace(main=lambda args: 7 if args == ["--no-browser"] else 2)
+    )
+    assert frozen_entrypoint.run(["--no-browser"]) == 7
