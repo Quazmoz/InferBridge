@@ -16,6 +16,7 @@
                 <NavigationViewItem Icon="Find" Content="Hugging Face" Tag="huggingface" />
                 <NavigationViewItem Icon="Home" Content="Engine" Tag="overview" />
                 <NavigationViewItem Icon="Setting" Content="Operations &amp; diagnostics" Tag="operations" />
+                <NavigationViewItem Icon="Preview" Content="Benchmark Lab" Tag="benchmark" />
                 <NavigationViewItem Icon="Repair" Content="System Doctor" Tag="doctor" />
                 <NavigationViewItem Icon="Save" Content="Storage &amp; cache" Tag="storage" />
                 <NavigationViewItem x:Name="SettingsNavigationItem" Icon="Setting" Content="Settings" Tag="settings" />
@@ -144,6 +145,46 @@
                                 Click="DiagnosticsExportButton_Click" />
                         <TextBlock x:Name="DiagnosticsResult" TextWrapping="Wrap"
                                    AutomationProperties.LiveSetting="Polite" />
+                    </StackPanel>
+                </ScrollViewer>
+                <ScrollViewer x:Name="BenchmarkPanel" Visibility="Collapsed">
+                    <StackPanel MaxWidth="840" HorizontalAlignment="Stretch" Spacing="14">
+                        <TextBlock Text="Benchmark Lab" FontSize="28" FontWeight="SemiBold" />
+                        <TextBlock Text="Review local benchmark runs and compare compatible measurements. The Python/OpenVINO engine owns every measurement and the saved history."
+                                   TextWrapping="Wrap" Opacity="0.8" />
+                        <InfoBar x:Name="BenchmarkHistoryInfo" Title="Benchmark history"
+                                 IsOpen="True" IsClosable="False" Severity="Informational"
+                                 Message="Open Benchmark Lab to load measured results from the local engine." />
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Button x:Name="BenchmarkHistoryRefreshButton" Content="Refresh history"
+                                    Click="BenchmarkHistoryRefreshButton_Click" />
+                            <ProgressRing x:Name="BenchmarkHistoryProgress" IsActive="False"
+                                          Width="26" Height="26" />
+                            <Button Content="Quick benchmark" Click="BenchmarkOpenQuickButton_Click" />
+                        </StackPanel>
+                        <TextBlock Text="Saved manual runs" FontSize="18" FontWeight="SemiBold" />
+                        <TextBlock Text="Up to 100 recent runs are read from the engine. Automatic advisor runs are omitted. No benchmark is started when selecting history."
+                                   TextWrapping="Wrap" Opacity="0.8" />
+                        <ComboBox x:Name="BenchmarkPrimaryPicker" Header="View a benchmark run"
+                                  AutomationProperties.Name="Select saved benchmark run"
+                                  HorizontalAlignment="Stretch" MaxWidth="700" MinWidth="260"
+                                  SelectionChanged="BenchmarkPicker_SelectionChanged" />
+                        <StackPanel x:Name="BenchmarkDetailsRows" Spacing="10">
+                            <TextBlock Text="No run selected." TextWrapping="Wrap" />
+                        </StackPanel>
+                        <TextBlock Text="Compare previous evidence" FontSize="18"
+                                   FontWeight="SemiBold" />
+                        <ComboBox x:Name="BenchmarkComparePicker" Header="Compare with another run"
+                                  PlaceholderText="No comparison selected"
+                                  AutomationProperties.Name="Select comparison benchmark run"
+                                  HorizontalAlignment="Stretch" MaxWidth="700" MinWidth="260"
+                                  SelectionChanged="BenchmarkPicker_SelectionChanged" />
+                        <TextBlock x:Name="BenchmarkComparisonSummary" TextWrapping="Wrap"
+                                   IsTextSelectionEnabled="True"
+                                   AutomationProperties.LiveSetting="Polite"
+                                   Text="Choose two compatible runs to see measured changes." />
+                        <TextBlock Text="A comparison requires matching hardware fingerprint, synthetic/real mode, methodology, output tokens, measured runs, warm-ups, model, source, precision, requested device and actual execution device. Unavailable measurements never become zero or invented deltas."
+                                   TextWrapping="Wrap" Opacity="0.8" />
                     </StackPanel>
                 </ScrollViewer>
                 <ScrollViewer x:Name="StoragePanel" Visibility="Collapsed">
