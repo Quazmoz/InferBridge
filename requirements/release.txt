@@ -1,7 +1,7 @@
 # Pinned top-level release environment. A complete resolved inventory is emitted per build.
 # Qualified 2026-07-24 on Intel Core Ultra 9 185H (issue #14). See docs/releases/0.6.0.md.
 pip==26.2.1
-setuptools==81.0.0
+setuptools==84.0.0
 wheel==0.48.0
 openvino==2026.2.1
 openvino-genai==2026.2.1.0
