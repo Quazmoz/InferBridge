@@ -78,3 +78,20 @@ def test_native_window_never_imports_webview():
     assert "import webview" not in source
     assert "--window-child" not in source
     assert "http://127.0.0.1:" not in source
+
+
+def test_tray_native_is_default_and_browser_is_explicit_secondary_action():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    menu = (root / "app" / "tray_menu.py").read_text(encoding="utf-8")
+    runtime = (root / "app" / "tray_runtime.py").read_text(encoding="utf-8")
+    controller = (root / "app" / "desktop_controller.py").read_text(encoding="utf-8")
+
+    assert '"Open InferBridge"' in menu
+    assert '"Open web GUI"' in menu
+    assert '"Open web GUI",\n                self._action(self.open_web_ui)' in menu
+    assert "def open_web_ui(self)" in menu
+    assert "open_store_window(metadata.port, metadata.nonce)" in runtime
+    assert "def open_web_ui(self)" in controller
+    assert "sys.platform == \"win32\" or is_packaged()" in controller

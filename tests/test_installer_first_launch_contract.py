@@ -101,6 +101,7 @@ def test_frozen_root_exe_opens_native_frontend_without_starting_browser(tmp_path
     monkeypatch.setattr(
         subprocess, "Popen", lambda arguments, **options: launches.append((arguments, options))
     )
+
     def fail_browser(_arguments):
         raise AssertionError("browser launched")
 
@@ -122,6 +123,7 @@ def test_frozen_engine_cli_mode_never_redirects_to_native(tmp_path, monkeypatch)
     native.write_bytes(b"winui")
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "executable", str(engine))
+
     def fail_native(*_args, **_kwargs):
         raise AssertionError("CLI mode launched native")
 

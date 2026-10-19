@@ -268,8 +268,13 @@ def test_native_chat_picker_loads_downloaded_models_without_enabling_chat_early(
 
 def test_native_web_ui_is_discoverable_and_opens_only_the_verified_engine_url():
     xaml = ET.parse(PROJECT / "MainWindow.xaml").getroot()
-    assert any(node.get("Title") == "More features in the web UI" for node in xaml.iter())
-    assert any(node.get("Content") == "Open web UI" for node in xaml.iter())
+    assert any(node.get("Title") == "Web GUI (optional)" for node in xaml.iter())
+    assert any(node.get("Content") == "Open web GUI" for node in xaml.iter())
+    overview = next(
+        node for node in xaml.iter()
+        if node.get("{http://schemas.microsoft.com/winfx/2006/xaml}Name") == "OverviewPanel"
+    )
+    assert any(node.get("Title") == "Web GUI (optional)" for node in overview.iter())
     window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
     handler = window.split("private async void WebUiButton_Click", 1)[1].split("\n    private ", 1)[
         0
