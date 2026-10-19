@@ -29,9 +29,14 @@ class TrayMenuMixin:
         Item = pystray.MenuItem
         return Menu(
             Item(
-                "Open Chat",
+                "Open InferBridge",
                 self._action(self.open_chat),
                 default=True,
+                enabled=self._enabled("open_chat"),
+            ),
+            Item(
+                "Open web GUI",
+                self._action(self.open_web_ui),
                 enabled=self._enabled("open_chat"),
             ),
             Item(
@@ -234,10 +239,18 @@ class TrayMenuMixin:
 
     def open_chat(self) -> None:
         if not self.controller.running:
-            self._start_server(open_chat=True)
-            return
+            self._start_server(open_chat=False)
         if not self.controller.open_chat():
-            raise RuntimeError("The InferBridge interface could not be opened.")
+            raise RuntimeError(
+                "The native InferBridge window could not be opened. "
+                "Check that native\\InferBridge.Native.exe is installed."
+            )
+
+    def open_web_ui(self) -> None:
+        if not self.controller.running:
+            self._start_server(open_chat=False)
+        if not self.controller.open_web_ui():
+            raise RuntimeError("The secondary web GUI could not be opened.")
 
     def open_updates(self) -> None:
         if not self.controller.running:

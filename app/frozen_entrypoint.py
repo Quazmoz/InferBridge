@@ -58,9 +58,10 @@ def run(argv: list[str] | None = None) -> int:
             from subprocess import Popen
 
             native = Path(sys.executable).resolve().parent / "native" / "InferBridge.Native.exe"
-            if native.is_file():
-                Popen([str(native)], cwd=str(native.parent))
-                return 0
+            if not native.is_file():
+                raise FileNotFoundError("The required native WinUI frontend is missing.")
+            Popen([str(native)], cwd=str(native.parent))
+            return 0
 
         from app.desktop_launcher import main
 

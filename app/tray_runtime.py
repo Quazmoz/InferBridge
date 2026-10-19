@@ -58,11 +58,12 @@ class TrayRuntimeMixin:
         metadata = _read_metadata(self.paths.launcher_metadata_file)
         if metadata and verify_instance(metadata):
             if not self.args.no_browser:
-                if is_packaged():
+                if sys.platform == "win32" or is_packaged():
                     if not open_store_window(metadata.port, metadata.nonce):
                         show_dialog(
                             APP_TITLE,
-                            "The Store application window could not be opened.",
+                            "The native InferBridge window could not be opened. "
+                            "Verify that native\\InferBridge.Native.exe is installed.",
                             error=True,
                         )
                 else:
