@@ -56,6 +56,9 @@ jobs:
 
   # Verify the candidate interpreter and cheap quality gates before installing
   # the large pinned OpenVINO / PyTorch release environment or Inno Setup.
+  # Format the ENTIRE repo before committing: python -m ruff format .
+  # The release-pinned Ruff may normalize outer quotes in source-contract tests.
+  # Never autoformat in the release build: artifacts must match the immutable source commit.
   # Ruff version must match requirements/release.txt.
   - pwsh: |
       $ErrorActionPreference = 'Stop'
@@ -66,7 +69,7 @@ jobs:
       python -m ruff check .
       if ($LASTEXITCODE -ne 0) { throw 'Ruff lint failed before release dependency installation.' }
       python -m ruff format --check .
-      if ($LASTEXITCODE -ne 0) { throw 'Ruff formatting failed before release dependency installation.' }
+      if ($LASTEXITCODE -ne 0) { throw 'Ruff formatting failed: run python -m ruff format . with the release-pinned version, commit the result, and requeue.' }
     displayName: 'Fast-fail Python 3.12 and Ruff checks'
 
   - pwsh: |
