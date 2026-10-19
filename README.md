@@ -14,15 +14,15 @@ OpenVINO GenAI remains the inference runtime. InferBridge does not replace OpenV
 
 ## Project and release status
 
-**Current stable release: `0.9.6`.** See [0.9.6](docs/releases/0.9.6.md) for the full record. It promotes the 0.9.6 beta architecture, installer hardening, security boundaries, lifecycle reliability, support workflows, and privacy-safe diagnostics to the stable channel.
+**Current published stable release: `1.0.0` (5 October 2026).** See [1.0.0](docs/releases/1.0.0.md). That published installer and portable ZIP are browser-first; the newer native-first packaging changes are currently on `dev` and have not been release-qualified or published.
 
-- [Windows installer](https://github.com/Quazmoz/InferBridge/releases/download/v0.9.6/InferBridge-0.9.6-windows-x64-installer.exe)
-- [Portable ZIP](https://github.com/Quazmoz/InferBridge/releases/download/v0.9.6/InferBridge-0.9.6-windows-x64-portable.zip)
-- [SHA-256 checksums](https://github.com/Quazmoz/InferBridge/releases/download/v0.9.6/InferBridge-0.9.6-checksums.txt)
+- [Windows installer](https://github.com/Quazmoz/InferBridge/releases/download/v1.0.0/InferBridge-1.0.0-windows-x64-installer.exe)
+- [Portable ZIP](https://github.com/Quazmoz/InferBridge/releases/download/v1.0.0/InferBridge-1.0.0-windows-x64-portable.zip)
+- [SHA-256 checksums](https://github.com/Quazmoz/InferBridge/releases/download/v1.0.0/InferBridge-1.0.0-checksums.txt)
 
-> **Important — UI edition:** The published **0.9.6** installer and portable ZIP are **browser-first**, even if the source tree has the native WinUI app. They cannot launch native XAML screens because the native executable was not part of those artifacts. The `dev` release builder now stages the WinUI client into `native\InferBridge.Native.exe` and points installed shortcuts to it. This fix is **not** included in 0.9.6 and has not yet been Windows release-qualified or promoted to `main`.
+> **Important — UI edition:** The published **1.0.0** installer and portable ZIP are **browser-first**, even if the source tree has the native WinUI app. They cannot launch native XAML screens because the native executable was not part of those artifacts. The `dev` release builder now stages the WinUI client into `native\InferBridge.Native.exe` and points installed shortcuts to it. This fix is **not** included in 1.0.0 and has not yet been Windows release-qualified or promoted to `main`.
 
-There is no pre-release newer than the current stable release. Versions 0.9.0 through 0.9.3 were published only as betas and are superseded by 0.9.6. Beta builds ship ahead of the next stable release and are marked pre-release on GitHub.
+Native-first improvements currently live on `dev` and are not represented by the published 1.0.0 binary artifacts. Beta and nightly builds, if published, are marked as pre-releases on GitHub.
 
 Releases from `v0.7.0` onward use the canonical `Quazmoz/InferBridge` repository and `InferBridge-<version>` artifact names. Releases through `v0.6.3` were published before the rename, and their repository links and artifact filenames intentionally retain the former product identity.
 
@@ -35,7 +35,7 @@ The retained 0.6.1 hardware evidence comes from one Intel Core Ultra 9 185H lapt
 ## Download, install, choose a model, and chat
 
 1. Download a versioned installer or portable ZIP.
-2. For a native-first build, open the **InferBridge Start Menu shortcut** or `native\InferBridge.Native.exe` in an extracted portable ZIP. For the older 0.9.6 release, `InferBridge.exe` launches the browser interface.
+2. For a native-first build, open the **InferBridge Start Menu shortcut** or `native\InferBridge.Native.exe` in an extracted portable ZIP. For the currently published 1.0.0 release, `InferBridge.exe` launches the browser interface.
 3. Review the hardware and OpenVINO system scan.
 4. Confirm the available Intel CPU, GPU, or NPU target.
 5. Accept the conservative model recommendation or choose another compatible model.
@@ -63,7 +63,7 @@ See the [Windows installer guide](docs/INSTALLER.md).
 
 ### Portable ZIP
 
-Extract the complete ZIP to a writable directory and run `native\InferBridge.Native.exe` for a native-first build (older 0.9.6 ZIPs use `InferBridge.exe` and open the browser). Portable mode stores mutable data under a sibling `data` directory and does not create registry or Start Menu entries.
+Extract the complete ZIP to a writable directory and run `native\InferBridge.Native.exe` for a native-first build (previous releases through 1.0.0 use `InferBridge.exe` and open the browser). Portable mode stores mutable data under a sibling `data` directory and does not create registry or Start Menu entries.
 
 See the [portable package guide](docs/PORTABLE.md).
 
