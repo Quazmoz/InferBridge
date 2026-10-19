@@ -20,6 +20,8 @@ OpenVINO GenAI remains the inference runtime. InferBridge does not replace OpenV
 - [Portable ZIP](https://github.com/Quazmoz/InferBridge/releases/download/v0.9.6/InferBridge-0.9.6-windows-x64-portable.zip)
 - [SHA-256 checksums](https://github.com/Quazmoz/InferBridge/releases/download/v0.9.6/InferBridge-0.9.6-checksums.txt)
 
+> **Important — UI edition:** The published **0.9.6** installer and portable ZIP are **browser-first**, even if the source tree has the native WinUI app. They cannot launch native XAML screens because the native executable was not part of those artifacts. The `dev` release builder now stages the WinUI client into `native\InferBridge.Native.exe` and points installed shortcuts to it. This fix is **not** included in 0.9.6 and has not yet been Windows release-qualified or promoted to `main`.
+
 There is no pre-release newer than the current stable release. Versions 0.9.0 through 0.9.3 were published only as betas and are superseded by 0.9.6. Beta builds ship ahead of the next stable release and are marked pre-release on GitHub.
 
 Releases from `v0.7.0` onward use the canonical `Quazmoz/InferBridge` repository and `InferBridge-<version>` artifact names. Releases through `v0.6.3` were published before the rename, and their repository links and artifact filenames intentionally retain the former product identity.
@@ -33,7 +35,7 @@ The retained 0.6.1 hardware evidence comes from one Intel Core Ultra 9 185H lapt
 ## Download, install, choose a model, and chat
 
 1. Download a versioned installer or portable ZIP.
-2. Run `InferBridge.exe` from the installed shortcut or extracted directory.
+2. For a native-first build, open the **InferBridge Start Menu shortcut** or `native\InferBridge.Native.exe` in an extracted portable ZIP. For the older 0.9.6 release, `InferBridge.exe` launches the browser interface.
 3. Review the hardware and OpenVINO system scan.
 4. Confirm the available Intel CPU, GPU, or NPU target.
 5. Accept the conservative model recommendation or choose another compatible model.
@@ -41,7 +43,7 @@ The retained 0.6.1 hardware evidence comes from one Intel Core Ultra 9 185H lapt
 7. Follow the download, conversion, validation, compilation, loading, and benchmark stages.
 8. Continue to chat or copy the OpenAI-compatible endpoint for another client.
 
-The desktop launcher binds to `127.0.0.1` by default, selects an available port, waits for liveness and readiness, opens the browser, and prevents duplicate instances. Packaged **Network / API access** settings can deliberately enable authenticated LAN access while internal health checks and desktop control remain on loopback. See [LAN and home-lab access](docs/LAN_ACCESS.md). Model weights are downloaded separately and are not included in the base installer.
+The Python engine/tray binds to `127.0.0.1` by default, selects an available port, and provides liveness and readiness. In native-first builds the WinUI frontend launches the engine without opening a browser; launching the root `InferBridge.exe` directly still opens the browser. The native frontend enforces its own per-installation single-window instance. Packaged **Network / API access** settings can deliberately enable authenticated LAN access while internal health checks and desktop control remain on loopback. See [LAN and home-lab access](docs/LAN_ACCESS.md). Model weights are downloaded separately and are not included in the base installer.
 
 The first model setup can take significant time. NPU support depends on the actual Intel platform, driver, model, precision, and OpenVINO release. A requested target is not proof of execution. InferBridge reports the actual device from successful measured generation when the runtime exposes that evidence.
 
@@ -61,7 +63,7 @@ See the [Windows installer guide](docs/INSTALLER.md).
 
 ### Portable ZIP
 
-Extract the complete ZIP to a writable directory and run `InferBridge.exe`. Portable mode stores mutable data under a sibling `data` directory and does not create registry or Start Menu entries.
+Extract the complete ZIP to a writable directory and run `native\InferBridge.Native.exe` for a native-first build (older 0.9.6 ZIPs use `InferBridge.exe` and open the browser). Portable mode stores mutable data under a sibling `data` directory and does not create registry or Start Menu entries.
 
 See the [portable package guide](docs/PORTABLE.md).
 

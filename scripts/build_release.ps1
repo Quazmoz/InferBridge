@@ -324,6 +324,9 @@ if (-not (Test-Path -LiteralPath $NativeLauncher -PathType Leaf) -or
     -not (Test-Path -LiteralPath (Join-Path $NativeRoot "coreclr.dll") -PathType Leaf)) {
     throw "Native Windows frontend payload is incomplete. Refusing a browser-only installer."
 }
+Invoke-Checked "Run native backend contract tests" {
+    & dotnet run --project windows-native/InferBridge.Native.ContractTests/InferBridge.Native.ContractTests.csproj -c Release
+}
 Invoke-Checked "Scan packaged directory" { & $ReleasePython scripts/release_tools.py scan --path $BuiltRoot }
 
 if ($RunMockSmoke -and -not $SkipInstaller) {
