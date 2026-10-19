@@ -1,6 +1,17 @@
 name: Native Windows frontend
 
 on:
+  push:
+    branches: [dev]
+    paths:
+      - "windows-native/**"
+      - ".github/workflows/native-windows.yml"
+      - "app/frozen_entrypoint.py"
+      - "packaging/**"
+      - "scripts/build_dev_package.ps1"
+      - "scripts/build_release.ps1"
+      - "scripts/msix_package.py"
+      - "tests/test_native_windows_source_contract.py"
   workflow_dispatch:
     inputs:
       full_combined_candidate:
