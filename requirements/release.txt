@@ -28,4 +28,4 @@ safetensors==0.7.0
 pyinstaller==6.22.3
 pip-licenses==5.5.5
 pytest==9.1.1
-ruff==0.16.10
+ruff==0.17.1
