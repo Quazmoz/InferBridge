@@ -8,7 +8,6 @@ public sealed partial class MainWindow
     private bool _benchmarkHistoryBusy;
     private bool _benchmarkHistoryLoaded;
     private bool _benchmarkPickerUpdating;
-    private IReadOnlyList<BenchmarkRun> _benchmarkRuns = Array.Empty<BenchmarkRun>();
 
     private async void BenchmarkHistoryRefreshButton_Click(object sender, RoutedEventArgs args) =>
         await RefreshBenchmarkHistoryAsync();
@@ -34,7 +33,6 @@ public sealed partial class MainWindow
             var history = await _backend.GetBenchmarkHistoryAsync(
                 ApiKeyBox.Password, _closing.Token);
             if (_closing.IsCancellationRequested) return;
-            _benchmarkRuns = history;
             _benchmarkHistoryLoaded = true;
             _benchmarkPickerUpdating = true;
             try
