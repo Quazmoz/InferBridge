@@ -139,7 +139,9 @@ def stage(
     if native_publish == distribution or (
         native_publish.is_relative_to(distribution) and not bundled
     ):
-        raise ValueError("Native publish output must be outside the Python distribution or at native/.")
+        raise ValueError(
+            "Native publish output must be outside the Python distribution or at native/."
+        )
     if bundled_native.exists() and not bundled:
         raise RuntimeError("The Python distribution already contains a different native/ payload.")
     native_payload = native_entries(native_publish)

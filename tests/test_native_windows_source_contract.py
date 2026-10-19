@@ -271,7 +271,8 @@ def test_native_web_ui_is_discoverable_and_opens_only_the_verified_engine_url():
     assert any(node.get("Title") == "Web GUI (optional)" for node in xaml.iter())
     assert any(node.get("Content") == "Open web GUI" for node in xaml.iter())
     overview = next(
-        node for node in xaml.iter()
+        node
+        for node in xaml.iter()
         if node.get("{http://schemas.microsoft.com/winfx/2006/xaml}Name") == "OverviewPanel"
     )
     assert any(node.get("Title") == "Web GUI (optional)" for node in overview.iter())
