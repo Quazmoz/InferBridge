@@ -57,7 +57,7 @@ def test_semantic_versions_map_to_store_versions_with_zero_revision():
         msix_version("1.2.70000")
 
 
-def test_manifest_launches_native_client_and_keeps_engine_startup_task():
+def test_manifest_launches_native_client_on_activation_and_user_enabled_startup():
     root = ET.fromstring(render_manifest(version="1.0.0", **IDENTITY))
     identity = root.find(f"{FOUNDATION}Identity")
     assert identity.get("Name") == "Quazmoz.InferBridge"
@@ -69,7 +69,7 @@ def test_manifest_launches_native_client_and_keeps_engine_startup_task():
     # The Store rejected a browser-shell primary UI; the package opens the WinUI client.
     assert application.get("Executable") == r"native\InferBridge.Native.exe"
     startup = application.find(f"{FOUNDATION}Extensions/{DESKTOP}Extension")
-    assert startup.get("Executable") == "InferBridge.exe"
+    assert startup.get("Executable") == application.get("Executable")
     capabilities = root.find(f"{FOUNDATION}Capabilities")
     assert [item.get("Name") for item in capabilities] == ["runFullTrust"]
     text = ET.tostring(root, encoding="unicode")
@@ -98,6 +98,22 @@ def test_stage_maps_engine_native_client_and_assets(tmp_path):
     (tmp_path / "dist" / "portable.flag").write_text("portable")
     with pytest.raises(RuntimeError, match="installed-mode"):
         _stage(tmp_path, output="msix2")
+
+
+def test_staging_reuses_native_client_already_in_release_distribution(tmp_path):
+    dist = _python_dist(tmp_path / "dist")
+    native = _native_publish(dist / "native")
+    mapping = _stage(tmp_path, native_publish=native)
+
+    lines = mapping.read_text(encoding="utf-8").splitlines()
+    assert len([line for line in lines if '"native\\InferBridge.Native.exe"' in line]) == 1
+    assert len([line for line in lines if '"native\\coreclr.dll"' in line]) == 1
+    assert any('"_internal\\python311.dll"' in line for line in lines)
+
+    # A different published client must never be swapped into the same package.
+    separate = _native_publish(tmp_path / "native-publish")
+    with pytest.raises(RuntimeError, match="different native/ payload"):
+        _stage(tmp_path, output="conflict", native_publish=separate)
 
 
 def test_store_data_root_preserves_downloads_without_appdata_virtualization(tmp_path, monkeypatch):

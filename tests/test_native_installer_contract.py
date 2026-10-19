@@ -5,10 +5,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_native_installer_launches_client_but_probes_engine_and_cleans_old_payload():
     text = (ROOT / "packaging/installer.iss").read_text(encoding="utf-8")
-    native = text.split("#ifdef NativeFrontend", 1)[1].split("#else", 1)[0]
-    assert 'FileExists(SourceRoot + "\\native\\InferBridge.Native.exe")' in native
-    assert '#define MyLaunchExeName "native\\InferBridge.Native.exe"' in native
-    assert "#define MyLaunchExeName MyAppExeName" in text
+    assert 'FileExists(SourceRoot + "\\native\\InferBridge.Native.exe")' in text
+    assert '#define MyLaunchExeName "native\\InferBridge.Native.exe"' in text
+    assert "#define MyLaunchExeName MyAppExeName" not in text
+    assert '#define MyInstallerPlatform "windows-x64"' in text
+    assert '#define MyInstallerPlatform "native-windows-x64"' in text
     for section in ("[Icons]", "[Run]"):
         entries = text.split("\n" + section + "\n", 1)[1].split("\n[", 1)[0]
         assert "{app}\\{#MyLaunchExeName}" in entries
@@ -26,7 +27,7 @@ def test_native_evaluation_build_keeps_engine_smoke_and_native_contract_gates():
     assert "SkipSmokeTest" not in text
     assert "--self-contained true -p:Platform=x64" in text
     assert "release_tools.py scan --path $BuiltRoot" in text
-    assert "/DNativeFrontend" in text
+    assert "/DNativeFrontend /DNativeEvaluation" in text
     assert "Get-FileHash -LiteralPath $Installer -Algorithm SHA256" in text
     assert "publish_release.ps1" not in text
 
@@ -42,3 +43,5 @@ def test_normal_release_installer_and_portable_launch_winui_by_default():
     assert 'dotnet-version: "10.0.x"' in workflow
     assert "artifact-configuration-slug: native" in workflow
     assert "Install signed native WinUI launcher" in workflow
+    assert "Run native backend contract tests" in release
+    assert "coreclr.dll" in (ROOT / "packaging/installer.iss").read_text(encoding="utf-8")

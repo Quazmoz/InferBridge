@@ -1,3 +1,4 @@
+import pytest
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -131,3 +132,36 @@ def test_frozen_engine_cli_mode_never_redirects_to_native(tmp_path, monkeypatch)
         SimpleNamespace(main=lambda args: 7 if args == ["--no-browser"] else 2),
     )
     assert frozen_entrypoint.run(["--no-browser"]) == 7
+
+
+def test_root_exe_refuses_to_open_browser_when_winui_is_missing(tmp_path, monkeypatch):
+    import subprocess
+
+    engine = tmp_path / "InferBridge.exe"
+    engine.write_bytes(b"engine")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(engine))
+    monkeypatch.setattr(
+        subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("native process unexpectedly started")
+        ),
+    )
+    called = {}
+
+    def show_dialog(title, message, *, error=False):
+        called["message"] = message
+        called["error"] = error
+
+    monkeypatch.setitem(
+        sys.modules, "app.desktop_shell", SimpleNamespace(show_dialog=show_dialog)
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "app.desktop_launcher",
+        SimpleNamespace(main=lambda _args: pytest.fail("browser fallback invoked")),
+    )
+    assert frozen_entrypoint.run([]) == 2
+    assert called["error"] is True
+    assert "FileNotFoundError" in called["message"]
