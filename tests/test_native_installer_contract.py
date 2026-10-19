@@ -30,6 +30,7 @@ def test_native_evaluation_build_keeps_engine_smoke_and_native_contract_gates():
     assert "Get-FileHash -LiteralPath $Installer -Algorithm SHA256" in text
     assert "publish_release.ps1" not in text
 
+
 def test_normal_release_installer_and_portable_launch_winui_by_default():
     release = (ROOT / "scripts/build_release.ps1").read_text(encoding="utf-8")
     workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")

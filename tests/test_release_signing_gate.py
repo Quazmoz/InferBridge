@@ -108,6 +108,7 @@ def test_failed_signtool_verification_blocks_signed_claim(tmp_path, monkeypatch)
     with pytest.raises(SigningVerificationError, match="exit code 1"):
         verify_release_signing(tmp_path, "9.9.9")
 
+
 def test_signed_portable_missing_native_entrypoint_is_rejected(tmp_path, monkeypatch):
     _write_release(tmp_path, installer=True, launcher=True)
     portable = tmp_path / "InferBridge-9.9.9-windows-x64-portable.zip"
