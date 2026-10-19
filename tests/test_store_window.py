@@ -94,3 +94,14 @@ def test_tray_native_is_default_and_browser_is_explicit_secondary_action():
     assert "open_store_window(metadata.port, metadata.nonce)" in runtime
     assert "def open_web_ui(self)" in controller
     assert "sys.platform == \"win32\" or is_packaged()" in controller
+
+
+def test_windows_distributions_do_not_bundle_retired_webview_shell():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    requirements = (root / "requirements/release.txt").read_text(encoding="utf-8")
+    spec = (root / "packaging/openvino_windows_llm.spec").read_text(encoding="utf-8")
+    assert "pywebview" not in requirements
+    assert 'collect_all("webview")' not in spec
+    assert 'hiddenimports += webview_hidden' not in spec
