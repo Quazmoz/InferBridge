@@ -56,6 +56,11 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install .NET 10 for native Windows installers and Store packages
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
       - name: Install pinned release dependencies
         # build_release.ps1 validates the version with the runner's Python before it builds its own venv.
         run: |
@@ -128,6 +133,36 @@ jobs:
         if: inputs.sign
         run: Copy-Item build/signpath/launcher/InferBridge.exe dist/InferBridge/InferBridge.exe -Force
 
+      - name: Upload unsigned native WinUI launcher
+        if: inputs.sign
+        id: upload-native
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-launcher-unsigned
+          path: dist/InferBridge/native/InferBridge.Native.exe
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Sign native WinUI launcher with SignPath
+        if: inputs.sign
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ env.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ env.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ env.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: native
+          github-artifact-id: ${{ steps.upload-native.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: build/signpath/native
+          parameters: |
+            version: ${{ toJSON(steps.version.outputs.version) }}
+
+      - name: Install signed native WinUI launcher
+        if: inputs.sign
+        run: Copy-Item build/signpath/native/InferBridge.Native.exe dist/InferBridge/native/InferBridge.Native.exe -Force
+
       - name: Package installer and portable ZIP
         if: inputs.sign
         run: >-
@@ -173,12 +208,6 @@ jobs:
           -Channel ${{ inputs.channel }} -ExternallySigned -Phase Finalize -MockSmokeTest
 
       # ---------------- Store package and outputs ----------------
-      - name: Install .NET 10 for the native Store client
-        if: inputs.msix
-        uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: "10.0.x"
-
       - name: Build Microsoft Store MSIX
         # Bundles the WinUI client (the package entrypoint) with the engine.
         if: inputs.msix
