@@ -43,6 +43,8 @@ it over verified loopback HTTP.
 
 ## Feature parity tracking
 
+See [the maintained capability and Windows-launch qualification matrix](../docs/NATIVE_FEATURE_PARITY.md) for per-domain status and evidence.
+
 | Capability | WebGUI | Native Windows | Evidence / remaining work |
 |---|---|---|---|
 | Chat and model load/unload | Implemented | Implemented | Native SSE, cancellation, selected-device load; verify on real hardware |
