@@ -21,7 +21,7 @@ Behavior that differs from the standalone installer build:
 | Primary UI | Native WinUI window. The tray's **Open** action opens the same native window; a second launch focuses it. |
 | First run | The window starts the engine, then the Model library leads with the engine's hardware-based recommendation and offers **Download and load**. |
 | Data root | `%USERPROFILE%\InferBridgeStoreData` (outside MSIX AppData virtualization). Survives uninstall; not automatically shared with standalone editions. |
-| Start with Windows | Manifest StartupTask (off by default) that starts the engine and tray, which open the native window. Users toggle it in Windows Settings > Apps > Startup. |
+| Start with Windows | Manifest StartupTask (off by default) executes `native\InferBridge.Native.exe` directly; WinUI then starts the engine. Users toggle it in Windows Settings > Apps > Startup. |
 | Updates | Delivered by the Store. GitHub update checks are disabled and the release dialog says so. |
 | Uninstall | Removes the program; model downloads and settings under `%USERPROFILE%\InferBridgeStoreData` remain until explicitly deleted. |
 

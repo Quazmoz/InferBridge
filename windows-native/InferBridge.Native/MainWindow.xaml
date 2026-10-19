@@ -4,19 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="InferBridge">
     <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-        <InfoBar x:Name="WebUiInfo" Title="More features in the web UI"
-                 Message="Open the web UI in your browser for advanced settings, benchmarks, and more."
-                 IsOpen="True" IsClosable="False" Severity="Informational" Margin="12,8,12,0">
-            <InfoBar.ActionButton>
-                <Button x:Name="WebUiButton" Content="Open web UI" IsEnabled="False"
-                        Click="WebUiButton_Click" />
-            </InfoBar.ActionButton>
-        </InfoBar>
-        <NavigationView x:Name="MainNavigation" Grid.Row="1"
+        <NavigationView x:Name="MainNavigation"
                         PaneDisplayMode="Left"
                         IsBackButtonVisible="Collapsed"
                         IsSettingsVisible="False"
@@ -69,6 +57,14 @@
                                  IsOpen="True" IsClosable="False"
                                  Severity="Informational"
                                  Message="This is a WinUI 3 client. It does not embed a web page or own a second inference engine." />
+                        <InfoBar x:Name="WebUiInfo" Title="Web GUI (optional)"
+                                 Message="The browser interface is secondary. Open it only when needed."
+                                 IsOpen="True" IsClosable="False" Severity="Informational">
+                            <InfoBar.ActionButton>
+                                <Button x:Name="WebUiButton" Content="Open web GUI" IsEnabled="False"
+                                        Click="WebUiButton_Click" />
+                            </InfoBar.ActionButton>
+                        </InfoBar>
                     </StackPanel>
                 </ScrollViewer>
                 <ScrollViewer x:Name="DoctorPanel" Visibility="Collapsed">

@@ -46,3 +46,17 @@ See [LAN and home-lab access](LAN_ACCESS.md) for the packaged network configurat
 ## Fixed-port acceptance test
 
 The development and release packaged smoke tests now set `OV_LLM_PORT` to a nondefault loopback port and reject a launcher that silently starts on a different port. The installer/portable smoke tests are separate from source-level mock tests; CI's Python and PowerShell syntax suites do **not** prove that a fully packaged Windows executable has passed these checks. For a local pre-release test, run `scripts/build_dev_package.ps1` on Windows without `-SkipSmokeTest` and retain the result. This remains a mock API test rather than a real Intel-device or clean-machine upgrade certification.
+
+## Native-first policy
+
+All supported Windows installer builds must include `native\InferBridge.Native.exe`
+and the self-contained .NET runtime. The installer fails compilation if the
+native entrypoint is missing. Start Menu and desktop shortcuts launch WinUI,
+and the root `InferBridge.exe` forwards ordinary double-clicks to WinUI.
+Engine/diagnostic command-line flags retain their backend behavior. The tray's
+default action launches WinUI; **Open web GUI** is a deliberate secondary action.
+
+If **Start with Windows** is enabled from the tray, the per-user Run entry
+targets WinUI directly. Existing background engine entries are migrated without
+modifying user model files or application configuration. The Store's separate
+Windows StartupTask is also native-first.

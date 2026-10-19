@@ -39,9 +39,7 @@ it over verified loopback HTTP.
 - **Engine**: connection status, **Start local engine**, and a session-only
   API-key field (a PasswordBox). The key stays in this window's memory and is
   never written to settings, process arguments, model files or browser storage.
-- **Web UI**: a persistent notice and **Open web UI** button show that advanced
-  settings, benchmarks and more features are available in the browser. The button
-  re-verifies the local engine and opens its loopback URL without keys in the URL.
+- **Web GUI (secondary)**: an optional link under **Engine** opens the browser interface only on explicit user action. The button re-verifies the engine and uses its loopback URL without credentials. Chat, Model library and other native pages have no persistent browser promotion.
 
 ## Feature parity tracking
 
@@ -106,7 +104,7 @@ argument because the Python desktop launcher resets inherited launch flags.
 
 ## Windows executable to open
 
-The installed **InferBridge** Start Menu shortcut or `native\InferBridge.Native.exe` opens the real native WinUI 3 application. The root `InferBridge.exe` is the Python engine/tray entrypoint, but native-first builds forward a no-arguments double-click to the WinUI app; explicit engine flags, including `--no-browser`, stay on the backend. Old browser-only installers lack the `native\` directory. An installer built from the updated `dev` release script must include it and use the native shortcut; installed execution still requires Windows qualification.
+The installed **InferBridge** Start Menu shortcut or `native\InferBridge.Native.exe` opens the real native WinUI 3 application. Windows startup registration also targets the native window; older engine-only registrations are migrated. The root `InferBridge.exe` is the Python engine/tray entrypoint, but native-first builds forward a no-arguments double-click to the WinUI app; explicit engine flags, including `--no-browser`, stay on the backend. Old browser-only installers lack the `native\` directory. An installer built from the updated `dev` release script must include it and use the native shortcut; installed execution still requires Windows qualification.
 
 ## Development build
 

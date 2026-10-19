@@ -23,3 +23,12 @@ Avoid protected directories, read-only removable media, and slow network shares.
 ```
 
 The diagnostics command writes a sanitized local ZIP. Headless mock mode validates lifecycle contracts but not the native Windows tray backend or real CPU/GPU/NPU execution.
+
+## Native UI requirement
+
+A native-first portable ZIP contains `native\InferBridge.Native.exe` and its
+self-contained runtime. Double-clicking `InferBridge.exe` delegates to native
+WinUI; missing native files cause a visible failure rather than silently
+opening the browser. Use the explicit native **Open web GUI** command only
+when the browser interface is wanted. Engine flags such as `--no-browser`
+still select the underlying service/tray behavior for automation.
