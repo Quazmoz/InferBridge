@@ -356,9 +356,11 @@ internal static class BackendContractTests
             Check(rejected, "malformed benchmark history envelope was accepted");
         }
         using (var negative = JsonDocument.Parse(
-            """{"data":[{"run_id":"bad","max_tokens":32,"runs_per_combo":3,"warmup_runs":1,
+            """
+            {"data":[{"run_id":"bad","max_tokens":32,"runs_per_combo":3,"warmup_runs":1,
                 "results":[{"model_id":"model-a","requested_device":"CPU","success":true,
-                "decode_tokens_sec":-123}]}]}"""))
+                "decode_tokens_sec":-123}]}]}
+            """))
         {
             var parsed = BenchmarkHistory.Parse(negative.RootElement);
             Check(parsed.Count == 1 && parsed[0].Results[0].DecodeTokensPerSecond is null,
