@@ -45,7 +45,7 @@ $NumericVersion = (($Version -split '[-+]')[0]) + ".0"
 $AppIcon = Join-Path $Root "build\dev-package\brand\InferBridge.ico"
 & $Python scripts/release_tools.py scan --path $BuiltRoot
 if ($LASTEXITCODE -ne 0) { throw "Combined payload safety scan failed." }
-& $IsccPath /DNativeFrontend "/DMyAppVersion=$Version" "/DMyAppVersionNumeric=$NumericVersion" `
+& $IsccPath /DNativeFrontend /DNativeEvaluation "/DMyAppVersion=$Version" "/DMyAppVersionNumeric=$NumericVersion" `
     "/DSourceRoot=$BuiltRoot" "/DArtifactDir=$OutputDirectory" "/DAppIconPath=$AppIcon" packaging/installer.iss
 if ($LASTEXITCODE -ne 0) { throw "Native installer compilation failed." }
 $Installer = Join-Path $OutputDirectory "InferBridge-$Version-native-windows-x64-installer.exe"

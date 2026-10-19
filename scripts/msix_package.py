@@ -134,10 +134,14 @@ def stage(
     native_publish = native_publish.resolve()
     if output_dir == native_publish or output_dir.is_relative_to(native_publish):
         raise ValueError("MSIX output must be outside the native publish directory.")
-    if native_publish == distribution or native_publish.is_relative_to(distribution):
-        raise ValueError("Native publish output must be outside the Python distribution.")
-    if (distribution / "native").exists():
-        raise RuntimeError("The Python distribution already contains a native/ directory.")
+    bundled_native = distribution / "native"
+    bundled = native_publish == bundled_native
+    if native_publish == distribution or (
+        native_publish.is_relative_to(distribution) and not bundled
+    ):
+        raise ValueError("Native publish output must be outside the Python distribution or at native/.")
+    if bundled_native.exists() and not bundled:
+        raise RuntimeError("The Python distribution already contains a different native/ payload.")
     native_payload = native_entries(native_publish)
     # The native client starts the bundled engine; a launcher without its
     # runtime would leave the window permanently waiting for an engine.
@@ -153,6 +157,8 @@ def stage(
             raise RuntimeError("Python distribution must not contain symbolic links.")
         if file.is_file():
             relative = file.relative_to(distribution)
+            if bundled and relative.parts[0].casefold() == "native":
+                continue
             if relative.parts[0].casefold() in {"appxmanifest.xml", "assets"}:
                 raise RuntimeError(f"Distribution file collides with package metadata: {relative}")
             distribution_payload.append((file, str(relative).replace("/", "\\")))

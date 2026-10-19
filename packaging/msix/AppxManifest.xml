@@ -41,9 +41,9 @@
         <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
       </uap:VisualElements>
       <Extensions>
-        <!-- Off by default; users turn it on in Settings > Apps > Startup. It starts the
-             engine and tray, which open the native window. -->
-        <desktop:Extension Category="windows.startupTask" Executable="InferBridge.exe" EntryPoint="Windows.FullTrustApplication">
+        <!-- Off by default. Startup activates WinUI, which starts the engine
+             without opening a browser. -->
+        <desktop:Extension Category="windows.startupTask" Executable="native\InferBridge.Native.exe" EntryPoint="Windows.FullTrustApplication">
           <desktop:StartupTask TaskId="InferBridgeStartup" Enabled="false" DisplayName="InferBridge" />
         </desktop:Extension>
       </Extensions>

@@ -27,11 +27,19 @@ foreach ($Pair in @(@("IdentityName", $IdentityName), @("Publisher", $Publisher)
 }
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $Root "artifacts\release-$Version" }
 if (-not $NativePublishDirectory) {
-    $NativePublishDirectory = Join-Path $Root "build\native-win-x64"
-    Remove-Item $NativePublishDirectory -Recurse -Force -ErrorAction SilentlyContinue
-    & dotnet publish windows-native\InferBridge.Native\InferBridge.Native.csproj --configuration Release `
-        --runtime win-x64 --self-contained true -p:Platform=x64 -o $NativePublishDirectory
-    if ($LASTEXITCODE -ne 0) { throw "Native client publish failed. Install the .NET 10 SDK." }
+    # Reuse the actual native entrypoint embedded by the release builder; never
+    # silently produce a second different WinUI binary for the Store.
+    $BundledNative = Join-Path $DistributionPath "native"
+    if (Test-Path -LiteralPath $BundledNative -PathType Container) {
+        $NativePublishDirectory = $BundledNative
+    } else {
+        # Standalone Store packaging may start from an engine-only distribution.
+        $NativePublishDirectory = Join-Path $Root "build\native-win-x64"
+        Remove-Item $NativePublishDirectory -Recurse -Force -ErrorAction SilentlyContinue
+        & dotnet publish windows-native\InferBridge.Native\InferBridge.Native.csproj --configuration Release `
+            --runtime win-x64 --self-contained true -p:Platform=x64 -o $NativePublishDirectory
+        if ($LASTEXITCODE -ne 0) { throw "Native client publish failed. Install the .NET 10 SDK." }
+    }
 }
 $Stage = Join-Path $Root "build\msix"
 Remove-Item $Stage -Recurse -Force -ErrorAction SilentlyContinue
