@@ -1,0 +1,55 @@
+# Native WinUI ↔ web capability inventory
+
+Source of truth: live `dev` code, not the older release notes. Review this inventory
+whenever native UI, FastAPI contracts or release packaging change. "Full native"
+describes comparable user functionality, **not** proof that a signed installer has
+passed Windows hardware certification.
+
+| Domain | Native status | Evidence and intentional limitations |
+|---|---|---|
+| Chat, model switching and streaming | Partial native | `MainWindow.xaml.cs`, `BackendClient.cs`: SSE, stop waiting, model lifecycle; web has richer rendering and multimodal surfaces |
+| Conversation management | Partial native | `NativeConversationStore.cs`: opt-in local search, rename, delete, restore; no browser-history sync |
+| Catalog model discovery and download | Full native | `MainWindow.xaml.cs`, `BackendClient.cs`: curated catalog, preparation progress, retry |
+| Hugging Face search and custom downloads | Partial native | `MainWindow.HuggingFace.cs`, `HuggingFaceClient.cs`: account/search/token, conversion queue; advanced conversion tuning remains web-only |
+| Model conversion and recovery | Partial native | `MainWindow.ModelPreparation.cs`, `ModelPreparationClient.cs`: guarded recovery and cancellation, not all web conversion options |
+| Inference and generation configuration | Partial native | `MainWindow.GenerationSettings.cs`: request-only max tokens, temperature and top-p; persistent/advanced engine config is web-only |
+| Hardware/device inspection | Partial native | `GetDevicesAsync`, native Engine screen: reported OpenVINO device status, not advanced multi-device tuning |
+| Benchmark run history and comparable results | Full native for history | `BenchmarkHistoryClient.cs`, `MainWindow.Benchmark.cs`: authenticated bounded history, per-row measurement and strict compatibility; actual Windows execution awaits CI |
+| Full Benchmark Lab matrix/progress/cancel | Web-only | `app/advisor_ui/script_lab.py`, `app/server.py`: native has a separate one-model Quick benchmark but no native full-matrix builder/cancel control |
+| System Doctor | Partial native | `RunSystemDoctorAsync`, native Doctor screen: core checks and privacy-safe report; some advanced remediation remains web-only |
+| Storage/cache inventory and cleanup | Full native | `GetStorageInventoryAsync` and guarded cleanup; engine rechecks permissions |
+| Hugging Face authentication | Full native | `HuggingFaceClient.cs`: backend-controlled credential storage, verification and removal (as permitted) |
+| Network and API listener configuration | Web-only | native uses verified local loopback; does not expose network listener mutation |
+| Diagnostics and support export | Full native | `GetDesktopOperationsAsync`, `ExportDiagnosticsAsync`: server-owned ZIP generation, explicit confirmation |
+| Model preparation recovery | Full native for supported actions | `ModelPreparationClient.cs`: backend-owned action restrictions and recovery IDs |
+| App settings and startup | Partial native | native Settings, `app/startup_registration.py`: local runtime/UX controls; web controls some advanced preferences |
+| Rich Markdown, vision and embedding tools | Web-only / backend-dependent | native chat is text-focused; backend determines actual model capabilities |
+
+## Windows launch qualification inventory
+
+| Supported entrypoint | Source contract | Evidence status |
+|---|---|---|
+| Inno installer post-install, Start Menu and desktop shortcuts | `packaging/installer.iss` uses `native\\InferBridge.Native.exe` | Source-inspected; installed runtime smoke not observed for this change |
+| Root portable / installed `InferBridge.exe` | `app/frozen_entrypoint.py` forwards argument-free frozen launch to native; helper args run tray/server | Source-inspected; full packaged GUI launch not observed |
+| Portable native directory | `build_dev_package.ps1`, `build_release.ps1` publish self-contained native files | Source-inspected; real portable GUI smoke not observed |
+| MSIX main application and StartupTask | `packaging/msix/AppxManifest.xml` targets native WinUI executable | Source-inspected; manual installed MSIX smoke/WACK not observed |
+| Per-user Windows startup | `app/startup_registration.py` registers native executable and migrates engine-first startup | Source-inspected; logon migration test not observed |
+| Tray default Open / explicit Web UI | `app/tray_menu.py`, native Engine page | Source-inspected; tray/foreground behavior not observed |
+| Single native foreground window | `windows-native/InferBridge.Native/Program.cs` redirects duplicate activation | Source-inspected; second-window Windows smoke not observed |
+| Engine shutdown and upgrade | `EngineLauncher.cs`, `MainWindow.xaml.cs`, `packaging/installer.iss` | Source-inspected; upgrade with persisted models/settings not observed |
+
+`.github/workflows/native-windows.yml` now runs WinUI build + executable .NET
+HTTP contract tests for changes on `dev`; its optional manually dispatched
+combined package job performs installed MSIX smoke and Windows certification.
+CI checks and actual user-machine CPU/GPU/NPU qualification are different
+forms of evidence. Never infer a passed package smoke test from a successful
+source, XAML compile or mocked-backend contract test.
+
+## Next parity milestone
+
+Add native multi-model/device Benchmark Lab configuration using existing
+`POST /v1/benchmarks/run`, then show bounded progress using the authoritative
+`/v1/system/status` events. Confirm cancellation semantics before surfacing a
+button: aborting the native HTTP wait is not proof of backend cancellation.
+Follow with advanced inference settings and desktop-wide startup migration
+verification. Do not add a native inference implementation.
