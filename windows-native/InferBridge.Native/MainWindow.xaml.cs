@@ -241,6 +241,9 @@ public sealed partial class MainWindow : Window
             _ = RefreshModelPreparationsAsync();
         UpdateGenerationSettingsInfo();
         OperationsPanel.Visibility = page == "operations" ? Visibility.Visible : Visibility.Collapsed;
+        BenchmarkPanel.Visibility = page == "benchmark" ? Visibility.Visible : Visibility.Collapsed;
+        if (page == "benchmark" && !_benchmarkHistoryLoaded)
+            _ = RefreshBenchmarkHistoryAsync();
         if (page == "operations" && !_operationsLoaded)
             _ = RefreshOperationsAsync();
         DoctorPanel.Visibility = page == "doctor" ? Visibility.Visible : Visibility.Collapsed;
