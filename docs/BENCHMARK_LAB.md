@@ -196,6 +196,26 @@ If those conditions do not match, Benchmark Lab suppresses the percentage compar
 
 This makes Benchmark Lab suitable for before/after OpenVINO, OpenVINO GenAI, and driver qualification on the same PC.
 
+## Native Windows Benchmark Lab
+
+The native WinUI 3 sidebar has a separate **Benchmark Lab** destination.
+It loads manual benchmark history through the same authenticated `GET /v1/benchmarks`
+endpoint as the web GUI, then displays run settings, model precision, the requested
+versus reported actual execution device, decoded throughput (or clearly labelled
+legacy overall throughput), TTFT, total/load latency, process RSS and token counts.
+
+Select two runs to compare. Percentage changes appear only for successful matching
+model/source/precision/requested-and-actual-device rows when the hardware fingerprint,
+synthetic/real status, methodology version, output target, measured runs and warm-ups
+all match. Missing/non-positive comparison baselines and mixed throughput definitions
+are not treated as valid deltas. The hardware fingerprint stays in transient in-memory
+comparison state; it is not included in the displayed details.
+
+The native page does not currently configure or launch the full model/device benchmark
+matrix, stream detailed progress, or send remote cancellation commands. A separate
+**Quick benchmark** action under Operations invokes the existing backend route for
+a single loaded model/device. Native and web interfaces do not own separate engines.
+
 ## Advisor integration
 
 Hardware Advisor consumes only compatible real-hardware benchmark evidence.
