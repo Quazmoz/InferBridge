@@ -47,6 +47,8 @@ def validate_version(version: str, channel: str) -> SemanticVersion:
         not parsed.prerelease or not parsed.prerelease[0].lower().startswith(("beta", "rc"))
     ):
         raise ValueError("Beta releases must use a beta or rc pre-release identifier.")
+    if channel == "nightly" and not parsed.prerelease:
+        raise ValueError("Nightly releases must use a pre-release version.")
     return parsed
 
 
