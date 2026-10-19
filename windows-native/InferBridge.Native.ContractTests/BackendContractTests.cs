@@ -282,6 +282,89 @@ internal static class BackendContractTests
         Check(!changedBenchmark.RequestPaths.Contains("/v1/benchmarks/run"),
             "benchmark ran without a verified loaded model");
 
+        // History comes from the verified, authenticated engine; comparison may only
+        // claim a delta for identical reproducibility and execution identities.
+        const string BenchmarkHistoryPayload =
+            """
+            {"object":"list","data":[
+              {"run_id":"current","created_at":"2026-10-19T10:00:00Z","preset":"quick",
+               "methodology_version":2,"hardware_fingerprint":"local-only-fingerprint",
+               "max_tokens":32,"runs_per_combo":3,"warmup_runs":1,
+               "results":[{"model_id":"model-a","source_model":"source-a","weight_format":"INT4",
+                 "requested_device":"AUTO","actual_device":"GPU.0","success":true,
+                 "decode_tokens_sec":50,"tokens_sec":44,"time_to_first_token_ms":110,
+                 "total_latency_ms":530,"prompt_tokens":12,"completion_tokens":32}]},
+              {"run_id":"previous","created_at":"2026-10-18T10:00:00Z","preset":"quick",
+               "methodology_version":2,"hardware_fingerprint":"local-only-fingerprint",
+               "max_tokens":32,"runs_per_combo":3,"warmup_runs":1,
+               "results":[{"model_id":"model-a","source_model":"source-a","weight_format":"INT4",
+                 "requested_device":"AUTO","actual_device":"GPU.0","success":true,
+                 "decode_tokens_sec":40,"time_to_first_token_ms":150,
+                 "total_latency_ms":620}]},
+              {"run_id":"different-device","methodology_version":2,
+               "hardware_fingerprint":"local-only-fingerprint",
+               "max_tokens":32,"runs_per_combo":3,"warmup_runs":1,
+               "results":[{"model_id":"model-a","source_model":"source-a","weight_format":"INT4",
+                 "requested_device":"AUTO","actual_device":"CPU","success":true,
+                 "decode_tokens_sec":10}]},
+              {"run_id":"automatic","automatic":true,"max_tokens":32,
+               "runs_per_combo":3,"warmup_runs":1,"results":[]}
+            ]}
+            """;
+        var historyTransport = new StubHandler((request, _) =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/v1/benchmarks")
+            {
+                Check(request.Method == HttpMethod.Get
+                    && request.Headers.Authorization?.Parameter == Key,
+                    "native history must use authenticated GET");
+                Check(!request.Headers.Contains("X-Desktop-Control"),
+                    "native history leaked the private tray control header");
+                return Task.FromResult(Json(BenchmarkHistoryPayload));
+            }
+            return Task.FromResult(ValidResponse(request));
+        });
+        using (var client = new BackendClient(historyTransport, metadata))
+        {
+            var history = await client.GetBenchmarkHistoryAsync(Key, CancellationToken.None);
+            Check(history.Count == 3, "history did not exclude automatic advisor runs");
+            var current = history[0];
+            var earlier = history[1];
+            Check(current.IsComparableTo(earlier)
+                && !current.IsComparableTo(current)
+                && !current.IsComparableTo(current with { OutputTokens = 64 })
+                && !current.IsComparableTo(current with { HardwareFingerprint = "other-machine" })
+                && !current.IsComparableTo(current with { Synthetic = true }),
+                "comparison accepted incompatible run methodology, hardware, or mock mode");
+            Check(earlier.ComparableTo(current.Results[0]) is not null
+                && history[2].ComparableTo(current.Results[0]) is null,
+                "comparison ignored the reported actual execution device");
+            Check(current.Results[0].DecodeTokensPerSecond == 50
+                && current.Results[0].FirstTokenMilliseconds == 110,
+                "history did not retain authoritative measurements");
+            Check(BenchmarkHistory.Delta(50, 40, false).Contains("better",
+                    StringComparison.Ordinal)
+                && BenchmarkHistory.Delta(100, 0, false) == "No comparable measurement",
+                "comparison invented deltas for invalid baseline");
+        }
+
+        using (var bad = JsonDocument.Parse("""{"data":{"runs":[]}}"""))
+        {
+            bool rejected = false;
+            try { _ = BenchmarkHistory.Parse(bad.RootElement); }
+            catch (JsonException) { rejected = true; }
+            Check(rejected, "malformed benchmark history envelope was accepted");
+        }
+        using (var negative = JsonDocument.Parse(
+            """{"data":[{"run_id":"bad","max_tokens":32,"runs_per_combo":3,"warmup_runs":1,
+                "results":[{"model_id":"model-a","requested_device":"CPU","success":true,
+                "decode_tokens_sec":-123}]}]}"""))
+        {
+            var parsed = BenchmarkHistory.Parse(negative.RootElement);
+            Check(parsed.Count == 1 && parsed[0].Results[0].DecodeTokensPerSecond is null,
+                "invalid negative measurement was interpreted as valid performance");
+        }
+
         // Native recovery rechecks the server-owned recovery ID and allowed
         // actions before mutation, without exposing tray-control credentials.
         const string RecoveryPayload =
