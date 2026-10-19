@@ -106,9 +106,7 @@ def test_frozen_root_exe_opens_native_frontend_without_starting_browser(tmp_path
     def fail_browser(_arguments):
         raise AssertionError("browser launched")
 
-    monkeypatch.setitem(
-        sys.modules, "app.desktop_launcher", SimpleNamespace(main=fail_browser)
-    )
+    monkeypatch.setitem(sys.modules, "app.desktop_launcher", SimpleNamespace(main=fail_browser))
 
     assert frozen_entrypoint.run([]) == 0
     assert launches == [([str(native)], {"cwd": str(native.parent)})]
@@ -157,9 +155,7 @@ def test_root_exe_refuses_to_open_browser_when_winui_is_missing(tmp_path, monkey
         called["message"] = message
         called["error"] = error
 
-    monkeypatch.setitem(
-        sys.modules, "app.desktop_shell", SimpleNamespace(show_dialog=show_dialog)
-    )
+    monkeypatch.setitem(sys.modules, "app.desktop_shell", SimpleNamespace(show_dialog=show_dialog))
     monkeypatch.setitem(
         sys.modules,
         "app.desktop_launcher",
