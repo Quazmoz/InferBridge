@@ -8,6 +8,11 @@ import zipfile
 from pathlib import Path, PurePosixPath
 
 _ARCHIVE_ROOT_RE = re.compile(r"^InferBridge-[0-9A-Za-z.+-]+$")
+_NATIVE_REQUIRED = (
+    "native/InferBridge.Native.exe",
+    "native/InferBridge.Native.runtimeconfig.json",
+    "native/coreclr.dll",
+)
 
 
 def _validate_archive_root(value: str) -> str:
@@ -35,10 +40,11 @@ def create_archive(source_root: Path, output: Path, archive_root: str) -> None:
     source_root = source_root.resolve()
     if not source_root.is_dir():
         raise RuntimeError(f"portable source directory is missing: {source_root}")
-    required = (source_root / "InferBridge.exe", source_root / "portable.flag")
-    for path in required:
-        if not path.is_file():
-            raise RuntimeError(f"portable source is missing required file: {path.name}")
+    required = ("InferBridge.exe", "portable.flag", *_NATIVE_REQUIRED)
+    for relative in required:
+        path = source_root / relative
+        if not path.is_file() or path.stat().st_size == 0:
+            raise RuntimeError(f"portable source is missing required file: {relative}")
 
     files = _source_files(source_root, archive_root)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -60,7 +66,10 @@ def verify_archive(path: Path, archive_root: str, source_root: Path | None = Non
 
     archive_root = _validate_archive_root(archive_root)
     prefix = f"{archive_root}/"
-    required = {f"{prefix}InferBridge.exe", f"{prefix}portable.flag"}
+    required = {
+        *(f"{prefix}{name}" for name in ("InferBridge.exe", "portable.flag")),
+        *(f"{prefix}{name}" for name in _NATIVE_REQUIRED),
+    }
     seen: dict[str, int] = {}
     with zipfile.ZipFile(path) as archive:
         for item in archive.infolist():
@@ -79,6 +88,9 @@ def verify_archive(path: Path, archive_root: str, source_root: Path | None = Non
     missing = sorted(required - set(seen))
     if missing:
         raise RuntimeError("portable archive is missing required files: " + ", ".join(missing))
+    for name in required:
+        if seen[name] == 0:
+            raise RuntimeError(f"portable archive has empty required file: {name}")
 
     if source_root is not None:
         source_root = source_root.resolve()
