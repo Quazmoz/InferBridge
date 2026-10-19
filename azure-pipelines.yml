@@ -1,5 +1,7 @@
 # Azure Pipelines evaluation builder for InferBridge.
 # Build the Azure-selected source revision; no cross-branch checkout is permitted.
+# After fixing a failed formatting gate, queue a NEW run on dev: rerunning the old
+# Azure run can reuse its original failing source revision.
 # To build main, first promote this configuration to main, then queue a main-branch run.
 # Artifacts are unsigned and must not be treated as a qualified release.
 trigger: none
