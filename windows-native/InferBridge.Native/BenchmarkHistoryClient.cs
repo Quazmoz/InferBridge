@@ -30,6 +30,7 @@ internal sealed record BenchmarkRun(
 
     public BenchmarkMeasurement? ComparableTo(BenchmarkMeasurement measurement) =>
         Results.FirstOrDefault(row => row.Success && row.Synthetic == measurement.Synthetic
+            && measurement.ActualDevice.Length > 0 && row.ActualDevice.Length > 0
             && row.ModelId == measurement.ModelId
             && row.SourceModel == measurement.SourceModel
             && row.Precision == measurement.Precision
@@ -74,6 +75,13 @@ internal static class BenchmarkHistory
         element.ValueKind == JsonValueKind.Object
         && element.TryGetProperty(name, out var value)
         && value.ValueKind == JsonValueKind.True;
+
+    private static string? Fingerprint(JsonElement item)
+    {
+        // Fingerprints are comparison-only opaque identities, never UI labels.
+        string value = Field(item, "hardware_fingerprint", 256);
+        return value.Length > 0 ? value : null;
+    }
 
     public static IReadOnlyList<BenchmarkRun> Parse(JsonElement root)
     {
@@ -122,8 +130,7 @@ internal static class BenchmarkHistory
             }
             results.Add(new BenchmarkRun(id, Field(item, "created_at", 64),
                 Field(item, "preset", 40), Number(item, "methodology_version") ?? 1,
-                tokens, runs, warmups, Field(item, "hardware_fingerprint", 256) is var fingerprint
-                    && fingerprint.Length > 0 ? fingerprint : null,
+                tokens, runs, warmups, Fingerprint(item),
                 Boolean(item, "synthetic") || Boolean(item, "mock"), measurements));
         }
         return results;
