@@ -15,7 +15,7 @@ The Inno Setup configuration targets Windows x64-compatible systems on build 190
 - Start with Windows disabled by default
 - LAN access disabled by default
 
-Launching the shortcut opens `native\InferBridge.Native.exe` (WinUI 3). The native client starts the bundled `InferBridge.exe` engine/tray with `--no-browser` if necessary. Running the root `InferBridge.exe` directly opens the browser UI: it is an engine entrypoint, not the Windows frontend. The packaged listener defaults to `127.0.0.1`. Explicit authenticated LAN access can be enabled later from **Network / API access** without modifying files in the installation directory. Closing the browser does not stop the application.
+Launching the shortcut opens `native\InferBridge.Native.exe` (WinUI 3). The native client starts the bundled `InferBridge.exe` engine/tray with `--no-browser` if necessary. Double-clicking the packaged root `InferBridge.exe` also forwards to WinUI in native-first builds. Explicit engine and headless command flags keep their original backend semantics. The packaged listener defaults to `127.0.0.1`. Explicit authenticated LAN access can be enabled later from **Network / API access** without modifying files in the installation directory. Closing the browser does not stop the application.
 
 Start with Windows is enabled later from the tray. It creates one HKCU Run value and starts the tray/server in the background without opening the browser.
 

@@ -106,7 +106,7 @@ argument because the Python desktop launcher resets inherited launch flags.
 
 ## Windows executable to open
 
-The installed **InferBridge** Start Menu shortcut or `native\InferBridge.Native.exe` opens the real native WinUI 3 application. The root `InferBridge.exe` runs the Python engine/tray and opens the browser UI when launched directly without `--no-browser`. Old browser-only installers lack the `native\` directory. An installer built from the updated `dev` release script must include it and use the native shortcut; installed execution still requires Windows qualification.
+The installed **InferBridge** Start Menu shortcut or `native\InferBridge.Native.exe` opens the real native WinUI 3 application. The root `InferBridge.exe` is the Python engine/tray entrypoint, but native-first builds forward a no-arguments double-click to the WinUI app; explicit engine flags, including `--no-browser`, stay on the backend. Old browser-only installers lack the `native\` directory. An installer built from the updated `dev` release script must include it and use the native shortcut; installed execution still requires Windows qualification.
 
 ## Development build
 

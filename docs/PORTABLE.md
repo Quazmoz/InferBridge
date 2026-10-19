@@ -5,7 +5,7 @@ Native-first portable ZIPs contain the self-contained WinUI 3 client in `native\
 ## Use
 
 1. Extract the ZIP to a writable local directory.
-2. Run `native\InferBridge.Native.exe` to open the Windows app. `InferBridge.exe` at the ZIP root starts the engine/tray and opens the browser interface instead.
+2. Run `native\InferBridge.Native.exe` to open the Windows app. double-clicking the root `InferBridge.exe` also forwards to WinUI in new builds; explicit engine flags such as `--no-browser` still run the backend.
 3. Use the native app for model management and chat; the tray also exposes engine and diagnostics operations.
 4. Complete first-run model preparation using the native Model library. Advanced features still have a separate web UI. For an older 0.9.6 ZIP, run `InferBridge.exe` and use the browser.
 
