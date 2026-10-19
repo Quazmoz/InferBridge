@@ -38,12 +38,17 @@ def test_publisher_allows_unsigned_stable_publication():
     assert "verify_release_signing.py" in script
 
 
-def test_beta_promotion_pull_requests_run_release_and_lifecycle_ci():
+def test_release_and_lifecycle_ci_support_manual_and_pr_validation():
     for workflow_name in ("ci.yml", "model-lifecycle-windows.yml"):
         workflow = _workflow(workflow_name)
-        pull_request_section = workflow.split("  pull_request:", 1)[1].split("\n\n", 1)[0]
+        assert "on:\n" in workflow, f"{workflow_name} must declare workflow triggers"
+        triggers = workflow.split("on:\n", 1)[1].split("\n\n", 1)[0]
 
-        assert 'branches: ["main", "dev", "beta"]' in pull_request_section
+        # Dev can run these workflows manually; promotion branches may also use PR CI.
+        assert "  workflow_dispatch:" in triggers, f"{workflow_name} must be manually runnable"
+        if "  pull_request:" in triggers:
+            pull_request_section = triggers.split("  pull_request:", 1)[1]
+            assert 'branches: ["main", "dev", "beta"]' in pull_request_section
 
 
 def test_documented_stable_signing_policy_matches_publisher_gate():
