@@ -3,9 +3,9 @@
 pip==26.2.1
 setuptools==81.0.0
 wheel==0.48.0
-openvino==2026.2.1
-openvino-genai==2026.2.1.0
-openvino-tokenizers==2026.2.1.0
+openvino==2026.4.1
+openvino-genai==2026.4.1.0
+openvino-tokenizers==2026.4.1.0
 fastapi==0.143.0
 uvicorn[standard]==0.54.0
 pydantic==2.14.0
