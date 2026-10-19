@@ -348,11 +348,11 @@ public sealed partial class MainWindow
                 HorizontalAlignment = HorizontalAlignment.Left,
                 MinWidth = 230,
             };
-            foreach (int tokens in model.Backend == "openvino-embeddings"
+            foreach (int tokenLimit in model.Backend == "openvino-embeddings"
                 ? new[] { 512, 1024, 2048 } : new[] { 2048, 4096, 8192 })
                 context.Items.Add(new ComboBoxItem
                 {
-                    Content = tokens.ToString("N0") + " tokens", Tag = tokens,
+                    Content = tokenLimit.ToString("N0") + " tokens", Tag = tokenLimit,
                 });
             context.SelectedIndex = 0;
 

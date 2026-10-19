@@ -1015,9 +1015,9 @@ public sealed partial class MainWindow : Window
                 MinWidth = 280,
                 HorizontalAlignment = HorizontalAlignment.Left,
             };
-            foreach (string action in actions.Where(recovery.CanRun)
+            foreach (string candidateAction in actions.Where(recovery.CanRun)
                 .OrderBy(name => name != recovery.RecommendedAction))
-                picker.Items.Add(new ComboBoxItem { Content = ActionTitle(action), Tag = action });
+                picker.Items.Add(new ComboBoxItem { Content = ActionTitle(candidateAction), Tag = candidateAction });
             if (picker.Items.Count > 0) picker.SelectedIndex = 0;
             layout.Children.Add(picker);
             if (picker.Items.Count == 0)

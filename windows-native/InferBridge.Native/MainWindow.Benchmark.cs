@@ -141,7 +141,7 @@ public sealed partial class MainWindow
                 IsTextSelectionEnabled = true,
             };
             BenchmarkDetailsRows.Children.Add(details);
-            BenchmarkDetailsRows.Children.Add(new Separator());
+            // StackPanel spacing separates result rows without a web-style divider.
         }
         if (run.Results.Count == 0)
             BenchmarkDetailsRows.Children.Add(new TextBlock
