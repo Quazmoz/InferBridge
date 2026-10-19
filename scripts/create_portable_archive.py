@@ -67,8 +67,7 @@ def verify_archive(path: Path, archive_root: str, source_root: Path | None = Non
     archive_root = _validate_archive_root(archive_root)
     prefix = f"{archive_root}/"
     required = {
-        *(f"{prefix}{name}" for name in ("InferBridge.exe", "portable.flag")),
-        *(f"{prefix}{name}" for name in _NATIVE_REQUIRED),
+        f"{prefix}{name}" for name in ("InferBridge.exe", "portable.flag", *_NATIVE_REQUIRED)
     }
     seen: dict[str, int] = {}
     with zipfile.ZipFile(path) as archive:

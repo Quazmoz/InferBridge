@@ -80,12 +80,10 @@ def test_portable_archive_preserves_versioned_root_without_staging_copy(tmp_path
     assert not (tmp_path / "portable-stage").exists()
 
     (native / "InferBridge.Native.exe").unlink()
-    try:
+    import pytest
+
+    with pytest.raises(RuntimeError, match=r"native/InferBridge.Native.exe"):
         create_archive(source, tmp_path / "invalid.zip", "InferBridge-1.2.3")
-    except RuntimeError as exc:
-        assert "native/InferBridge.Native.exe" in str(exc)
-    else:
-        raise AssertionError("An engine-only portable ZIP was created")
 
 
 def test_checksum_generation_defers_independent_verification(tmp_path: Path, monkeypatch) -> None:

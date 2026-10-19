@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.release_models import ReleaseManifest, artifact_filename  # noqa: E402
 from scripts.release_scan import verify_checksums  # noqa: E402
+from scripts.create_portable_archive import verify_archive  # noqa: E402
 
 
 def _object(path: Path, label: str) -> dict[str, Any]:
@@ -100,6 +101,12 @@ def verify_release_provenance(
     except OSError as exc:
         raise RuntimeError("Model-library manifest is missing; rebuild.") from exc
     verify_checksums(artifact_directory / artifact_filename(version, "checksums"))
+    # Hash integrity alone cannot stop a newly generated browser-only release.
+    # Publication requires the same native-first ZIP layout as the build gate.
+    verify_archive(
+        artifact_directory / artifact_filename(version, "portable"),
+        f"InferBridge-{version}",
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

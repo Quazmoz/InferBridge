@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from zipfile import ZipFile
 
 import pytest
 
@@ -24,6 +25,16 @@ def _artifacts(tmp_path: Path, *, commit: str = COMMIT) -> tuple[Path, Path]:
         (tmp_path / name).write_bytes(
             source.read_bytes() if name == "model-library-manifest.json" else b"x"
         )
+    portable = tmp_path / artifact_filename(version, "portable")
+    with ZipFile(portable, "w") as archive:
+        for filename in (
+            "InferBridge.exe",
+            "portable.flag",
+            "native/InferBridge.Native.exe",
+            "native/InferBridge.Native.runtimeconfig.json",
+            "native/coreclr.dll",
+        ):
+            archive.writestr(f"InferBridge-{version}/{filename}", b"valid-test-payload")
     manifest = build_manifest(
         tmp_path,
         version=version,
@@ -109,6 +120,17 @@ def test_missing_expected_artifact_fails(tmp_path):
     source, _ = _artifacts(tmp_path)
     (tmp_path / artifact_filename("0.6.2", "portable")).unlink()
     with pytest.raises(RuntimeError, match="incomplete"):
+        _verify(tmp_path, source)
+
+
+def test_unsigned_browser_only_portable_is_rejected_even_with_fresh_checksums(tmp_path):
+    source, _ = _artifacts(tmp_path)
+    portable = tmp_path / artifact_filename("0.6.2", "portable")
+    with ZipFile(portable, "w") as archive:
+        archive.writestr("InferBridge-0.6.2/InferBridge.exe", b"engine")
+        archive.writestr("InferBridge-0.6.2/portable.flag", b"portable")
+    write_checksums(tmp_path, "0.6.2")
+    with pytest.raises(RuntimeError, match="portable archive is missing required files"):
         _verify(tmp_path, source)
 
 
