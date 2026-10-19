@@ -100,16 +100,18 @@ Two extra gates apply to UI changes, because nothing else compiles the injected 
 ```
 
 ### Code Style and Formatting
-We follow PEP 8 and enforce clean formatting.
-We use **ruff** for formatting and linting. Make sure to check and format your code before pushing:
+We follow PEP 8 and enforce clean formatting with **Ruff**. Use the version pinned by the `dev` dependencies (`pyproject.toml`) and the release requirements (`requirements/release.txt`). Before every push or manually queued Azure build, format **the whole repository**, then run both non-mutating CI gates:
 
 ```powershell
-# Run lint check
-.\.venv\Scripts\ruff check .
+# Apply the canonical formatter before committing, including tests.
+.\.venv\Scripts\python.exe -m ruff format .
 
-# Apply automatic fixes / formatting
-.\.venv\Scripts\ruff format .
+# Both must pass on the committed source revision.
+.\.venv\Scripts\python.exe -m ruff check .
+.\.venv\Scripts\python.exe -m ruff format --check .
 ```
+
+Ruff can change the *outer* quotes of test assertions containing source-code strings (for example, the Windows native-window source-contract tests). Passing `ruff check .` alone does **not** imply `ruff format --check .` passes. Azure intentionally fails before release dependency installation rather than modifying the checked-out source or packaging an unformatted revision.
 
 ---
 
