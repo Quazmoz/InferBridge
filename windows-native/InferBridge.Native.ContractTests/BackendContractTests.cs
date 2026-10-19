@@ -637,10 +637,10 @@ internal static class BackendContractTests
         });
         using (var client = new BackendClient(changedStorage, metadata))
         {
-            var stale = new StorageCleanupOption("remove_huggingface_cache",
+            var staleCleanup = new StorageCleanupOption("remove_huggingface_cache",
                 "model-a", "org/model-a", "Reusable source", 20, 20, true, "");
             await ThrowsAsync<InvalidOperationException>(
-                () => client.CleanupStorageAsync(stale, Key, CancellationToken.None),
+                () => client.CleanupStorageAsync(staleCleanup, Key, CancellationToken.None),
                 "stale storage estimate was accepted without refresh");
         }
         Check(staleStoragePosts == 0, "stale cleanup sent a destructive request");
