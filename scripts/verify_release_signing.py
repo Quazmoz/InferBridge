@@ -134,21 +134,25 @@ def verify_release_signing(
                 raise SigningVerificationError(
                     "Portable ZIP must contain exactly one InferBridge.exe."
                 )
+            natives = [
+                name
+                for name in archive.namelist()
+                if name.replace("\\", "/").lower().endswith("/native/inferbridge.native.exe")
+            ]
+            if len(natives) != 1:
+                raise SigningVerificationError(
+                    "Signed portable ZIP must contain exactly one native WinUI entrypoint."
+                )
             extracted = Path(temporary) / "InferBridge.exe"
+            native = Path(temporary) / "InferBridge.Native.exe"
             extracted.write_bytes(archive.read(launchers[0]))
+            native.write_bytes(archive.read(natives[0]))
         _verify(tool, extracted)
-        natives = [
-            name for name in archive.namelist()
-            if name.replace("\\", "/").lower().endswith("/native/inferbridge.native.exe")
-        ]
-        if len(natives) != 1:
-            raise SigningVerificationError(
-                "Signed portable ZIP must contain exactly one native WinUI entrypoint."
-            )
-        native = Path(temporary) / "InferBridge.Native.exe"
-        native.write_bytes(archive.read(natives[0]))
         _verify(tool, native)
-    print("Publisher independently verified installer, engine and native launcher Authenticode signatures.")
+    print(
+        "Publisher independently verified installer, engine and native launcher "
+        "Authenticode signatures."
+    )
     return True
 
 

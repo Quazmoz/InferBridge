@@ -413,7 +413,7 @@ if (-not $SkipPortable) {
 InferBridge $Version portable release
 
 1. Extract the complete directory to a writable non-administrator location.
-2. Run native\InferBridge.Native.exe for the Windows app. InferBridge.exe runs the engine/tray and opens the browser if invoked directly.
+2. Run native\InferBridge.Native.exe for the Windows app. Double-clicking the root InferBridge.exe forwards to WinUI in this distribution; engine flags (including --no-browser) still control the tray/server.
 3. Mutable configuration, models, caches, logs, onboarding state, and benchmarks remain under .\data.
 4. This package does not change the registry or Start Menu and does not enable Start with Windows.
 5. See UPGRADE_ROLLBACK.md before replacing an existing portable directory.
