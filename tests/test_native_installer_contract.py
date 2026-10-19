@@ -25,7 +25,10 @@ def test_native_evaluation_build_keeps_engine_smoke_and_native_contract_gates():
     assert "InferBridge.Native.ContractTests.csproj" in text
     assert '"build_dev_package.ps1"' in text
     assert "SkipSmokeTest" not in text
-    assert "--self-contained true -p:Platform=x64" in text
+    dev_package = (ROOT / "scripts/build_dev_package.ps1").read_text(encoding="utf-8")
+    assert "--self-contained true -p:Platform=x64" in dev_package
+    assert "InferBridge.Native.exe" in text
+    assert "coreclr.dll" in text
     assert "release_tools.py scan --path $BuiltRoot" in text
     assert "/DNativeFrontend /DNativeEvaluation" in text
     assert "Get-FileHash -LiteralPath $Installer -Algorithm SHA256" in text
@@ -45,3 +48,12 @@ def test_normal_release_installer_and_portable_launch_winui_by_default():
     assert "Install signed native WinUI launcher" in workflow
     assert "Run native backend contract tests" in release
     assert "coreclr.dll" in (ROOT / "packaging/installer.iss").read_text(encoding="utf-8")
+
+
+def test_engine_only_development_bundle_is_not_mistaken_for_a_windows_app():
+    script = (ROOT / "scripts/build_dev_package.ps1").read_text(encoding="utf-8")
+    assert "Publish" not in script.split("Write-Host \"Native-first development package", 1)[-1]
+    assert 'Join-Path $BuiltRoot "native"' in script
+    assert "dotnet publish windows-native/InferBridge.Native/InferBridge.Native.csproj" in script
+    assert "Native-first development package completed" in script
+    assert "InferBridge.Native.runtimeconfig.json" in script

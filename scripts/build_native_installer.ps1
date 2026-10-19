@@ -35,9 +35,11 @@ $Dist = Join-Path $OutputDirectory "payload"
 if ($LASTEXITCODE -ne 0) { throw "Engine build or packaged smoke test failed." }
 $BuiltRoot = Join-Path $Dist "InferBridge"
 $NativeRoot = Join-Path $BuiltRoot "native"
-& dotnet publish windows-native/InferBridge.Native/InferBridge.Native.csproj -c Release `
-    -r win-x64 --self-contained true -p:Platform=x64 -o $NativeRoot
-if ($LASTEXITCODE -ne 0) { throw "Native client publish failed. Install the .NET 10 SDK." }
+foreach ($Required in @("InferBridge.Native.exe", "coreclr.dll", "InferBridge.Native.runtimeconfig.json")) {
+    if (-not (Test-Path -LiteralPath (Join-Path $NativeRoot $Required) -PathType Leaf)) {
+        throw "Native development payload is incomplete: $Required"
+    }
+}
 
 $Version = (& $Python scripts/release_tools.py canonical-version).Trim()
 if ($LASTEXITCODE -ne 0 -or -not $Version) { throw "Could not read application version." }
