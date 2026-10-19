@@ -1,7 +1,8 @@
-import pytest
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 from app import frozen_entrypoint
 

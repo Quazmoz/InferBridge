@@ -14,8 +14,8 @@ from pydantic import ValidationError
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.release_models import ReleaseManifest, artifact_filename  # noqa: E402
-from scripts.release_scan import verify_checksums  # noqa: E402
 from scripts.create_portable_archive import verify_archive  # noqa: E402
+from scripts.release_scan import verify_checksums  # noqa: E402
 
 
 def _object(path: Path, label: str) -> dict[str, Any]:

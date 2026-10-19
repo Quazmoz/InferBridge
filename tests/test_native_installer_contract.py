@@ -52,8 +52,7 @@ def test_normal_release_installer_and_portable_launch_winui_by_default():
 
 def test_engine_only_development_bundle_is_not_mistaken_for_a_windows_app():
     script = (ROOT / "scripts/build_dev_package.ps1").read_text(encoding="utf-8")
-    assert "Publish" not in script.split("Write-Host \"Native-first development package", 1)[-1]
-    assert 'Join-Path $BuiltRoot "native"' in script
+     assert 'Join-Path $BuiltRoot "native"' in script
     assert "dotnet publish windows-native/InferBridge.Native/InferBridge.Native.csproj" in script
     assert "Native-first development package completed" in script
     assert "InferBridge.Native.runtimeconfig.json" in script

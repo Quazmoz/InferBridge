@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 from unittest.mock import Mock
 
 import pytest
@@ -72,9 +71,9 @@ def test_windows_native_window_fails_closed_when_payload_missing(tmp_path, monke
 def test_native_window_never_imports_webview():
     from pathlib import Path
 
-    source = (
-        Path(__file__).resolve().parents[1] / "app" / "store_window.py"
-    ).read_text(encoding="utf-8")
+    source = (Path(__file__).resolve().parents[1] / "app" / "store_window.py").read_text(
+        encoding="utf-8"
+    )
     assert "import webview" not in source
     assert "--window-child" not in source
     assert "http://127.0.0.1:" not in source

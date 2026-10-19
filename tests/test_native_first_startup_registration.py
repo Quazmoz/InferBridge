@@ -31,9 +31,7 @@ def test_existing_engine_startup_registration_migrates_to_native(tmp_path):
     previous = startup_command(root / "InferBridge.exe", portable=False)
     backend.write(RUN_KEY, "InferBridge", previous)
 
-    registration = StartupRegistration(
-        executable=native, packaged=False, backend=backend
-    )
+    registration = StartupRegistration(executable=native, packaged=False, backend=backend)
     state = registration.state()
     assert state.enabled
     assert state.command == registration.expected_command

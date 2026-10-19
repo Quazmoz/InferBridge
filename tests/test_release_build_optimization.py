@@ -5,6 +5,8 @@ import json
 import zipfile
 from pathlib import Path
 
+import pytest
+
 from app.release_models import artifact_filename
 from scripts import release_scan
 from scripts.create_portable_archive import create_archive, verify_archive
@@ -80,8 +82,6 @@ def test_portable_archive_preserves_versioned_root_without_staging_copy(tmp_path
     assert not (tmp_path / "portable-stage").exists()
 
     (native / "InferBridge.Native.exe").unlink()
-    import pytest
-
     with pytest.raises(RuntimeError, match=r"native/InferBridge.Native.exe"):
         create_archive(source, tmp_path / "invalid.zip", "InferBridge-1.2.3")
 
