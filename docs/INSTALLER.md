@@ -6,7 +6,7 @@ The Inno Setup configuration targets Windows x64-compatible systems on build 190
 
 - per-user installation under `%LOCALAPPDATA%\Programs\InferBridge`
 - no administrator rights required for the normal path
-- Start Menu shortcut launching the system-tray controller
+- Start Menu shortcut launching the native WinUI 3 interface and its existing engine/tray controller
 - optional desktop shortcut
 - Windows uninstall entry
 - stable application ID for in-place upgrades
@@ -15,7 +15,7 @@ The Inno Setup configuration targets Windows x64-compatible systems on build 190
 - Start with Windows disabled by default
 - LAN access disabled by default
 
-Launching the shortcut starts the tray controller, which owns the FastAPI child server and opens the existing browser UI through loopback. The packaged listener defaults to `127.0.0.1`. Explicit authenticated LAN access can be enabled later from **Network / API access** without modifying files in the installation directory. Closing the browser does not stop the application.
+Launching the shortcut opens `native\InferBridge.Native.exe` (WinUI 3). The native client starts the bundled `InferBridge.exe` engine/tray with `--no-browser` if necessary. Running the root `InferBridge.exe` directly opens the browser UI: it is an engine entrypoint, not the Windows frontend. The packaged listener defaults to `127.0.0.1`. Explicit authenticated LAN access can be enabled later from **Network / API access** without modifying files in the installation directory. Closing the browser does not stop the application.
 
 Start with Windows is enabled later from the tray. It creates one HKCU Run value and starts the tray/server in the background without opening the browser.
 
@@ -31,7 +31,7 @@ A GUI-managed API key is stored under the writable InferBridge data root using W
 .\scripts\build_windows_distribution.ps1
 ```
 
-Use `-SkipInstaller` to create only the portable ZIP when Inno Setup is unavailable. Artifacts are versioned, checksummed, and accurately marked signed or unsigned.
+The standard build now requires a .NET 10 SDK on the build machine to publish WinUI. Use `-SkipInstaller` to create only the portable ZIP when Inno Setup is unavailable. Both outputs include `native\InferBridge.Native.exe`; for portable usage, launch that file, **not** the root engine executable. If `native\InferBridge.Native.exe` is missing, the installer is from an older browser-only build or is incomplete. Artifacts are versioned, checksummed, and accurately marked signed or unsigned.
 
 Before compiling the installer, the release pipeline runs the packaged executable without `portable.flag`, verifies that it reports `installed` mode, and exercises the full mock API, UI, lifecycle, benchmark, and owned-shutdown contract. The extracted portable ZIP is then tested separately in `portable` mode. Actual installer installation, authenticated LAN binding, Windows Firewall prompting, upgrade, downgrade, and uninstall behavior still require validation on a clean Windows machine before release.
 

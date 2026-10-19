@@ -1,7 +1,6 @@
 # InferBridge native Windows client
 
-The **C# / WinUI 3 / Windows App SDK** application that the Microsoft Store
-package launches. It renders XAML native controls, not HTML or WebView2. The
+The **C# / WinUI 3 / Windows App SDK** application that the regular Windows installer, portable ZIP and Microsoft Store package launch. It renders XAML native controls, not HTML or WebView2. The
 Python FastAPI/OpenVINO engine (`InferBridge.exe`) remains the source of truth
 for models, credentials, inference and process ownership; this client talks to
 it over verified loopback HTTP.
@@ -104,6 +103,10 @@ root); a combined portable distribution with a sibling `portable.flag` uses
 precedence. Overrides must be absolute; relative ones fail closed.
 The native engine launcher passes `OV_LLM_DATA_DIR` as an explicit `--data-dir`
 argument because the Python desktop launcher resets inherited launch flags.
+
+## Windows executable to open
+
+The installed **InferBridge** Start Menu shortcut or `native\InferBridge.Native.exe` opens the real native WinUI 3 application. The root `InferBridge.exe` runs the Python engine/tray and opens the browser UI when launched directly without `--no-browser`. Old browser-only installers lack the `native\` directory. An installer built from the updated `dev` release script must include it and use the native shortcut; installed execution still requires Windows qualification.
 
 ## Development build
 

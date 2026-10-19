@@ -1,6 +1,6 @@
 # Code signing
 
-Unsigned local-development builds and **unsigned stable publication** are currently supported. Artifact filenames remain deterministic and do not use `signed` or `unsigned` suffixes. Trust state is recorded only in the validated release manifest and summary. A signed release must have independently verified Authenticode signatures on **both** the installer and the launcher inside the portable ZIP. Publishing an unsigned release must never claim the files are signed; users must be informed that Windows may show an unknown publisher warning.
+Unsigned local-development builds and **unsigned stable publication** are currently supported. Artifact filenames remain deterministic and do not use `signed` or `unsigned` suffixes. Trust state is recorded only in the validated release manifest and summary. A signed release must have independently verified Authenticode signatures on **all three executables**: the installer, the engine launcher (`InferBridge.exe`) and the native WinUI launcher (`native/InferBridge.Native.exe`) inside the portable ZIP. Publishing an unsigned release must never claim the files are signed; users must be informed that Windows may show an unknown publisher warning.
 
 ## Free signing through SignPath Foundation (CI)
 
@@ -10,18 +10,19 @@ InferBridge is MIT-licensed, so it qualifies for free OSS code signing from [Sig
 
 1. `build_release.ps1 -ExternallySigned -Phase Launcher` builds and smoke-tests the PyInstaller layout.
 2. `InferBridge.exe` is uploaded and signed through SignPath (artifact configuration `launcher`), then copied back.
-3. `-Phase Package` verifies the launcher signature, compiles the installer, and creates the portable ZIP.
-4. The installer is signed through SignPath (artifact configuration `installer`) and copied back.
-5. `-Phase Finalize` verifies the installer signature and writes the manifest, summary, and checksums with both trust fields set.
+3. `native/InferBridge.Native.exe` is signed through SignPath (artifact configuration `native`) and copied back.
+4. `-Phase Package` verifies both launchers, compiles the native-first installer, and creates the portable ZIP.
+5. The installer is signed through SignPath (artifact configuration `installer`) and copied back.
+6. `-Phase Finalize` verifies the installer signature and writes the manifest, summary, and checksums. Publication independently verifies all three executables.
 
 The workflow never publishes. Download the release artifact and publish with `publish_release.ps1`, which re-verifies both signatures.
 
 One-time setup:
 
 1. Apply at https://signpath.org/apply with the repository URL.
-2. After acceptance, in SignPath: link the predefined *GitHub.com* trusted build system to the project, install the [SignPath GitHub App](https://github.com/apps/signpath) on this repository, and create artifact configurations with the slugs `launcher` and `installer` from `.signpath/artifact-configurations/`.
+2. After acceptance, in SignPath: link the predefined *GitHub.com* trusted build system to the project, install the [SignPath GitHub App](https://github.com/apps/signpath) on this repository, and create artifact configurations with the slugs `launcher`, `native`, and `installer` from `.signpath/artifact-configurations/`.
 3. In GitHub repository settings add the secret `SIGNPATH_API_TOKEN` (a submitter's API token) and the variable `SIGNPATH_ORGANIZATION_ID`. Override `SIGNPATH_PROJECT_SLUG` (default `InferBridge`) or `SIGNPATH_SIGNING_POLICY_SLUG` (default `release-signing`) only if SignPath assigned different slugs.
-4. Run **Release build** with *sign* checked and approve both signing requests in SignPath.
+4. Run **Release build** with *sign* checked and approve all three signing requests in SignPath.
 
 Locally, the same phases work with any external signer: run each phase with identical arguments in the same checkout and replace the file between phases.
 
@@ -127,7 +128,7 @@ The release build:
 
 A signing, timestamp, or verification failure blocks a signed release. The ZIP archive itself is not Authenticode-signed. Its manifest records whether the contained launcher signature was verified, and users must still verify the ZIP SHA-256 checksum.
 
-`/tr <url> /td SHA256` applies an RFC 3161 timestamp. Before publishing a release whose metadata claims signatures, `publish_release.ps1` independently runs `signtool verify /pa /all` against the installer and against the launcher extracted from the portable ZIP. A missing SignTool, partial claim, manifest/summary disagreement, missing artifact, malformed ZIP, or nonzero verification result blocks publication.
+`/tr <url> /td SHA256` applies an RFC 3161 timestamp. Before publishing a release whose metadata claims signatures, `publish_release.ps1` independently runs `signtool verify /pa /all` against the installer, the engine launcher and the native WinUI launcher extracted from the portable ZIP. A missing SignTool, partial claim, manifest/summary disagreement, missing artifact, malformed ZIP, or nonzero verification result blocks publication.
 
 Stable publication currently runs the signing verifier **without** `--require-signed`, so genuinely unsigned artifacts with consistent unsigned manifest and summary claims may be published. The optional `--require-signed` flag exists for a future signed-only policy but is **not** enabled by `scripts/publish_release.ps1`. An artifact that claims to be signed is still rejected unless both signatures pass independent verification.
 

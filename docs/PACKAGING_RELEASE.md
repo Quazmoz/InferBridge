@@ -10,7 +10,7 @@ Use the production release entry point with the canonical version from `app/vers
 
 Release timing telemetry is written continuously to `build\release\release-timings.json`. A non-secret snapshot is also included in release artifacts as `InferBridge-<version>-release-timings.json`, covered by artifact scanning, checksums, and publication verification.
 
-Portable packaging runs the portable-mode smoke test directly against the already validated PyInstaller distribution after temporarily adding portable-only files. The ZIP is then created directly with the versioned top-level directory and structurally verified without copying or extracting the complete distribution. The installer is compiled first from the unmodified installed-mode distribution.
+Portable packaging runs the portable-mode smoke test directly against the already validated PyInstaller distribution after temporarily adding portable-only files. The ZIP is then created directly with the versioned top-level directory and structurally verified without copying or extracting the complete distribution. The installer is compiled first from the unmodified installed-mode distribution. The build now publishes the self-contained native WinUI 3 client into `native\` before compiling the Inno Setup installer with `/DNativeFrontend`. Both the installer and portable ZIP include the native app; the root `InferBridge.exe` remains the headless engine/tray and opens the web UI when launched directly. Building requires the .NET 10 SDK.
 
 See:
 
