@@ -5,7 +5,9 @@
     Title="InferBridge">
     <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
         <NavigationView x:Name="MainNavigation"
-                        PaneDisplayMode="Left"
+                        PaneDisplayMode="Auto"
+                        CompactModeThresholdWidth="720"
+                        ExpandedModeThresholdWidth="1050"
                         IsBackButtonVisible="Collapsed"
                         IsSettingsVisible="False"
                         OpenPaneLength="220"
@@ -15,7 +17,8 @@
                 <NavigationViewItem Icon="Library" Content="Model library" Tag="models" />
                 <NavigationViewItem Icon="Find" Content="Hugging Face" Tag="huggingface" />
                 <NavigationViewItem Icon="Home" Content="Engine" Tag="overview" />
-                <NavigationViewItem Icon="Setting" Content="Operations &amp; diagnostics" Tag="operations" />
+                <NavigationViewItem Icon="Setting" Content="Operations" Tag="operations"
+                                    ToolTipService.ToolTip="Operations &amp; diagnostics" />
                 <NavigationViewItem Icon="Preview" Content="Benchmark Lab" Tag="benchmark" />
                 <NavigationViewItem Icon="Repair" Content="System Doctor" Tag="doctor" />
                 <NavigationViewItem Icon="Save" Content="Storage &amp; cache" Tag="storage" />
@@ -263,64 +266,89 @@
                                    TextWrapping="Wrap" Opacity="0.8" />
                     </StackPanel>
                 </ScrollViewer>
+                <!-- Restrict chrome height so the model inventory stays usable in small windows. -->
                 <Grid x:Name="ModelsPanel" Visibility="Collapsed" RowSpacing="12">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <StackPanel Spacing="8">
-                        <TextBlock Text="Model library" FontSize="28" FontWeight="SemiBold" />
-                        <TextBlock x:Name="ModelsSummary" TextWrapping="Wrap" />
-                        <InfoBar x:Name="ModelsInfo" Title="Model library" IsOpen="False" IsClosable="True" />
-                    </StackPanel>
+                    <ScrollViewer MaxHeight="160" VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Model library" FontSize="28" FontWeight="SemiBold" />
+                            <TextBlock x:Name="ModelsSummary" TextWrapping="Wrap" />
+                            <InfoBar x:Name="ModelsInfo" Title="Model library" IsOpen="False"
+                                     IsClosable="True" />
+                        </StackPanel>
+                    </ScrollViewer>
                     <ListView x:Name="ModelsList" Grid.Row="1"
                               SelectionMode="Single"
                               SelectionChanged="ModelsList_SelectionChanged"
+                              HorizontalContentAlignment="Stretch"
                               AutomationProperties.Name="Engine model inventory" />
-                    <StackPanel Grid.Row="2" Spacing="8">
-                        <ComboBox x:Name="LibraryDevicePicker" Header="Inference device"
-                                  SelectedIndex="0" MinWidth="215" MaxWidth="280"
-                                  HorizontalAlignment="Left"
-                                  AutomationProperties.Name="Inference device for model loading">
-                            <ComboBoxItem Content="Automatic (engine default)" Tag="" />
-                            <ComboBoxItem Content="NPU" Tag="NPU" />
-                            <ComboBoxItem Content="GPU" Tag="GPU" />
-                            <ComboBoxItem Content="CPU" Tag="CPU" />
-                        </ComboBox>
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                        <Button x:Name="DownloadButton" Content="Download and load" IsEnabled="False"
-                                Style="{StaticResource AccentButtonStyle}"
-                                Click="DownloadButton_Click" />
-                        <Button x:Name="LoadButton" Content="Load" IsEnabled="False"
-                                Click="LoadButton_Click" />
-                        <Button x:Name="UnloadButton" Content="Unload" IsEnabled="False"
-                                Click="UnloadButton_Click" />
-                        <Button x:Name="DeleteButton" Content="Delete local files" IsEnabled="False"
-                                Click="DeleteButton_Click" />
-                        <Button Content="Refresh" Click="RefreshButton_Click"
-                                AutomationProperties.Name="Refresh models" />
-                        </StackPanel>
-                        <TextBlock x:Name="ModelPreparationSummary" Text="Select a model to inspect preparation."
-                                   IsTextSelectionEnabled="True" TextWrapping="Wrap"
-                                   AutomationProperties.LiveSetting="Polite" />
-                        <ScrollViewer MaxHeight="108" VerticalScrollBarVisibility="Auto"
-                                      HorizontalScrollBarVisibility="Disabled">
+                    <ScrollViewer Grid.Row="2" MaxHeight="208"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  AutomationProperties.Name="Selected model actions and details">
+                        <StackPanel Spacing="8">
+                            <ComboBox x:Name="LibraryDevicePicker" Header="Inference device"
+                                      SelectedIndex="0" MinWidth="215" MaxWidth="280"
+                                      HorizontalAlignment="Left"
+                                      AutomationProperties.Name="Inference device for model loading">
+                                <ComboBoxItem Content="Automatic (engine default)" Tag="" />
+                                <ComboBoxItem Content="NPU" Tag="NPU" />
+                                <ComboBoxItem Content="GPU" Tag="GPU" />
+                                <ComboBoxItem Content="CPU" Tag="CPU" />
+                            </ComboBox>
+                            <Grid RowSpacing="8" ColumnSpacing="8">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Button x:Name="DownloadButton" Grid.Row="0" Grid.Column="0"
+                                        Content="Download and load" IsEnabled="False"
+                                        HorizontalAlignment="Stretch"
+                                        Style="{StaticResource AccentButtonStyle}"
+                                        Click="DownloadButton_Click" />
+                                <Button x:Name="LoadButton" Grid.Row="0" Grid.Column="1"
+                                        Content="Load" HorizontalAlignment="Stretch"
+                                        IsEnabled="False" Click="LoadButton_Click" />
+                                <Button x:Name="UnloadButton" Grid.Row="1" Grid.Column="0"
+                                        Content="Unload" HorizontalAlignment="Stretch"
+                                        IsEnabled="False" Click="UnloadButton_Click" />
+                                <Button x:Name="DeleteButton" Grid.Row="1" Grid.Column="1"
+                                        Content="Delete local files" HorizontalAlignment="Stretch"
+                                        IsEnabled="False" Click="DeleteButton_Click" />
+                                <Button Grid.Row="2" Grid.Column="0" Content="Refresh"
+                                        HorizontalAlignment="Stretch" Click="RefreshButton_Click"
+                                        AutomationProperties.Name="Refresh models" />
+                            </Grid>
+                            <TextBlock x:Name="ModelPreparationSummary"
+                                       Text="Select a model to inspect preparation."
+                                       IsTextSelectionEnabled="True" TextWrapping="Wrap"
+                                       AutomationProperties.LiveSetting="Polite" />
                             <TextBlock x:Name="ModelDetailsSummary" TextWrapping="Wrap"
                                        IsTextSelectionEnabled="True"
                                        AutomationProperties.Name="Selected model configuration and runtime details" />
-                        </ScrollViewer>
-                        <ProgressBar x:Name="ModelPreparationPercent" Minimum="0" Maximum="100"
-                                     Value="0" Visibility="Collapsed" Height="6" />
-                        <Button x:Name="CancelPreparationButton" Content="Cancel current preparation"
-                                IsEnabled="False" HorizontalAlignment="Left"
-                                Click="CancelPreparationButton_Click"
-                                AutomationProperties.Name="Cancel selected model preparation" />
-                        <Button x:Name="RecoverButton" Content="Review interrupted preparation"
-                                HorizontalAlignment="Left" IsEnabled="False"
-                                Click="RecoverButton_Click"
-                                AutomationProperties.Name="Inspect and recover selected model" />
-                    </StackPanel>
+                            <ProgressBar x:Name="ModelPreparationPercent" Minimum="0"
+                                         Maximum="100" Value="0" Visibility="Collapsed" Height="6" />
+                            <Button x:Name="CancelPreparationButton"
+                                    Content="Cancel current preparation"
+                                    IsEnabled="False" HorizontalAlignment="Left"
+                                    Click="CancelPreparationButton_Click"
+                                    AutomationProperties.Name="Cancel selected model preparation" />
+                            <Button x:Name="RecoverButton" Content="Review interrupted preparation"
+                                    HorizontalAlignment="Left" IsEnabled="False"
+                                    Click="RecoverButton_Click"
+                                    AutomationProperties.Name="Inspect and recover selected model" />
+                        </StackPanel>
+                    </ScrollViewer>
                 </Grid>
                 <ScrollViewer x:Name="SettingsPanel" Visibility="Collapsed">
                     <StackPanel MaxWidth="760" HorizontalAlignment="Left" Spacing="14">
