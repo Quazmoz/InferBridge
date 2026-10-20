@@ -30,13 +30,13 @@ The MSIX version is `<major>.<minor>.<patch>.0`; the Store reserves the fourth f
 ## One-time setup
 
 1. Register free at https://storedeveloper.microsoft.com as an individual developer (ID and selfie check).
-2. The reserved Partner Center identity (*Product management > Product identity*) is reflected in `packaging/msix/AppxManifest.xml` and must be supplied to the local MSIX build:
+2. Read the reserved Partner Center identity (*Product management > Product identity*) and supply those values to `build_msix.ps1`. `packaging/msix/AppxManifest.xml` uses substitution tokens, not hardcoded identity values:
    - Name `QuinnFavo.InferBridge`
    - Publisher `CN=CAC9A06A-996E-4DC7-9079-45803515E811`
    - PublisherDisplayName `Quinn Favo`
    - Store ID `9PJ0NSD01070`
 
-   These are public identifiers, not secrets. Repository variables `MSIX_IDENTITY_NAME`, `MSIX_PUBLISHER`, and `MSIX_PUBLISHER_DISPLAY_NAME` override them if the identity ever changes.
+   These are public identifiers, not secrets. The build accepts `-IdentityName`, `-Publisher`, and `-PublisherDisplayName`, or the `INFERBRIDGE_MSIX_IDENTITY_NAME`, `INFERBRIDGE_MSIX_PUBLISHER`, and `INFERBRIDGE_MSIX_PUBLISHER_DISPLAY_NAME` environment variables. Confirm all values against the current Partner Center registration.
 
 ## Each release
 
