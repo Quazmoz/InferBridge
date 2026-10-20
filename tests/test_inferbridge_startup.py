@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 
 from app import startup_registration
@@ -81,20 +83,47 @@ def test_source_desktop_startup_preserves_module_dispatch(monkeypatch, tmp_path)
     assert "-m app.desktop_launcher --startup --no-browser" in registration.expected_command
 
 
-def test_frozen_desktop_startup_uses_executable_directly(monkeypatch, tmp_path):
+def test_frozen_desktop_startup_registers_native_window_on_windows(monkeypatch, tmp_path):
+    executable = tmp_path / "InferBridge" / "InferBridge.exe"
+    native = executable.parent / "native" / "InferBridge.Native.exe"
+    monkeypatch.setattr(startup_registration.sys, "executable", str(executable))
+    monkeypatch.setattr(startup_registration.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(startup_registration, "os", SimpleNamespace(name="nt"))
+
+    registration = StartupRegistration.for_current_desktop_launcher(
+        packaged=False, backend=MemoryRegistryBackend()
+    )
+
+    assert desktop_launcher_command_prefix() == (str(executable.resolve()),)
+    assert registration.executable == native.resolve()
+    assert registration.arguments == ()
+    assert registration.expected_command == startup_command(
+        native,
+        portable=False,
+        open_browser=False,
+    )
+    assert "--startup" not in registration.expected_command
+    assert "--no-browser" not in registration.expected_command
+
+
+def test_frozen_store_package_keeps_python_engine_and_disables_run_key(monkeypatch, tmp_path):
     executable = tmp_path / "InferBridge" / "InferBridge.exe"
     monkeypatch.setattr(startup_registration.sys, "executable", str(executable))
     monkeypatch.setattr(startup_registration.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(startup_registration, "os", SimpleNamespace(name="nt"))
 
-    registration = StartupRegistration.for_current_desktop_launcher(backend=MemoryRegistryBackend())
+    registration = StartupRegistration.for_current_desktop_launcher(
+        packaged=True, backend=MemoryRegistryBackend()
+    )
 
-    assert desktop_launcher_command_prefix() == (str(executable.resolve()),)
+    assert registration.executable == executable.resolve()
     assert registration.arguments == ()
     assert registration.expected_command == startup_command(
         executable,
         portable=False,
         open_browser=False,
     )
+    assert not registration.state().enabled
 
 
 def test_source_registration_repairs_previous_bare_python_command(tmp_path):

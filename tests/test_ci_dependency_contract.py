@@ -36,10 +36,9 @@ def test_dependabot_targets_dev_with_conservative_dependency_domains() -> None:
     assert '"ruff"' in config
 
 
-def test_github_ci_stays_manual_only_to_conserve_runner_minutes() -> None:
+def test_expensive_github_qualification_and_release_workflows_remain_manual() -> None:
     for path in (
         ".github/workflows/ci.yml",
-        ".github/workflows/native-windows.yml",
         ".github/workflows/model-lifecycle-windows.yml",
         ".github/workflows/release.yml",
     ):
@@ -47,6 +46,26 @@ def test_github_ci_stays_manual_only_to_conserve_runner_minutes() -> None:
         assert "  workflow_dispatch:" in workflow
         assert "\n  push:" not in workflow
         assert "\n  pull_request:" not in workflow
+
+
+def test_native_windows_build_is_scoped_to_dev_and_heavy_candidate_is_opt_in() -> None:
+    native = _read(".github/workflows/native-windows.yml")
+
+    assert "  push:\n    branches: [dev]\n    paths:" in native
+    assert '- "windows-native/**"' in native
+    assert "  workflow_dispatch:" in native
+    assert "\n  pull_request:" not in native
+    assert "github.event_name == 'workflow_dispatch' && inputs.full_combined_candidate" in native
+
+
+def test_ruff_preflight_only_automatically_checks_dev() -> None:
+    preflight = _read(".github/workflows/ruff-preflight.yml")
+
+    assert "  push:\n    branches: [dev]" in preflight
+    assert "  pull_request:\n    branches: [dev]" in preflight
+    assert "  workflow_dispatch:" in preflight
+    assert "python -m ruff check ." in preflight
+    assert "python -m ruff format --check ." in preflight
 
 
 def test_ci_distinguishes_qualified_baseline_from_latest_canary() -> None:
