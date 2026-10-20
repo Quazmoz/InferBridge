@@ -149,6 +149,23 @@ def test_native_navigation_adapts_to_narrow_windows():
     )
 
 
+def test_native_detail_pages_do_not_scroll_horizontally_in_narrow_windows():
+    root = ET.parse(PROJECT / "MainWindow.xaml").getroot()
+    named = "{http://schemas.microsoft.com/winfx/2006/xaml}Name"
+    for page in (
+        "OverviewPanel",
+        "DoctorPanel",
+        "OperationsPanel",
+        "BenchmarkPanel",
+        "StoragePanel",
+        "HuggingFacePanel",
+        "SettingsPanel",
+    ):
+        panel = next(node for node in root.iter() if node.get(named) == page)
+        assert panel.tag == XAML + "ScrollViewer"
+        assert panel.get("HorizontalScrollBarVisibility") == "Disabled"
+
+
 def test_native_chat_and_models_use_authoritative_bounded_backend_contracts():
     client = (PROJECT / "BackendClient.cs").read_text(encoding="utf-8")
     window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
