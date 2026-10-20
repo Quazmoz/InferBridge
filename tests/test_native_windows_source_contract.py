@@ -102,6 +102,52 @@ def test_native_chat_keeps_transcript_space_when_saved_history_is_available():
     assert any(node.get(name) == "ChatInfo" for node in header.iter())
 
 
+def test_native_model_library_keeps_inventory_visible_and_actions_scrollable():
+    """A short window must not allocate unlimited height to model controls."""
+    root = ET.parse(PROJECT / "MainWindow.xaml").getroot()
+    named = "{http://schemas.microsoft.com/winfx/2006/xaml}Name"
+    models = next(node for node in root.iter() if node.get(named) == "ModelsPanel")
+    rows = models.find(XAML + "Grid.RowDefinitions")
+    assert rows is not None
+    assert [item.get("Height") for item in rows] == ["Auto", "*", "Auto"]
+    inventory = next(node for node in models.iter() if node.get(named) == "ModelsList")
+    assert inventory.tag == XAML + "ListView"
+    assert inventory.get("Grid.Row") == "1"
+    upper = next(node for node in models if node.tag == XAML + "ScrollViewer")
+    assert 0 < int(upper.get("MaxHeight")) <= 160
+    actions = next(node for node in models if node.get("Grid.Row") == "2")
+    assert actions.tag == XAML + "ScrollViewer"
+    assert 0 < int(actions.get("MaxHeight")) <= 220
+    assert actions.get("HorizontalScrollBarVisibility") == "Disabled"
+    buttons = {node.get(named) for node in actions.iter() if node.tag == XAML + "Button"}
+    assert {
+        "DownloadButton", "LoadButton", "UnloadButton", "DeleteButton",
+        "CancelPreparationButton", "RecoverButton",
+    } <= buttons
+    # Buttons must no longer sit in a single nonwrapping horizontal row.
+    main_actions = next(
+        node for node in actions.iter()
+        if node.tag == XAML + "Grid" and any(
+            child.get(named) == "DownloadButton" for child in node.iter()
+        )
+    )
+    assert main_actions.find(XAML + "Grid.ColumnDefinitions") is not None
+
+
+def test_native_navigation_adapts_to_narrow_windows():
+    root = ET.parse(PROJECT / "MainWindow.xaml").getroot()
+    navigation = root.find(".//" + XAML + "NavigationView")
+    assert navigation is not None
+    assert navigation.get("PaneDisplayMode") == "Auto"
+    assert int(navigation.get("CompactModeThresholdWidth")) < int(
+        navigation.get("ExpandedModeThresholdWidth")
+    )
+    assert any(
+        node.get("Tag") == "operations" and node.get("Content") == "Operations"
+        for node in navigation.iter()
+    )
+
+
 def test_native_chat_and_models_use_authoritative_bounded_backend_contracts():
     client = (PROJECT / "BackendClient.cs").read_text(encoding="utf-8")
     window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
@@ -170,7 +216,7 @@ def test_native_status_polling_never_reinterprets_inventory_as_user_model_change
 def test_native_backend_resolves_python_tray_data_roots_instead_of_store_only():
     client = (PROJECT / "BackendClient.cs").read_text(encoding="utf-8")
     resolver = (PROJECT / "NativeDataPaths.cs").read_text(encoding="utf-8")
-    workflow = (ROOT / ".github/workflows/native-windows.yml").read_text(encoding="utf-8")
+    builder = (ROOT / "scripts/build_release.ps1").read_text(encoding="utf-8")
 
     assert "NativeDataPaths.ResolveMetadataFile()" in client
     assert "GetCurrentPackageFullName" in resolver
@@ -179,7 +225,7 @@ def test_native_backend_resolves_python_tray_data_roots_instead_of_store_only():
     assert "INFERBRIDGE_NATIVE_DATA_DIR" in resolver
     assert "OV_LLM_DATA_DIR" in resolver
     assert "Path.IsPathFullyQualified(requested)" in resolver
-    assert "InferBridge.Native.ContractTests.csproj" in workflow
+    assert "InferBridge.Native.ContractTests.csproj" in builder
 
 
 def test_native_generation_controls_use_winui_and_existing_chat_contract():
