@@ -120,17 +120,18 @@ def test_native_model_library_keeps_inventory_visible_and_actions_scrollable():
     assert 0 < int(actions.get("MaxHeight")) <= 220
     assert actions.get("HorizontalScrollBarVisibility") == "Disabled"
     buttons = {node.get(named) for node in actions.iter() if node.tag == XAML + "Button"}
-    assert {
-        "DownloadButton", "LoadButton", "UnloadButton", "DeleteButton",
-        "CancelPreparationButton", "RecoverButton",
-    } <= buttons
+    for control in (
+        "DownloadButton",
+        "LoadButton",
+        "UnloadButton",
+        "DeleteButton",
+        "CancelPreparationButton",
+        "RecoverButton",
+    ):
+        assert control in buttons
     # Buttons must no longer sit in a single nonwrapping horizontal row.
-    main_actions = next(
-        node for node in actions.iter()
-        if node.tag == XAML + "Grid" and any(
-            child.get(named) == "DownloadButton" for child in node.iter()
-        )
-    )
+    main_actions = next(node for node in actions.iter() if node.tag == XAML + "Grid")
+    assert any(node.get(named) == "DownloadButton" for node in main_actions.iter())
     assert main_actions.find(XAML + "Grid.ColumnDefinitions") is not None
 
 
