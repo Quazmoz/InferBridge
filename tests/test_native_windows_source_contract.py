@@ -62,6 +62,40 @@ def test_native_chat_uses_real_accessible_xaml_controls():
     assert not any("WebView" in node.tag for node in root.iter())
 
 
+
+def test_native_chat_keeps_transcript_space_when_saved_history_is_available():
+    """Saved-history management must not consume the chat viewport at windowed sizes."""
+    root = ET.parse(PROJECT / "MainWindow.xaml").getroot()
+    xaml_ns = "{http://schemas.microsoft.com/winfx/2006/xaml}"
+    name = xaml_ns + "Name"
+    row = "{http://schemas.microsoft.com/winfx/2006/xaml/presentation}Grid.Row"
+    chat = next(node for node in root.iter() if node.get(name) == "ChatPanel")
+    rows = chat.find(XAML + "Grid.RowDefinitions")
+    assert rows is not None
+    assert [item.get("Height") for item in rows] == ["Auto", "*", "Auto"]
+
+    header = next(child for child in chat if child.tag == XAML + "StackPanel"
+                  and child.get(row) == "0")
+    transcript = next(child for child in chat if child.get(name) == "ChatHistory")
+    composer = next(child for child in chat if child.tag == XAML + "StackPanel"
+                    and child.get(row) == "2")
+    assert transcript.tag == XAML + "ListView"
+    assert transcript.get(row) == "1"
+    assert transcript.get("MinHeight") is None
+    assert any(node.get(name) == "PromptBox" for node in composer.iter())
+    assert any(node.get(name) == "SendButton" for node in composer.iter())
+
+    # Flyouts overlay the transcript rather than enlarging the auto-sized header.
+    flyout = header.find(".//" + XAML + "Button.Flyout/" + XAML + "Flyout")
+    assert flyout is not None
+    for control in ("SavedChatsSearch", "SavedChatsPicker", "SaveHistoryToggle",
+                    "RenameSavedChatButton", "DeleteSavedChatButton"):
+        assert any(node.get(name) == control for node in flyout.iter())
+    assert not any(node.get(name) == "SavedChatsSearch"
+                   for node in composer.iter())
+    assert any(node.get(name) == "ChatModelPicker" for node in header.iter())
+    assert any(node.get(name) == "ChatInfo" for node in header.iter())
+
 def test_native_chat_and_models_use_authoritative_bounded_backend_contracts():
     client = (PROJECT / "BackendClient.cs").read_text(encoding="utf-8")
     window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
