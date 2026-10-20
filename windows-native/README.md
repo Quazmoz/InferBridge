@@ -153,6 +153,35 @@ the latter checks package installation/identity, native launch and relaunch,
 and can optionally run the Windows App Certification Kit. These installed
 checks are **not** part of the automatic Azure unsigned EXE/ZIP pipeline.
 
+## Windowed UI acceptance check
+
+After manually queuing the Azure DevOps build on `dev`, install or extract the
+unsigned evaluation artifact and use a real Windows desktop with an existing
+local engine. Check both the default and smallest permitted window sizes, at
+100% and elevated display scaling when available:
+
+1. **Chat:** send a message, then resize the window while streaming. The
+   conversation list must stay visible and scroll independently, with Send,
+   Cancel, model selection and the composer accessible. Open **Saved chats**
+   to search, restore, rename and delete a saved conversation; closing the
+   flyout must return to the same transcript.
+2. **Model library:** select a model and verify its inventory remains visible
+   while the action/details section scrolls. Download/Load/Unload/Delete,
+   Refresh, cancellation, and recovery must remain reachable without a
+   horizontal scrollbar.
+3. **Navigation and other screens:** collapse and expand the window; the
+   navigation pane should adapt automatically. Engine, Hugging Face, Benchmark
+   Lab, System Doctor, Operations, Storage and Settings should scroll vertically
+   without hiding controls or requiring sideways scrolling.
+4. **High DPI and restart:** repeat the minimum-size and saved-conversation
+   tests after changing Windows display scaling, then relaunch the native app.
+   The selected model/history controls must still behave normally.
+
+The XAML structural regression tests prevent the known layout classes from
+returning, but **do not constitute pixel-level runtime or accessibility
+qualification**. Azure's unsigned installer/ZIP job also does not run the
+installed MSIX certification kit.
+
 ## Packaging
 
 For a local **EXE installer** that opens the native app and bundles the engine,
