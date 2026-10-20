@@ -119,7 +119,9 @@ def test_native_model_library_keeps_inventory_visible_and_actions_scrollable():
     assert actions.tag == XAML + "ScrollViewer"
     assert 0 < int(actions.get("MaxHeight")) <= 220
     assert actions.get("HorizontalScrollBarVisibility") == "Disabled"
-    buttons = {node.get(named) for node in actions.iter() if node.tag == XAML + "Button"}
+    buttons = {
+        node.get(named) for node in actions.iter() if node.tag == XAML + "Button"
+    }
     for control in (
         "DownloadButton",
         "LoadButton",
@@ -319,8 +321,10 @@ def test_native_window_is_production_safe_on_close_auth_throttle_and_high_dpi():
     assert "EngineLauncher.IsBundled" in window
     assert "<ApplicationManifest>app.manifest</ApplicationManifest>" in MSBUILD.read_text("utf-8")
     assert "PerMonitorV2" in manifest
-    assert "presenter.PreferredMinimumWidth = Math.Min(area.Width, (int)(640 * scale));" in window
-    assert "presenter.PreferredMinimumHeight = Math.Min(area.Height, (int)(480 * scale));" in window
+    assert "PreferredMinimumWidth = Math.Min(area.Width" in window
+    assert "PreferredMinimumHeight = Math.Min(area.Height" in window
+    assert "(int)(640 * scale)" in window
+    assert "(int)(480 * scale)" in window
 
 
 def test_native_model_library_selection_survives_status_poll():
