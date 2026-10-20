@@ -301,6 +301,8 @@ def test_native_window_is_production_safe_on_close_auth_throttle_and_high_dpi():
     assert "EngineLauncher.IsBundled" in window
     assert "<ApplicationManifest>app.manifest</ApplicationManifest>" in MSBUILD.read_text("utf-8")
     assert "PerMonitorV2" in manifest
+    assert "presenter.PreferredMinimumWidth = Math.Min(area.Width, (int)(640 * scale));" in window
+    assert "presenter.PreferredMinimumHeight = Math.Min(area.Height, (int)(480 * scale));" in window
 
 
 def test_native_model_library_selection_survives_status_poll():
