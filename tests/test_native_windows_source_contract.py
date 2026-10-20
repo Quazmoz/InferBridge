@@ -75,15 +75,11 @@ def test_native_chat_keeps_transcript_space_when_saved_history_is_available():
     assert [item.get("Height") for item in rows] == ["Auto", "*", "Auto"]
 
     header = next(
-        child
-        for child in chat
-        if child.tag == XAML + "StackPanel" and child.get(row) == "0"
+        child for child in chat if child.tag == XAML + "StackPanel" and child.get(row) == "0"
     )
     transcript = next(child for child in chat if child.get(name) == "ChatHistory")
     composer = next(
-        child
-        for child in chat
-        if child.tag == XAML + "StackPanel" and child.get(row) == "2"
+        child for child in chat if child.tag == XAML + "StackPanel" and child.get(row) == "2"
     )
     assert transcript.tag == XAML + "ListView"
     assert transcript.get(row) == "1"
