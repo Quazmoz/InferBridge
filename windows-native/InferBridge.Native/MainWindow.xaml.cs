@@ -81,15 +81,17 @@ public sealed partial class MainWindow : Window
                 InfoBarSeverity.Warning);
         }
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "InferBridge.ico"));
-        if (AppWindow.Presenter is OverlappedPresenter presenter)
-        {
-            presenter.PreferredMinimumWidth = 640;
-            presenter.PreferredMinimumHeight = 480;
-        }
-        // The OS default size clips the library actions; open at a comfortable
-        // size for this monitor's DPI, centered within its work area.
+        // AppWindow minimum dimensions are physical pixels, while XAML layout
+        // uses DIPs. Scale the minimum as well as the initial size to prevent
+        // high-DPI users from resizing below a usable logical viewport.
         RectInt32 area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
         double scale = GetDpiForWindow(WindowNative.GetWindowHandle(this)) / 96.0;
+        if (AppWindow.Presenter is OverlappedPresenter presenter)
+        {
+            presenter.PreferredMinimumWidth = Math.Min(area.Width, (int)(640 * scale));
+            presenter.PreferredMinimumHeight = Math.Min(area.Height, (int)(480 * scale));
+        }
+        // Open at a comfortable size for this monitor's DPI, centered within its work area.
         int width = Math.Min((int)(1100 * scale), area.Width);
         int height = Math.Min((int)(760 * scale), area.Height);
         AppWindow.MoveAndResize(new RectInt32(
