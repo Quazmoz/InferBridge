@@ -51,7 +51,7 @@ See [the maintained capability and Windows-launch qualification matrix](../docs/
 | Model library and download of catalog models | Implemented | Implemented | Native uses engine convert and lifecycle routes; gated access applies to both |
 | Live preparation stage, percentage and guarded cancellation | Implemented | Implemented in native controls | Uses `/v1/models/status` and identity-bound `/v1/models/cancel`; no native conversion queue; Windows qualification pending |
 | Selected model configuration and active device details | Implemented | Implemented in native controls | Structured engine metadata; unknown fields safely hidden; device preference is not hardware proof |
-| Interrupted model preparation recovery | Implemented | Implemented | Engine recovery ID and action rechecks; Windows CI qualification pending |
+| Interrupted model preparation recovery | Implemented | Implemented | Engine recovery ID and action rechecks; real Windows validation pending |
 | Storage/cache inventory and guarded cleanup | Implemented | Implemented | Engine owns destructive cleanup; Windows CI qualification pending |
 | Hugging Face account status/token verification/secure removal | Implemented | Implemented in native controls | Existing backend owns credentials; real HF account/DPAPI still need testing |
 | Hugging Face remote model search | Implemented | Implemented in native controls | Search results are not evidence of compatibility, license approval, local download or load |
@@ -65,7 +65,7 @@ See [the maintained capability and Windows-launch qualification matrix](../docs/
 | Engine-wide persistent settings, context budget, network/API and advanced controls | WebGUI varies | WebGUI-only | No unsupported native controls or duplicate configuration store |
 | Engine HF search/access and model queue | Backend-supported | Exposed by both where above | Gated publisher approval, hardware and actual conversion require live verification |
 
-**Qualification is outstanding** for the newest native account/search, custom-model registration, lifecycle progress/cancellation, recovery, and storage commits: the manual Windows workflow must successfully run on their final SHA. Mocked C# HTTP contracts and Python/XAML source tests are not substitutes for installing and exercising the WinUI app on Windows. Neither frontend includes a second inference engine or embeds the other.
+**Qualification is outstanding** for the newest native account/search, custom-model registration, lifecycle progress/cancellation, recovery, and storage commits: the Azure manual build and real Windows tests must run on their final SHA. Mocked C# HTTP contracts and Python/XAML source tests are not substitutes for installing and exercising the WinUI app on Windows. Neither frontend includes a second inference engine or embeds the other.
 
 **Native custom-model limitations:** the wizard deliberately excludes `trust_remote_code`, alternate conversion group-size/ratio/symmetric tuning, cancellation when the backend marks an operation non-cancellable, and compatibility claims. The WebGUI remains available for advanced conversion options. Re-selecting a previously queued model should happen in the engine-owned Model library, not by repeating the custom registration POST.
 
@@ -145,13 +145,13 @@ dotnet run --project .\windows-native\InferBridge.Native.ContractTests\InferBrid
 The Hugging Face contract cases exercise authenticated account requests, invalid and environment-managed tokens, token rejection redaction, bounded search metadata, and custom-model queue requests including device checks, duplicate IDs, gated access, cancellation, timeout-after-success and malformed responses with a mocked transport. They do not contact Hugging Face or verify DPAPI persistence.
 
 `tests/test_native_windows_source_contract.py` guards the XAML controls and
-key safeguards. The **Native Windows frontend** workflow now runs on manual
-dispatch rather than every `dev` push. Its standard run builds and publishes a
-Windows evaluation artifact. Dispatched with *full_combined_candidate*, it also
-builds the Store MSIX and runs
-`scripts/smoke_test_msix.ps1` (install, package-identity launch, native
-window, verified engine session, single-window relaunch, screenshots) and the
-Windows App Certification Kit.
+key safeguards. Builds now run only through the manually queued Azure DevOps
+pipeline (`azure-pipelines.yml`), which invokes `scripts/build_release.ps1`
+and runs the native .NET contract harness. To qualify a Store MSIX separately,
+run `scripts/build_msix.ps1` and `scripts/smoke_test_msix.ps1` on Windows;
+the latter checks package installation/identity, native launch and relaunch,
+and can optionally run the Windows App Certification Kit. These installed
+checks are **not** part of the automatic Azure unsigned EXE/ZIP pipeline.
 
 ## Packaging
 
