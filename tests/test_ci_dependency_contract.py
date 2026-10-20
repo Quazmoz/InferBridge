@@ -36,11 +36,19 @@ def test_dependabot_targets_dev_with_conservative_dependency_domains() -> None:
     assert '"ruff"' in config
 
 
-def test_expensive_github_qualification_and_release_workflows_remain_manual() -> None:
+def test_github_hosted_build_workflows_are_retired() -> None:
+    # Manual Azure DevOps is the sole packaged Windows/release build path.
+    for path in (
+        ".github/workflows/native-windows.yml",
+        ".github/workflows/release.yml",
+        ".github/workflows/ruff-preflight.yml",
+    ):
+        assert not (ROOT / path).exists()
+
+    # Remaining GitHub workflows are manual-only; pushes never start a job.
     for path in (
         ".github/workflows/ci.yml",
         ".github/workflows/model-lifecycle-windows.yml",
-        ".github/workflows/release.yml",
     ):
         workflow = _read(path)
         assert "  workflow_dispatch:" in workflow
@@ -48,24 +56,16 @@ def test_expensive_github_qualification_and_release_workflows_remain_manual() ->
         assert "\n  pull_request:" not in workflow
 
 
-def test_native_windows_build_is_scoped_to_dev_and_heavy_candidate_is_opt_in() -> None:
-    native = _read(".github/workflows/native-windows.yml")
-
-    assert "  push:\n    branches: [dev]\n    paths:" in native
-    assert '- "windows-native/**"' in native
-    assert "  workflow_dispatch:" in native
-    assert "\n  pull_request:" not in native
-    assert "github.event_name == 'workflow_dispatch' && inputs.full_combined_candidate" in native
-
-
-def test_ruff_preflight_only_automatically_checks_dev() -> None:
-    preflight = _read(".github/workflows/ruff-preflight.yml")
-
-    assert "  push:\n    branches: [dev]" in preflight
-    assert "  pull_request:\n    branches: [dev]" in preflight
-    assert "  workflow_dispatch:" in preflight
-    assert "python -m ruff check ." in preflight
-    assert "python -m ruff format --check ." in preflight
+def test_manual_azure_build_keeps_native_and_python_qualification() -> None:
+    pipeline = _read("azure-pipelines.yml")
+    builder = _read("scripts/build_release.ps1")
+    assert "trigger: none\npr: none" in pipeline
+    assert "BUILD_REASON -ne 'Manual'" in pipeline
+    assert "scripts/build_release.ps1" in pipeline
+    assert "Invoke-Checked \"Pytest\"" in builder
+    assert "dotnet publish windows-native/InferBridge.Native/InferBridge.Native.csproj" in builder
+    assert "InferBridge.Native.ContractTests.csproj" in builder
+    assert "-SkipTests" not in pipeline
 
 
 def test_ci_distinguishes_qualified_baseline_from_latest_canary() -> None:
@@ -110,8 +110,7 @@ def test_azure_candidate_uses_python_312_and_fast_fails_pinned_quality_gates() -
     assert fast_fail < pipeline.index("displayName: 'Install Inno Setup'")
     assert fast_fail < pipeline.index("displayName: 'Prepare qualified release dependencies'")
 
-    # The Azure candidate runtime must not silently migrate the independently
-    # qualified GitHub Windows workflows.
+    # Retained manual GitHub CI remains a separate qualification profile.
     github_ci = _read(".github/workflows/ci.yml")
     assert "Qualified Release Baseline (Windows / Python 3.11)" in github_ci
 
