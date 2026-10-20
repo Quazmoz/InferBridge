@@ -25,7 +25,8 @@
                 <NavigationViewItem x:Name="SettingsNavigationItem" Icon="Setting" Content="Settings" Tag="settings" />
             </NavigationView.MenuItems>
             <Grid Padding="24,12,24,20">
-                <ScrollViewer x:Name="OverviewPanel" Visibility="Collapsed">
+                <ScrollViewer x:Name="OverviewPanel" Visibility="Collapsed"
+                              HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Spacing="16" MaxWidth="700" HorizontalAlignment="Left">
                         <TextBlock Text="Your local AI engine" FontSize="28"
                                    FontWeight="SemiBold" TextWrapping="Wrap" />
@@ -71,7 +72,8 @@
                         </InfoBar>
                     </StackPanel>
                 </ScrollViewer>
-                <ScrollViewer x:Name="DoctorPanel" Visibility="Collapsed">
+                <ScrollViewer x:Name="DoctorPanel" Visibility="Collapsed"
+                              HorizontalScrollBarVisibility="Disabled">
                     <StackPanel MaxWidth="800" HorizontalAlignment="Left" Spacing="14">
                         <TextBlock Text="System Doctor" FontSize="28" FontWeight="SemiBold" />
                         <TextBlock Text="Run read-only checks using the same engine and device endpoints as the web GUI. Results reflect this machine, not a separate native inference engine."
@@ -108,7 +110,8 @@
                                    TextWrapping="Wrap" Opacity="0.8" />
                     </StackPanel>
                 </ScrollViewer>
-                <ScrollViewer x:Name="OperationsPanel" Visibility="Collapsed">
+                <ScrollViewer x:Name="OperationsPanel" Visibility="Collapsed"
+                              HorizontalScrollBarVisibility="Disabled">
                     <StackPanel MaxWidth="760" HorizontalAlignment="Left" Spacing="16">
                         <TextBlock Text="Operations &amp; diagnostics" FontSize="28"
                                    FontWeight="SemiBold" TextWrapping="Wrap" />
@@ -150,7 +153,8 @@
                                    AutomationProperties.LiveSetting="Polite" />
                     </StackPanel>
                 </ScrollViewer>
-                <ScrollViewer x:Name="BenchmarkPanel" Visibility="Collapsed">
+                <ScrollViewer x:Name="BenchmarkPanel" Visibility="Collapsed"
+                              HorizontalScrollBarVisibility="Disabled">
                     <StackPanel MaxWidth="840" HorizontalAlignment="Stretch" Spacing="14">
                         <TextBlock Text="Benchmark Lab" FontSize="28" FontWeight="SemiBold" />
                         <TextBlock Text="Review local benchmark runs and compare compatible measurements. The Python/OpenVINO engine owns every measurement and the saved history."
@@ -190,7 +194,8 @@
                                    TextWrapping="Wrap" Opacity="0.8" />
                     </StackPanel>
                 </ScrollViewer>
-                <ScrollViewer x:Name="StoragePanel" Visibility="Collapsed">
+                <ScrollViewer x:Name="StoragePanel" Visibility="Collapsed"
+                              HorizontalScrollBarVisibility="Disabled">
                     <StackPanel MaxWidth="800" HorizontalAlignment="Left" Spacing="14">
                         <TextBlock Text="Storage &amp; cache" FontSize="28"
                                    FontWeight="SemiBold" TextWrapping="Wrap" />
@@ -216,7 +221,8 @@
                                    TextWrapping="Wrap" Opacity="0.8" />
                     </StackPanel>
                 </ScrollViewer>
-                <ScrollViewer x:Name="HuggingFacePanel" Visibility="Collapsed">
+                <ScrollViewer x:Name="HuggingFacePanel" Visibility="Collapsed"
+                              HorizontalScrollBarVisibility="Disabled">
                     <StackPanel MaxWidth="800" HorizontalAlignment="Left" Spacing="14">
                         <TextBlock Text="Hugging Face" FontSize="28" FontWeight="SemiBold" />
                         <TextBlock Text="Connect your account and discover models through the existing InferBridge engine. Search results are not hardware compatibility or model-license approvals."
@@ -350,7 +356,8 @@
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>
-                <ScrollViewer x:Name="SettingsPanel" Visibility="Collapsed">
+                <ScrollViewer x:Name="SettingsPanel" Visibility="Collapsed"
+                              HorizontalScrollBarVisibility="Disabled">
                     <StackPanel MaxWidth="760" HorizontalAlignment="Left" Spacing="14">
                         <TextBlock Text="Settings" FontSize="28" FontWeight="SemiBold" />
                         <TextBlock Text="Inference for this conversation" FontSize="18" FontWeight="SemiBold" />
