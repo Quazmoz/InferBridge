@@ -30,7 +30,7 @@ The MSIX version is `<major>.<minor>.<patch>.0`; the Store reserves the fourth f
 ## One-time setup
 
 1. Register free at https://storedeveloper.microsoft.com as an individual developer (ID and selfie check).
-2. The reserved Partner Center identity (*Product management > Product identity*) is built into `release.yml`:
+2. The reserved Partner Center identity (*Product management > Product identity*) is reflected in `packaging/msix/AppxManifest.xml` and must be supplied to the local MSIX build:
    - Name `QuinnFavo.InferBridge`
    - Publisher `CN=CAC9A06A-996E-4DC7-9079-45803515E811`
    - PublisherDisplayName `Quinn Favo`
@@ -40,26 +40,36 @@ The MSIX version is `<major>.<minor>.<patch>.0`; the Store reserves the fourth f
 
 ## Each release
 
-1. On `dev`, run the **Native Windows frontend** workflow manually with *full_combined_candidate* checked. It builds the real Store layout, installs it with a temporary signature, launches it through its package identity, checks the native window, engine handoff and single-window relaunch, and runs the Windows App Certification Kit. Download `inferbridge-msix-installed-evidence` (screenshots and `wack-report.xml`) and review it.
-2. Run **Release build** (`.github/workflows/release.yml`) with *msix* checked. SignPath signing is independent; uncheck *sign* if it is not set up yet.
-3. Download the `InferBridge-<version>-msix` artifact.
-4. In Partner Center, create a submission, upload the `.msix` under *Packages*, and complete the listing, age rating, and a privacy policy URL (the privacy statement in [CODE_SIGNING.md](CODE_SIGNING.md#code-signing-policy) works). In the certification notes, tell testers that the first model download needs an internet connection and several minutes.
-5. The MSIX requests only `runFullTrust` for its desktop process; if an older submission lists `unvirtualizedResources`, remove it.
+1. Manually queue the [Azure DevOps Windows pipeline](../azure-pipelines.yml)
+   for the intended reviewed source revision. Its unsigned installer and
+   portable ZIP are **not** a Store MSIX.
+2. On a Windows machine with the Windows SDK, .NET 10 SDK and signing/certification
+   test prerequisites, build a Store candidate from the **same source revision**.
+   Use the Partner Center identity parameters when building the MSIX.
+3. Run `scripts/smoke_test_msix.ps1` against the real candidate to verify
+   installed package identity, foreground window, engine handoff, and relaunch.
+   Add `-RunCertificationKit` to execute WACK and review the evidence.
+4. Only after a candidate passes installation and certification, upload the
+   unsigned Store package through Partner Center. Complete the listing,
+   age rating, and privacy policy URL; explain that first model download
+   requires an internet connection and may take several minutes.
+5. The MSIX requests only `runFullTrust`. If an older submission lists
+   `unvirtualizedResources`, remove it.
 
-Local build on Windows 11 with the Windows SDK and the .NET 10 SDK:
+Local example (run from a clean, reviewed checkout; substitute the correct
+version and registered Partner Center identity):
 
 ```powershell
-.\scripts\build_release.ps1 -Unsigned -SkipPortable -MockSmokeTest
+.\scripts\build_release.ps1 -Version <version> -Channel stable -Unsigned -SkipPortable -MockSmokeTest
 .\scripts\build_msix.ps1 -Version <version> -IdentityName <name> -Publisher "CN=..." -PublisherDisplayName "<name>"
+.\scripts\smoke_test_msix.ps1 -Package <path-to-candidate.msix> -EvidenceDirectory artifacts\msix-smoke -RunCertificationKit
 ```
 
-To sideload-test before submitting, run the same smoke test CI uses from an **elevated Windows PowerShell 5.1** with InferBridge closed. It signs a copy with a temporary certificate, installs, verifies, then uninstalls and removes the certificate; your data folder is only read:
-
-```powershell
-.\scripts\smoke_test_msix.ps1 -Package artifacts\release-<version>\InferBridge-<version>-windows-x64.msix -EvidenceDirectory artifacts\msix-smoke
-```
-
-Add `-RunCertificationKit` to also run WACK. The Store submission itself must stay unsigned.
+The sideload smoke test requires an elevated Windows PowerShell 5.1 session
+with InferBridge closed; it uses a temporary test certificate and removes
+the package and certificate afterward. The Store submission must stay unsigned.
+No GitHub Actions workflow builds or qualifies this package automatically,
+and the Azure unsigned EXE/ZIP job does not replace the installed MSIX test.
 
 ## Storage and uninstall disclosure
 
