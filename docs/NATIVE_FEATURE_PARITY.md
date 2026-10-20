@@ -38,10 +38,12 @@ passed Windows hardware certification.
 | Single native foreground window | `windows-native/InferBridge.Native/Program.cs` redirects duplicate activation | Source-inspected; second-window Windows smoke not observed |
 | Engine shutdown and upgrade | `EngineLauncher.cs`, `MainWindow.xaml.cs`, `packaging/installer.iss` | Source-inspected; upgrade with persisted models/settings not observed |
 
-`.github/workflows/native-windows.yml` now runs WinUI build + executable .NET
-HTTP contract tests for changes on `dev`; its optional manually dispatched
-combined package job performs installed MSIX smoke and Windows certification.
-CI checks and actual user-machine CPU/GPU/NPU qualification are different
+Native and engine builds now run exclusively through the manually queued
+[Azure DevOps pipeline](../azure-pipelines.yml), which invokes the native
+WinUI publish and .NET contract tests in `scripts/build_release.ps1`.
+The installed MSIX smoke test and Windows certification kit remain available
+as local scripts, but are not automatically run by Azure.
+Build checks and actual user-machine CPU/GPU/NPU qualification are different
 forms of evidence. Never infer a passed package smoke test from a successful
 source, XAML compile or mocked-backend contract test.
 
