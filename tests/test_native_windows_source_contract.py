@@ -62,7 +62,6 @@ def test_native_chat_uses_real_accessible_xaml_controls():
     assert not any("WebView" in node.tag for node in root.iter())
 
 
-
 def test_native_chat_keeps_transcript_space_when_saved_history_is_available():
     """Saved-history management must not consume the chat viewport at windowed sizes."""
     root = ET.parse(PROJECT / "MainWindow.xaml").getroot()
