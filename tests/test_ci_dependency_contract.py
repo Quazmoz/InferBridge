@@ -63,7 +63,10 @@ def test_manual_azure_build_keeps_native_and_python_qualification() -> None:
     assert "BUILD_REASON -ne 'Manual'" in pipeline
     assert "scripts/build_release.ps1" in pipeline
     assert "Invoke-Checked \"Pytest\"" in builder
-    assert "dotnet publish windows-native/InferBridge.Native/InferBridge.Native.csproj" in builder
+    assert (
+        "dotnet publish windows-native/InferBridge.Native/InferBridge.Native.csproj"
+        in builder
+    )
     assert "InferBridge.Native.ContractTests.csproj" in builder
     assert "-SkipTests" not in pipeline
 
