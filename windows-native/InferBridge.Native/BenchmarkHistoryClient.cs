@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace InferBridge.Native;
 
@@ -128,12 +129,14 @@ internal static class BenchmarkHistory
                     promptTokens >= 0 ? promptTokens : null,
                     completionTokens >= 0 ? completionTokens : null));
             }
+            string clientRunId = Field(item, "client_run_id", 64);
+            if (!Regex.IsMatch(clientRunId, @"^[0-9a-f]{32}$")) clientRunId = "";
             results.Add(new BenchmarkRun(id, Field(item, "created_at", 64),
                 Field(item, "preset", 40), Number(item, "methodology_version") ?? 1,
                 tokens, runs, warmups, Fingerprint(item),
                 Boolean(item, "synthetic") || Boolean(item, "mock")
                     || measurements.Any(row => row.Synthetic), measurements,
-                Field(item, "client_run_id", 32)));
+                clientRunId.Length == 32 ? clientRunId : null));
         }
         return results;
     }

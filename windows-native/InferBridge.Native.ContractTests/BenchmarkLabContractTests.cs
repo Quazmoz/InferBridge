@@ -158,6 +158,21 @@ internal static class BenchmarkLabContractTests
         Throws<JsonException>(() => BenchmarkLab.ReadCompletion(mislabeled.RootElement, plan),
             "synthetic measurement was allowed in a measured run");
 
+        using var historyPayload = JsonDocument.Parse("""
+            {"data":[{"run_id":"saved-1","client_run_id":"abcdef0123456789abcdef0123456789",
+             "max_tokens":32,"runs_per_combo":3,"warmup_runs":1,
+             "synthetic":false,"results":[{"model_id":"gen-a","requested_device":"CPU",
+               "success":true,"synthetic":true}]}]}
+            """);
+        var saved = BenchmarkHistory.Parse(historyPayload.RootElement);
+        Check(saved.Count == 1 && saved[0].Synthetic && saved[0].ClientRunId == ClientRunId,
+            "a synthetic result row was displayed as real hardware evidence");
+        using var invalidHistory = JsonDocument.Parse(
+            historyPayload.RootElement.GetRawText().Replace(
+                ClientRunId, ClientRunId + "tampered"));
+        Check(BenchmarkHistory.Parse(invalidHistory.RootElement)[0].ClientRunId is null,
+            "overlong correlation ID was incorrectly truncated to a valid ID");
+
         string directory = Path.Combine(root, "benchmark");
         Directory.CreateDirectory(directory);
         string metadata = Path.Combine(directory, "desktop-instance.json");
