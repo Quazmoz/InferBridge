@@ -88,3 +88,30 @@ jobs:
         env:
           OV_LLM_MOCK: 'true'
         run: python -m pytest
+
+  windows-native:
+    name: Native WinUI x64 publish / C# contract tests
+    needs: windows-python312
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Run native backend contract tests
+        shell: pwsh
+        run: |
+          dotnet run --project windows-native/InferBridge.Native.ContractTests/InferBridge.Native.ContractTests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Native backend contract tests failed.' }
+      - name: Publish native WinUI frontend without packaging
+        shell: pwsh
+        run: |
+          $nativeRoot = Join-Path $env:RUNNER_TEMP 'inferbridge-native-qualification'
+          dotnet publish windows-native/InferBridge.Native/InferBridge.Native.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64 -o $nativeRoot
+          if ($LASTEXITCODE -ne 0) { throw 'Native WinUI publish failed.' }
+          foreach ($name in @('InferBridge.Native.exe', 'InferBridge.Native.runtimeconfig.json', 'InferBridge.Native.deps.json', 'coreclr.dll')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $nativeRoot $name) -PathType Leaf)) {
+              throw "Native WinUI publish missing required file: $name"
+            }
+          }
