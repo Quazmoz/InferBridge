@@ -189,6 +189,10 @@ internal static class BenchmarkLabContractTests
                 plan, Session, Key, CancellationToken.None);
             Check(measured.RunId == "bench-1" && measured.Synthetic,
                 "real HTTP client lost the backend measurement label");
+            await ThrowsAsync<ArgumentException>(() =>
+                client.RunBenchmarkLabAsync(plan with { Runs = 500 }, Session,
+                    Key, CancellationToken.None),
+                "tampered in-memory plan bypassed preset workload limits");
             switchedSession = true;
             await ThrowsAsync<IOException>(() =>
                 client.RunBenchmarkLabAsync(plan, Session, Key, CancellationToken.None),

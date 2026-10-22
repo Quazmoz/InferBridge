@@ -238,7 +238,13 @@ internal sealed partial class BackendClient
         BenchmarkCatalog fresh = await GetBenchmarkCatalogAsync(apiKey, cancellationToken);
         if (fresh.SessionId != sessionId)
             throw new InvalidOperationException("Engine restarted. Refresh benchmark choices.");
-        _ = BenchmarkLab.CreatePlan(fresh, plan.Models, plan.Devices, plan.Preset);
+        BenchmarkPlan validated = BenchmarkLab.CreatePlan(
+            fresh, plan.Models, plan.Devices, plan.Preset);
+        if (validated.Runs != plan.Runs || validated.Warmups != plan.Warmups
+            || validated.MaxTokens != plan.MaxTokens
+            || validated.Models.Count != plan.Models.Count
+            || validated.Devices.Count != plan.Devices.Count)
+            throw new ArgumentException("Benchmark workload differs from its validated preset.");
         string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
         using var dispatchIdentity = await GetJsonAsync(origin + "/desktop/instance",
             null, cancellationToken, TimeSpan.FromSeconds(4));
@@ -247,9 +253,9 @@ internal sealed partial class BackendClient
         using var result = await PostJsonAsync(origin + "/v1/benchmarks/run",
             JsonSerializer.Serialize(new
             {
-                models = plan.Models, devices = plan.Devices,
-                runs = plan.Runs, max_tokens = plan.MaxTokens,
+                models = validated.Models, devices = validated.Devices,
+                runs = validated.Runs, max_tokens = validated.MaxTokens,
             }), apiKey, cancellationToken, TimeSpan.FromMinutes(45), MaximumChatBytes);
-        return BenchmarkLab.ReadCompletion(result.RootElement, plan);
+        return BenchmarkLab.ReadCompletion(result.RootElement, validated);
     }
 }
