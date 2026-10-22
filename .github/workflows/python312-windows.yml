@@ -1,0 +1,57 @@
+# Windows/Python 3.12 source qualification only.
+# Azure DevOps remains the sole manually queued packaged Windows release path.
+name: Windows Python 3.12 source qualification
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - '.github/workflows/python312-windows.yml'
+      - 'azure-pipelines.yml'
+      - 'pyproject.toml'
+      - 'requirements/release.txt'
+      - 'requirements-dev.txt'
+      - 'app/**'
+      - 'runtime/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'windows-native/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: python312-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-python312:
+    name: Python 3.12 x64 / Ruff / Azure and WinUI contracts
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          architecture: 'x64'
+      - name: Verify Azure-compatible 64-bit Python 3.12
+        shell: pwsh
+        run: |
+          python -c "import sys; assert sys.version_info[:2] == (3, 12) and sys.maxsize > 2**32, sys.version; print(sys.version)"
+          if ($LASTEXITCODE -ne 0) { throw 'Expected x64 Python 3.12.' }
+      - name: Fast-fail Azure-pinned Ruff gates
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check --no-deps ruff==0.16.10
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Ruff install failed.' }
+          python -m ruff check .
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Ruff lint failed.' }
+          python -m ruff format --check .
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Ruff format failed.' }
+      - name: Install pinned test runner
+        run: python -m pip install --disable-pip-version-check pytest==9.1.1
+      - name: Validate Azure artifact selection and Windows native source contracts
+        run: |
+          python -m pytest -q tests/test_linux_smoke_script.py tests/test_azure_artifact_selection.py tests/test_ci_dependency_contract.py tests/test_native_windows_source_contract.py
