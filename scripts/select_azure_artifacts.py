@@ -126,7 +126,9 @@ def select(
         allowed = expected_release_filenames(version)
         unexpected = sorted(path.name for path in extra if path.name not in allowed)
         if unexpected:
-            raise ValueError(f"Validated release directory contains unexpected file: {unexpected[0]}")
+            raise ValueError(
+                f"Validated release directory contains unexpected file: {unexpected[0]}"
+            )
         sources = extra + ([sources[-1]] if mode == "all" else [])
 
     publish_dir.mkdir(parents=True)
