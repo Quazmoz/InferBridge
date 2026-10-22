@@ -92,7 +92,7 @@ def test_native_chat_toolbar_preserves_a_real_transcript_viewport():
 
     status = next(node for node in toolbar.iter() if node.get(named) == "ChatStatusButton")
     assert status.get("Grid.Column") == "2"
-    info = next(node for node in toolbar.iter() if node.get(named) == "ChatInfo")
+    assert any(node.get(named) == "ChatInfo" for node in toolbar.iter())
     assert toolbar.find(".//" + XAML + "Button.Flyout/" + XAML + "Flyout") is not None
     assert not any(node.get(named) == "ChatInfo" for node in chat if node is not toolbar)
 
