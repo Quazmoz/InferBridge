@@ -432,7 +432,7 @@
                                 ToolTipService.ToolTip="Show complete chat status">
                             <Button.Content>
                                 <StackPanel Orientation="Horizontal" Spacing="5">
-                                    <SymbolIcon Symbol="Info" />
+                                    <FontIcon FontFamily="{StaticResource SymbolThemeFontFamily}" Glyph="&#xE946;" />
                                     <TextBlock x:Name="ChatStatusText" Text="Starting"
                                                MaxWidth="74" TextTrimming="CharacterEllipsis"
                                                VerticalAlignment="Center" />
