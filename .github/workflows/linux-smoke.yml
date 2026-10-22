@@ -69,5 +69,11 @@ jobs:
         run: |
           .venv/bin/python -m pip install 'pytest>=8,<10'
           .venv/bin/python -m pytest -q tests/test_linux_smoke_script.py tests/test_linux_support_files.py tests/test_linux_polish.py
+      - name: Run Azure artifact and native source contract regressions
+        run: |
+          .venv/bin/python -m pytest -q \
+            tests/test_azure_artifact_selection.py \
+            tests/test_ci_dependency_contract.py \
+            tests/test_native_windows_source_contract.py
       - name: Validate Linux launcher and mock OpenAI API end-to-end
         run: bash ./setup/linux/smoke_test.sh
