@@ -164,7 +164,7 @@ public sealed partial class MainWindow
     private void UpdateBenchmarkWorkload()
     {
         BenchmarkRunButton.IsEnabled = false;
-        bool idle = !_benchmarkGate.Active && !_benchmarkGate.OutcomeUnknown;
+        bool idle = !_benchmarkGate.Active && !_benchmarkGate.OutcomeUnknown && !_operationsBusy;
         BenchmarkPresetPicker.IsEnabled = idle;
         BenchmarkConfigurationRefreshButton.IsEnabled = idle && !_benchmarkRefreshing && !_quitting;
         foreach (var choice in BenchmarkModelChoices.Children.OfType<CheckBox>())
@@ -194,7 +194,7 @@ public sealed partial class MainWindow
                 + $"{plan.Combinations} combinations · {plan.Warmups} warm-ups and "
                 + $"{plan.Runs} measured runs per combination · {plan.MaxTokens} output tokens "
                 + $"· {plan.TotalSamples} total inference samples.";
-            BenchmarkRunButton.IsEnabled = !_quitting && !_closing.IsCancellationRequested;
+            BenchmarkRunButton.IsEnabled = idle && !_quitting && !_closing.IsCancellationRequested;
         }
         catch (ArgumentException error)
         {
@@ -204,8 +204,9 @@ public sealed partial class MainWindow
 
     private async void BenchmarkRunButton_Click(object sender, RoutedEventArgs args)
     {
-        if (_benchmarkGate.Active || _benchmarkGate.OutcomeUnknown || _benchmarkRefreshing
-            || _benchmarkCatalog is null || _quitting || _closing.IsCancellationRequested) return;
+        if (_benchmarkGate.Active || _benchmarkGate.OutcomeUnknown || _operationsBusy
+            || _benchmarkRefreshing || _benchmarkCatalog is null
+            || _quitting || _closing.IsCancellationRequested) return;
         BenchmarkPlan plan;
         try { plan = CurrentBenchmarkPlan()!; }
         catch (ArgumentException error)
@@ -227,6 +228,7 @@ public sealed partial class MainWindow
         };
         // Take the duplicate-attempt lease before showing the modal prompt.
         if (!_benchmarkGate.TryBegin()) return;
+        QuickBenchmarkButton.IsEnabled = false;
         UpdateBenchmarkWorkload();
         bool confirmed = true; // No POST has been sent yet.
         string? clientRunId = null;
@@ -303,6 +305,10 @@ public sealed partial class MainWindow
             {
                 BenchmarkActivityRing.IsActive = false;
                 BenchmarkConfigurationRefreshButton.IsEnabled = !_quitting;
+                QuickBenchmarkButton.IsEnabled = _operationsLoaded && !_operationsBusy
+                    && !_benchmarkGate.Active && !_benchmarkGate.OutcomeUnknown
+                    && !string.IsNullOrWhiteSpace(_quickBenchmarkModelId)
+                    && !string.IsNullOrWhiteSpace(_quickBenchmarkDevice);
                 UpdateBenchmarkWorkload();
             }
         }

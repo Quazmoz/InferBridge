@@ -585,6 +585,7 @@ public sealed partial class MainWindow : Window
                 OperationsProgress.IsActive = false;
                 OperationsRefreshButton.IsEnabled = true;
                 QuickBenchmarkButton.IsEnabled = _operationsLoaded
+                    && !_benchmarkGate.Active && !_benchmarkGate.OutcomeUnknown
                     && !string.IsNullOrWhiteSpace(_quickBenchmarkModelId)
                     && !string.IsNullOrWhiteSpace(_quickBenchmarkDevice);
             }
@@ -593,9 +594,14 @@ public sealed partial class MainWindow : Window
 
     private async void QuickBenchmarkButton_Click(object sender, RoutedEventArgs args)
     {
-        if (_operationsBusy || _quitting || _closing.IsCancellationRequested
+        if (_operationsBusy || _benchmarkGate.Active || _benchmarkGate.OutcomeUnknown
+            || _quitting || _closing.IsCancellationRequested
             || string.IsNullOrWhiteSpace(_quickBenchmarkModelId)
             || string.IsNullOrWhiteSpace(_quickBenchmarkDevice)) return;
+        // Take the operation lease before opening the confirmation dialog.
+        _operationsBusy = true;
+        QuickBenchmarkButton.IsEnabled = false;
+        UpdateBenchmarkWorkload();
         string model = _quickBenchmarkModelId;
         string device = _quickBenchmarkDevice;
         try
@@ -612,7 +618,6 @@ public sealed partial class MainWindow : Window
             };
             if (await dialog.ShowAsync() != ContentDialogResult.Primary
                 || _closing.IsCancellationRequested) return;
-            _operationsBusy = true;
             OperationsRefreshButton.IsEnabled = false;
             DiagnosticsExportButton.IsEnabled = false;
             QuickBenchmarkButton.IsEnabled = false;
@@ -623,7 +628,7 @@ public sealed partial class MainWindow : Window
             if (_closing.IsCancellationRequested) return;
             BenchmarkRunResult.Text = result;
             OperationsInfo.Severity = InfoBarSeverity.Informational;
-            OperationsInfo.Message = "Benchmark request finished. See measured results below.";
+            OperationsInfo.Message = "Benchmark request finished. Check the evidence label below.";
         }
         catch (Exception) when (_closing.IsCancellationRequested) { }
         catch (Exception error) when (!_closing.IsCancellationRequested)
@@ -639,8 +644,10 @@ public sealed partial class MainWindow : Window
                 OperationsRefreshButton.IsEnabled = true;
                 DiagnosticsExportButton.IsEnabled = _operationsLoaded;
                 QuickBenchmarkButton.IsEnabled = _operationsLoaded
+                    && !_benchmarkGate.Active && !_benchmarkGate.OutcomeUnknown
                     && !string.IsNullOrWhiteSpace(_quickBenchmarkModelId)
                     && !string.IsNullOrWhiteSpace(_quickBenchmarkDevice);
+                UpdateBenchmarkWorkload();
                 await RefreshOperationsAsync();
             }
         }
@@ -694,6 +701,7 @@ public sealed partial class MainWindow : Window
                 OperationsRefreshButton.IsEnabled = true;
                 DiagnosticsExportButton.IsEnabled = _operationsLoaded;
                 QuickBenchmarkButton.IsEnabled = _operationsLoaded
+                    && !_benchmarkGate.Active && !_benchmarkGate.OutcomeUnknown
                     && !string.IsNullOrWhiteSpace(_quickBenchmarkModelId)
                     && !string.IsNullOrWhiteSpace(_quickBenchmarkDevice);
             }
@@ -1188,6 +1196,8 @@ public sealed partial class MainWindow : Window
             && SelectedChatModel?.Status == "loaded"
             && (_turns.Count == 0 || SelectedModelId == _conversationModelId);
         CancelButton.IsEnabled = _chatBusy;
+        CopyLastReplyButton.IsEnabled = !_chatBusy && !_quitting
+            && _turns.LastOrDefault() is { Role: "assistant" };
         SavedChatsPicker.IsEnabled = !_chatBusy && !_quitting && _historyAvailable;
         SavedChatsSearch.IsEnabled = !_chatBusy && !_quitting && _historyAvailable;
         bool canEditSavedChat = !_chatBusy && !_quitting && _historyAvailable
@@ -1597,6 +1607,26 @@ public sealed partial class MainWindow : Window
 
     private void CancelButton_Click(object sender, RoutedEventArgs args) =>
         _sendCancellation?.Cancel();
+
+    private void CopyLastReplyButton_Click(object sender, RoutedEventArgs args)
+    {
+        if (_chatBusy || _quitting || _closing.IsCancellationRequested
+            || _turns.LastOrDefault() is not { Role: "assistant" } reply)
+            return;
+        try
+        {
+            var data = new DataPackage();
+            data.SetText(reply.Content);
+            Clipboard.SetContent(data);
+            ShowChatInfo("Reply copied", "The last completed assistant reply is on your clipboard.",
+                InfoBarSeverity.Success);
+        }
+        catch (Exception)
+        {
+            ShowChatInfo("Clipboard unavailable", "Select text in the conversation to copy it.",
+                InfoBarSeverity.Warning);
+        }
+    }
 
     private void NewChatButton_Click(object sender, RoutedEventArgs args)
     {

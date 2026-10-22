@@ -7,7 +7,7 @@ passed Windows hardware certification.
 
 | Domain | Native status | Evidence and intentional limitations |
 |---|---|---|
-| Chat, model switching and streaming | Partial native | `MainWindow.xaml.cs`, `BackendClient.cs`: SSE, stop waiting, model lifecycle; web has richer rendering and multimodal surfaces |
+| Chat, model switching and streaming | Partial native | `MainWindow.xaml.cs`, `BackendClient.cs`: SSE, stop waiting, copy last completed reply, model lifecycle; non-stop SSE finishes cannot enter saved history; web has richer rendering and multimodal surfaces |
 | Conversation management | Partial native | `NativeConversationStore.cs`: opt-in local search, rename, delete, restore; no browser-history sync |
 | Catalog model discovery and download | Full native | `MainWindow.xaml.cs`, `BackendClient.cs`: curated catalog, preparation progress, retry |
 | Hugging Face search and custom downloads | Partial native | `MainWindow.HuggingFace.cs`, `HuggingFaceClient.cs`: account/search/token, conversion queue; advanced conversion tuning remains web-only |
