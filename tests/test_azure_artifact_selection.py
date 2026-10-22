@@ -178,10 +178,10 @@ def test_full_selection_rejects_unreviewed_files_before_publication(tmp_path, mo
     assert (release / f"InferBridge-{VERSION}-windows-x64-installer.exe").is_file()
 
 
-
 def test_azure_selector_cli_imports_lightweight_allowlist(tmp_path):
+    selector = Path(__file__).resolve().parents[1] / "scripts/select_azure_artifacts.py"
     result = subprocess.run(
-        [sys.executable, str(Path(__file__).resolve().parents[1] / "scripts/select_azure_artifacts.py"), "--help"],
+        [sys.executable, str(selector), "--help"],
         cwd=tmp_path,
         capture_output=True,
         text=True,

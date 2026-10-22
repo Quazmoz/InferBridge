@@ -24,6 +24,4 @@ _RELEASE_SUFFIXES = (
 
 def expected_release_filenames(version: str) -> set[str]:
     prefix = f"{ARTIFACT_PREFIX}-{version}"
-    return {f"{prefix}{suffix}" for suffix in _RELEASE_SUFFIXES} | {
-        "model-library-manifest.json"
-    }
+    return {f"{prefix}{suffix}" for suffix in _RELEASE_SUFFIXES} | {"model-library-manifest.json"}
