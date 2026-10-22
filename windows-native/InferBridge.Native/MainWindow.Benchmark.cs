@@ -337,11 +337,14 @@ public sealed partial class MainWindow
         catch (UnauthorizedAccessException)
         {
             _benchmarkActivityTimer.Stop();
+            BenchmarkActivityProgress.IsIndeterminate = true;
             BenchmarkActivityLabel.Text = "Progress unavailable: API key rejected. The benchmark request may continue.";
         }
         catch (InvalidOperationException)
         {
             _benchmarkActivityTimer.Stop();
+            BenchmarkActivityProgress.IsIndeterminate = true;
+            BenchmarkActivityProgress.Value = 0;
             BenchmarkActivityLabel.Text = "Engine session changed. Progress is no longer attributable to this run.";
         }
         catch (Exception) when (!_closing.IsCancellationRequested)

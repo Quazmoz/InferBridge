@@ -116,6 +116,8 @@ internal static class BenchmarkLabContractTests
         var progress = BenchmarkLab.ReadActivity(activity.RootElement, ClientRunId, 4);
         Check(progress?.Completed == 2 && progress.Total == 4,
             "unrelated or out-of-order events rolled benchmark progress backward");
+        Check(progress is not null && !progress.Message.Contains(ClientRunId, StringComparison.Ordinal),
+            "internal benchmark correlation ID leaked into the user-facing progress label");
         Check(BenchmarkLab.ReadActivity(activity.RootElement, "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", 4) is null,
             "another run's events were attributed to this benchmark");
         using var noEvents = JsonDocument.Parse("""{"events":[]}""");

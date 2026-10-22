@@ -155,7 +155,8 @@ internal static class BenchmarkLab
             int completed = finished ? index : index - 1;
             // Engine event ordering is authoritative; never roll progress backwards.
             if (latest is null || completed >= latest.Completed)
-                latest = new BenchmarkActivity(message, completed, total);
+                latest = new BenchmarkActivity(
+                    "Benchmark Lab · combination " + message[prefix.Length..], completed, total);
         }
         return latest;
     }
