@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.release_models import ReleaseManifest, artifact_filename  # noqa: E402
 from scripts.create_portable_archive import verify_archive  # noqa: E402
+from scripts.release_artifact_names import expected_release_filenames  # noqa: E402
 from scripts.release_scan import verify_checksums  # noqa: E402
 
 
@@ -26,21 +27,6 @@ def _object(path: Path, label: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise RuntimeError(f"{label} must be a JSON object.")
     return value
-
-
-def expected_release_filenames(version: str) -> set[str]:
-    return {
-        artifact_filename(version, kind)
-        for kind in ("installer", "portable", "third_party_licenses", "release_notes")
-    } | {
-        artifact_filename(version, "checksums"),
-        artifact_filename(version, "manifest"),
-        f"InferBridge-{version}-dependency-inventory.json",
-        f"InferBridge-{version}-dependency-freeze.txt",
-        f"InferBridge-{version}-release-summary.json",
-        f"InferBridge-{version}-release-timings.json",
-        "model-library-manifest.json",
-    }
 
 
 def verify_release_provenance(

@@ -141,3 +141,21 @@ def test_publisher_validates_before_tag_and_never_replaces_manifest():
     assert validation < tagging
     assert "Copy-Item $LibraryManifestSource" not in script
     assert "release_tools.py checksums" not in script
+
+
+
+def test_release_artifact_allowlist_matches_canonical_names():
+    version = "1.2.3"
+    approved = expected_release_filenames(version)
+    assert {
+        artifact_filename(version, kind)
+        for kind in (
+            "installer",
+            "portable",
+            "third_party_licenses",
+            "release_notes",
+            "checksums",
+            "manifest",
+        )
+    }.issubset(approved)
+    assert len(approved) == 11

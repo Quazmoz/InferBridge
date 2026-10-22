@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
+import sys
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
@@ -174,3 +176,15 @@ def test_full_selection_rejects_unreviewed_files_before_publication(tmp_path, mo
     assert not (tmp_path / "publish").exists()
     assert unreviewed.is_file()
     assert (release / f"InferBridge-{VERSION}-windows-x64-installer.exe").is_file()
+
+
+
+def test_azure_selector_cli_imports_lightweight_allowlist(tmp_path):
+    result = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve().parents[1] / "scripts/select_azure_artifacts.py"), "--help"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr

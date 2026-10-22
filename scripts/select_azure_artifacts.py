@@ -17,6 +17,11 @@ import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
+# Also support direct 'python scripts/select_azure_artifacts.py' execution.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts.release_artifact_names import expected_release_filenames  # noqa: E402
+
 MODES = ("installer-portable", "installer", "portable", "msix", "all")
 FOUNDATION = "{http://schemas.microsoft.com/appx/manifest/foundation/windows10}"
 
@@ -121,8 +126,6 @@ def select(
             raise ValueError("Validated release directory contains symbolic links")
         # The upstream provenance check validates expected files, but does not
         # reject extras. Never publish unreviewed files from staging.
-        from scripts.verify_release_provenance import expected_release_filenames
-
         allowed = expected_release_filenames(version)
         unexpected = sorted(path.name for path in extra if path.name not in allowed)
         if unexpected:
