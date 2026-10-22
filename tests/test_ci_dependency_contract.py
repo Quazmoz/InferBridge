@@ -152,3 +152,27 @@ def test_azure_build_binds_config_and_artifacts_to_selected_source_revision() ->
     assert "--channel $channel --expected-commit $env:BUILD_SOURCEVERSION" in pipeline
     assert "PublishPipelineArtifact@1" in pipeline
     assert "condition: succeeded()" in pipeline
+
+
+def test_azure_queue_time_artifact_selection_preserves_full_release_gates() -> None:
+    pipeline = _read("azure-pipelines.yml")
+    selector = _read("scripts/select_azure_artifacts.py")
+
+    assert "default: installer-portable" in pipeline
+    for output in ("installer-portable", "installer", "portable", "msix", "all"):
+        assert f"    - {output}" in pipeline
+    assert "INFERBRIDGE_ARTIFACT_TYPE: ${{ parameters.artifactType }}" in pipeline
+    assert "INFERBRIDGE_MSIX_IDENTITY_NAME: ${{ parameters.msixIdentityName }}" in pipeline
+    assert "INFERBRIDGE_MSIX_PUBLISHER: ${{ parameters.msixPublisher }}" in pipeline
+    assert "scripts/build_msix.ps1" in pipeline
+    assert "scripts/select_azure_artifacts.py" in pipeline
+    assert "release-internal" in pipeline
+    assert "scripts/verify_release_provenance.py" in pipeline
+    assert pipeline.index("scripts/verify_release_provenance.py") < pipeline.index("scripts/build_msix.ps1")
+    assert pipeline.index("scripts/select_azure_artifacts.py") < pipeline.index("PublishPipelineArtifact@1")
+    assert "condition: succeeded()" in pipeline
+    assert "trigger: none\npr: none" in pipeline
+    assert "-SkipTests" not in pipeline
+    assert "verify_msix(source, identity=identity, publisher=publisher, version=version)" in selector
+    assert '"azure-selected-checksums.txt"' in selector
+    assert '"azure-build-provenance.json"' in selector

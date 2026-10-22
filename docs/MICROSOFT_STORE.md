@@ -41,11 +41,14 @@ The MSIX version is `<major>.<minor>.<patch>.0`; the Store reserves the fourth f
 ## Each release
 
 1. Manually queue the [Azure DevOps Windows pipeline](../azure-pipelines.yml)
-   for the intended reviewed source revision. Its unsigned installer and
-   portable ZIP are **not** a Store MSIX.
-2. On a Windows machine with the Windows SDK, .NET 10 SDK and signing/certification
-   test prerequisites, build a Store candidate from the **same source revision**.
-   Use the Partner Center identity parameters when building the MSIX.
+   against the reviewed revision. Under **Artifact output type**, choose
+   `msix` for an unsigned Store package, `all` for MSIX plus installer/ZIP,
+   or another output type as described below. Verify the queue-time public
+   Partner Center identity, publisher, and publisher display name.
+2. Download the Azure pipeline artifact and verify `azure-selected-checksums.txt`.
+   Azure builds and verifies the full native-first release source payload first,
+   then packages the same installed-mode WinUI + Python engine as an MSIX.
+   The pipeline does **not** install the MSIX or sign it.
 3. Run `scripts/smoke_test_msix.ps1` against the real candidate to verify
    installed package identity, foreground window, engine handoff, and relaunch.
    Add `-RunCertificationKit` to execute WACK and review the evidence.
@@ -68,8 +71,40 @@ version and registered Partner Center identity):
 The sideload smoke test requires an elevated Windows PowerShell 5.1 session
 with InferBridge closed; it uses a temporary test certificate and removes
 the package and certificate afterward. The Store submission must stay unsigned.
-No GitHub Actions workflow builds or qualifies this package automatically,
-and the Azure unsigned EXE/ZIP job does not replace the installed MSIX test.
+No GitHub Actions workflow builds or qualifies this package automatically.
+The Azure build validates source and package structure, **not** installed MSIX
+behavior, Store certification, or real inference. A `dev` or `beta` MSIX is an
+evaluation candidate only; submit only a reviewed stable-version package
+after the installed smoke/certification procedure.
+
+## Azure DevOps: choose the output at queue time
+
+In Azure DevOps, select the InferBridge YAML pipeline, choose **Run pipeline**,
+set the source branch (`dev` for evaluation; `main` only after separately
+approved promotion), and choose the **Artifact output type** parameter:
+
+| Value | Downloaded binaries |
+|---|---|
+| `installer-portable` (default) | Unsigned Inno Setup `.exe` and portable `.zip`, with the complete release evidence (unchanged behavior) |
+| `installer` | Unsigned installer `.exe` |
+| `portable` | Portable `.zip` |
+| `msix` | Unsigned native WinUI Microsoft Store `.msix` |
+| `all` | Installer `.exe`, portable `.zip`, and Store `.msix`, with complete release evidence |
+
+The optional MSIX fields default to the identity currently recorded above.
+Compare them with **Partner Center > Product identity** before queuing.
+No private signing key is requested. The pipeline deliberately remains manual;
+it neither publishes a release nor uploads to Microsoft Store.
+
+All choices use the same source-pinned full release build and existing provenance
+verification. The selection happens **after** successful qualification. This
+avoids silently weakening native, checksum or artifact-manifest gates for
+single-format requests, but means selecting only MSIX still performs the
+underlying installer/portable qualification build. The published pipeline
+artifact retains its existing `inferbridge-windows-x64-unsigned` name.
+Every selection contains `azure-selected-checksums.txt` and
+`azure-build-provenance.json`; combined modes also retain the original full
+release manifest and checksums.
 
 ## Storage and uninstall disclosure
 

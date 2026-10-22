@@ -4,6 +4,32 @@
 # Azure run can reuse its original failing source revision.
 # To build main, first promote this configuration to main, then queue a main-branch run.
 # Artifacts are unsigned and must not be treated as a qualified release.
+# Queue-time selector; the default preserves the existing unsigned EXE + ZIP output.
+# Store identity fields are public Partner Center identifiers, not credentials.
+parameters:
+- name: artifactType
+  displayName: 'Artifact output type'
+  type: string
+  default: installer-portable
+  values:
+    - installer-portable
+    - installer
+    - portable
+    - msix
+    - all
+- name: msixIdentityName
+  displayName: 'MSIX identity name (Partner Center)'
+  type: string
+  default: 'QuinnFavo.InferBridge'
+- name: msixPublisher
+  displayName: 'MSIX publisher (Partner Center)'
+  type: string
+  default: 'CN=CAC9A06A-996E-4DC7-9079-45803515E811'
+- name: msixPublisherDisplayName
+  displayName: 'MSIX publisher display name'
+  type: string
+  default: 'Quinn Favo'
+
 trigger: none
 pr: none
 
@@ -12,7 +38,7 @@ pool:
 
 jobs:
 - job: windows_release
-  displayName: 'Build unsigned InferBridge Windows release'
+  displayName: 'Build selected unsigned InferBridge Windows artifact'
   timeoutInMinutes: 60
   steps:
   - checkout: self
@@ -105,7 +131,7 @@ jobs:
         'refs/heads/dev'  { 'nightly' }
         default { throw 'Unsupported release channel source branch.' }
       }
-      $output = Join-Path $env:BUILD_ARTIFACTSTAGINGDIRECTORY 'release'
+      $output = Join-Path $env:BUILD_ARTIFACTSTAGINGDIRECTORY 'release-internal'
       & ./scripts/build_release.ps1 -Version $version -Channel $channel -Unsigned -Clean -OutputDirectory $output -Python python
       if ($LASTEXITCODE -ne 0) { throw "Release build failed with exit code $LASTEXITCODE" }
       $installer = Join-Path $output "InferBridge-$version-windows-x64-installer.exe"
@@ -116,22 +142,50 @@ jobs:
       }
       python scripts/verify_release_provenance.py --artifact-directory $output --version $version --channel $channel --expected-commit $env:BUILD_SOURCEVERSION --source-model-manifest model_library_manifest.json
       if ($LASTEXITCODE -ne 0) { throw 'Release provenance or checksums mismatch.' }
-      $metadata = [ordered]@{
-        schema_version = 1
-        channel = $channel
-        repository = $env:BUILD_REPOSITORY_URI
-        source_ref = $env:BUILD_SOURCEBRANCH
-        source_commit = $env:BUILD_SOURCEVERSION.ToLowerInvariant()
-        pipeline_config = 'azure-pipelines.yml'
-        pipeline_config_sha256 = $env:INFERBRIDGE_PIPELINE_SHA256
-        pipeline_run = $env:BUILD_BUILDID
-        unsigned = $true
-        certification = 'evaluation only; hardware and installed behavior unverified'
-      }
-      $metadata | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'azure-build-provenance.json') -Encoding utf8
-      Write-Host "Built unsigned $version from $env:BUILD_SOURCEBRANCH at $env:BUILD_SOURCEVERSION"
+      # Publish only after the complete release set passes its original source,
+      # manifest, checksum and native-first archive qualification.
+      Write-Host "##vso[task.setvariable variable=INFERBRIDGE_RELEASE_VERSION]$version"
+      Write-Host "##vso[task.setvariable variable=INFERBRIDGE_RELEASE_CHANNEL]$channel"
+      Write-Host "Qualified unsigned $version from $env:BUILD_SOURCEBRANCH at $env:BUILD_SOURCEVERSION"
     displayName: 'Build and verify unsigned Windows release'
     env:
+      INFERBRIDGE_PIPELINE_SHA256: $(INFERBRIDGE_PIPELINE_SHA256)
+
+  - pwsh: |
+      $ErrorActionPreference = 'Stop'
+      $artifactType = $env:INFERBRIDGE_ARTIFACT_TYPE
+      if ($artifactType -notin @('installer-portable', 'installer', 'portable', 'msix', 'all')) {
+        throw "Unsupported artifact type: $artifactType"
+      }
+      $version = $env:INFERBRIDGE_RELEASE_VERSION
+      $channel = $env:INFERBRIDGE_RELEASE_CHANNEL
+      $msixDirectory = Join-Path $env:BUILD_ARTIFACTSTAGINGDIRECTORY 'msix-internal'
+      if ($artifactType -in @('msix', 'all')) {
+        & ./scripts/build_msix.ps1 -Version $version -DistributionPath 'dist\InferBridge' `
+          -OutputDirectory $msixDirectory -IdentityName $env:INFERBRIDGE_MSIX_IDENTITY_NAME `
+          -Publisher $env:INFERBRIDGE_MSIX_PUBLISHER `
+          -PublisherDisplayName $env:INFERBRIDGE_MSIX_PUBLISHER_DISPLAY_NAME -Python python
+        if ($LASTEXITCODE -ne 0) { throw 'MSIX build failed; no Azure artifact will be published.' }
+      }
+      $releaseDirectory = Join-Path $env:BUILD_ARTIFACTSTAGINGDIRECTORY 'release-internal'
+      $publishDirectory = Join-Path $env:BUILD_ARTIFACTSTAGINGDIRECTORY 'release'
+      & python scripts/select_azure_artifacts.py `
+        --release-dir $releaseDirectory --publish-dir $publishDirectory `
+        --msix-dir $msixDirectory --version $version --artifact-type $artifactType `
+        --identity-name $env:INFERBRIDGE_MSIX_IDENTITY_NAME `
+        --publisher $env:INFERBRIDGE_MSIX_PUBLISHER `
+        --source-ref $env:BUILD_SOURCEBRANCH --source-commit $env:BUILD_SOURCEVERSION `
+        --channel $channel --pipeline-hash $env:INFERBRIDGE_PIPELINE_SHA256 `
+        --run-id $env:BUILD_BUILDID
+      if ($LASTEXITCODE -ne 0) { throw 'Azure artifact selection or MSIX package validation failed.' }
+    displayName: 'Build optional Store MSIX and select requested artifact output'
+    env:
+      INFERBRIDGE_ARTIFACT_TYPE: ${{ parameters.artifactType }}
+      INFERBRIDGE_MSIX_IDENTITY_NAME: ${{ parameters.msixIdentityName }}
+      INFERBRIDGE_MSIX_PUBLISHER: ${{ parameters.msixPublisher }}
+      INFERBRIDGE_MSIX_PUBLISHER_DISPLAY_NAME: ${{ parameters.msixPublisherDisplayName }}
+      INFERBRIDGE_RELEASE_VERSION: $(INFERBRIDGE_RELEASE_VERSION)
+      INFERBRIDGE_RELEASE_CHANNEL: $(INFERBRIDGE_RELEASE_CHANNEL)
       INFERBRIDGE_PIPELINE_SHA256: $(INFERBRIDGE_PIPELINE_SHA256)
 
   - task: PublishPipelineArtifact@1
@@ -140,4 +194,4 @@ jobs:
       targetPath: '$(Build.ArtifactStagingDirectory)/release'
       artifact: 'inferbridge-windows-x64-unsigned'
       publishLocation: 'pipeline'
-    displayName: 'Publish installer, portable ZIP, checksums and evidence to Azure'
+    displayName: 'Publish selected unsigned Windows artifacts, checksums and provenance'
