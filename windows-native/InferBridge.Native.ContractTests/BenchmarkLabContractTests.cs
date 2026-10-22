@@ -72,6 +72,22 @@ internal static class BenchmarkLabContractTests
             new[] { "gen-a", "gen-b" }, new[] { "CPU", "GPU", "AUTO", "CPU", "NPU" },
             "thorough"), "unsupported device accepted");
 
+        var expanded = catalog with
+        {
+            Models = Enumerable.Range(0, 9).Select(index =>
+                new BenchmarkModelChoice("gen-" + index, "Generation " + index,
+                    "ready_to_load", "INT4", true, false)).ToArray(),
+            Devices = new[] { "CPU" },
+        };
+        Throws<ArgumentException>(() => BenchmarkLab.CreatePlan(expanded,
+            expanded.Models.Select(m => m.Id), new[] { "CPU" }, "thorough"),
+            "native maximum combination budget was bypassed");
+        using var invalidInventory = JsonDocument.Parse(
+            """{"models":{"available":"not-array"},"device":{"available":["CPU"]}}""");
+        Throws<JsonException>(() => BenchmarkLab.ReadCatalog(
+            invalidInventory.RootElement, Session),
+            "malformed catalog was accepted");
+
         var gate = new BenchmarkAttemptGate();
         Check(gate.TryBegin() && !gate.TryBegin(), "duplicate Start acquired a second lease");
         gate.Finish(confirmed: false);

@@ -258,6 +258,18 @@ public sealed partial class MainWindow
             await RefreshBenchmarkHistoryAsync();
         }
         catch (OperationCanceledException) when (_closing.IsCancellationRequested) { }
+        catch (Exception error) when (error is ArgumentException
+            or InvalidOperationException or UnauthorizedAccessException)
+        {
+            // Validation and explicit 4xx refusals prove that no suite was accepted.
+            confirmed = true;
+            if (!_closing.IsCancellationRequested)
+            {
+                BenchmarkConfigurationInfo.Severity = InfoBarSeverity.Warning;
+                BenchmarkConfigurationInfo.Message = "Benchmark request rejected: " + SafeError(error);
+                BenchmarkActivityLabel.Text = "No benchmark accepted. Refresh choices and retry.";
+            }
+        }
         catch (Exception error) when (!_closing.IsCancellationRequested)
         {
             // An error after dispatch does not establish that the server stopped work.
