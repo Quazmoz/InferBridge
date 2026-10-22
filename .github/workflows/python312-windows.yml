@@ -55,3 +55,36 @@ jobs:
       - name: Validate Azure artifact selection and Windows native source contracts
         run: |
           python -m pytest -q tests/test_linux_smoke_script.py tests/test_azure_artifact_selection.py tests/test_ci_dependency_contract.py tests/test_native_windows_source_contract.py
+
+  windows-python312-release-deps:
+    name: Python 3.12 x64 / pinned release environment / full pytest
+    needs: windows-python312
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          architecture: 'x64'
+          cache: pip
+          cache-dependency-path: |
+            requirements/release.txt
+            pyproject.toml
+      - name: Verify pinned release dependency contract
+        run: python scripts/release_tools.py verify-requirements --path requirements/release.txt
+      - name: Install exact release dependency pins
+        run: python -m pip install --disable-pip-version-check -r requirements/release.txt
+      - name: Install package without resolving different dependencies
+        run: python -m pip install --disable-pip-version-check --no-deps --no-build-isolation .
+      - name: Verify release environment provenance and dependency health
+        run: |
+          python -m pip check
+          python scripts/release_environment.py write-metadata --requirements requirements/release.txt --metadata .ci-release-environment.json
+          python scripts/release_environment.py validate --requirements requirements/release.txt --metadata .ci-release-environment.json
+      - name: Validate embedded browser JavaScript
+        run: python scripts/check_injected_javascript.py
+      - name: Run full pytest suite in mock mode
+        env:
+          OV_LLM_MOCK: 'true'
+        run: python -m pytest
