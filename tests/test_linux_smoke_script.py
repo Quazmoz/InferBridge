@@ -9,7 +9,6 @@ from pathlib import Path
 
 import pytest
 
-
 SCRIPT = Path(__file__).resolve().parents[1] / "setup/linux/smoke_test.sh"
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux source launcher")
 
