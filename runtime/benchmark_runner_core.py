@@ -50,6 +50,7 @@ class BenchmarkBusyError(RuntimeError):
 _benchmark_client_run_id: ContextVar[str | None] = ContextVar(
     "benchmark_client_run_id", default=None
 )
+
 BENCHMARK_CAVEAT = (
     "AUTO, MULTI, and HETERO are OpenVINO routing modes. Requested and actual "
     "devices are reported separately. Results describe only this local run and "

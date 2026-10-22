@@ -8,6 +8,7 @@ namespace InferBridge.Native;
 internal static class BenchmarkLabContractTests
 {
     private const string Session = "engine-session-native-benchmark-123";
+    private const string ClientRunId = "abcdef0123456789abcdef0123456789";
     private const string Key = "benchmark-test-key";
     private const int Port = 18765;
     private const string Status = """
@@ -99,27 +100,30 @@ internal static class BenchmarkLabContractTests
         gate.Finish(confirmed: false);
         Check(!gate.TryBegin() && gate.OutcomeUnknown,
             "timeout-after-acceptance allowed silent resubmission");
+        Check(gate.ConfirmRecovered() && gate.TryBegin(),
+            "a saved outcome could not release the uncertain-attempt guard");
+        gate.Finish(confirmed: true);
         var newWindow = new BenchmarkAttemptGate();
         Check(newWindow.TryBegin(), "a new window cannot begin its own explicit attempt");
         newWindow.Finish(confirmed: true);
 
-        var time = DateTimeOffset.FromUnixTimeSeconds(200);
         using var activity = JsonDocument.Parse("""
             {"events":[{"timestamp":199,"message":"Benchmark Lab · combination 4/4 · old · CPU · complete"},
-                       {"timestamp":200,"message":"Benchmark Lab · combination 2/4 · Generation B · GPU · complete"},
-                       {"timestamp":200,"message":"Benchmark Lab · combination 1/4 · Generation A · CPU · preparing"}]}
+                       {"timestamp":200,"message":"Benchmark Lab · run abcdef0123456789abcdef0123456789 · combination 2/4 · Generation B · GPU · complete"},
+                       {"timestamp":200,"message":"Benchmark Lab · run ffffffff0123456789abcdef01234567 · combination 4/4 · Other · GPU · complete"},
+                       {"timestamp":200,"message":"Benchmark Lab · run abcdef0123456789abcdef0123456789 · combination 1/4 · Generation A · CPU · preparing"}]}
             """);
-        var progress = BenchmarkLab.ReadActivity(activity.RootElement, time, 4);
+        var progress = BenchmarkLab.ReadActivity(activity.RootElement, ClientRunId, 4);
         Check(progress?.Completed == 2 && progress.Total == 4,
-            "stale or out-of-order events rolled benchmark progress backward");
-        Check(BenchmarkLab.ReadActivity(activity.RootElement, time.AddSeconds(2), 4) is null,
-            "old events were attributed to a new benchmark");
+            "unrelated or out-of-order events rolled benchmark progress backward");
+        Check(BenchmarkLab.ReadActivity(activity.RootElement, "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", 4) is null,
+            "another run's events were attributed to this benchmark");
         using var noEvents = JsonDocument.Parse("""{"events":[]}""");
-        Check(BenchmarkLab.ReadActivity(noEvents.RootElement, time, 4) is null,
+        Check(BenchmarkLab.ReadActivity(noEvents.RootElement, ClientRunId, 4) is null,
             "missing progress became fabricated completion");
         using var malformedEvents = JsonDocument.Parse("""{"events":"broken"}""");
         Throws<JsonException>(() => BenchmarkLab.ReadActivity(
-            malformedEvents.RootElement, time, 4), "malformed activity accepted");
+            malformedEvents.RootElement, ClientRunId, 4), "malformed activity accepted");
 
         using var completed = JsonDocument.Parse("""
             {"run_id":"bench-1","synthetic":true,"results":[
@@ -181,9 +185,11 @@ internal static class BenchmarkLabContractTests
                 Check(body.GetProperty("models").EnumerateArray().Count() == 2
                     && body.GetProperty("devices").EnumerateArray().Count() == 2
                     && body.GetProperty("runs").GetInt32() == 5
-                    && body.GetProperty("max_tokens").GetInt32() == 64,
+                    && body.GetProperty("max_tokens").GetInt32() == 64
+                    && body.GetProperty("client_run_id").GetString() == ClientRunId,
                     "matrix POST did not carry the validated workload");
-                return Json(completed.RootElement.GetRawText());
+                return Json(completed.RootElement.GetRawText().Insert(
+                    1, "\"client_run_id\":\"" + ClientRunId + "\","));
             }
             throw new InvalidOperationException("Unexpected route: " + endpoint);
         }), metadata))
@@ -192,16 +198,16 @@ internal static class BenchmarkLabContractTests
             Check(refreshed.SessionId == Session && refreshed.Models.Count == 3,
                 "real client could not read verified benchmark capability inventory");
             var measured = await client.RunBenchmarkLabAsync(
-                plan, Session, Key, CancellationToken.None);
+                plan, Session, ClientRunId, Key, CancellationToken.None);
             Check(measured.RunId == "bench-1" && measured.Synthetic,
                 "real HTTP client lost the backend measurement label");
             await ThrowsAsync<ArgumentException>(() =>
                 client.RunBenchmarkLabAsync(plan with { Runs = 500 }, Session,
-                    Key, CancellationToken.None),
+                    ClientRunId, Key, CancellationToken.None),
                 "tampered in-memory plan bypassed preset workload limits");
             switchedSession = true;
             await ThrowsAsync<IOException>(() =>
-                client.RunBenchmarkLabAsync(plan, Session, Key, CancellationToken.None),
+                client.RunBenchmarkLabAsync(plan, Session, ClientRunId, Key, CancellationToken.None),
                 "engine restart did not stop stale matrix dispatch");
         }
         Check(posts == 1, "stale or duplicate requests dispatched a second benchmark");

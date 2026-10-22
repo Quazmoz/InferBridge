@@ -15,7 +15,7 @@ internal sealed record BenchmarkMeasurement(
 internal sealed record BenchmarkRun(
     string Id, string Timestamp, string Preset, int MethodologyVersion,
     int OutputTokens, int MeasuredRuns, int Warmups, string? HardwareFingerprint,
-    bool Synthetic, IReadOnlyList<BenchmarkMeasurement> Results)
+    bool Synthetic, IReadOnlyList<BenchmarkMeasurement> Results, string? ClientRunId = null)
 {
     public bool IsComparableTo(BenchmarkRun other) =>
         !ReferenceEquals(this, other)
@@ -131,7 +131,8 @@ internal static class BenchmarkHistory
             results.Add(new BenchmarkRun(id, Field(item, "created_at", 64),
                 Field(item, "preset", 40), Number(item, "methodology_version") ?? 1,
                 tokens, runs, warmups, Fingerprint(item),
-                Boolean(item, "synthetic") || Boolean(item, "mock"), measurements));
+                Boolean(item, "synthetic") || Boolean(item, "mock"), measurements,
+                Field(item, "client_run_id", 32)));
         }
         return results;
     }

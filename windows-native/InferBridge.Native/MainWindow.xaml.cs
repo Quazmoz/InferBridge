@@ -122,6 +122,7 @@ public sealed partial class MainWindow : Window
         {
             _pollTimer.Stop();
             _benchmarkActivityTimer.Stop();
+            _benchmarkActivityTimer.Tick -= BenchmarkActivityTimer_Tick;
             _closing.Cancel();
             _sendCancellation?.Cancel();
             _backend.Dispose();

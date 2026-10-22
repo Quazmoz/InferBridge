@@ -15,7 +15,7 @@ passed Windows hardware certification.
 | Inference and generation configuration | Partial native | `MainWindow.GenerationSettings.cs`: request-only max tokens, temperature and top-p; persistent/advanced engine config is web-only |
 | Hardware/device inspection | Partial native | `GetDevicesAsync`, native Engine screen: reported OpenVINO device status, not advanced multi-device tuning |
 | Benchmark run history and comparable results | Full native for history | `BenchmarkHistoryClient.cs`, `MainWindow.Benchmark.cs`: authenticated bounded history, per-row measurement and strict compatibility; actual Windows execution awaits CI |
-| Native Benchmark Lab matrix and progress | Native configuration and execution | `MainWindow.Benchmark.cs`, `BenchmarkLabClient.cs`: multiple prepared generation models, discovered direct devices and AUTO routing, Quick/Standard/Thorough presets, bounded eight-combination runs and engine-event progress; no server-side cancellation API exists |
+| Native Benchmark Lab matrix and progress | Native configuration and execution | `MainWindow.Benchmark.cs`, `BenchmarkLabClient.cs`: multiple prepared generation models, discovered direct devices and AUTO routing, Quick/Standard/Thorough presets, bounded eight-combination runs and operation-correlated engine-event progress; missing/truncated events remain indeterminate and no server-side cancellation API exists |
 | System Doctor | Partial native | `RunSystemDoctorAsync`, native Doctor screen: core checks and privacy-safe report; some advanced remediation remains web-only |
 | Storage/cache inventory and cleanup | Full native | `GetStorageInventoryAsync` and guarded cleanup; engine rechecks permissions |
 | Hugging Face authentication | Full native | `HuggingFaceClient.cs`: backend-controlled credential storage, verification and removal (as permitted) |
@@ -54,6 +54,11 @@ compilation and the contract-test executable, followed by real hardware
 CPU/GPU/NPU runs. Native benchmark requests use the existing protected
 `POST /v1/benchmarks/run` and engine event stream, with no independent
 persistence. A lost POST response is an uncertain outcome and disables retries
-for that window. Closing the window does not issue a benchmark cancellation
-request. Follow with advanced inference settings and desktop-wide startup
+for that window. A strict client-generated run identifier is persisted in the existing
+engine history, so manual history refresh can confirm a completed uncertain run;
+absence from bounded history never proves the operation was rejected. Competing
+API requests get HTTP 409 instead of silently queueing. A session restart
+invalidates selections and progress. Closing the window stops native polling,
+not the engine benchmark; no server cancellation endpoint exists. Synthetic
+mock results are not measurements of physical CPU, GPU or NPU hardware. Follow with advanced inference settings and desktop-wide startup
 migration verification. Do not add a native inference implementation.

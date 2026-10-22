@@ -5,13 +5,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from runtime import benchmark_runner_core
-
 from fastapi.testclient import TestClient
 
 from app.config import BASE_DIR, Settings
 from app.model_manager import ModelManager
 from app.server import create_app
+from runtime import benchmark_runner_core
 from runtime.benchmark_runner import certify_context_depth, score_benchmark_results
 from runtime.openvino_engine import MockEngine
 

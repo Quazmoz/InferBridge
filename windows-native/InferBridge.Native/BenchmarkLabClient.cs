@@ -39,6 +39,13 @@ internal sealed class BenchmarkAttemptGate
         Active = false;
         if (!confirmed) OutcomeUnknown = true;
     }
+
+    public bool ConfirmRecovered()
+    {
+        if (Active || !OutcomeUnknown) return false;
+        OutcomeUnknown = false;
+        return true;
+    }
 }
 
 internal static class BenchmarkLab
@@ -122,22 +129,22 @@ internal static class BenchmarkLab
     }
 
     public static BenchmarkActivity? ReadActivity(
-        JsonElement root, DateTimeOffset startedAt, int expectedCombinations)
+        JsonElement root, string clientRunId, int expectedCombinations)
     {
+        if (clientRunId.Length != 32 || !Regex.IsMatch(clientRunId, @"^[0-9a-f]{32}$"))
+            throw new ArgumentException("Invalid benchmark correlation ID.");
         if (root.ValueKind != JsonValueKind.Object
             || !root.TryGetProperty("events", out var events)
             || events.ValueKind != JsonValueKind.Array)
             throw new JsonException("Invalid engine activity events.");
         BenchmarkActivity? latest = null;
+        string prefix = "Benchmark Lab · run " + clientRunId + " · combination ";
         foreach (var item in events.EnumerateArray())
         {
-            if (item.ValueKind != JsonValueKind.Object
-                || !item.TryGetProperty("timestamp", out var timestamp)
-                || timestamp.ValueKind != JsonValueKind.Number
-                || !timestamp.TryGetInt64(out long seconds)
-                || seconds < startedAt.ToUnixTimeSeconds()) continue;
             string message = Text(item, "message", 240);
-            Match match = Regex.Match(message, @"^Benchmark Lab · combination (\d+)/(\d+) · ");
+            // Timestamps and combination counts cannot distinguish operations.
+            if (!message.StartsWith(prefix, StringComparison.Ordinal)) continue;
+            Match match = Regex.Match(message[prefix.Length..], @"^(\d+)/(\d+) · ");
             if (!match.Success
                 || !int.TryParse(match.Groups[1].Value, out int index)
                 || !int.TryParse(match.Groups[2].Value, out int total)
@@ -217,7 +224,7 @@ internal sealed partial class BackendClient
     }
 
     public async Task<BenchmarkActivity?> GetBenchmarkActivityAsync(
-        string sessionId, DateTimeOffset startedAt, int combinations,
+        string sessionId, string clientRunId, int combinations,
         string? apiKey, CancellationToken cancellationToken)
     {
         string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
@@ -227,13 +234,15 @@ internal sealed partial class BackendClient
             throw new InvalidOperationException("Engine restarted; benchmark progress is no longer attributable.");
         using var status = await GetJsonAsync(origin + "/v1/system/status", apiKey,
             cancellationToken, TimeSpan.FromSeconds(12), MaximumChatBytes);
-        return BenchmarkLab.ReadActivity(status.RootElement, startedAt, combinations);
+        return BenchmarkLab.ReadActivity(status.RootElement, clientRunId, combinations);
     }
 
     public async Task<BenchmarkCompletion> RunBenchmarkLabAsync(
-        BenchmarkPlan plan, string sessionId, string? apiKey,
+        BenchmarkPlan plan, string sessionId, string clientRunId, string? apiKey,
         CancellationToken cancellationToken)
     {
+        if (clientRunId.Length != 32 || !Regex.IsMatch(clientRunId, @"^[0-9a-f]{32}$"))
+            throw new ArgumentException("Invalid benchmark correlation ID.");
         // Refresh preparation, capabilities and instance identity before dispatch.
         BenchmarkCatalog fresh = await GetBenchmarkCatalogAsync(apiKey, cancellationToken);
         if (fresh.SessionId != sessionId)
@@ -255,7 +264,11 @@ internal sealed partial class BackendClient
             {
                 models = validated.Models, devices = validated.Devices,
                 runs = validated.Runs, max_tokens = validated.MaxTokens,
+                client_run_id = clientRunId,
             }), apiKey, cancellationToken, TimeSpan.FromMinutes(45), MaximumChatBytes);
+        if (!result.RootElement.TryGetProperty("client_run_id", out var echo)
+            || echo.ValueKind != JsonValueKind.String || echo.GetString() != clientRunId)
+            throw new JsonException("The engine returned a different benchmark operation.");
         return BenchmarkLab.ReadCompletion(result.RootElement, validated);
     }
 }

@@ -18,7 +18,8 @@ public sealed partial class MainWindow
     private bool _benchmarkUpdating;
     private bool _benchmarkActivityBusy;
     private bool _benchmarkAwaitingResponse;
-    private DateTimeOffset _benchmarkStartedAt;
+    private string? _activeBenchmarkClientRunId;
+    private string? _uncertainBenchmarkClientRunId;
     private int _benchmarkConfirmedCount;
     private BenchmarkPlan? _activeBenchmarkPlan;
     private string? _activeBenchmarkSession;
@@ -228,14 +229,16 @@ public sealed partial class MainWindow
         if (!_benchmarkGate.TryBegin()) return;
         UpdateBenchmarkWorkload();
         bool confirmed = true; // No POST has been sent yet.
+        string? clientRunId = null;
         try
         {
             if (await dialog.ShowAsync() != ContentDialogResult.Primary
                 || _closing.IsCancellationRequested) return;
             confirmed = false; // Dispatch can succeed even if the HTTP response is lost.
+            clientRunId = Guid.NewGuid().ToString("N");
             _activeBenchmarkPlan = plan;
             _activeBenchmarkSession = session;
-            _benchmarkStartedAt = DateTimeOffset.UtcNow;
+            _activeBenchmarkClientRunId = clientRunId;
             _benchmarkConfirmedCount = 0;
             BenchmarkActivityProgress.IsIndeterminate = true;
             BenchmarkActivityProgress.Value = 0;
@@ -249,7 +252,7 @@ public sealed partial class MainWindow
             _benchmarkAwaitingResponse = true;
             _benchmarkActivityTimer.Start();
             BenchmarkCompletion completed = await _backend.RunBenchmarkLabAsync(
-                plan, session, ApiKeyBox.Password, _closing.Token);
+                plan, session, clientRunId, ApiKeyBox.Password, _closing.Token);
             _benchmarkAwaitingResponse = false;
             confirmed = true;
             if (_closing.IsCancellationRequested) return;
@@ -292,8 +295,10 @@ public sealed partial class MainWindow
             _benchmarkActivityTimer.Stop();
             _benchmarkAwaitingResponse = false;
             _benchmarkGate.Finish(confirmed);
+            _uncertainBenchmarkClientRunId = _benchmarkGate.OutcomeUnknown ? clientRunId : null;
             _activeBenchmarkPlan = null;
             _activeBenchmarkSession = null;
+            _activeBenchmarkClientRunId = null;
             if (!_closing.IsCancellationRequested)
             {
                 BenchmarkActivityRing.IsActive = false;
@@ -314,11 +319,14 @@ public sealed partial class MainWindow
         try
         {
             BenchmarkPlan? plan = _activeBenchmarkPlan;
-            if (plan is null || _activeBenchmarkSession is null) return;
+            if (plan is null || _activeBenchmarkSession is null
+                || _activeBenchmarkClientRunId is null) return;
+            string clientRunId = _activeBenchmarkClientRunId;
             BenchmarkActivity? activity = await _backend.GetBenchmarkActivityAsync(
-                _activeBenchmarkSession, _benchmarkStartedAt, plan.Combinations,
+                _activeBenchmarkSession, clientRunId, plan.Combinations,
                 ApiKeyBox.Password, _closing.Token);
             if (_closing.IsCancellationRequested || !_benchmarkGate.Active || !_benchmarkAwaitingResponse
+                || _activeBenchmarkClientRunId != clientRunId
                 || activity is null || activity.Completed < _benchmarkConfirmedCount) return;
             _benchmarkConfirmedCount = activity.Completed;
             BenchmarkActivityProgress.IsIndeterminate = false;
@@ -400,6 +408,18 @@ public sealed partial class MainWindow
                 ? "No saved manual runs. Configure and run a native benchmark above."
                 : history.Count + " saved manual runs loaded from the engine. Select a run to inspect its measurements.";
             RenderBenchmarkHistory();
+            if (_benchmarkGate.OutcomeUnknown
+                && _uncertainBenchmarkClientRunId is { } uncertain
+                && history.Any(run => run.ClientRunId == uncertain)
+                && _benchmarkGate.ConfirmRecovered())
+            {
+                _uncertainBenchmarkClientRunId = null;
+                BenchmarkActivityLabel.Text = "Previously uncertain benchmark confirmed in saved history.";
+                BenchmarkConfigurationInfo.Severity = InfoBarSeverity.Success;
+                BenchmarkConfigurationInfo.Message =
+                    "Engine history confirms the previous benchmark was saved. No request was retried.";
+                UpdateBenchmarkWorkload();
+            }
         }
         catch (Exception) when (_closing.IsCancellationRequested) { }
         catch (Exception error) when (!_closing.IsCancellationRequested)
