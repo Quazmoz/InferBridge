@@ -28,6 +28,9 @@ def _make_msix(
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr("AppxManifest.xml", ET.tostring(root))
         archive.writestr("native/InferBridge.Native.exe", b"winui")
+        archive.writestr("native/InferBridge.Native.runtimeconfig.json", b"{}")
+        archive.writestr("native/InferBridge.Native.deps.json", b"{}")
+        archive.writestr("native/coreclr.dll", b"runtime")
         archive.writestr("InferBridge.exe", b"engine")
         if signed:
             archive.writestr("AppxSignature.p7x", b"signature")
@@ -110,7 +113,9 @@ def test_missing_msix_does_not_publish_partial_installer(tmp_path):
     assert (release / f"InferBridge-{VERSION}-windows-x64-installer.exe").is_file()
 
 
-@pytest.mark.parametrize("bad", ["identity", "version", "signed", "native", "engine"])
+@pytest.mark.parametrize(
+    "bad", ["identity", "publisher", "version", "signed", "native", "engine", "runtime"]
+)
 def test_msix_identity_unsigned_and_native_payload_are_mandatory(tmp_path, bad):
     path = tmp_path / "candidate.msix"
     _make_msix(
@@ -118,10 +123,19 @@ def test_msix_identity_unsigned_and_native_payload_are_mandatory(tmp_path, bad):
         identity="Wrong.Identity" if bad == "identity" else IDENTITY,
         version="1.2.4.0" if bad == "version" else "1.2.3.0",
         signed=bad == "signed",
+        publisher="CN=other" if bad == "publisher" else PUBLISHER,
     )
-    if bad in ("native", "engine"):
+    if bad in ("native", "engine", "runtime"):
+        missing = {
+            "native": "native/InferBridge.Native.exe",
+            "engine": "InferBridge.exe",
+            "runtime": "native/coreclr.dll",
+        }[bad]
+        with zipfile.ZipFile(path) as source:
+            entries = {name: source.read(name) for name in source.namelist() if name != missing}
         with zipfile.ZipFile(path, "w") as archive:
-            archive.writestr("AppxManifest.xml", ET.tostring(ET.Element("Package")))
+            for name, content in entries.items():
+                archive.writestr(name, content)
     with pytest.raises(ValueError):
         verify_msix(path, identity=IDENTITY, publisher=PUBLISHER, version=VERSION)
 

@@ -34,7 +34,14 @@ def verify_msix(path: Path, *, identity: str, publisher: str, version: str) -> N
         raise ValueError("MSIX output is not a valid package archive")
     with zipfile.ZipFile(path) as package:
         names = {name.replace("\\", "/").lower() for name in package.namelist()}
-        for required in ("appxmanifest.xml", "native/inferbridge.native.exe", "inferbridge.exe"):
+        for required in (
+            "appxmanifest.xml",
+            "native/inferbridge.native.exe",
+            "native/inferbridge.native.runtimeconfig.json",
+            "native/inferbridge.native.deps.json",
+            "native/coreclr.dll",
+            "inferbridge.exe",
+        ):
             if required not in names:
                 raise ValueError(f"MSIX is missing the required {required} entry")
         if "appxsignature.p7x" in names:
@@ -54,7 +61,9 @@ def verify_msix(path: Path, *, identity: str, publisher: str, version: str) -> N
     if (element.get("Name"), element.get("Publisher"), element.get("Version")) != (
         identity, publisher, expected_version
     ):
-        raise ValueError("MSIX manifest does not match the selected Partner Center identity/version")
+        raise ValueError(
+            "MSIX manifest does not match the selected Partner Center identity/version"
+        )
 
 
 def select(
@@ -78,7 +87,9 @@ def select(
         release_dir.resolve() == publish_dir.resolve()
         or release_dir.resolve() in publish_dir.resolve().parents
     ):
-        raise ValueError("Published artifacts must be outside the original validated release directory")
+        raise ValueError(
+            "Published artifacts must be outside the original validated release directory"
+        )
     if publish_dir.exists():
         raise FileExistsError("Azure publication directory must not already exist")
     installer = f"InferBridge-{version}-windows-x64-installer.exe"

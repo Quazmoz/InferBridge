@@ -168,8 +168,12 @@ def test_azure_queue_time_artifact_selection_preserves_full_release_gates() -> N
     assert "scripts/select_azure_artifacts.py" in pipeline
     assert "release-internal" in pipeline
     assert "scripts/verify_release_provenance.py" in pipeline
-    assert pipeline.index("scripts/verify_release_provenance.py") < pipeline.index("scripts/build_msix.ps1")
-    assert pipeline.index("scripts/select_azure_artifacts.py") < pipeline.index("PublishPipelineArtifact@1")
+    assert pipeline.index("scripts/verify_release_provenance.py") < pipeline.index(
+        "scripts/build_msix.ps1"
+    )
+    assert pipeline.index("scripts/select_azure_artifacts.py") < pipeline.index(
+        "PublishPipelineArtifact@1"
+    )
     assert "condition: succeeded()" in pipeline
     assert "trigger: none\npr: none" in pipeline
     assert "-SkipTests" not in pipeline
