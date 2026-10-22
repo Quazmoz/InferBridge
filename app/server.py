@@ -71,6 +71,7 @@ from app.ui_registry import (
 from runtime import device_check
 from runtime.benchmark_runner import (
     DEFAULT_BENCHMARK_PROMPT,
+    BenchmarkBusyError,
     BenchmarkStore,
     run_benchmark_suite,
 )
@@ -976,7 +977,11 @@ def create_app(settings: Settings) -> FastAPI:
                 prompt=prompt,
                 max_tokens=req.max_tokens,
                 runs=req.runs,
+                client_run_id=req.client_run_id,
+                reject_when_busy=True,
             )
+        except BenchmarkBusyError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except device_check.DeviceValidationError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         await asyncio.to_thread(benchmark_store.append, run)

@@ -442,6 +442,7 @@ class BenchmarkRunRequest(BaseModel):
     prompt: str | None = Field(default=None, max_length=16_384)
     max_tokens: int = Field(default=64, ge=1, le=4096)
     runs: int = Field(default=1, ge=1, le=10)
+    client_run_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
 
     @model_validator(mode="after")
     def validate_matrix_size(self):
