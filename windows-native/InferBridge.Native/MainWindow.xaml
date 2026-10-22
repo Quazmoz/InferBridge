@@ -391,96 +391,144 @@
                         <TextBlock Text="Select load devices in Model library. Persistent server configuration, model context, top-k, and repetition penalty cannot be modified through the existing chat API." TextWrapping="Wrap" Opacity="0.8" />
                     </StackPanel>
                 </ScrollViewer>
-                <!-- Keep the transcript in the star-sized row. History management
-                     opens in an overlay and cannot crowd out streaming replies. -->
-                <Grid x:Name="ChatPanel" RowSpacing="12">
+                <!-- One compact command bar; saved-chat and detailed status flyouts
+                     never consume the transcript's star-sized viewport. -->
+                <Grid x:Name="ChatPanel" RowSpacing="10">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <StackPanel Grid.Row="0" Spacing="8">
-                        <Grid ColumnSpacing="8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="Chat" FontSize="28" FontWeight="SemiBold"
-                                       VerticalAlignment="Center" />
-                            <Button Grid.Column="1" Content="Saved chats"
-                                    AutomationProperties.Name="Manage saved conversations">
-                                <Button.Flyout>
-                                    <Flyout>
-                                        <ScrollViewer MaxHeight="340"
-                                                      VerticalScrollBarVisibility="Auto"
-                                                      HorizontalScrollBarVisibility="Disabled">
-                                            <StackPanel Width="340" Spacing="10">
-                                                <TextBlock Text="Saved conversations" FontSize="18"
-                                                           FontWeight="SemiBold" />
-                                                <TextBox x:Name="SavedChatsSearch"
-                                                         Header="Search saved conversations"
-                                                         PlaceholderText="Search titles, models, and messages on this PC"
-                                                         TextChanged="SavedChatsSearch_TextChanged" MaxLength="120"
-                                                         HorizontalAlignment="Stretch"
-                                                         AutomationProperties.Name="Search local saved conversations" />
-                                                <ComboBox x:Name="SavedChatsPicker"
-                                                          PlaceholderText="Select a saved conversation"
-                                                          HorizontalAlignment="Stretch"
-                                                          AutomationProperties.Name="Select a saved conversation"
-                                                          SelectionChanged="SavedChatsPicker_SelectionChanged" />
-                                                <StackPanel Orientation="Horizontal" Spacing="10">
-                                                    <Button x:Name="RenameSavedChatButton" Content="Rename"
-                                                            IsEnabled="False" Click="RenameSavedChatButton_Click" />
-                                                    <Button x:Name="DeleteSavedChatButton" Content="Delete saved chat"
-                                                            IsEnabled="False" Click="DeleteSavedChatButton_Click" />
-                                                </StackPanel>
-                                                <CheckBox x:Name="SaveHistoryToggle"
-                                                          Content="Save completed chats locally"
-                                                          Checked="SaveHistoryToggle_Changed"
-                                                          Unchecked="SaveHistoryToggle_Changed" />
-                                                <TextBlock Text="Off by default. Saved chats are plain text on this PC, separate from browser history. Other apps with access to your account may read these files."
-                                                           TextWrapping="Wrap" Opacity="0.8" />
+                    <Grid x:Name="ChatToolbar" Grid.Row="0" ColumnSpacing="6"
+                          SizeChanged="ChatToolbar_SizeChanged"
+                          VerticalAlignment="Center">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel x:Name="ChatToolbarTitle" Grid.Column="0" Spacing="0"
+                                    VerticalAlignment="Center" MaxWidth="126">
+                            <TextBlock Text="Chat" FontSize="24" FontWeight="SemiBold" />
+                            <TextBlock x:Name="ChatGenerationSummary"
+                                       FontSize="11" Opacity="0.7"
+                                       TextTrimming="CharacterEllipsis"
+                                       AutomationProperties.Name="Current inference settings" />
+                        </StackPanel>
+                        <ComboBox x:Name="ChatModelPicker" Grid.Column="1"
+                                  PlaceholderText="Select model"
+                                  MinWidth="140"
+                                  HorizontalAlignment="Stretch"
+                                  VerticalAlignment="Center"
+                                  SelectionChanged="ChatModelPicker_SelectionChanged"
+                                  AutomationProperties.Name="Select a downloaded or loaded inference model"
+                                  ToolTipService.ToolTip="Chat model" />
+                        <Button x:Name="ChatStatusButton" Grid.Column="2"
+                                VerticalAlignment="Center"
+                                AutomationProperties.Name="Chat status details"
+                                ToolTipService.ToolTip="Show complete chat status">
+                            <Button.Content>
+                                <StackPanel Orientation="Horizontal" Spacing="5">
+                                    <SymbolIcon Symbol="Info" />
+                                    <TextBlock x:Name="ChatStatusText" Text="Starting"
+                                               MaxWidth="74" TextTrimming="CharacterEllipsis"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button.Content>
+                            <Button.Flyout>
+                                <Flyout>
+                                    <InfoBar x:Name="ChatInfo" MaxWidth="420"
+                                             IsOpen="True" IsClosable="False"
+                                             Severity="Informational" Title="Getting ready"
+                                             Message="Connect to your engine and load a model to begin." />
+                                </Flyout>
+                            </Button.Flyout>
+                        </Button>
+                        <Button Grid.Column="3" VerticalAlignment="Center"
+                                AutomationProperties.Name="Manage saved conversations"
+                                ToolTipService.ToolTip="Saved conversations">
+                            <Button.Content>
+                                <SymbolIcon Symbol="Library" />
+                            </Button.Content>
+                            <Button.Flyout>
+                                <Flyout>
+                                    <ScrollViewer MaxHeight="340"
+                                                  VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled">
+                                        <StackPanel Width="340" Spacing="10">
+                                            <TextBlock Text="Saved conversations" FontSize="18"
+                                                       FontWeight="SemiBold" />
+                                            <TextBox x:Name="SavedChatsSearch"
+                                                     Header="Search saved conversations"
+                                                     PlaceholderText="Search titles, models, and messages on this PC"
+                                                     TextChanged="SavedChatsSearch_TextChanged" MaxLength="120"
+                                                     HorizontalAlignment="Stretch"
+                                                     AutomationProperties.Name="Search local saved conversations" />
+                                            <ComboBox x:Name="SavedChatsPicker"
+                                                      PlaceholderText="Select a saved conversation"
+                                                      HorizontalAlignment="Stretch"
+                                                      AutomationProperties.Name="Select a saved conversation"
+                                                      SelectionChanged="SavedChatsPicker_SelectionChanged" />
+                                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                                <Button x:Name="RenameSavedChatButton" Content="Rename"
+                                                        IsEnabled="False" Click="RenameSavedChatButton_Click" />
+                                                <Button x:Name="DeleteSavedChatButton" Content="Delete saved chat"
+                                                        IsEnabled="False" Click="DeleteSavedChatButton_Click" />
                                             </StackPanel>
-                                        </ScrollViewer>
-                                    </Flyout>
-                                </Button.Flyout>
-                            </Button>
-                            <Button Grid.Column="2" Content="New chat"
-                                    Click="NewChatButton_Click" />
-                        </Grid>
-                        <Grid ColumnSpacing="10">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <ComboBox x:Name="ChatModelPicker" Header="Chat model"
-                                      PlaceholderText="Choose a downloaded model"
-                                      HorizontalAlignment="Stretch"
-                                      SelectionChanged="ChatModelPicker_SelectionChanged"
-                                      AutomationProperties.Name="Select a downloaded or loaded inference model" />
-                            <Button Grid.Column="1" Content="Inference settings"
-                                    VerticalAlignment="Bottom"
-                                    Click="OpenGenerationSettingsButton_Click" />
-                        </Grid>
-                        <TextBlock x:Name="ChatGenerationSummary" TextWrapping="Wrap"
-                                   Opacity="0.75"
-                                   AutomationProperties.LiveSetting="Polite" />
-                        <InfoBar x:Name="ChatInfo" IsOpen="True" IsClosable="False"
-                                 Severity="Informational" Title="Getting ready"
-                                 Message="Connect to your engine and load a model to begin." />
-                    </StackPanel>
-                    <ListView x:Name="ChatHistory" Grid.Row="1"
-                              SelectionMode="None"
-                              HorizontalContentAlignment="Stretch"
-                              AutomationProperties.Name="Conversation history" />
-                    <StackPanel Grid.Row="2" Spacing="8">
-                        <TextBox x:Name="PromptBox" Header="Message"
-                                 PlaceholderText="Ask your local model…"
+                                            <CheckBox x:Name="SaveHistoryToggle"
+                                                      Content="Save completed chats locally"
+                                                      Checked="SaveHistoryToggle_Changed"
+                                                      Unchecked="SaveHistoryToggle_Changed" />
+                                            <TextBlock Text="Off by default. Saved chats are plain text on this PC, separate from browser history. Other apps with access to your account may read these files."
+                                                       TextWrapping="Wrap" Opacity="0.8" />
+                                        </StackPanel>
+                                    </ScrollViewer>
+                                </Flyout>
+                            </Button.Flyout>
+                        </Button>
+                        <Button Grid.Column="4" VerticalAlignment="Center"
+                                Click="OpenGenerationSettingsButton_Click"
+                                AutomationProperties.Name="Inference settings"
+                                ToolTipService.ToolTip="Inference settings">
+                            <SymbolIcon Symbol="Setting" />
+                        </Button>
+                        <Button x:Name="NewChatButton" Grid.Column="5" VerticalAlignment="Center"
+                                Click="NewChatButton_Click"
+                                AutomationProperties.Name="New conversation"
+                                ToolTipService.ToolTip="New chat">
+                            <SymbolIcon Symbol="Add" />
+                        </Button>
+                    </Grid>
+                    <Grid Grid.Row="1" MinHeight="0">
+                        <ListView x:Name="ChatHistory"
+                                  SelectionMode="None"
+                                  HorizontalContentAlignment="Stretch"
+                                  AutomationProperties.Name="Conversation history" />
+                        <StackPanel x:Name="ChatEmptyState" Spacing="8"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    MaxWidth="360" IsHitTestVisible="False"
+                                    AutomationProperties.AccessibilityView="Raw">
+                            <TextBlock Text="Start a conversation" FontSize="22"
+                                       FontWeight="SemiBold" HorizontalAlignment="Center" />
+                            <TextBlock Text="Select a local model above, then write a message below. Replies appear here."
+                                       TextAlignment="Center" TextWrapping="Wrap"
+                                       Opacity="0.7" />
+                        </StackPanel>
+                    </Grid>
+                    <Grid Grid.Row="2" RowSpacing="8">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBox x:Name="PromptBox" Grid.Row="0"
+                                 PlaceholderText="Message your local model…"
                                  AcceptsReturn="True" TextWrapping="Wrap"
-                                 MinHeight="64" MaxHeight="120" MaxLength="8000"
+                                 MinHeight="64" MaxHeight="112" MaxLength="8000"
                                  AutomationProperties.Name="Chat prompt" />
-                        <StackPanel Orientation="Horizontal" Spacing="10">
+                        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="10">
                             <Button x:Name="SendButton" Content="Send" IsEnabled="False"
                                     Style="{StaticResource AccentButtonStyle}"
                                     Click="SendButton_Click">
@@ -492,8 +540,10 @@
                                     IsEnabled="False" Click="CancelButton_Click" />
                             <ProgressRing x:Name="ChatProgress" IsActive="False"
                                           Width="24" Height="24" />
+                            <TextBlock Text="Ctrl+Enter to send" VerticalAlignment="Center"
+                                       FontSize="12" Opacity="0.6" />
                         </StackPanel>
-                    </StackPanel>
+                    </Grid>
                 </Grid>
             </Grid>
         </NavigationView>

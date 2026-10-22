@@ -62,44 +62,88 @@ def test_native_chat_uses_real_accessible_xaml_controls():
     assert not any("WebView" in node.tag for node in root.iter())
 
 
-def test_native_chat_keeps_transcript_space_when_saved_history_is_available():
-    """Saved-history management must not consume the chat viewport at windowed sizes."""
+def test_native_chat_toolbar_preserves_a_real_transcript_viewport():
+    """Desktop controls must never push the transcript below the visible window."""
     root = ET.parse(PROJECT / "MainWindow.xaml").getroot()
-    xaml_ns = "{http://schemas.microsoft.com/winfx/2006/xaml}"
-    name = xaml_ns + "Name"
-    row = "Grid.Row"
-    chat = next(node for node in root.iter() if node.get(name) == "ChatPanel")
+    named = "{http://schemas.microsoft.com/winfx/2006/xaml}Name"
+    chat = next(node for node in root.iter() if node.get(named) == "ChatPanel")
     rows = chat.find(XAML + "Grid.RowDefinitions")
     assert rows is not None
-    assert [item.get("Height") for item in rows] == ["Auto", "*", "Auto"]
+    assert [row.get("Height") for row in rows] == ["Auto", "*", "Auto"]
 
-    header = next(
-        child for child in chat if child.tag == XAML + "StackPanel" and child.get(row) == "0"
-    )
-    transcript = next(child for child in chat if child.get(name) == "ChatHistory")
-    composer = next(
-        child for child in chat if child.tag == XAML + "StackPanel" and child.get(row) == "2"
-    )
-    assert transcript.tag == XAML + "ListView"
-    assert transcript.get(row) == "1"
-    assert transcript.get("MinHeight") is None
-    assert any(node.get(name) == "PromptBox" for node in composer.iter())
-    assert any(node.get(name) == "SendButton" for node in composer.iter())
+    toolbar = next(node for node in chat if node.get(named) == "ChatToolbar")
+    assert toolbar.tag == XAML + "Grid"
+    assert toolbar.get("Grid.Row") == "0"
+    assert toolbar.get("SizeChanged") == "ChatToolbar_SizeChanged"
+    columns = toolbar.find(XAML + "Grid.ColumnDefinitions")
+    assert columns is not None
+    assert [column.get("Width") for column in columns] == [
+        "Auto",
+        "*",
+        "Auto",
+        "Auto",
+        "Auto",
+        "Auto",
+    ]
+    model = next(node for node in toolbar.iter() if node.get(named) == "ChatModelPicker")
+    assert model.get("Grid.Column") == "1"
+    assert model.get("Header") is None
+    assert model.get("MinWidth") == "140"
 
-    # Flyouts overlay the transcript rather than enlarging the auto-sized header.
-    flyout = header.find(".//" + XAML + "Button.Flyout/" + XAML + "Flyout")
-    assert flyout is not None
-    for control in (
+    status = next(node for node in toolbar.iter() if node.get(named) == "ChatStatusButton")
+    assert status.get("Grid.Column") == "2"
+    info = next(node for node in toolbar.iter() if node.get(named) == "ChatInfo")
+    assert toolbar.find(".//" + XAML + "Button.Flyout/" + XAML + "Flyout") is not None
+    assert not any(node.get(named) == "ChatInfo" for node in chat if node is not toolbar)
+
+    for name in (
         "SavedChatsSearch",
         "SavedChatsPicker",
         "SaveHistoryToggle",
         "RenameSavedChatButton",
         "DeleteSavedChatButton",
     ):
-        assert any(node.get(name) == control for node in flyout.iter())
-    assert not any(node.get(name) == "SavedChatsSearch" for node in composer.iter())
-    assert any(node.get(name) == "ChatModelPicker" for node in header.iter())
-    assert any(node.get(name) == "ChatInfo" for node in header.iter())
+        assert any(node.get(named) == name for node in toolbar.iter())
+    # The history and status details live in flyouts, never in the growing chat column.
+    assert not any(node.get(named) == "SavedChatsSearch" for node in chat if node is not toolbar)
+
+    viewport = next(child for child in chat if child.get("Grid.Row") == "1")
+    assert viewport.tag == XAML + "Grid"
+    transcript = next(node for node in viewport if node.get(named) == "ChatHistory")
+    empty = next(node for node in viewport if node.get(named) == "ChatEmptyState")
+    assert transcript.tag == XAML + "ListView"
+    assert transcript.get("MinHeight") is None
+    assert empty.get("IsHitTestVisible") == "False"
+
+    composer = next(child for child in chat if child.get("Grid.Row") == "2")
+    assert composer.tag == XAML + "Grid"
+    assert [row.get("Height") for row in composer.find(XAML + "Grid.RowDefinitions")] == [
+        "Auto",
+        "Auto",
+    ]
+    prompt = next(node for node in composer if node.get(named) == "PromptBox")
+    assert prompt.get("MaxHeight") == "112"
+    assert prompt.get("Header") is None
+    for name in ("SendButton", "CancelButton", "ChatProgress"):
+        assert any(node.get(named) == name for node in composer.iter())
+
+
+def test_native_chat_maintains_empty_state_and_status_visibility_without_changing_actions():
+    window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    assert "private void UpdateChatEmptyState()" in window
+    assert "ChatEmptyState.Visibility = ChatHistory.Items.Count == 0" in window
+    assert window.count("UpdateChatEmptyState();") >= 5
+    assert "ChatToolbarTitle.Visibility = compact ? Visibility.Collapsed" in window
+    assert "ChatStatusText.Visibility = compact ? Visibility.Collapsed" in window
+    assert "ChatStatusText.Text = severity switch" in window
+    assert "ToolTipService.SetToolTip(ChatStatusButton" in window
+    assert "FrameworkElementAutomationPeer.FromElement(ChatStatusButton)" in window
+    assert "InfoBarSeverity.Error => \"Error: \" + title" in window
+    assert "NewChatButton.IsEnabled = !_chatBusy && !_quitting;" in window
+    assert "private async void SendButton_Click" in window
+    assert "ChatHistory.ScrollIntoView(assistantItem)" in window
+    assert "SaveHistoryToggle.IsChecked == true" in window
+
 
 
 def test_native_model_library_keeps_inventory_visible_and_actions_scrollable():

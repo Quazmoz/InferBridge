@@ -818,6 +818,7 @@ public sealed partial class MainWindow : Window
         _turns.AddRange(saved.Turns);
         ResetGenerationSettings();
         ChatHistory.Items.Clear();
+        UpdateChatEmptyState();
         foreach (var turn in saved.Turns)
             AppendChat(turn.Role == "user" ? "You" : "InferBridge", turn.Content);
         PromptBox.Text = string.Empty;
@@ -861,6 +862,7 @@ public sealed partial class MainWindow : Window
             {
                 _turns.Clear();
                 ChatHistory.Items.Clear();
+        UpdateChatEmptyState();
                 _currentConversationId = Guid.NewGuid().ToString("N");
                 _conversationModelId = SelectedModelId;
             }
@@ -950,6 +952,7 @@ public sealed partial class MainWindow : Window
         {
             _turns.Clear();
             ChatHistory.Items.Clear();
+        UpdateChatEmptyState();
             _currentConversationId = Guid.NewGuid().ToString("N");
             _conversationModelId = modelId;
             ResetGenerationSettings();
@@ -1165,6 +1168,15 @@ public sealed partial class MainWindow : Window
         UpdateModelPreparationUi();
     }
 
+    private void ChatToolbar_SizeChanged(object sender, SizeChangedEventArgs args)
+    {
+        // WinUI NavigationView uses a compact pane at narrow widths; toolbar
+        // chrome must yield space to the model picker, transcript and composer.
+        bool compact = args.NewSize.Width < 560;
+        ChatToolbarTitle.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        ChatStatusText.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+    }
+
     private void UpdateChatButtons()
     {
         SendButton.IsEnabled = !_chatBusy && !_isManaging && !_isRefreshing && !_quitting
@@ -1181,6 +1193,7 @@ public sealed partial class MainWindow : Window
         WebUiButton.IsEnabled = _engineConnected && !_quitting && !_openingWebUi;
         ScanHardwareButton.IsEnabled = _engineConnected && !_quitting && !_scanningDevices;
         PromptBox.IsEnabled = !_chatBusy;
+        NewChatButton.IsEnabled = !_chatBusy && !_quitting;
         ChatProgress.IsActive = _chatBusy;
         UpdateGenerationSettingsInfo();
         UpdateModelButtons();
@@ -1567,6 +1580,7 @@ public sealed partial class MainWindow : Window
             {
                 if (assistantItem is not null) ChatHistory.Items.Remove(assistantItem);
                 if (userItem is not null) ChatHistory.Items.Remove(userItem);
+                UpdateChatEmptyState();
             }
             send.Dispose();
             _sendCancellation = null;
@@ -1584,6 +1598,7 @@ public sealed partial class MainWindow : Window
         if (_chatBusy) return;
         _turns.Clear();
         ChatHistory.Items.Clear();
+        UpdateChatEmptyState();
         _currentConversationId = Guid.NewGuid().ToString("N");
         _conversationModelId = SelectedModelId;
         ResetGenerationSettings();
@@ -1591,6 +1606,10 @@ public sealed partial class MainWindow : Window
         ShowChatInfo("New chat", "A fresh conversation is ready. Previously saved chats remain in the picker.",
             InfoBarSeverity.Informational);
     }
+
+    private void UpdateChatEmptyState() =>
+        ChatEmptyState.Visibility = ChatHistory.Items.Count == 0
+            ? Visibility.Visible : Visibility.Collapsed;
 
     private ListViewItem AppendChat(string speaker, string message)
     {
@@ -1605,6 +1624,7 @@ public sealed partial class MainWindow : Window
             },
         };
         ChatHistory.Items.Add(item);
+        UpdateChatEmptyState();
         ChatHistory.ScrollIntoView(item);
         return item;
     }
@@ -1621,12 +1641,22 @@ public sealed partial class MainWindow : Window
     {
         // Polling repeats the same status every tick; only real changes update
         // the bar and are announced, so screen readers hear replies and errors.
-        if (ChatInfo.Title == title && ChatInfo.Message == message) return;
+        if (ChatInfo.Title == title && ChatInfo.Message == message
+            && ChatInfo.Severity == severity) return;
+        ChatStatusText.Text = severity switch
+        {
+            InfoBarSeverity.Error => "Error: " + title,
+            InfoBarSeverity.Warning => "Warning: " + title,
+            _ => title,
+        };
         ChatInfo.Title = title;
         ChatInfo.Message = message;
+        ToolTipService.SetToolTip(ChatStatusButton, title + ". " + message);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+            ChatStatusButton, title + ". " + message);
         ChatInfo.Severity = severity;
-        (FrameworkElementAutomationPeer.FromElement(ChatInfo)
-            ?? FrameworkElementAutomationPeer.CreatePeerForElement(ChatInfo))
+        (FrameworkElementAutomationPeer.FromElement(ChatStatusButton)
+            ?? FrameworkElementAutomationPeer.CreatePeerForElement(ChatStatusButton))
             ?.RaiseNotificationEvent(AutomationNotificationKind.ActionCompleted,
                 AutomationNotificationProcessing.ImportantMostRecent,
                 title + ". " + message, "InferBridge.ChatStatus");
