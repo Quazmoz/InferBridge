@@ -37,15 +37,18 @@ def test_native_evaluation_build_keeps_engine_smoke_and_native_contract_gates():
 
 def test_normal_release_installer_and_portable_launch_winui_by_default():
     release = (ROOT / "scripts/build_release.ps1").read_text(encoding="utf-8")
-    workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    azure = (ROOT / "azure-pipelines.yml").read_text(encoding="utf-8")
+    assert not (ROOT / ".github/workflows/release.yml").exists()
     assert "Publish self-contained native Windows frontend" in release
     assert "windows-native/InferBridge.Native/InferBridge.Native.csproj" in release
     assert "Native WinUI launcher is missing" in release
     assert '"/DAppIconPath=$AppIcon" /DNativeFrontend packaging/installer.iss' in release
     assert "native\\InferBridge.Native.exe for the Windows app" in release
-    assert 'dotnet-version: "10.0.x"' in workflow
-    assert "artifact-configuration-slug: native" in workflow
-    assert "Install signed native WinUI launcher" in workflow
+    assert "scripts/build_release.ps1" in azure
+    assert "scripts/verify_release_provenance.py" in azure
+    assert "PublishPipelineArtifact@1" in azure
+    assert "condition: succeeded()" in azure
+    assert "-Unsigned -Clean" in azure
     assert "Run native backend contract tests" in release
     assert "coreclr.dll" in (ROOT / "packaging/installer.iss").read_text(encoding="utf-8")
 
