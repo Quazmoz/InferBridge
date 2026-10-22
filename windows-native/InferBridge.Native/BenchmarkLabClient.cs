@@ -187,6 +187,14 @@ internal static class BenchmarkLab
                 || !expected.Remove(Text(row, "model_id", 128) + "\u001F"
                     + Text(row, "requested_device", 64)))
                 throw new JsonException("Unexpected or duplicate benchmark result.");
+            foreach (string flag in new[] { "synthetic", "mock" })
+            {
+                if (row.TryGetProperty(flag, out var rowFlag)
+                    && (rowFlag.ValueKind is not (JsonValueKind.True or JsonValueKind.False)
+                        || (rowFlag.ValueKind == JsonValueKind.True
+                            && synthetic.ValueKind != JsonValueKind.True)))
+                    throw new JsonException("Synthetic result cannot be labeled as measured hardware.");
+            }
             if (success.ValueKind == JsonValueKind.True) successes++;
             else failures++;
         }
@@ -239,7 +247,7 @@ internal sealed partial class BackendClient
 
     public async Task<BenchmarkCompletion> RunBenchmarkLabAsync(
         BenchmarkPlan plan, string sessionId, string clientRunId, string? apiKey,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, Action? onDispatchStarted = null)
     {
         if (clientRunId.Length != 32 || !Regex.IsMatch(clientRunId, @"^[0-9a-f]{32}$"))
             throw new ArgumentException("Invalid benchmark correlation ID.");
@@ -259,6 +267,8 @@ internal sealed partial class BackendClient
             null, cancellationToken, TimeSpan.FromSeconds(4));
         if (dispatchIdentity.RootElement.GetProperty("instance_nonce").GetString() != sessionId)
             throw new InvalidOperationException("Engine restarted before benchmark dispatch.");
+        // Only now can network failure mean the engine may have accepted the POST.
+        onDispatchStarted?.Invoke();
         using var result = await PostJsonAsync(origin + "/v1/benchmarks/run",
             JsonSerializer.Serialize(new
             {

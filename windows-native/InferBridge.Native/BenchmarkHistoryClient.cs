@@ -131,7 +131,8 @@ internal static class BenchmarkHistory
             results.Add(new BenchmarkRun(id, Field(item, "created_at", 64),
                 Field(item, "preset", 40), Number(item, "methodology_version") ?? 1,
                 tokens, runs, warmups, Fingerprint(item),
-                Boolean(item, "synthetic") || Boolean(item, "mock"), measurements,
+                Boolean(item, "synthetic") || Boolean(item, "mock")
+                    || measurements.Any(row => row.Synthetic), measurements,
                 Field(item, "client_run_id", 32)));
         }
         return results;

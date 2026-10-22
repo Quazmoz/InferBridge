@@ -234,7 +234,6 @@ public sealed partial class MainWindow
         {
             if (await dialog.ShowAsync() != ContentDialogResult.Primary
                 || _closing.IsCancellationRequested) return;
-            confirmed = false; // Dispatch can succeed even if the HTTP response is lost.
             clientRunId = Guid.NewGuid().ToString("N");
             _activeBenchmarkPlan = plan;
             _activeBenchmarkSession = session;
@@ -252,7 +251,8 @@ public sealed partial class MainWindow
             _benchmarkAwaitingResponse = true;
             _benchmarkActivityTimer.Start();
             BenchmarkCompletion completed = await _backend.RunBenchmarkLabAsync(
-                plan, session, clientRunId, ApiKeyBox.Password, _closing.Token);
+                plan, session, clientRunId, ApiKeyBox.Password, _closing.Token,
+                onDispatchStarted: () => confirmed = false);
             _benchmarkAwaitingResponse = false;
             confirmed = true;
             if (_closing.IsCancellationRequested) return;

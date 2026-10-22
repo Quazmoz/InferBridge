@@ -150,6 +150,12 @@ internal static class BenchmarkLabContractTests
             """);
         Throws<JsonException>(() => BenchmarkLab.ReadCompletion(duplicated.RootElement, plan),
             "duplicate results accepted as a complete matrix");
+        using var mislabeled = JsonDocument.Parse(
+            duplicated.RootElement.GetRawText().Replace(
+                "\"model_id\":\"gen-a\",\"requested_device\":\"CPU\",\"success\":true",
+                "\"model_id\":\"gen-a\",\"requested_device\":\"CPU\",\"success\":true,\"synthetic\":true"));
+        Throws<JsonException>(() => BenchmarkLab.ReadCompletion(mislabeled.RootElement, plan),
+            "synthetic measurement was allowed in a measured run");
 
         string directory = Path.Combine(root, "benchmark");
         Directory.CreateDirectory(directory);
@@ -206,9 +212,12 @@ internal static class BenchmarkLabContractTests
                     ClientRunId, Key, CancellationToken.None),
                 "tampered in-memory plan bypassed preset workload limits");
             switchedSession = true;
+            bool dispatched = false;
             await ThrowsAsync<IOException>(() =>
-                client.RunBenchmarkLabAsync(plan, Session, ClientRunId, Key, CancellationToken.None),
+                client.RunBenchmarkLabAsync(plan, Session, ClientRunId, Key,
+                    CancellationToken.None, () => dispatched = true),
                 "engine restart did not stop stale matrix dispatch");
+            Check(!dispatched, "preflight restart was incorrectly treated as a dispatched POST");
         }
         Check(posts == 1, "stale or duplicate requests dispatched a second benchmark");
         Console.WriteLine("Native Benchmark Lab contracts: all cases passed.");
