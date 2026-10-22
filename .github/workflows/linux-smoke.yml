@@ -50,6 +50,11 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.11'
+      - name: Fast-fail pinned Ruff source-quality gates
+        run: |
+          python -m pip install --disable-pip-version-check --no-deps ruff==0.16.10
+          python -m ruff check .
+          python -m ruff format --check .
       - name: Check shell syntax
         run: bash -n setup.sh start_server.sh setup/linux/*.sh
       - name: Set up Linux source environment without downloading model weights
