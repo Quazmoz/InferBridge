@@ -52,9 +52,9 @@ internal static class BenchmarkLab
         if (sessionId.Length is < 8 or > 512
             || root.ValueKind != JsonValueKind.Object
             || !root.TryGetProperty("models", out var modelRoot)
+            || modelRoot.ValueKind != JsonValueKind.Object
             || !modelRoot.TryGetProperty("available", out var models)
             || models.ValueKind != JsonValueKind.Array
-            || modelRoot.ValueKind != JsonValueKind.Object
             || !root.TryGetProperty("device", out var deviceRoot)
             || deviceRoot.ValueKind != JsonValueKind.Object
             || !deviceRoot.TryGetProperty("available", out var devices)

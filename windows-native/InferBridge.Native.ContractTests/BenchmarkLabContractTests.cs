@@ -88,6 +88,12 @@ internal static class BenchmarkLabContractTests
             invalidInventory.RootElement, Session),
             "malformed catalog was accepted");
 
+        using var malformedModels = JsonDocument.Parse(
+            """{"models":"invalid","device":{"available":["CPU"]}}""");
+        Throws<JsonException>(() => BenchmarkLab.ReadCatalog(
+            malformedModels.RootElement, Session),
+            "malformed model object escaped schema validation");
+
         var gate = new BenchmarkAttemptGate();
         Check(gate.TryBegin() && !gate.TryBegin(), "duplicate Start acquired a second lease");
         gate.Finish(confirmed: false);
