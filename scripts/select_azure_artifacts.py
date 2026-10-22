@@ -59,7 +59,9 @@ def verify_msix(path: Path, *, identity: str, publisher: str, version: str) -> N
     if any(int(part) > 65535 for part in numeric.groups()):
         raise ValueError("MSIX version exceeds Windows package limits")
     if (element.get("Name"), element.get("Publisher"), element.get("Version")) != (
-        identity, publisher, expected_version
+        identity,
+        publisher,
+        expected_version,
     ):
         raise ValueError(
             "MSIX manifest does not match the selected Partner Center identity/version"
@@ -142,8 +144,7 @@ def select(
         "pipeline_run": run_id,
         "unsigned": True,
         "certification": (
-            "evaluation only; Store installation, WACK, hardware "
-            "and installed behavior unverified"
+            "evaluation only; Store installation, WACK, hardware and installed behavior unverified"
         ),
         "store_submission": (
             "manual Partner Center review required" if msix in chosen else "not applicable"

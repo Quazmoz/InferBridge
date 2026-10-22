@@ -62,11 +62,8 @@ def test_manual_azure_build_keeps_native_and_python_qualification() -> None:
     assert "trigger: none\npr: none" in pipeline
     assert "BUILD_REASON -ne 'Manual'" in pipeline
     assert "scripts/build_release.ps1" in pipeline
-    assert "Invoke-Checked \"Pytest\"" in builder
-    assert (
-        "dotnet publish windows-native/InferBridge.Native/InferBridge.Native.csproj"
-        in builder
-    )
+    assert 'Invoke-Checked "Pytest"' in builder
+    assert "dotnet publish windows-native/InferBridge.Native/InferBridge.Native.csproj" in builder
     assert "InferBridge.Native.ContractTests.csproj" in builder
     assert "-SkipTests" not in pipeline
 
@@ -177,6 +174,8 @@ def test_azure_queue_time_artifact_selection_preserves_full_release_gates() -> N
     assert "condition: succeeded()" in pipeline
     assert "trigger: none\npr: none" in pipeline
     assert "-SkipTests" not in pipeline
-    assert "verify_msix(source, identity=identity, publisher=publisher, version=version)" in selector
+    assert (
+        "verify_msix(source, identity=identity, publisher=publisher, version=version)" in selector
+    )
     assert '"azure-selected-checksums.txt"' in selector
     assert '"azure-build-provenance.json"' in selector

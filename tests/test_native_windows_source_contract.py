@@ -138,12 +138,11 @@ def test_native_chat_maintains_empty_state_and_status_visibility_without_changin
     assert "ChatStatusText.Text = severity switch" in window
     assert "ToolTipService.SetToolTip(ChatStatusButton" in window
     assert "FrameworkElementAutomationPeer.FromElement(ChatStatusButton)" in window
-    assert "InfoBarSeverity.Error => \"Error: \" + title" in window
+    assert 'InfoBarSeverity.Error => "Error: " + title' in window
     assert "NewChatButton.IsEnabled = !_chatBusy && !_quitting;" in window
     assert "private async void SendButton_Click" in window
     assert "ChatHistory.ScrollIntoView(assistantItem)" in window
     assert "SaveHistoryToggle.IsChecked == true" in window
-
 
 
 def test_native_model_library_keeps_inventory_visible_and_actions_scrollable():
@@ -163,9 +162,7 @@ def test_native_model_library_keeps_inventory_visible_and_actions_scrollable():
     assert actions.tag == XAML + "ScrollViewer"
     assert 0 < int(actions.get("MaxHeight")) <= 220
     assert actions.get("HorizontalScrollBarVisibility") == "Disabled"
-    buttons = {
-        node.get(named) for node in actions.iter() if node.tag == XAML + "Button"
-    }
+    buttons = {node.get(named) for node in actions.iter() if node.tag == XAML + "Button"}
     for control in (
         "DownloadButton",
         "LoadButton",

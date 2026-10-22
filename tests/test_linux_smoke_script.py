@@ -24,7 +24,7 @@ def _checkout(tmp_path):
     (root / "models.json").write_text("{}\n")
     (root / "start_server.sh").write_text(
         "#!/bin/bash\n"
-        "exec \"$(dirname \"$0\")/.venv/bin/python\" - \"$@\" <<'PY'\n"
+        'exec "$(dirname "$0")/.venv/bin/python" - "$@" <<\'PY\'\n'
         "import http.server, os, pathlib, sys\n"
         "port = int(sys.argv[sys.argv.index('--port') + 1])\n"
         "pathlib.Path(os.environ['STUB_PID_MARKER']).write_text(str(os.getpid()))\n"
