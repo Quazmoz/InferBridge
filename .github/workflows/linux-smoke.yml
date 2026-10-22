@@ -4,6 +4,9 @@ on:
   push:
     branches: [dev]
     paths:
+      - '**/*.py'
+      - 'pyproject.toml'
+      - 'requirements/release.txt'
       - '.github/workflows/linux-smoke.yml'
       - 'setup.sh'
       - 'start_server.sh'
@@ -17,6 +20,9 @@ on:
   pull_request:
     branches: [dev]
     paths:
+      - '**/*.py'
+      - 'pyproject.toml'
+      - 'requirements/release.txt'
       - '.github/workflows/linux-smoke.yml'
       - 'setup.sh'
       - 'start_server.sh'
