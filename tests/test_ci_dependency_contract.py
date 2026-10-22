@@ -202,7 +202,10 @@ def test_windows_312_ci_compiles_native_frontend_without_releasing() -> None:
     assert "python -m pytest" in workflow
     assert "actions/setup-dotnet@v4" in workflow
     assert "dotnet-version: '10.0.x'" in workflow
-    assert "windows-native/InferBridge.Native.ContractTests/InferBridge.Native.ContractTests.csproj" in workflow
+    assert (
+        "windows-native/InferBridge.Native.ContractTests/InferBridge.Native.ContractTests.csproj"
+        in workflow
+    )
     assert "dotnet publish windows-native/InferBridge.Native/InferBridge.Native.csproj" in workflow
     assert "--self-contained true -p:Platform=x64" in workflow
     assert "'InferBridge.Native.exe'" in workflow
