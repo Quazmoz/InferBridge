@@ -128,7 +128,10 @@ public sealed partial class MainWindow
 
     private void BenchmarkModelChoice_Changed(object sender, RoutedEventArgs args)
     {
-        if (_benchmarkUpdating || sender is not CheckBox { Tag: string id } choice) return;
+        if (_benchmarkUpdating || sender is not CheckBox) return;
+        var choice = (CheckBox)sender;
+        string? id = choice.Tag as string;
+        if (id is null) return;
         if (choice.IsChecked == true) _benchmarkSelectedModels.Add(id);
         else _benchmarkSelectedModels.Remove(id);
         UpdateBenchmarkWorkload();
@@ -136,7 +139,10 @@ public sealed partial class MainWindow
 
     private void BenchmarkDeviceChoice_Changed(object sender, RoutedEventArgs args)
     {
-        if (_benchmarkUpdating || sender is not CheckBox { Tag: string id } choice) return;
+        if (_benchmarkUpdating || sender is not CheckBox) return;
+        var choice = (CheckBox)sender;
+        string? id = choice.Tag as string;
+        if (id is null) return;
         if (choice.IsChecked == true) _benchmarkSelectedDevices.Add(id);
         else _benchmarkSelectedDevices.Remove(id);
         UpdateBenchmarkWorkload();
