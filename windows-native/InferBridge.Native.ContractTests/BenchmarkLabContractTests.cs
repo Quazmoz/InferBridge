@@ -151,9 +151,10 @@ internal static class BenchmarkLabContractTests
         Throws<JsonException>(() => BenchmarkLab.ReadCompletion(duplicated.RootElement, plan),
             "duplicate results accepted as a complete matrix");
         using var mislabeled = JsonDocument.Parse(
-            duplicated.RootElement.GetRawText().Replace(
-                "\"model_id\":\"gen-a\",\"requested_device\":\"CPU\",\"success\":true",
-                "\"model_id\":\"gen-a\",\"requested_device\":\"CPU\",\"success\":true,\"synthetic\":true"));
+            completed.RootElement.GetRawText()
+                .Replace("\"synthetic\":true", "\"synthetic\":false")
+                .Replace("\"model_id\":\"gen-a\",\"requested_device\":\"CPU\",\"success\":true",
+                    "\"model_id\":\"gen-a\",\"requested_device\":\"CPU\",\"success\":true,\"synthetic\":true"));
         Throws<JsonException>(() => BenchmarkLab.ReadCompletion(mislabeled.RootElement, plan),
             "synthetic measurement was allowed in a measured run");
 

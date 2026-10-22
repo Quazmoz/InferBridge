@@ -105,6 +105,20 @@ def test_benchmark_client_run_id_survives_history(tmp_path):
         )
 
 
+def test_busy_benchmark_returns_conflict(tmp_path, monkeypatch):
+    async def busy(*_args, **_kwargs):
+        raise benchmark_runner_core.BenchmarkBusyError("A benchmark is already running.")
+
+    monkeypatch.setattr("app.server.run_benchmark_suite", busy)
+    with make_client(tmp_path) as client:
+        response = client.post(
+            "/v1/benchmarks/run",
+            json={"model": MODEL_ID, "devices": ["CPU"]},
+        )
+    assert response.status_code == 409
+    assert "already running" in response.json()["detail"]
+
+
 def test_concurrent_api_benchmarks_reject_instead_of_queue(monkeypatch):
     entered = asyncio.Event()
     release = asyncio.Event()
