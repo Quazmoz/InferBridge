@@ -183,3 +183,29 @@ def test_azure_queue_time_artifact_selection_preserves_full_release_gates() -> N
     )
     assert '"azure-selected-checksums.txt"' in selector
     assert '"azure-build-provenance.json"' in selector
+
+
+def test_windows_312_ci_compiles_native_frontend_without_releasing() -> None:
+    workflow = _read(".github/workflows/python312-windows.yml")
+    release_requirements = _read("requirements/release.txt")
+    pinned_ruff = next(
+        line for line in release_requirements.splitlines() if line.startswith("ruff==")
+    )
+
+    assert "branches: [dev]" in workflow
+    assert "runs-on: windows-2022" in workflow
+    assert "python-version: '3.12'" in workflow
+    assert "architecture: 'x64'" in workflow
+    assert f"--no-deps {pinned_ruff}" in workflow
+    assert "python -m ruff check ." in workflow
+    assert "python -m ruff format --check ." in workflow
+    assert "python -m pytest" in workflow
+    assert "actions/setup-dotnet@v4" in workflow
+    assert "dotnet-version: '10.0.x'" in workflow
+    assert "windows-native/InferBridge.Native.ContractTests/InferBridge.Native.ContractTests.csproj" in workflow
+    assert "dotnet publish windows-native/InferBridge.Native/InferBridge.Native.csproj" in workflow
+    assert "--self-contained true -p:Platform=x64" in workflow
+    assert "'InferBridge.Native.exe'" in workflow
+    assert "'coreclr.dll'" in workflow
+    assert "PublishPipelineArtifact@" not in workflow
+    assert "actions/upload-artifact@" not in workflow
