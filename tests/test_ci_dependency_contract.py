@@ -139,9 +139,13 @@ def test_azure_build_binds_config_and_artifacts_to_selected_source_revision() ->
     # Mismatched artifact commit or checksums must block publication.
     assert "scripts/verify_release_provenance.py" in pipeline
     assert "--expected-commit $env:BUILD_SOURCEVERSION" in pipeline
-    assert "pipeline_config_sha256 = $env:INFERBRIDGE_PIPELINE_SHA256" in pipeline
-    assert "source_ref = $env:BUILD_SOURCEBRANCH" in pipeline
-    assert "source_commit = $env:BUILD_SOURCEVERSION.ToLowerInvariant()" in pipeline
+    selector = _read("scripts/select_azure_artifacts.py")
+    assert "--pipeline-hash $env:INFERBRIDGE_PIPELINE_SHA256" in pipeline
+    assert '"pipeline_config_sha256": pipeline_hash.lower()' in selector
+    assert "--source-ref $env:BUILD_SOURCEBRANCH" in pipeline
+    assert '"source_ref": source_ref' in selector
+    assert "--source-commit $env:BUILD_SOURCEVERSION" in pipeline
+    assert '"source_commit": source_commit.lower()' in selector
     assert "-Unsigned" in pipeline
     assert "'refs/heads/main' { 'stable' }" in pipeline
     assert "'refs/heads/beta' { 'beta' }" in pipeline
