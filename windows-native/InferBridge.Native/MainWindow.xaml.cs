@@ -56,6 +56,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        BenchmarkPresetPicker.SelectionChanged += BenchmarkPresetPicker_SelectionChanged;
         try
         {
             _conversationStore = NativeConversationStore.ForCurrentInstallation();
@@ -120,6 +121,7 @@ public sealed partial class MainWindow : Window
         Closed += (_, _) =>
         {
             _pollTimer.Stop();
+            _benchmarkActivityTimer.Stop();
             _closing.Cancel();
             _sendCancellation?.Cancel();
             _backend.Dispose();
@@ -246,6 +248,8 @@ public sealed partial class MainWindow : Window
         BenchmarkPanel.Visibility = page == "benchmark" ? Visibility.Visible : Visibility.Collapsed;
         if (page == "benchmark" && !_benchmarkHistoryLoaded)
             _ = RefreshBenchmarkHistoryAsync();
+        if (page == "benchmark" && !_benchmarkGate.Active)
+            _ = RefreshBenchmarkConfigurationAsync();
         if (page == "operations" && !_operationsLoaded)
             _ = RefreshOperationsAsync();
         DoctorPanel.Visibility = page == "doctor" ? Visibility.Visible : Visibility.Collapsed;

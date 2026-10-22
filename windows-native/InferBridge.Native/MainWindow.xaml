@@ -159,6 +159,53 @@
                         <TextBlock Text="Benchmark Lab" FontSize="28" FontWeight="SemiBold" />
                         <TextBlock Text="Review local benchmark runs and compare compatible measurements. The Python/OpenVINO engine owns every measurement and the saved history."
                                    TextWrapping="Wrap" Opacity="0.8" />
+                        <TextBlock Text="Configure a benchmark" FontSize="18" FontWeight="SemiBold" />
+                        <TextBlock Text="Choose prepared generation models and devices reported by this engine. Selections do not load or download models."
+                                   TextWrapping="Wrap" Opacity="0.8" />
+                        <InfoBar x:Name="BenchmarkConfigurationInfo" Title="Benchmark configuration"
+                                 IsOpen="True" IsClosable="False" Severity="Informational"
+                                 Message="Refresh engine capabilities to configure a local benchmark." />
+                        <Button x:Name="BenchmarkConfigurationRefreshButton" Content="Refresh models and devices"
+                                HorizontalAlignment="Left"
+                                Click="BenchmarkConfigurationRefreshButton_Click" />
+                        <TextBlock Text="Generation models" FontWeight="SemiBold" />
+                        <ScrollViewer MaxHeight="224" VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel x:Name="BenchmarkModelChoices" Spacing="4">
+                                <TextBlock Text="No model inventory loaded." TextWrapping="Wrap" />
+                            </StackPanel>
+                        </ScrollViewer>
+                        <TextBlock Text="Requested execution devices" FontWeight="SemiBold" />
+                        <StackPanel x:Name="BenchmarkDeviceChoices" Spacing="4">
+                            <TextBlock Text="No devices reported." TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ComboBox x:Name="BenchmarkPresetPicker" Header="Benchmark thoroughness"
+                                  HorizontalAlignment="Stretch" MaxWidth="400"
+                                  AutomationProperties.Name="Benchmark workload preset"
+                                  SelectedIndex="1"
+                                  >
+                            <ComboBoxItem Content="Quick · 1 warm-up, 3 measured, 32 tokens" Tag="quick" />
+                            <ComboBoxItem Content="Standard · 1 warm-up, 5 measured, 64 tokens" Tag="standard" />
+                            <ComboBoxItem Content="Thorough · 2 warm-ups, 8 measured, 128 tokens" Tag="thorough" />
+                        </ComboBox>
+                        <TextBlock x:Name="BenchmarkWorkload" TextWrapping="Wrap"
+                                   AutomationProperties.LiveSetting="Polite"
+                                   Text="Select prepared models and detected devices to estimate the workload." />
+                        <Button x:Name="BenchmarkRunButton" Content="Start benchmark" IsEnabled="False"
+                                HorizontalAlignment="Left" Click="BenchmarkRunButton_Click" />
+                        <ProgressBar x:Name="BenchmarkActivityProgress" Minimum="0" Maximum="100"
+                                     IsIndeterminate="False" Value="0" Height="4"
+                                     AutomationProperties.Name="Engine-reported benchmark completion" />
+                        <StackPanel Spacing="6">
+                            <ProgressRing x:Name="BenchmarkActivityRing" Width="22" Height="22"
+                                          IsActive="False" />
+                            <TextBlock x:Name="BenchmarkActivityLabel" TextWrapping="Wrap"
+                                       AutomationProperties.LiveSetting="Polite"
+                                       Text="No benchmark running in this window." />
+                        </StackPanel>
+                        <TextBlock Text="No benchmark cancellation API is available. Stopping monitoring or closing the window is not a cancellation command. Requested AUTO and actual execution devices are reported separately."
+                                   TextWrapping="Wrap" Opacity="0.8" />
+                        <TextBlock Text="Benchmark history" FontSize="18" FontWeight="SemiBold" />
                         <InfoBar x:Name="BenchmarkHistoryInfo" Title="Benchmark history"
                                  IsOpen="True" IsClosable="False" Severity="Informational"
                                  Message="Open Benchmark Lab to load measured results from the local engine." />

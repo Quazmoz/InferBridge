@@ -15,7 +15,7 @@ passed Windows hardware certification.
 | Inference and generation configuration | Partial native | `MainWindow.GenerationSettings.cs`: request-only max tokens, temperature and top-p; persistent/advanced engine config is web-only |
 | Hardware/device inspection | Partial native | `GetDevicesAsync`, native Engine screen: reported OpenVINO device status, not advanced multi-device tuning |
 | Benchmark run history and comparable results | Full native for history | `BenchmarkHistoryClient.cs`, `MainWindow.Benchmark.cs`: authenticated bounded history, per-row measurement and strict compatibility; actual Windows execution awaits CI |
-| Full Benchmark Lab matrix/progress/cancel | Web-only | `app/advisor_ui/script_lab.py`, `app/server.py`: native has a separate one-model Quick benchmark but no native full-matrix builder/cancel control |
+| Native Benchmark Lab matrix and progress | Native configuration and execution | `MainWindow.Benchmark.cs`, `BenchmarkLabClient.cs`: multiple prepared generation models, discovered direct devices and AUTO routing, Quick/Standard/Thorough presets, bounded eight-combination runs and engine-event progress; no server-side cancellation API exists |
 | System Doctor | Partial native | `RunSystemDoctorAsync`, native Doctor screen: core checks and privacy-safe report; some advanced remediation remains web-only |
 | Storage/cache inventory and cleanup | Full native | `GetStorageInventoryAsync` and guarded cleanup; engine rechecks permissions |
 | Hugging Face authentication | Full native | `HuggingFaceClient.cs`: backend-controlled credential storage, verification and removal (as permitted) |
@@ -49,9 +49,11 @@ source, XAML compile or mocked-backend contract test.
 
 ## Next parity milestone
 
-Add native multi-model/device Benchmark Lab configuration using existing
-`POST /v1/benchmarks/run`, then show bounded progress using the authoritative
-`/v1/system/status` events. Confirm cancellation semantics before surfacing a
-button: aborting the native HTTP wait is not proof of backend cancellation.
-Follow with advanced inference settings and desktop-wide startup migration
-verification. Do not add a native inference implementation.
+Qualify the native Benchmark Lab on a Windows machine using local WinUI XAML
+compilation and the contract-test executable, followed by real hardware
+CPU/GPU/NPU runs. Native benchmark requests use the existing protected
+`POST /v1/benchmarks/run` and engine event stream, with no independent
+persistence. A lost POST response is an uncertain outcome and disables retries
+for that window. Closing the window does not issue a benchmark cancellation
+request. Follow with advanced inference settings and desktop-wide startup
+migration verification. Do not add a native inference implementation.

@@ -9,6 +9,7 @@
     <Compile Include="../InferBridge.Native/NativeDataPaths.cs" Link="NativeDataPaths.cs" />
     <Compile Include="../InferBridge.Native/BackendClient.cs" Link="BackendClient.cs" />
     <Compile Include="../InferBridge.Native/BenchmarkHistoryClient.cs" Link="BenchmarkHistoryClient.cs" />
+    <Compile Include="../InferBridge.Native/BenchmarkLabClient.cs" Link="BenchmarkLabClient.cs" />
     <Compile Include="../InferBridge.Native/HuggingFaceClient.cs" Link="HuggingFaceClient.cs" />
     <Compile Include="../InferBridge.Native/ModelPreparationClient.cs" Link="ModelPreparationClient.cs" />
     <Compile Include="../InferBridge.Native/NativeConversationStore.cs" Link="NativeConversationStore.cs" />
