@@ -160,3 +160,17 @@ def test_invalid_mode_and_nested_output_are_rejected(tmp_path):
             pipeline_hash="ab",
             run_id="1",
         )
+
+
+@pytest.mark.parametrize("mode", ("installer-portable", "all"))
+def test_full_selection_rejects_unreviewed_files_before_publication(tmp_path, mode):
+    release, msix_dir = _source(tmp_path)
+    unreviewed = release / "unreviewed-debug.log"
+    unreviewed.write_text("this is not an approved release artifact", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="unexpected file"):
+        _select(tmp_path, mode, release=release, msix_dir=msix_dir)
+
+    assert not (tmp_path / "publish").exists()
+    assert unreviewed.is_file()
+    assert (release / f"InferBridge-{VERSION}-windows-x64-installer.exe").is_file()

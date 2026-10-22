@@ -119,6 +119,14 @@ def select(
         extra = sorted(path for path in release_dir.iterdir() if path.is_file())
         if any(path.is_symlink() for path in extra):
             raise ValueError("Validated release directory contains symbolic links")
+        # The upstream provenance check validates expected files, but does not
+        # reject extras. Never publish unreviewed files from staging.
+        from scripts.verify_release_provenance import expected_release_filenames
+
+        allowed = expected_release_filenames(version)
+        unexpected = sorted(path.name for path in extra if path.name not in allowed)
+        if unexpected:
+            raise ValueError(f"Validated release directory contains unexpected file: {unexpected[0]}")
         sources = extra + ([sources[-1]] if mode == "all" else [])
 
     publish_dir.mkdir(parents=True)

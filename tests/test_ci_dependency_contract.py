@@ -109,6 +109,12 @@ def test_azure_candidate_uses_python_312_and_fast_fails_pinned_quality_gates() -
     fast_fail = pipeline.index("displayName: 'Fast-fail Python 3.12 and Ruff checks'")
     assert fast_fail < pipeline.index("displayName: 'Install Inno Setup'")
     assert fast_fail < pipeline.index("displayName: 'Prepare qualified release dependencies'")
+    sdk_install = pipeline.index("task: UseDotNet@2")
+    sdk_verify = pipeline.index("displayName: 'Verify .NET 10 SDK before packaging'")
+    assert "version: '10.0.x'" in pipeline
+    assert "dotnet --version" in pipeline
+    assert fast_fail < sdk_install < sdk_verify < pipeline.index("displayName: 'Install Inno Setup'")
+    assert sdk_verify < pipeline.index("displayName: 'Build and verify unsigned Windows release'")
 
     # Retained manual GitHub CI remains a separate qualification profile.
     github_ci = _read(".github/workflows/ci.yml")
