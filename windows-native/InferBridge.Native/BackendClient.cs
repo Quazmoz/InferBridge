@@ -408,8 +408,14 @@ internal sealed partial class BackendClient : IDisposable
             if (choice.ValueKind != JsonValueKind.Object)
                 throw new JsonException("Invalid streaming chat choice.");
             if (choice.TryGetProperty("finish_reason", out var reason)
-                && reason.ValueKind == JsonValueKind.String)
+                && reason.ValueKind != JsonValueKind.Null)
+            {
+                // A non-stop finish must not be persisted as a completed reply.
+                if (reason.ValueKind != JsonValueKind.String || reason.GetString() != "stop")
+                    throw new EngineRequestException(
+                        "The engine stopped before completing the reply. Check the model and token limit.");
                 finished = true;
+            }
             if (!choice.TryGetProperty("delta", out var delta)
                 || delta.ValueKind != JsonValueKind.Object
                 || !delta.TryGetProperty("content", out var content)
@@ -862,10 +868,17 @@ internal sealed partial class BackendClient : IDisposable
             apiKey, cancellationToken, TimeSpan.FromMinutes(8), MaximumChatBytes);
         var root = document.RootElement;
         if (root.ValueKind != JsonValueKind.Object
+            || !root.TryGetProperty("synthetic", out var syntheticFlag)
+            || syntheticFlag.ValueKind is not (JsonValueKind.True or JsonValueKind.False)
             || !root.TryGetProperty("results", out var rows)
             || rows.ValueKind != JsonValueKind.Array
             || rows.GetArrayLength() != 1)
             throw new JsonException("Unexpected benchmark result shape.");
+        bool synthetic = syntheticFlag.ValueKind == JsonValueKind.True;
+        if (root.TryGetProperty("mock", out var mockFlag)
+            && (mockFlag.ValueKind is not (JsonValueKind.True or JsonValueKind.False)
+                || (mockFlag.ValueKind == JsonValueKind.True && !synthetic)))
+            throw new JsonException("Mock benchmark cannot be labeled as measured.");
         var result = rows[0];
         if (result.ValueKind != JsonValueKind.Object
             || ReadString(result, "model_id") != confirmedModelId
@@ -873,6 +886,13 @@ internal sealed partial class BackendClient : IDisposable
             || !result.TryGetProperty("success", out var success)
             || success.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
             throw new JsonException("The benchmark did not confirm its model and device.");
+        foreach (string flag in new[] { "synthetic", "mock" })
+        {
+            if (result.TryGetProperty(flag, out var rowFlag)
+                && (rowFlag.ValueKind is not (JsonValueKind.True or JsonValueKind.False)
+                    || (rowFlag.ValueKind == JsonValueKind.True && !synthetic)))
+                throw new JsonException("Synthetic benchmark row cannot be labeled as measured.");
+        }
         if (success.ValueKind == JsonValueKind.False)
             return "The engine could not measure " + confirmedModelId +
                 " on " + confirmedDevice + ". Review System Doctor or the model status.";
@@ -889,7 +909,8 @@ internal sealed partial class BackendClient : IDisposable
             return measured.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)
                 + suffix;
         }
-        return "Measured " + confirmedModelId +
+        return (synthetic ? "Synthetic benchmark (not hardware evidence): "
+            : "Measured ") + confirmedModelId +
             "\nRequested: " + confirmedDevice + " · Actual: " + actual +
             "\nDecode speed: " + Metric("decode_tokens_sec", " tokens/s") +
             "\nTime to first token: " + Metric("time_to_first_token_ms", " ms") +

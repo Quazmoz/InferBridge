@@ -54,7 +54,7 @@ internal static class BackendContractTests
             "/v1/system/status" => Json("""{"memory":{"available_gb":8,"total_gb":16},"disk":{"free_gb":23,"models_gb":4,"models_dir":"C:\\private\\local-path"},"device":{"default":"GPU","loaded":{"model-a":"GPU.0"}},"models":{"available":[{"id":"model-a","name":"Model A","status":"loaded","is_loaded":true,"is_downloaded":true},{"id":"model-b","status":"not_downloaded","is_downloaded":false}]},"events":[{"message":"private prompt: hf_secret"}]}"""),
             "/v1/desktop/operations/status" => Json("""{"application_version":"1.0.0","installation_mode":"installed","server_status":"ready","server_port":18765,"controller_available":true,"mock":true,"start_with_windows":false,"benchmark_running":false,"benchmark":{"results":[{"model_id":"model-a","device":"GPU.0"}]},"last_diagnostics_export":"previous-diagnostics.zip","active_model":{"id":"model-a","actual_device":"GPU.0"}}"""),
             "/v1/desktop/operations/diagnostics/export" => Json("""{"status":"created","filename":"inferbridge-diagnostics.zip","collection_errors":["Optional sensor unavailable"]}"""),
-            "/v1/benchmarks/run" => Json("""{"results":[{"model_id":"model-a","requested_device":"GPU.0","actual_device":"GPU.0","success":true,"decode_tokens_sec":42.5,"time_to_first_token_ms":120.2,"total_latency_ms":501.3}]}"""),
+            "/v1/benchmarks/run" => Json("""{"synthetic":true,"mock":true,"results":[{"model_id":"model-a","requested_device":"GPU.0","actual_device":"GPU.0","success":true,"synthetic":true,"decode_tokens_sec":42.5,"time_to_first_token_ms":120.2,"total_latency_ms":501.3}]}"""),
             "/v1/devices" => Json("""{"default_device":"AUTO","available":["CPU","GPU.0","NPU"],"mock":false,"openvino_available":true}"""),
             "/v1/models/load" => Json("""{"status":"accepted"}"""),
             "/v1/models/convert" => Json("""{"status":"queued_convert"}"""),
@@ -260,8 +260,10 @@ internal static class BackendContractTests
                 "model-a", "GPU.0", Key, CancellationToken.None);
             Check(report.Contains("42.5 tokens/s", StringComparison.Ordinal)
                 && report.Contains("120.2 ms", StringComparison.Ordinal)
-                && report.Contains("Actual: GPU.0", StringComparison.Ordinal),
-                "native benchmark did not present measured metrics");
+                && report.Contains("Actual: GPU.0", StringComparison.Ordinal)
+                && report.StartsWith("Synthetic benchmark (not hardware evidence): ", StringComparison.Ordinal)
+                && !report.StartsWith("Measured ", StringComparison.Ordinal),
+                "native quick benchmark misrepresented synthetic metrics");
             await ThrowsAsync<InvalidOperationException>(
                 () => client.RunQuickBenchmarkAsync(
                     "different-model", "GPU.0", Key, CancellationToken.None),
@@ -281,6 +283,23 @@ internal static class BackendContractTests
                 "benchmark started after model unload");
         Check(!changedBenchmark.RequestPaths.Contains("/v1/benchmarks/run"),
             "benchmark ran without a verified loaded model");
+
+        foreach (string misleading in new[]
+        {
+            """{"results":[{"model_id":"model-a","requested_device":"GPU.0","success":true}]}""",
+            """{"synthetic":false,"mock":true,"results":[{"model_id":"model-a","requested_device":"GPU.0","success":true}]}""",
+            """{"synthetic":false,"results":[{"model_id":"model-a","requested_device":"GPU.0","success":true,"synthetic":true}]}""",
+        })
+        {
+            var tamperedQuick = new StubHandler((request, _) => Task.FromResult(
+                request.RequestUri!.AbsolutePath == "/v1/benchmarks/run"
+                    ? Json(misleading) : ValidResponse(request)));
+            using var client = new BackendClient(tamperedQuick, metadata);
+            await ThrowsAsync<JsonException>(
+                () => client.RunQuickBenchmarkAsync(
+                    "model-a", "GPU.0", Key, CancellationToken.None),
+                "quick benchmark accepted missing or contradictory synthetic evidence");
+        }
 
         // History comes from the verified, authenticated engine; comparison may only
         // claim a delta for identical reproducibility and execution identities.
@@ -1055,6 +1074,9 @@ internal static class BackendContractTests
             "data: {malformed}\n\n" + "data: [DONE]\n\n",
             Sse("[error: generation failed; see server logs for the request ID]")
                 + Sse("", "stop") + "data: [DONE]\n\n",
+            Sse("partial") + Sse("", "length") + "data: [DONE]\n\n",
+            Sse("filtered") + Sse("", "content_filter") + "data: [DONE]\n\n",
+            Sse("bad") + Sse("", "unexpected") + "data: [DONE]\n\n",
         })
         {
             var invalid = new StubHandler((request, _) =>
