@@ -37,6 +37,7 @@ internal sealed record BenchmarkRun(
             && row.SourceModel == measurement.SourceModel
             && row.Precision == measurement.Precision
             && row.ContextTokens is not null && row.ContextTokens == measurement.ContextTokens
+            && row.ReservedOutputTokens is not null
             && row.ReservedOutputTokens == measurement.ReservedOutputTokens
             && row.RequestedDevice == measurement.RequestedDevice
             && row.ActualDevice == measurement.ActualDevice);

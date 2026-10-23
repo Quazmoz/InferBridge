@@ -358,6 +358,7 @@ internal static class BackendContractTests
                "max_tokens":32,"runs_per_combo":3,"warmup_runs":1,
                "results":[{"model_id":"model-a","source_model":"source-a","weight_format":"INT4",
                  "requested_device":"AUTO","actual_device":"GPU.0","success":true,
+                 "configured_context_tokens":2048,"reserved_output_tokens":512,
                  "decode_tokens_sec":50,"tokens_sec":44,"time_to_first_token_ms":110,
                  "total_latency_ms":530,"prompt_tokens":12,"completion_tokens":32}]},
               {"run_id":"previous","created_at":"2026-10-18T10:00:00Z","preset":"quick",
@@ -365,6 +366,7 @@ internal static class BackendContractTests
                "max_tokens":32,"runs_per_combo":3,"warmup_runs":1,
                "results":[{"model_id":"model-a","source_model":"source-a","weight_format":"INT4",
                  "requested_device":"AUTO","actual_device":"GPU.0","success":true,
+                 "configured_context_tokens":2048,"reserved_output_tokens":512,
                  "decode_tokens_sec":40,"time_to_first_token_ms":150,
                  "total_latency_ms":620}]},
               {"run_id":"different-device","methodology_version":2,
@@ -372,7 +374,15 @@ internal static class BackendContractTests
                "max_tokens":32,"runs_per_combo":3,"warmup_runs":1,
                "results":[{"model_id":"model-a","source_model":"source-a","weight_format":"INT4",
                  "requested_device":"AUTO","actual_device":"CPU","success":true,
+                 "configured_context_tokens":2048,"reserved_output_tokens":512,
                  "decode_tokens_sec":10}]},
+              {"run_id":"different-context","methodology_version":2,
+               "hardware_fingerprint":"local-only-fingerprint",
+               "max_tokens":32,"runs_per_combo":3,"warmup_runs":1,
+               "results":[{"model_id":"model-a","source_model":"source-a","weight_format":"INT4",
+                 "requested_device":"AUTO","actual_device":"GPU.0","success":true,
+                 "configured_context_tokens":4096,"reserved_output_tokens":512,
+                 "decode_tokens_sec":42}]},
               {"run_id":"automatic","automatic":true,"max_tokens":32,
                "runs_per_combo":3,"warmup_runs":1,"results":[]}
             ]}
@@ -393,7 +403,7 @@ internal static class BackendContractTests
         using (var client = new BackendClient(historyTransport, metadata))
         {
             var history = await client.GetBenchmarkHistoryAsync(Key, CancellationToken.None);
-            Check(history.Count == 3, "history did not exclude automatic advisor runs");
+            Check(history.Count == 4, "history did not exclude automatic advisor runs");
             var current = history[0];
             var earlier = history[1];
             Check(current.IsComparableTo(earlier)
@@ -405,6 +415,8 @@ internal static class BackendContractTests
             Check(earlier.ComparableTo(current.Results[0]) is not null
                 && history[2].ComparableTo(current.Results[0]) is null,
                 "comparison ignored the reported actual execution device");
+            Check(history[3].ComparableTo(current.Results[0]) is null,
+                "comparison reported a misleading percentage across context configurations");
             Check(current.Results[0].DecodeTokensPerSecond == 50
                 && current.Results[0].FirstTokenMilliseconds == 110,
                 "history did not retain authoritative measurements");
