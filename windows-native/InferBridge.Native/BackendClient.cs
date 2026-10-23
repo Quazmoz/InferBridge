@@ -6,11 +6,12 @@ using System.Text.Json;
 
 namespace InferBridge.Native;
 
-internal enum ModelAction { Load, Unload, Download }
+internal enum ModelAction { Load, SwitchDevice, Unload, Download }
 
 internal sealed record ModelInfo(string Id, string Name, string Status)
 {
     public bool CanLoad => Status == "ready_to_load";
+    public string? Device { get; init; } // Actual engine-reported device, never a selection preference.
     public bool CanUnload => Status == "loaded";
     public bool CanDelete => Status == "ready_to_load";
     public bool AvailableInChat => CanLoad || CanUnload || Status is "queued" or "loading";
@@ -21,6 +22,7 @@ internal sealed record ModelInfo(string Id, string Name, string Status)
     public bool Permits(ModelAction action) => action switch
     {
         ModelAction.Load => CanLoad,
+        ModelAction.SwitchDevice => CanUnload,
         ModelAction.Unload => CanUnload,
         _ => CanDownload,
     };
@@ -88,7 +90,11 @@ internal sealed record StorageInventory(
 
 internal sealed record ModelRecommendation(string Id, string Reason);
 
-internal sealed record DeviceInventory(string Default, IReadOnlyList<string> Available, bool Mock);
+internal sealed record DeviceSuggestion(string Device, bool Experimental, string Note);
+internal sealed record DeviceInventory(string Default, IReadOnlyList<string> Available, bool Mock)
+{
+    public IReadOnlyList<DeviceSuggestion> Suggestions { get; init; } = Array.Empty<DeviceSuggestion>();
+}
 
 internal sealed record DesktopOperationsInfo(
     string Version,
@@ -241,9 +247,15 @@ internal sealed partial class BackendClient : IDisposable
                     if (id.Length is < 1 or > 512) continue;
                     string name = ReadString(item, "name");
                     string status = ReadString(item, "status");
+                    string actualDevice = ReadString(item, "device");
                     models.Add(new ModelInfo(id,
                         string.IsNullOrWhiteSpace(name) ? id : name,
-                        status.Length is > 0 and <= 64 ? status : "unknown"));
+                        status.Length is > 0 and <= 64 ? status : "unknown")
+                    {
+                        Device = actualDevice.Length is > 0 and <= 64
+                            && actualDevice.All(ch => char.IsLetterOrDigit(ch) || ch is ':' or '.' or ',')
+                            ? actualDevice : null,
+                    });
                 }
 
                 return new BackendSnapshot(
@@ -479,11 +491,28 @@ internal sealed partial class BackendClient : IDisposable
         return answer.ToString();
     }
 
+    // Mirrors the backend's bounded OpenVINO target grammar. The engine remains
+    // authoritative for available hardware and model-specific compatibility.
+    internal static bool IsSupportedInferenceDevice(string? device)
+    {
+        if (device is null) return true; // Engine default.
+        if (device.Length is < 1 or > 64 || device != device.Trim()
+            || device != device.ToUpperInvariant()) return false;
+        if (device is "NPU" or "GPU" or "CPU" or "AUTO") return true;
+        int separator = device.IndexOf(':');
+        if (separator < 1 || device[(separator + 1)..].Contains(':')) return false;
+        if (device[..separator] is not ("AUTO" or "MULTI" or "HETERO")) return false;
+        string[] targets = device[(separator + 1)..].Split(',');
+        return targets.Length is >= 2 and <= 3
+            && targets.All(target => target is "CPU" or "GPU" or "NPU")
+            && targets.Distinct(StringComparer.Ordinal).Count() == targets.Length;
+    }
+
     public async Task<string> ChangeModelAsync(
         ModelInfo model, ModelAction action, string? apiKey, CancellationToken cancellationToken,
         string? device = null)
     {
-        if (device is not null && device is not ("NPU" or "GPU" or "CPU"))
+        if (!IsSupportedInferenceDevice(device))
             throw new ArgumentException("Unsupported inference device.", nameof(device));
         string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
         // Reconcile before mutation; do not act on a stale UI selection.
@@ -504,7 +533,7 @@ internal sealed partial class BackendClient : IDisposable
         // for a slow network; the download itself continues in the engine.
         (string path, string body, TimeSpan deadline) = action switch
         {
-            ModelAction.Load => ("/v1/models/load",
+            ModelAction.Load or ModelAction.SwitchDevice => ("/v1/models/load",
                 JsonSerializer.Serialize(new { model = model.Id, device }), TimeSpan.FromSeconds(20)),
             ModelAction.Unload => ("/v1/models/unload",
                 JsonSerializer.Serialize(new { model = model.Id }), TimeSpan.FromSeconds(20)),
@@ -520,6 +549,7 @@ internal sealed partial class BackendClient : IDisposable
         return action switch
         {
             ModelAction.Load => "Load requested. The library updates as the model loads.",
+            ModelAction.SwitchDevice => "Device switch requested. The running model remains available while the engine prepares the replacement.",
             ModelAction.Unload => "Model unload accepted. The library updates shortly.",
             _ => "Download started. Progress appears in the library, and the model loads when it is ready.",
         };
@@ -576,9 +606,32 @@ internal sealed partial class BackendClient : IDisposable
                 continue;
             available.Add(device.ToUpperInvariant());
         }
+        var suggestions = new List<DeviceSuggestion>();
+        if (root.TryGetProperty("suggestions", out var advanced)
+            && advanced.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var entry in advanced.EnumerateArray())
+            {
+                if (suggestions.Count >= 16) break;
+                if (entry.ValueKind != JsonValueKind.Object) continue;
+                string target = ReadString(entry, "device");
+                if (!IsSupportedInferenceDevice(target) || target is "AUTO" or "CPU" or "GPU" or "NPU")
+                    continue;
+                if (!target.Contains(':') || suggestions.Any(existing => existing.Device == target))
+                    continue;
+                string note = ReadString(entry, "note");
+                suggestions.Add(new DeviceSuggestion(target,
+                    entry.TryGetProperty("experimental", out var flag)
+                        && flag.ValueKind == JsonValueKind.True,
+                    note.Length <= 240 ? note : note[..240]));
+            }
+        }
         return new DeviceInventory(ReadString(root, "default_device"),
             available.Distinct(StringComparer.Ordinal).ToArray(),
-            root.TryGetProperty("mock", out var mock) && mock.ValueKind == JsonValueKind.True);
+            root.TryGetProperty("mock", out var mock) && mock.ValueKind == JsonValueKind.True)
+        {
+            Suggestions = suggestions,
+        };
     }
 
     public async Task<ModelRecommendation?> RecommendModelAsync(
