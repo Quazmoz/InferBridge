@@ -856,7 +856,7 @@ public sealed partial class MainWindow : Window
             : "Saved conversation restored. Its original model is selected.",
             InfoBarSeverity.Informational);
         if (SelectedChatModel is { CanLoad: true } model)
-            await ManageModelAsync(ModelAction.Load, model);
+            await ManageModelAsync(ModelAction.Load, model, fromChat: true);
     }
 
     private async void DeleteSavedChatButton_Click(object sender, RoutedEventArgs args)
@@ -981,7 +981,7 @@ public sealed partial class MainWindow : Window
         }
         UpdateChatButtons();
         if (SelectedChatModel is { CanLoad: true } model)
-            await ManageModelAsync(ModelAction.Load, model);
+            await ManageModelAsync(ModelAction.Load, model, fromChat: true);
     }
 
     private void ModelsList_SelectionChanged(
@@ -1115,6 +1115,42 @@ public sealed partial class MainWindow : Window
         (LibraryDevicePicker.SelectedItem as ComboBoxItem)?.Tag as string is { Length: > 0 } device
             ? device : null;
 
+    private string? SelectedChatDevice =>
+        (ChatDevicePicker.SelectedItem as ComboBoxItem)?.Tag as string is { Length: > 0 } device
+            ? device : null;
+
+    private void ChatDevicePicker_SelectionChanged(object sender, SelectionChangedEventArgs args)
+    {
+        if (ChatDeviceSummary is not null && ApplyChatDeviceButton is not null)
+            UpdateChatDeviceSummary();
+    }
+
+    private void UpdateChatDeviceSummary()
+    {
+        string target = SelectedChatDevice ?? "engine default";
+        ModelInfo? model = SelectedChatModel;
+        string actual = model?.Device is { Length: > 0 } device ? device
+            : model?.Status == "loaded" ? "not reported" : "not loaded";
+        ChatDeviceSummary.Text = "Next load target: " + target + " · Reported active device: " + actual
+            + (SelectedChatDevice is { } choice
+                && (choice.StartsWith("MULTI:", StringComparison.Ordinal)
+                    || choice.StartsWith("HETERO:", StringComparison.Ordinal))
+                ? " · Experimental: multi-device support depends on the model and OpenVINO runtime."
+                : ". AUTO routes to one compatible device; it does not combine processors.");
+        ApplyChatDeviceButton.IsEnabled = _devicesAvailable && _engineConnected
+            && !_scanningDevices && !_chatBusy && !_isManaging && !_isRefreshing
+            && !_quitting && !_closing.IsCancellationRequested
+            && model is { Status: "loaded" or "ready_to_load" };
+    }
+
+    private async void ApplyChatDeviceButton_Click(object sender, RoutedEventArgs args)
+    {
+        ModelInfo? model = SelectedChatModel;
+        if (model is null || !_devicesAvailable || !_engineConnected) return;
+        ModelAction action = model.CanUnload ? ModelAction.SwitchDevice : ModelAction.Load;
+        await ManageModelAsync(action, model, fromChat: true);
+    }
+
     private async void ScanHardwareButton_Click(object sender, RoutedEventArgs args) =>
         await ScanHardwareAsync();
 
@@ -1129,21 +1165,40 @@ public sealed partial class MainWindow : Window
             DeviceInventory inventory = await _backend.GetDevicesAsync(
                 ApiKeyBox.Password, _closing.Token);
             if (_closing.IsCancellationRequested) return;
-            string? selected = SelectedInferenceDevice;
+            string? selectedLibrary = SelectedInferenceDevice;
+            string? selectedChat = SelectedChatDevice;
             var options = new[] { "NPU", "GPU", "CPU" };
             var supported = options.Where(device => inventory.Mock ||
                 inventory.Available.Any(found => found == device ||
                     found.StartsWith(device + ".", StringComparison.Ordinal))).ToArray();
             LibraryDevicePicker.Items.Clear();
-            LibraryDevicePicker.Items.Add(new ComboBoxItem
+            ChatDevicePicker.Items.Clear();
+            void AddDevice(string label, string target, string note)
             {
-                Content = "Automatic (engine default)", Tag = string.Empty,
-            });
+                foreach (ComboBox picker in new[] { LibraryDevicePicker, ChatDevicePicker })
+                {
+                    var option = new ComboBoxItem { Content = label, Tag = target };
+                    ToolTipService.SetToolTip(option, note);
+                    picker.Items.Add(option);
+                }
+            }
+            AddDevice("Engine default", string.Empty, "Use the engine's configured default device.");
+            AddDevice("AUTO · automatic routing", "AUTO",
+                "OpenVINO chooses one compatible processor. It does not use all processors at once.");
             foreach (string device in supported)
-                LibraryDevicePicker.Items.Add(new ComboBoxItem { Content = device, Tag = device });
+                AddDevice(device, device, "Load on the detected " + device + " processor.");
+            foreach (DeviceSuggestion suggestion in inventory.Suggestions)
+                AddDevice(suggestion.Device + (suggestion.Experimental ? " · experimental" : ""),
+                    suggestion.Device,
+                    suggestion.Note.Length > 0 ? suggestion.Note : "OpenVINO advanced routing.");
             LibraryDevicePicker.SelectedItem = LibraryDevicePicker.Items
-                .Cast<ComboBoxItem>().FirstOrDefault(item => (string?)item.Tag == selected)
+                .Cast<ComboBoxItem>().FirstOrDefault(item =>
+                    (string?)item.Tag == (selectedLibrary ?? string.Empty))
                 ?? (ComboBoxItem)LibraryDevicePicker.Items[0];
+            ChatDevicePicker.SelectedItem = ChatDevicePicker.Items
+                .Cast<ComboBoxItem>().FirstOrDefault(item =>
+                    (string?)item.Tag == (selectedChat ?? string.Empty))
+                ?? (ComboBoxItem)ChatDevicePicker.Items[0];
             _devicesAvailable = true;
             _devicesScanned = true;
             string loadedSummary = await _backend.GetRuntimeSummaryAsync(
@@ -1163,11 +1218,17 @@ public sealed partial class MainWindow : Window
             _devicesScanned = false;
             HardwareSummary.Text = "Hardware scan unavailable. Retry to select a verified target.";
             LibraryDevicePicker.Items.Clear();
+            ChatDevicePicker.Items.Clear();
             LibraryDevicePicker.Items.Add(new ComboBoxItem
             {
-                Content = "Automatic (engine default)", Tag = string.Empty,
+                Content = "Engine default", Tag = string.Empty,
+            });
+            ChatDevicePicker.Items.Add(new ComboBoxItem
+            {
+                Content = "Engine default", Tag = string.Empty,
             });
             LibraryDevicePicker.SelectedIndex = 0;
+            ChatDevicePicker.SelectedIndex = 0;
         }
         finally
         {
@@ -1213,6 +1274,9 @@ public sealed partial class MainWindow : Window
         DeleteSavedChatButton.IsEnabled = canEditSavedChat;
         RenameSavedChatButton.IsEnabled = canEditSavedChat;
         ChatModelPicker.IsEnabled = !_chatBusy && !_isManaging && !_isRefreshing && !_quitting;
+        ChatDevicePicker.IsEnabled = _devicesAvailable && !_chatBusy && !_isManaging
+            && !_isRefreshing && !_quitting;
+        UpdateChatDeviceSummary();
         WebUiButton.IsEnabled = _engineConnected && !_quitting && !_openingWebUi;
         ScanHardwareButton.IsEnabled = _engineConnected && !_quitting && !_scanningDevices;
         PromptBox.IsEnabled = !_chatBusy;
@@ -1472,7 +1536,8 @@ public sealed partial class MainWindow : Window
     private async void DownloadButton_Click(object sender, RoutedEventArgs args) =>
         await ManageModelAsync(ModelAction.Download);
 
-    private async Task ManageModelAsync(ModelAction action, ModelInfo? model = null)
+    private async Task ManageModelAsync(ModelAction action, ModelInfo? model = null,
+        bool fromChat = false)
     {
         model ??= SelectedLibraryModel;
         if (model is null || _isManaging || _chatBusy || _isRefreshing
@@ -1482,15 +1547,20 @@ public sealed partial class MainWindow : Window
 
         _isManaging = true;
         UpdateChatButtons();
-        if (model.Id == SelectedModelId && action == ModelAction.Load)
+        if (model.Id == SelectedModelId
+            && action is ModelAction.Load or ModelAction.SwitchDevice)
         {
             _chatLoadError = null;
-            ShowChatInfo("Loading model", "Requesting the selected model from the local engine…", InfoBarSeverity.Informational);
+            ShowChatInfo(action == ModelAction.SwitchDevice ? "Switching device" : "Loading model",
+                "Requesting " + (fromChat ? SelectedChatDevice ?? "engine default"
+                    : SelectedInferenceDevice ?? "engine default") + " from the local engine…",
+                InfoBarSeverity.Informational);
         }
         try
         {
             ShowModelsInfo(await _backend.ChangeModelAsync(
-                model, action, ApiKeyBox.Password, _closing.Token, SelectedInferenceDevice), InfoBarSeverity.Success);
+                model, action, ApiKeyBox.Password, _closing.Token,
+                fromChat ? SelectedChatDevice : SelectedInferenceDevice), InfoBarSeverity.Success);
         }
         catch (Exception) when (_closing.IsCancellationRequested)
         {
@@ -1564,7 +1634,7 @@ public sealed partial class MainWindow : Window
                         if (_closing.IsCancellationRequested || send.IsCancellationRequested
                             || !ReferenceEquals(_sendCancellation, send) || !_chatBusy)
                             return;
-                        if (assistantItem?.Content is TextBlock text)
+                        if (assistantItem?.Content is Border { Child: TextBlock text })
                         {
                             text.Text = "InferBridge\n" + preview;
                             ChatHistory.ScrollIntoView(assistantItem);
@@ -1578,8 +1648,8 @@ public sealed partial class MainWindow : Window
             _turns.Clear();
             _turns.AddRange(pending);
             _turns.Add(new ChatTurn("assistant", answer[..Math.Min(answer.Length, 8000)]));
-            if (assistantItem is not null)
-                assistantItem.Content = BuildChatContent("InferBridge", answer.Length > 8000
+            if (assistantItem?.Content is Border assistantBubble)
+                assistantBubble.Child = BuildChatContent("InferBridge", answer.Length > 8000
                     ? answer[..8000] + "\n… Response truncated for the native conversation."
                     : answer);
             committed = true;
@@ -1663,15 +1733,32 @@ public sealed partial class MainWindow : Window
 
     private ListViewItem AppendChat(string speaker, string message, bool preview = false)
     {
-        var item = new ListViewItem
+        bool isUser = speaker == "You";
+        var bubble = new Border
         {
-            Content = preview ? new TextBlock
+            Child = preview ? new TextBlock
             {
                 Text = speaker + "\n" + message,
                 TextWrapping = TextWrapping.Wrap,
                 IsTextSelectionEnabled = true,
                 Margin = new Thickness(8),
             } : BuildChatContent(speaker, message),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(10, 8, 10, 8),
+            Margin = isUser ? new Thickness(56, 5, 8, 5) : new Thickness(8, 5, 56, 5),
+            MaxWidth = 980,
+            HorizontalAlignment = isUser ? HorizontalAlignment.Right : HorizontalAlignment.Left,
+            Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(
+                Windows.UI.Color.FromArgb(isUser ? (byte)34 : (byte)22, 120, 145, 170)),
+            BorderBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(
+                Windows.UI.Color.FromArgb(55, 130, 140, 150)),
+            BorderThickness = new Thickness(1),
+        };
+        var item = new ListViewItem
+        {
+            Content = bubble,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            Padding = new Thickness(0),
         };
         ChatHistory.Items.Add(item);
         UpdateChatEmptyState();
