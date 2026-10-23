@@ -107,7 +107,7 @@ def install_model_lifecycle_safety() -> None:
                 cfg = self.catalog.get(model_id)
                 name = cfg.name if cfg else model_id
                 detail = self._sanitize_progress_line(
-                    errors.format_model_load_error(exc),
+                    errors.format_model_load_error(exc, device=request["device"]),
                     limit=180,
                 )
                 message = (
@@ -117,9 +117,9 @@ def install_model_lifecycle_safety() -> None:
                 )
                 self._set_status(model_id, "error", error=message)
                 self._set_progress(model_id, "error", message)
-                manager_module.logger.exception(
-                    "Failed to resume load for '%s' after conversion",
-                    model_id,
+                # A native or plugin exception may contain model paths and tokens.
+                manager_module.logger.error(
+                    "Failed to resume load for '%s' after conversion: %s", model_id, detail
                 )
                 self.emit_event("error", f"Could not load {name} after conversion")
 

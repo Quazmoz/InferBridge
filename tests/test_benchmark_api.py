@@ -4,7 +4,6 @@ import asyncio
 from types import SimpleNamespace
 
 import pytest
-
 from fastapi.testclient import TestClient
 
 from app.config import BASE_DIR, Settings
@@ -90,8 +89,11 @@ def test_benchmark_client_run_id_survives_history(tmp_path):
         response = client.post(
             "/v1/benchmarks/run",
             json={
-                "model": MODEL_ID, "devices": ["CPU"], "runs": 3,
-                "max_tokens": 32, "client_run_id": client_run_id,
+                "model": MODEL_ID,
+                "devices": ["CPU"],
+                "runs": 3,
+                "max_tokens": 32,
+                "client_run_id": client_run_id,
             },
         )
         assert response.status_code == 200, response.text

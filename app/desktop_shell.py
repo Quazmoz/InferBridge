@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 import webbrowser
 from pathlib import Path
 
@@ -158,6 +159,7 @@ def _copy_with_command(command: list[str], text: str) -> bool:
 def copy_to_clipboard(text: str) -> None:
     if os.name == "nt":
         import ctypes
+        from ctypes import wintypes
 
         user32 = ctypes.windll.user32
         kernel32 = ctypes.windll.kernel32
@@ -165,14 +167,31 @@ def copy_to_clipboard(text: str) -> None:
         CF_UNICODETEXT = 13
         payload = (str(text) + "\0").encode("utf-16-le")
 
-        if not user32.OpenClipboard(None):
-            raise RuntimeError("The Windows clipboard is currently unavailable.")
-        handle = None
+        # ctypes defaults to a 32-bit int result, which truncates HGLOBAL and
+        # memory addresses in an x64 process. Declare the Win32 ABI explicitly.
+        user32.OpenClipboard.argtypes = [wintypes.HWND]
+        user32.OpenClipboard.restype = wintypes.BOOL
+        user32.EmptyClipboard.argtypes = []
+        user32.EmptyClipboard.restype = wintypes.BOOL
+        user32.SetClipboardData.argtypes = [wintypes.UINT, wintypes.HANDLE]
+        user32.SetClipboardData.restype = wintypes.HANDLE
+        user32.CloseClipboard.argtypes = []
+        user32.CloseClipboard.restype = wintypes.BOOL
+        kernel32.GlobalAlloc.argtypes = [wintypes.UINT, ctypes.c_size_t]
+        kernel32.GlobalAlloc.restype = wintypes.HGLOBAL
+        kernel32.GlobalLock.argtypes = [wintypes.HGLOBAL]
+        kernel32.GlobalLock.restype = ctypes.c_void_p
+        kernel32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
+        kernel32.GlobalUnlock.restype = wintypes.BOOL
+        kernel32.GlobalFree.argtypes = [wintypes.HGLOBAL]
+        kernel32.GlobalFree.restype = wintypes.HGLOBAL
+
+        # Allocate and populate before touching the current clipboard contents.
+        handle = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(payload))
+        if not handle:
+            raise RuntimeError("Windows could not allocate clipboard memory.")
+        opened = False
         try:
-            user32.EmptyClipboard()
-            handle = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(payload))
-            if not handle:
-                raise RuntimeError("Windows could not allocate clipboard memory.")
             pointer = kernel32.GlobalLock(handle)
             if not pointer:
                 raise RuntimeError("Windows could not lock clipboard memory.")
@@ -180,13 +199,27 @@ def copy_to_clipboard(text: str) -> None:
                 ctypes.memmove(pointer, payload, len(payload))
             finally:
                 kernel32.GlobalUnlock(handle)
+
+            # Transient contention is normal; retry briefly and fail with an
+            # explicit alternative rather than blocking the tray indefinitely.
+            for attempt in range(3):
+                if user32.OpenClipboard(None):
+                    opened = True
+                    break
+                if attempt < 2:
+                    time.sleep(0.05)
+            if not opened:
+                raise RuntimeError("The Windows clipboard is busy. Try again shortly.")
+            if not user32.EmptyClipboard():
+                raise RuntimeError("Windows could not clear the clipboard.")
             if not user32.SetClipboardData(CF_UNICODETEXT, handle):
                 raise RuntimeError("Windows could not write to the clipboard.")
             handle = None
         finally:
+            if opened:
+                user32.CloseClipboard()
             if handle:
                 kernel32.GlobalFree(handle)
-            user32.CloseClipboard()
         return
 
     if sys.platform == "darwin" and shutil.which("pbcopy"):

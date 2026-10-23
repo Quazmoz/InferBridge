@@ -83,6 +83,9 @@ def test_support_report_omits_sensitive_browser_state() -> None:
     assert "conversation" not in extension
     assert "; error=${m.error}" not in extension
     assert "Copy failed:" in extension
+    assert "ZE_RESULT_ERROR_INVALID_ARGUMENT" in extension
+    assert "cause is not yet established" in extension
+    assert "never copy raw model errors" in extension
 
 
 def test_system_doctor_has_no_remote_runtime_dependencies() -> None:

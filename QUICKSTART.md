@@ -65,6 +65,20 @@ Use an NPU only after it appears in device discovery:
 .\start_server.bat --model tinyllama-1.1b-chat-fp16 --device NPU
 ```
 
+If loading fails with `ZE_RESULT_ERROR_INVALID_ARGUMENT`, OpenVINO's Level Zero
+compiler rejected the model on the selected NPU. Device discovery alone does not
+prove that a particular model, precision, or converted IR is supported. Check
+the Intel NPU driver and OpenVINO GenAI versions, confirm the Model Library's
+converted-artifact and INT4-profile status, and retry. For isolation, test a
+known-good small model or explicitly select CPU; InferBridge does not silently
+switch a direct NPU request to another device. The underlying driver, model,
+or runtime incompatibility still requires verification on the affected machine.
+
+For help, use System Doctor's **Copy support report** or the desktop tray's
+**Copy → Diagnostics**. If Windows denies clipboard access, choose the tray's
+**Export Diagnostics** action instead. Review the local ZIP before sharing it;
+it may contain environment and runtime details not included in the copyable summary.
+
 Gated models require accepted Hugging Face terms and `HF_TOKEN`.
 
 ### 5. Certify the Windows hardware path

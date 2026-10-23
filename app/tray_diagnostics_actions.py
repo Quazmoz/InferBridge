@@ -62,7 +62,14 @@ class TrayDiagnosticsActionsMixin:
 
     def copy_diagnostics(self) -> None:
         summary = self._diagnostics_collector().support_summary()
-        copy_to_clipboard(summary)
+        try:
+            copy_to_clipboard(summary)
+        except (OSError, RuntimeError):
+            raise RuntimeError(
+                "Could not copy diagnostics because the clipboard is unavailable or busy. "
+                "Use the tray's Export Diagnostics action instead; review the local "
+                "ZIP archive before sharing it."
+            ) from None
         show_dialog(
             APP_TITLE,
             "Privacy-safe diagnostics copied. Paste them into the InferBridge feedback form "

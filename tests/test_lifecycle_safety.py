@@ -106,7 +106,7 @@ def test_latest_load_request_resumes_after_conversion() -> None:
     asyncio.run(scenario())
 
 
-def test_deferred_load_failure_redacts_secret_and_machine_path() -> None:
+def test_deferred_load_failure_redacts_secret_and_machine_path(caplog) -> None:
     async def scenario() -> None:
         manager = _manager()
         release = asyncio.Event()
@@ -137,13 +137,15 @@ def test_deferred_load_failure_redacts_secret_and_machine_path() -> None:
         error = manager.status_overrides[MODEL_ID]["error"]
         assert secret not in error
         assert r"C:\Users\Quinn" not in error
-        assert "[redacted]" in error
+        assert "Model loading failed" in error
 
         manager.schedule_load = original_schedule_load
         manager._clear_status(MODEL_ID)
         await manager.shutdown()
 
     asyncio.run(scenario())
+    assert "hf_" + "s" * 32 not in caplog.text
+    assert r"C:\Users\Quinn" not in caplog.text
 
 
 def test_shutdown_does_not_start_a_deferred_load() -> None:
