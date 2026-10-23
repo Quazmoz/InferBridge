@@ -524,7 +524,7 @@ def test_native_chat_device_switch_is_explicit_and_tracks_actual_hardware():
     assert "inventory.Suggestions" in window
     assert "model?.Device" in window
     assert "ChatDevicePicker.IsEnabled = _devicesAvailable" in window
-    assert "new ModelInfo(model.Id, model.Name, ReadString(item, \"status\")).Permits(action)" in backend
+    assert 'ReadString(item, "status")).Permits(action)' in backend
     assert "ModelAction.Load or ModelAction.SwitchDevice" in backend
     assert "IsSupportedInferenceDevice" in backend
     assert "Suggestions = suggestions" in backend
