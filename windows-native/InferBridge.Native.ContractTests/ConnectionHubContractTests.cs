@@ -146,8 +146,10 @@ internal static class ConnectionHubContractTests
             && !hub.WindowsCurlExample().Contains(Key, StringComparison.Ordinal)
             && hub.WindowsCurlExample().Contains("YOUR_INFERBRIDGE_API_KEY"),
             "copyable examples contained a configured API key");
-        Check(hub.PythonExample("model-\"injection").Contains("model-\\\"injection"),
-            "untrusted model ID escaped the Python string literal");
+        string adversarialId = "model-\"injection";
+        Check(hub.PythonExample(adversarialId).Contains(
+            JsonSerializer.Serialize(adversarialId), StringComparison.Ordinal),
+            "untrusted model ID was not encoded as a safe string literal");
         var report = await client.RunLocalApiSelfTestAsync(
             hub, "model-a", Key, CancellationToken.None);
         Check(report.Tests.Count == 5 && report.Tests.Count(t => t.Status == "passed") == 4
