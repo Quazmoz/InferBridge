@@ -55,7 +55,7 @@ internal static class BackendContractTests
             "/v1/desktop/operations/status" => Json("""{"application_version":"1.0.0","installation_mode":"installed","server_status":"ready","server_port":18765,"controller_available":true,"mock":true,"start_with_windows":false,"benchmark_running":false,"benchmark":{"results":[{"model_id":"model-a","device":"GPU.0"}]},"last_diagnostics_export":"previous-diagnostics.zip","active_model":{"id":"model-a","actual_device":"GPU.0"}}"""),
             "/v1/desktop/operations/diagnostics/export" => Json("""{"status":"created","filename":"inferbridge-diagnostics.zip","collection_errors":["Optional sensor unavailable"]}"""),
             "/v1/benchmarks/run" => Json("""{"synthetic":true,"mock":true,"results":[{"model_id":"model-a","requested_device":"GPU.0","actual_device":"GPU.0","success":true,"synthetic":true,"decode_tokens_sec":42.5,"time_to_first_token_ms":120.2,"total_latency_ms":501.3}]}"""),
-            "/v1/devices" => Json("""{"default_device":"AUTO","available":["CPU","GPU.0","NPU"],"mock":false,"openvino_available":true}"""),
+            "/v1/devices" => Json("""{"default_device":"AUTO","available":["CPU","GPU.0","NPU"],"mock":false,"openvino_available":true,"suggestions":[{"device":"AUTO:NPU,GPU,CPU","experimental":false,"note":"Choose a compatible processor"},{"device":"MULTI:NPU,GPU,CPU","experimental":true,"note":"Experimental throughput routing"},{"device":"HETERO:GPU,CPU","experimental":true,"note":"Experimental graph partitioning"},{"device":"MULTI:GPU,GPU","experimental":true,"note":"Invalid duplicate"},{"device":"../../etc/passwd","experimental":true,"note":"Invalid injection"}]}"""),
             "/v1/models/load" => Json("""{"status":"accepted"}"""),
             "/v1/models/convert" => Json("""{"status":"queued_convert"}"""),
             "/v1/models/delete" => Json("""{"status":"deleted"}"""),
@@ -164,6 +164,11 @@ internal static class BackendContractTests
             Check(devices.Default == "AUTO" && !devices.Mock
                 && devices.Available.SequenceEqual(new[] { "CPU", "GPU.0", "NPU" }),
                 "physical device discovery failed");
+            Check(devices.Suggestions.Select(item => item.Device).SequenceEqual(
+                    new[] { "AUTO:NPU,GPU,CPU", "MULTI:NPU,GPU,CPU", "HETERO:GPU,CPU" })
+                && !devices.Suggestions[0].Experimental
+                && devices.Suggestions[1].Experimental,
+                "advanced device targets were not filtered and labelled safely");
         }
 
         // Native operations reuse the authenticated verified engine; export is an
@@ -926,6 +931,43 @@ internal static class BackendContractTests
                 "download of an already-downloaded model");
             Check(!actions.RequestPaths.Contains("/v1/models/convert"),
                 "stale download selection triggered conversion");
+        }
+
+        // Switching an already-loaded model is an explicit, reconciled load
+        // request. Malformed composite targets must never touch the backend.
+        var switching = new StubHandler(async (request, cancellationToken) =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/v1/models")
+                return Json("""{"data":[{"id":"model-a","name":"Model A","status":"loaded","device":"GPU.0"}]}""");
+            if (request.RequestUri.AbsolutePath == "/v1/models/load")
+            {
+                using var posted = JsonDocument.Parse(
+                    await request.Content!.ReadAsStringAsync(cancellationToken));
+                Check(posted.RootElement.GetProperty("model").GetString() == "model-a"
+                    && posted.RootElement.GetProperty("device").GetString() == "MULTI:NPU,GPU,CPU",
+                    "loaded-device switch did not use the chosen composite target");
+            }
+            return ValidResponse(request);
+        });
+        using (var client = new BackendClient(switching, metadata))
+        {
+            var snapshot = await client.InspectAsync(CancellationToken.None, Key);
+            Check(snapshot.Models[0].Device == "GPU.0",
+                "chat did not retain the backend-reported active device");
+            foreach (string bad in new[]
+                { "MULTI:GPU,GPU", "HETERO:CPU,", "GPU;evil", "AUTO:GPU,BAD", "" })
+                await ThrowsAsync<ArgumentException>(() => client.ChangeModelAsync(
+                    new ModelInfo("model-a", "Model A", "loaded"),
+                    ModelAction.SwitchDevice, Key, CancellationToken.None, bad),
+                    "malformed composite target");
+            Check(!switching.RequestPaths.Contains("/v1/models/load"),
+                "malformed target reached mutation route");
+            string accepted = await client.ChangeModelAsync(
+                new ModelInfo("model-a", "Model A", "loaded"),
+                ModelAction.SwitchDevice, Key, CancellationToken.None, "MULTI:NPU,GPU,CPU");
+            Check(accepted.Contains("switch requested", StringComparison.OrdinalIgnoreCase)
+                && switching.RequestPaths.Count(route => route == "/v1/models/load") == 1,
+                "loaded-device switch was not requested exactly once");
         }
 
         // Download posts the convert route with load_after, and the engine's own

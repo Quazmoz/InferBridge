@@ -514,7 +514,7 @@
                                     IsEnabled="False" Click="ContextResetButton_Click" />
                             <Button Content="Refresh" Click="ContextRefreshButton_Click" />
                         </StackPanel>
-                        <TextBlock Text="Select load devices in Model library. Top-k and repetition penalty are not exposed by the existing chat API." TextWrapping="Wrap" Opacity="0.8" />
+                        <TextBlock Text="Choose a device directly from Chat or Model library. Advanced AUTO/MULTI/HETERO targets depend on detected hardware; MULTI/HETERO are experimental. Top-k and repetition penalty are not exposed by the chat API." TextWrapping="Wrap" Opacity="0.8" />
                     </StackPanel>
                 </ScrollViewer>
                 <!-- One compact command bar; saved-chat and detailed status flyouts
@@ -525,7 +525,8 @@
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <Grid x:Name="ChatToolbar" Grid.Row="0" ColumnSpacing="6"
+                    <StackPanel Grid.Row="0" Spacing="6">
+                    <Grid x:Name="ChatToolbar" ColumnSpacing="6"
                           SizeChanged="ChatToolbar_SizeChanged"
                           VerticalAlignment="Center">
                         <Grid.ColumnDefinitions>
@@ -536,13 +537,9 @@
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <StackPanel x:Name="ChatToolbarTitle" Grid.Column="0" Spacing="0"
-                                    VerticalAlignment="Center" MaxWidth="126">
+                        <StackPanel x:Name="ChatToolbarTitle" Grid.Column="0"
+                                    VerticalAlignment="Center">
                             <TextBlock Text="Chat" FontSize="24" FontWeight="SemiBold" />
-                            <TextBlock x:Name="ChatGenerationSummary"
-                                       FontSize="11" Opacity="0.7"
-                                       TextTrimming="CharacterEllipsis"
-                                       AutomationProperties.Name="Current inference settings" />
                         </StackPanel>
                         <ComboBox x:Name="ChatModelPicker" Grid.Column="1"
                                   PlaceholderText="Select model"
@@ -628,6 +625,37 @@
                             <SymbolIcon Symbol="Add" />
                         </Button>
                     </Grid>
+                    <Grid ColumnSpacing="8" RowSpacing="4">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox x:Name="ChatDevicePicker" Grid.Row="0" Grid.Column="0"
+                                  Header="Run model on"
+                                  HorizontalAlignment="Stretch"
+                                  AutomationProperties.Name="Device target for the selected chat model"
+                                  SelectionChanged="ChatDevicePicker_SelectionChanged"
+                                  ToolTipService.ToolTip="Choose engine default, a physical processor or supported OpenVINO combination">
+                            <ComboBoxItem Content="Engine default" Tag="" />
+                        </ComboBox>
+                        <Button x:Name="ApplyChatDeviceButton" Grid.Row="0" Grid.Column="1"
+                                Content="Load / switch" VerticalAlignment="Bottom"
+                                IsEnabled="False" Click="ApplyChatDeviceButton_Click"
+                                AutomationProperties.Name="Load or switch selected chat model to chosen device" />
+                        <TextBlock x:Name="ChatDeviceSummary" Grid.Row="1" Grid.ColumnSpan="2"
+                                   Text="Connect to inspect available devices."
+                                   TextWrapping="Wrap" FontSize="12" Opacity="0.8"
+                                   AutomationProperties.LiveSetting="Polite" />
+                        <TextBlock x:Name="ChatGenerationSummary" Grid.Row="2" Grid.ColumnSpan="2"
+                                   TextWrapping="Wrap" FontSize="12" Opacity="0.7"
+                                   AutomationProperties.Name="Current inference settings" />
+                    </Grid>
+                    </StackPanel>
                     <Grid Grid.Row="1" MinHeight="0">
                         <ListView x:Name="ChatHistory"
                                   SelectionMode="None"

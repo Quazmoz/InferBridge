@@ -9,7 +9,14 @@ it over verified loopback HTTP.
 
 - **Chat**: the picker lists downloaded and loaded models with their state.
   Selecting a downloaded model loads it through the engine; chat stays disabled
-  until the engine reports it loaded. Live SSE streaming chat, Ctrl+Enter to send,
+  until the engine reports it loaded. Chat offers a separate **Run model on**
+  picker and explicit **Load / switch** action: engine default, AUTO routing,
+  detected CPU/GPU/NPU devices, and backend-suggested composite AUTO/MULTI/HETERO
+  targets. MULTI/HETERO are labelled experimental; OpenVINO and the model decide
+  whether they work. The current model's *reported active device* is shown
+  separately from the next requested target. A switch to an already-loaded model
+  uses the engine's existing rollback-safe load handoff, never a second runtime.
+  Device choices are session-only. Live SSE streaming chat, Ctrl+Enter to send,
   copyable conversation text and cancellation. Unsaved history stays in memory
   (20 recent messages, bounded prompt budget). Chat previews appear as tokens arrive, but an incomplete, failed or cancelled reply is removed instead of saved into the in-memory conversation. Cancelling the HTTP request
   does not prove server-side inference has stopped.
@@ -58,7 +65,7 @@ See [the maintained capability and Windows-launch qualification matrix](../docs/
 
 | Capability | WebGUI | Native Windows | Evidence / remaining work |
 |---|---|---|---|
-| Chat and model load/unload | Implemented | Implemented | Native SSE, cancellation, selected-device load; verify on real hardware |
+| Chat and model load/unload | Implemented | Implemented | Native SSE, cancellation, chat-level CPU/GPU/NPU and suggested advanced routing plus explicit switch; real device combinations unverified |
 | Model library and download of catalog models | Implemented | Implemented | Native uses engine convert and lifecycle routes; gated access applies to both |
 | Live preparation stage, percentage and guarded cancellation | Implemented | Implemented in native controls | Uses `/v1/models/status` and identity-bound `/v1/models/cancel`; no native conversion queue; Windows qualification pending |
 | Selected model configuration and active device details | Implemented | Implemented in native controls | Structured engine metadata; unknown fields safely hidden; device preference is not hardware proof |

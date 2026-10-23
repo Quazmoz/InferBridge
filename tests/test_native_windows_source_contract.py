@@ -80,7 +80,7 @@ def test_native_chat_renders_text_and_code_without_html_or_browser_execution():
     assert "RichTextBlock" in content
     assert "RenderCodeBlock" in content
     assert "Copy code" in content
-    assert "Copy message" in content
+    assert '"Copy " + speaker + " message"' in content
     assert "IsReadOnly = true" in content
     assert "WebView" not in content
     assert "Process.Start" not in content
@@ -115,9 +115,11 @@ def test_native_chat_toolbar_preserves_a_real_transcript_viewport():
     assert rows is not None
     assert [row.get("Height") for row in rows] == ["Auto", "*", "Auto"]
 
-    toolbar = next(node for node in chat if node.get(named) == "ChatToolbar")
+    chat_header = next(node for node in chat if node.get("Grid.Row") == "0")
+    assert chat_header.tag == XAML + "StackPanel"
+    toolbar = next(node for node in chat_header if node.get(named) == "ChatToolbar")
     assert toolbar.tag == XAML + "Grid"
-    assert toolbar.get("Grid.Row") == "0"
+    assert toolbar.get("Grid.Row") is None
     assert toolbar.get("SizeChanged") == "ChatToolbar_SizeChanged"
     columns = toolbar.find(XAML + "Grid.ColumnDefinitions")
     assert columns is not None
@@ -458,7 +460,7 @@ def test_native_chat_picker_loads_downloaded_models_without_enabling_chat_early(
     )[0]
     assert "if (_updatingModelPicker) return;" in selection
     assert "SelectedChatModel is { CanLoad: true } model" in selection
-    assert "await ManageModelAsync(ModelAction.Load, model);" in selection
+    assert "await ManageModelAsync(ModelAction.Load, model, fromChat: true);" in selection
     assert "if (!model.AvailableInChat) continue;" in window
     assert 'SelectedChatModel?.Status == "loaded"' in window
     assert 'SelectedChatModel?.Status != "loaded"' in window
@@ -497,11 +499,35 @@ def test_native_model_library_selects_inference_device_and_forwards_to_backend()
     window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
     client = (PROJECT / "BackendClient.cs").read_text(encoding="utf-8")
     assert "SelectedInferenceDevice" in window
-    assert "_closing.Token, SelectedInferenceDevice" in window
+    assert "fromChat ? SelectedChatDevice : SelectedInferenceDevice" in window
     assert "LibraryDevicePicker.IsEnabled = idle && _devicesAvailable;" in window
     assert "new { model = model.Id, device }" in client
     assert "new { model = model.Id, load_after = true, device }" in client
     assert "Unsupported inference device." in client
+
+
+def test_native_chat_device_switch_is_explicit_and_tracks_actual_hardware():
+    root = ET.parse(PROJECT / "MainWindow.xaml").getroot()
+    ns = "{http://schemas.microsoft.com/winfx/2006/xaml}Name"
+    named = {node.get(ns): node for node in root.iter() if node.get(ns)}
+    assert named["ChatDevicePicker"].tag == XAML + "ComboBox"
+    assert named["ApplyChatDeviceButton"].get("IsEnabled") == "False"
+    assert named["ApplyChatDeviceButton"].get("Click") == "ApplyChatDeviceButton_Click"
+    assert named["ChatDeviceSummary"].get("TextWrapping") == "Wrap"
+    assert named["ChatGenerationSummary"].get("TextTrimming") is None
+
+    window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    backend = (PROJECT / "BackendClient.cs").read_text(encoding="utf-8")
+    assert "ModelAction.SwitchDevice" in window
+    assert "await ManageModelAsync(action, model, fromChat: true);" in window
+    assert "SelectedChatDevice" in window
+    assert "inventory.Suggestions" in window
+    assert "model?.Device" in window
+    assert "ChatDevicePicker.IsEnabled = _devicesAvailable" in window
+    assert "new ModelInfo(model.Id, model.Name, ReadString(item, \"status\")).Permits(action)" in backend
+    assert "ModelAction.Load or ModelAction.SwitchDevice" in backend
+    assert "IsSupportedInferenceDevice" in backend
+    assert "Suggestions = suggestions" in backend
 
 
 def test_native_device_discovery_shows_available_hardware():
