@@ -33,7 +33,11 @@ public sealed partial class MainWindow
 
     private static RichTextBlock RenderInlineMarkdown(string value, bool heading = false)
     {
-        var text = new RichTextBlock { TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
+        var text = new RichTextBlock
+        {
+            TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true,
+            FontSize = heading ? 18 : 14,
+        };
         var paragraph = new Paragraph();
         int cursor = 0;
         int tokens = 0;
@@ -97,11 +101,29 @@ public sealed partial class MainWindow
 
     private UIElement BuildChatContent(string speaker, string message)
     {
-        var container = new StackPanel { Spacing = 5, Margin = new Thickness(8) };
-        container.Children.Add(new TextBlock
+        var container = new StackPanel { Spacing = 7, Margin = new Thickness(2) };
+        var header = new Grid { ColumnSpacing = 10 };
+        header.ColumnDefinitions.Add(new ColumnDefinition
+        {
+            Width = new GridLength(1, GridUnitType.Star),
+        });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        header.Children.Add(new TextBlock
         {
             Text = speaker, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center, Opacity = 0.88,
         });
+        var copyMessage = new Button
+        {
+            Content = "Copy", Padding = new Thickness(8, 4, 8, 4),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(copyMessage,
+            "Copy " + speaker + " message");
+        copyMessage.Click += (_, _) => CopyChatMessage(message, speaker + " message");
+        Grid.SetColumn(copyMessage, 1);
+        header.Children.Add(copyMessage);
+        container.Children.Add(header);
         var lines = message.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
         var code = new StringBuilder();
         bool inCode = false;
@@ -142,7 +164,12 @@ public sealed partial class MainWindow
                 code.AppendLine(line);
                 continue;
             }
-            if (string.IsNullOrWhiteSpace(line)) continue;
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                // Preserve paragraph breaks instead of collapsing every blank line.
+                container.Children.Add(new Border { Height = 5 });
+                continue;
+            }
             string content = line.TrimStart();
             bool heading = content.StartsWith('#');
             if (heading)
@@ -161,11 +188,6 @@ public sealed partial class MainWindow
         }
         if (inCode) // Keep malformed/unclosed fences readable; never discard model text.
             container.Children.Add(RenderInlineMarkdown("```" + language + "\n" + code));
-        var copyMessage = new Button { Content = "Copy message" };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(copyMessage,
-            "Copy " + speaker + " message");
-        copyMessage.Click += (_, _) => CopyChatMessage(message, speaker + " message");
-        container.Children.Add(copyMessage);
         return container;
     }
 }
