@@ -90,6 +90,9 @@ def configure_logging(logs_dir: Path) -> Path:
 
 #: Backoff for transient Windows replace contention, mirroring ``app.storage_safety``.
 _REPLACE_RETRY_DELAYS_SECONDS = (0.0, 0.05, 0.15, 0.3, 0.6)
+# ponytail: One process-wide mutex also serializes unrelated tray state files.
+# Writes are tiny and infrequent; if this becomes hot, use per-path locks.
+_ATOMIC_REPLACE_LOCK = threading.Lock()
 #: Sharing and lock violations reach Python as a bare OSError rather than a dedicated
 #: subclass; ERROR_ACCESS_DENIED arrives as PermissionError.
 _TRANSIENT_REPLACE_WINERRORS = frozenset({32, 33})
@@ -119,7 +122,11 @@ def atomic_json(path: Path, payload: dict[str, Any]) -> None:
             if delay:
                 time.sleep(delay)
             try:
-                temporary.replace(path)
+                # Windows can deny simultaneous MoveFileEx replacements even when
+                # sources are unique. Serialize in-process writers; bounded retry
+                # still covers competing processes and external file scanners.
+                with _ATOMIC_REPLACE_LOCK:
+                    temporary.replace(path)
                 return
             except OSError as exc:
                 if not _is_transient_replace_error(exc):
