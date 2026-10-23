@@ -92,6 +92,8 @@ class BenchmarkResult:
     active_experts: int | None = None
     estimated_weight_footprint_gb: float | None = None
     synthetic: bool = False
+    configured_context_tokens: int | None = None
+    reserved_output_tokens: int | None = None
 
 
 @dataclass
@@ -783,6 +785,8 @@ def _model_identity(manager: ModelManager, cfg: Any | None) -> dict[str, Any]:
         "num_experts": getattr(cfg, "num_experts", None) if cfg else None,
         "active_experts": getattr(cfg, "active_experts", None) if cfg else None,
         "estimated_weight_footprint_gb": None,
+        "configured_context_tokens": cfg.max_context_len if cfg else None,
+        "reserved_output_tokens": cfg.max_output_tokens if cfg else None,
     }
     if cfg is None:
         return identity

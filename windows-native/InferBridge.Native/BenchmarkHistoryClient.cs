@@ -11,7 +11,8 @@ internal sealed record BenchmarkMeasurement(
     string ActualDevice, bool Success, bool Synthetic, double? DecodeTokensPerSecond,
     double? LegacyTokensPerSecond, double? FirstTokenMilliseconds,
     double? TotalMilliseconds, double? LoadMilliseconds, double? ProcessRamMegabytes,
-    int? PromptTokens, int? CompletionTokens);
+    int? PromptTokens, int? CompletionTokens,
+    int? ContextTokens = null, int? ReservedOutputTokens = null);
 
 internal sealed record BenchmarkRun(
     string Id, string Timestamp, string Preset, int MethodologyVersion,
@@ -35,6 +36,8 @@ internal sealed record BenchmarkRun(
             && row.ModelId == measurement.ModelId
             && row.SourceModel == measurement.SourceModel
             && row.Precision == measurement.Precision
+            && row.ContextTokens is not null && row.ContextTokens == measurement.ContextTokens
+            && row.ReservedOutputTokens == measurement.ReservedOutputTokens
             && row.RequestedDevice == measurement.RequestedDevice
             && row.ActualDevice == measurement.ActualDevice);
 
@@ -127,7 +130,11 @@ internal static class BenchmarkHistory
                     Metric(row, "time_to_first_token_ms"), Metric(row, "total_latency_ms"),
                     Metric(row, "load_time_ms"), Metric(row, "peak_process_ram_mb"),
                     promptTokens >= 0 ? promptTokens : null,
-                    completionTokens >= 0 ? completionTokens : null));
+                    completionTokens >= 0 ? completionTokens : null,
+                    Number(row, "configured_context_tokens") is int context && context is >= 128 and <= 262144
+                        ? context : null,
+                    Number(row, "reserved_output_tokens") is int reserve && reserve is >= 0 and <= 65536
+                        ? reserve : null));
             }
             string clientRunId = Field(item, "client_run_id", 64);
             if (!Regex.IsMatch(clientRunId, @"^[0-9a-f]{32}$")) clientRunId = "";

@@ -14,6 +14,21 @@ InferBridge implements a practical subset of the OpenAI API plus local model, de
 
 A mock contract result is not evidence that a driver or hardware target works.
 
+## Local model context configuration (not OpenAI routes)
+
+- `GET /v1/models/context?model=<id>`: current total, prompt/output budgets,
+  recommended baseline, optional converted-model architecture bound, candidate
+  choices, and explicitly unverified memory guidance.
+- `POST /v1/models/context`: `{ "model": "<id>", "context_tokens": 4096,
+  "expected_context_tokens": 2048 }`. Integers are strict; the expected value
+  rejects stale clients (409). Validation failures return 400/422. Apply
+  succeeds only after engine replacement (if loaded) and durable catalog save.
+  Compilation or persistence failure retains the prior engine/config and
+  returns a sanitized 409 response. No inference is started by this route.
+
+Hardware eligibility beyond the original recommendation must be certified on
+the requested OpenVINO runtime/device. See [Context budget](CONTEXT_BUDGET.md).
+
 ## OpenAI-compatible routes
 
 ### `GET /v1/models`

@@ -435,7 +435,23 @@
                             <Button x:Name="ResetGenerationSettingsButton" Content="Reset to engine defaults"
                                     Click="ResetGenerationSettingsButton_Click" />
                         </StackPanel>
-                        <TextBlock Text="Select load devices in Model library. Persistent server configuration, model context, top-k, and repetition penalty cannot be modified through the existing chat API." TextWrapping="Wrap" Opacity="0.8" />
+                        <TextBlock Text="Per-model context window" FontSize="18" FontWeight="SemiBold" />
+                        <TextBlock Text="Model context persists across restarts. Applying to a loaded model rebuilds its OpenVINO engine; your chat history stays intact. Larger values are trials until verified on this hardware." TextWrapping="Wrap" Opacity="0.8" />
+                        <InfoBar x:Name="ContextConfigurationInfo" Title="Context configuration"
+                                 Message="Load a model to inspect available context settings."
+                                 IsOpen="True" IsClosable="False" Severity="Informational" />
+                        <ComboBox x:Name="ContextSizePicker" Header="Context window tokens"
+                                  MinWidth="240" AutomationProperties.Name="Model context window" />
+                        <TextBlock x:Name="ContextMemoryGuidance" TextWrapping="Wrap"
+                                   AutomationProperties.LiveSetting="Polite" />
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Button x:Name="ContextApplyButton" Content="Apply model context"
+                                    IsEnabled="False" Click="ContextApplyButton_Click" />
+                            <Button x:Name="ContextResetButton" Content="Restore recommended"
+                                    IsEnabled="False" Click="ContextResetButton_Click" />
+                            <Button Content="Refresh" Click="ContextRefreshButton_Click" />
+                        </StackPanel>
+                        <TextBlock Text="Select load devices in Model library. Top-k and repetition penalty are not exposed by the existing chat API." TextWrapping="Wrap" Opacity="0.8" />
                     </StackPanel>
                 </ScrollViewer>
                 <!-- One compact command bar; saved-chat and detailed status flyouts

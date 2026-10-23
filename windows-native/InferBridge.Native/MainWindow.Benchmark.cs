@@ -503,6 +503,8 @@ public sealed partial class MainWindow
                             + " · Peak process RSS: " + BenchmarkHistory.FormatMetric(row.ProcessRamMegabytes, " MB")
                             + "\nPrompt tokens: " + (row.PromptTokens?.ToString() ?? "Not reported")
                             + " · Completion tokens: " + (row.CompletionTokens?.ToString() ?? "Not reported")
+                            + "\nContext: " + (row.ContextTokens?.ToString() ?? "Legacy / unknown")
+                            + " · Reserved output: " + (row.ReservedOutputTokens?.ToString() ?? "Unknown")
                         : "Benchmark failed; no valid performance measurement was reported.")
                     + (row.Synthetic ? "\nSynthetic (mock)" : ""),
                 TextWrapping = TextWrapping.Wrap,
@@ -526,7 +528,7 @@ public sealed partial class MainWindow
         if (!run.IsComparableTo(earlier))
         {
             BenchmarkComparisonSummary.Text =
-                "Incompatible runs. Hardware, real/mock mode, methodology, output tokens, measured-run count, and warm-up count must match. No performance delta is calculated.";
+                "Incompatible runs. Hardware, real/mock mode, methodology, output tokens, measured-run count, and warm-up count must match. Context and model identity are checked for each row. No performance delta is calculated.";
             return;
         }
         var lines = new List<string>();

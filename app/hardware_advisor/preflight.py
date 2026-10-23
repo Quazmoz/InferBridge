@@ -73,6 +73,13 @@ class PreflightMixin:
                 "blocking",
                 f"Estimated runtime memory is {runtime_memory:.1f} GB with {available_ram:.1f} GB currently available.",
             )
+        if estimates.get("kv_cache_gb") is None:
+            warn(
+                "kv-cache-unknown",
+                "warning",
+                "KV-cache memory could not be derived from local model architecture. "
+                "The runtime memory estimate is a lower bound, not a fit guarantee.",
+            )
         elif not loaded and available_ram and available_ram < runtime_memory * 1.25:
             warn(
                 "ram-tight",

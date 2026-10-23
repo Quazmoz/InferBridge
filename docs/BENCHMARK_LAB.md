@@ -54,6 +54,21 @@ Advanced controls can override measured-run count, output-token target, benchmar
 
 The public benchmark API remains backward compatible. Existing clients can continue to send a single `model`, while newer clients can send `models` for a comparison matrix.
 
+### Context-configuration comparisons
+
+Run the same prepared model/device with one saved context configuration, change
+context via native Settings or the browser budget panel, then repeat the same
+benchmark workload. Each result records `configured_context_tokens` and
+`reserved_output_tokens` alongside precision, actual/requested device, prompt
+and completion tokens, runtime/hardware fingerprint, and methodology. The
+process RSS sampler is host memory only, not measured Intel NPU memory.
+
+The native history displays context beside each row. It refuses a throughput
+or latency percentage across different (or unknown legacy) context settings.
+Inspect each raw measurement to understand the tradeoff; differing prompt
+lengths also make a direct speed percentage misleading. Mock results remain
+synthetic and do not qualify any context size on hardware.
+
 ## Metric definitions
 
 ### Generation speed / decode throughput

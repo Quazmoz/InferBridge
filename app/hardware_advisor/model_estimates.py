@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-import math
 from collections.abc import Mapping
 from typing import Any
+
+from app.config import BASE_DIR
+from app.context_configuration import kv_cache_gib, model_metadata
 
 from .common import base_device, infer_parameter_count_b, safe_float
 
@@ -21,10 +23,10 @@ class ModelEstimateMixin:
         converted_gb = actual_converted_gb or estimated_converted_gb
 
         context_len = max(int(getattr(cfg, "max_context_len", 2048) or 2048), 128)
-        kv_cache_gb = min(
-            max(context_len * math.sqrt(max(parameter_count_b, 0.02)) * 0.000055, 0.03), 10.0
-        )
-        runtime_memory_gb = max(converted_gb * 1.22 + kv_cache_gb + 0.35, 0.5)
+        kv_cache_gb = kv_cache_gib(model_metadata(cfg, BASE_DIR), context_len)
+        # This is a system-RAM *lower bound* if architecture is incomplete.
+        # Even with metadata, the FP16 KV assumption need not match device allocation.
+        runtime_memory_gb = max(converted_gb * 1.22 + (kv_cache_gb or 0) + 0.35, 0.5)
 
         target = device or getattr(cfg, "recommended_device", "CPU") or "CPU"
         base = base_device(target)
@@ -43,7 +45,13 @@ class ModelEstimateMixin:
             "converted_size_gb": round(converted_gb, 2),
             "converted_size_source": "measured" if actual_converted_gb else "estimated",
             "runtime_memory_gb": round(runtime_memory_gb, 2),
-            "kv_cache_gb": round(kv_cache_gb, 2),
+            "kv_cache_gb": round(kv_cache_gb, 3) if kv_cache_gb is not None else None,
+            "kv_cache_source": "architectural-fp16-estimate"
+            if kv_cache_gb is not None
+            else "unavailable",
+            "runtime_memory_source": "estimated-lower-bound"
+            if kv_cache_gb is None
+            else "estimated",
             "first_load_seconds": round(first_load_seconds, 1),
             "first_load_source": evidence,
             "target_device": target,

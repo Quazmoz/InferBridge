@@ -56,6 +56,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        ContextSizePicker.SelectionChanged += ContextSizePicker_SelectionChanged;
         BenchmarkPresetPicker.SelectionChanged += BenchmarkPresetPicker_SelectionChanged;
         try
         {
@@ -242,6 +243,8 @@ public sealed partial class MainWindow : Window
             _ = RefreshHuggingFaceAsync();
         ChatPanel.Visibility = page == "chat" ? Visibility.Visible : Visibility.Collapsed;
         SettingsPanel.Visibility = page == "settings" ? Visibility.Visible : Visibility.Collapsed;
+        if (page == "settings" && _engineConnected && _rejectedApiKey is null)
+            _ = RefreshContextConfigurationAsync();
         if (page == "settings" && _engineConnected && _rejectedApiKey is null)
             _ = RefreshModelPreparationsAsync();
         UpdateGenerationSettingsInfo();

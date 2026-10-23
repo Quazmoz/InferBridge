@@ -432,6 +432,12 @@ class ModelRegisterRequest(BaseModel):
 # --- Benchmark requests ---------------------------------------------------
 
 
+class ModelContextRequest(BaseModel):
+    model: str = Field(min_length=1, max_length=128)
+    context_tokens: int = Field(strict=True, ge=128, le=262144)
+    expected_context_tokens: int = Field(strict=True, ge=128, le=262144)
+
+
 class BenchmarkRunRequest(BaseModel):
     model: str | None = Field(default=None, max_length=128)
     models: list[str] | None = Field(default=None, max_length=16)

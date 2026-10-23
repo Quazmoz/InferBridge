@@ -6,6 +6,8 @@ namespace InferBridge.Native;
 public sealed partial class MainWindow
 {
     private GenerationOptions _generationOptions = GenerationOptions.Default;
+    private ContextConfiguration? _contextBaseline;
+    private bool _contextOperationBusy;
 
     private void OpenGenerationSettingsButton_Click(object sender, RoutedEventArgs args) =>
         MainNavigation.SelectedItem = SettingsNavigationItem;
@@ -92,6 +94,7 @@ public sealed partial class MainWindow
         TopPBox.IsEnabled = editable;
         ApplyGenerationSettingsButton.IsEnabled = editable && generationModel;
         ResetGenerationSettingsButton.IsEnabled = editable;
+        UpdateContextControls();
     }
 
     private void ApplyGenerationSettingsButton_Click(object sender, RoutedEventArgs args)
@@ -122,4 +125,149 @@ public sealed partial class MainWindow
         if (_chatBusy || _quitting || _closing.IsCancellationRequested) return;
         ResetGenerationSettings();
     }
+
+    private void UpdateContextControls()
+    {
+        bool available = !_contextOperationBusy && !_chatBusy && !_quitting
+            && !_closing.IsCancellationRequested && _contextBaseline?.ModelId == SelectedModelId;
+        ContextSizePicker.IsEnabled = available;
+        ContextApplyButton.IsEnabled = available && ContextSizePicker.SelectedItem is ComboBoxItem
+        {
+            Tag: int requested
+        } && requested != _contextBaseline?.Current
+          && _contextBaseline?.Options.Any(option => option.Tokens == requested
+              && option.Classification != "existing-unverified") == true;
+        ContextResetButton.IsEnabled = available
+            && _contextBaseline?.Recommended != _contextBaseline?.Current
+            && _contextBaseline?.Options.Any(option =>
+                option.Tokens == _contextBaseline.Recommended
+                && option.Classification != "existing-unverified") == true;
+    }
+
+    private void ContextSizePicker_SelectionChanged(object sender, SelectionChangedEventArgs args)
+    {
+        if (_contextBaseline is not { } context) return;
+        var choice = ContextSizePicker.SelectedItem is ComboBoxItem { Tag: int size }
+            ? context.Options.FirstOrDefault(option => option.Tokens == size) : null;
+        if (choice is null) return;
+        ContextMemoryGuidance.Text = "Prompt budget: "
+            + (choice.Tokens - context.OutputReserve).ToString("N0")
+            + " · Reserved output: " + context.OutputReserve.ToString("N0")
+            + " · " + choice.Classification.Replace('-', ' ')
+            + "\n" + (choice.KvEstimateGib is double estimate
+                ? "Illustrative FP16 KV cache: ~" + estimate.ToString("0.###")
+                    + " GiB; actual CPU/GPU/NPU allocation is unmeasured."
+                : "KV-cache memory unavailable: converted model architecture metadata is incomplete.")
+            + "\n" + (choice.EstimatedHostRamGib is double hostRam
+                ? "Estimated host-RAM planning floor: ~" + hostRam.ToString("0.##")
+                    + " GiB (" + choice.FitGuidance.Replace('-', ' ') + "). Not a device measurement."
+                : "Total memory estimate unavailable (" + choice.FitGuidance.Replace('-', ' ')
+                    + ").")
+            + "\nModel architecture limit: "
+            + (context.ArchitectureLimit?.ToString("N0") ?? "Not verified")
+            + ". Available RAM does not establish NPU compilation support.";
+        UpdateContextControls();
+    }
+
+    private async Task RefreshContextConfigurationAsync()
+    {
+        if (_contextOperationBusy || _closing.IsCancellationRequested) return;
+        string? modelId = SelectedModelId;
+        _contextBaseline = null;
+        ContextSizePicker.Items.Clear();
+        UpdateContextControls();
+        if (modelId is null || !_engineConnected)
+        {
+            ContextConfigurationInfo.Message = "Connect the engine and select a generation model.";
+            return;
+        }
+        _contextOperationBusy = true;
+        try
+        {
+            ContextConfigurationInfo.Title = "Checking model context";
+            ContextConfigurationInfo.Message = "Reading current model and runtime constraints…";
+            ContextConfigurationInfo.Severity = InfoBarSeverity.Informational;
+            var context = await _backend.GetContextAsync(modelId, ApiKeyBox.Password, _closing.Token);
+            if (SelectedModelId != modelId || _closing.IsCancellationRequested) return;
+            _contextBaseline = context;
+            foreach (var option in context.Options)
+            {
+                var row = new ComboBoxItem
+                {
+                    Tag = option.Tokens,
+                    Content = option.Tokens.ToString("N0") + " · "
+                        + option.Classification.Replace('-', ' '),
+                };
+                ContextSizePicker.Items.Add(row);
+                if (option.Tokens == context.Current) ContextSizePicker.SelectedItem = row;
+            }
+            ContextConfigurationInfo.Title = "Current model context: " + context.Current.ToString("N0");
+            ContextConfigurationInfo.Message = context.Loaded
+                ? "Applying a change compiles a replacement and retains the current engine until ready."
+                : "This model is unloaded. A new context will take effect on its next load.";
+            ContextConfigurationInfo.Severity = InfoBarSeverity.Informational;
+        }
+        catch (Exception error) when (error is not OutOfMemoryException)
+        {
+            ContextConfigurationInfo.Title = "Context information unavailable";
+            ContextConfigurationInfo.Message = error is EngineRequestException
+                ? error.Message : "The engine could not provide verified context settings.";
+            ContextConfigurationInfo.Severity = InfoBarSeverity.Warning;
+        }
+        finally
+        {
+            _contextOperationBusy = false;
+            UpdateContextControls();
+        }
+    }
+
+    private async Task ApplySelectedContextAsync(int tokens)
+    {
+        if (_contextOperationBusy || _contextBaseline is not { } baseline
+            || baseline.ModelId != SelectedModelId || _chatBusy) return;
+        _contextOperationBusy = true;
+        UpdateContextControls();
+        ContextConfigurationInfo.Title = "Applying model context";
+        ContextConfigurationInfo.Message = "Compiling and verifying the replacement before saving…";
+        ContextConfigurationInfo.Severity = InfoBarSeverity.Informational;
+        try
+        {
+            var applied = await _backend.ApplyContextAsync(
+                baseline, tokens, ApiKeyBox.Password, _closing.Token);
+            if (SelectedModelId != baseline.ModelId) return;
+            _contextBaseline = applied;
+            ContextConfigurationInfo.Title = "Context saved";
+            ContextConfigurationInfo.Message = "Applied " + tokens.ToString("N0")
+                + " tokens. Future prompts use this budget; existing chat history was preserved.";
+            ContextConfigurationInfo.Severity = InfoBarSeverity.Success;
+        }
+        catch (Exception error) when (error is not OutOfMemoryException)
+        {
+            ContextConfigurationInfo.Title = "Context not confirmed";
+            ContextConfigurationInfo.Message = error is EngineRequestException
+                ? error.Message
+                : "Could not confirm whether the engine applied this request. Refresh current context before retrying.";
+            ContextConfigurationInfo.Severity = InfoBarSeverity.Warning;
+        }
+        finally
+        {
+            _contextOperationBusy = false;
+            await RefreshContextConfigurationAsync();
+        }
+    }
+
+    private async void ContextApplyButton_Click(object sender, RoutedEventArgs args)
+    {
+        if (ContextSizePicker.SelectedItem is ComboBoxItem { Tag: int size })
+            await ApplySelectedContextAsync(size);
+    }
+
+    private async void ContextResetButton_Click(object sender, RoutedEventArgs args)
+    {
+        if (_contextBaseline is { } baseline)
+            await ApplySelectedContextAsync(baseline.Recommended);
+    }
+
+    private async void ContextRefreshButton_Click(object sender, RoutedEventArgs args) =>
+        await RefreshContextConfigurationAsync();
 }

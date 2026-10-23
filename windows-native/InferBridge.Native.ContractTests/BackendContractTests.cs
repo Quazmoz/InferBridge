@@ -100,6 +100,53 @@ internal static class BackendContractTests
                 new[] { "/desktop/instance", "/health/live", "/v1/models" }),
             "read-only inspection requested an unexpected route");
 
+        // Context configuration uses the same verified loopback client and an
+        // expected-current compare-and-set guard. No chat/generation request.
+        const string contextOptions = "\"options\":[{\"tokens\":2048,\"classification\":\"recommended\",\"fp16_kv_cache_gib_estimate\":0.04,\"estimated_host_ram_gib\":1.4,\"fit_guidance\":\"estimated-headroom\"},{\"tokens\":4096,\"classification\":\"eligible-unverified\",\"fp16_kv_cache_gib_estimate\":0.08,\"estimated_host_ram_gib\":1.5,\"fit_guidance\":\"unverified-memory\"}]";
+        string ContextBody(int current, int prompt) =>
+            "{\"model_id\":\"model-a\",\"configured_context_tokens\":" + current
+            + ",\"recommended_context_tokens\":2048,\"prompt_budget_tokens\":" + prompt
+            + ",\"reserved_output_tokens\":512,\"model_architecture_limit_tokens\":8192,"
+            + "\"loaded\":true,\"active_device\":\"CPU\"," + contextOptions + "}";
+        bool sawContextApply = false;
+        var contextTransport = new StubHandler(async (request, token) =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/v1/models/context")
+            {
+                Check(request.Headers.Authorization?.Parameter == Key,
+                    "context controls omitted the session API key");
+                if (request.Method == HttpMethod.Get)
+                {
+                    Check(request.RequestUri.Query == "?model=model-a",
+                        "context GET changed the selected model");
+                    return Json(ContextBody(2048, 1536));
+                }
+                using var payload = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(token));
+                Check(payload.RootElement.GetProperty("model").GetString() == "model-a"
+                    && payload.RootElement.GetProperty("context_tokens").GetInt32() == 4096
+                    && payload.RootElement.GetProperty("expected_context_tokens").GetInt32() == 2048,
+                    "context Apply omitted the old-value guard");
+                sawContextApply = true;
+                return Json("{\"status\":\"applied\",\"context\":" + ContextBody(4096, 3584) + "}");
+            }
+            return ValidResponse(request);
+        });
+        using (var client = new BackendClient(contextTransport, metadata))
+        {
+            var baseline = await client.GetContextAsync("model-a", Key, CancellationToken.None);
+            Check(baseline.Current == 2048 && baseline.OutputReserve == 512
+                && baseline.Options.Count == 2 && baseline.Recommended == 2048,
+                "native context options and prompt/output budgets are inaccurate");
+            await ThrowsAsync<ArgumentException>(
+                () => client.ApplyContextAsync(baseline, 16384, Key, CancellationToken.None),
+                "native context apply accepted a value absent from server choices");
+            var applied = await client.ApplyContextAsync(baseline, 4096, Key, CancellationToken.None);
+            Check(sawContextApply && applied.Current == 4096 && applied.PromptBudget == 3584,
+                "native context apply did not validate authoritative persisted state");
+        }
+        Check(!contextTransport.RequestPaths.Contains("/v1/chat/completions"),
+            "changing context unexpectedly started inference");
+
         // Device discovery uses authenticated verified loopback and parses physical targets.
         var deviceTransport = new StubHandler((request, _) =>
         {
