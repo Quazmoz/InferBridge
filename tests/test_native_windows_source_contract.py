@@ -45,6 +45,50 @@ def test_native_client_is_loopback_only_and_checks_instance_identity():
     assert "/v1/models" in content
 
 
+def test_native_connection_hub_reuses_verified_backend_without_exporting_credentials():
+    root = ET.parse(PROJECT / "MainWindow.xaml").getroot()
+    named = "{http://schemas.microsoft.com/winfx/2006/xaml}Name"
+    controls = {node.get(named): node.tag for node in root.iter() if node.get(named)}
+    for name, kind in (
+        ("ConnectionHubPanel", "ScrollViewer"),
+        ("HubModelPicker", "ComboBox"),
+        ("HubPythonExample", "TextBox"),
+        ("HubCurlExample", "TextBox"),
+        ("HubTestButton", "Button"),
+        ("HubTestResults", "ListView"),
+    ):
+        assert controls[name] == XAML + kind
+    for name in ("HubPythonExample", "HubCurlExample"):
+        control = next(node for node in root.iter() if node.get(named) == name)
+        assert control.get("IsReadOnly") == "True"
+    client = (PROJECT / "ConnectionHubClient.cs").read_text(encoding="utf-8")
+    window = (PROJECT / "MainWindow.ConnectionHub.cs").read_text(encoding="utf-8")
+    assert "/internal/connection-hub" in client
+    assert 'request.Headers.Add("X-OV-LLM-UI", "1")' in client
+    assert "SessionNonce != session.SessionNonce" in client
+    assert "SessionNonce != fresh.SessionNonce" in client
+    assert "YOUR_INFERBRIDGE_API_KEY" in client
+    assert "RunLocalApiSelfTestAsync" in client
+    assert "Clipboard.SetContent(data)" in window
+    assert "local API checks" in window
+    assert "WebView" not in window
+
+
+def test_native_chat_renders_text_and_code_without_html_or_browser_execution():
+    content = (PROJECT / "MainWindow.ChatRendering.cs").read_text(encoding="utf-8")
+    window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    assert "RichTextBlock" in content
+    assert "RenderCodeBlock" in content
+    assert "Copy code" in content
+    assert "Copy message" in content
+    assert "IsReadOnly = true" in content
+    assert "WebView" not in content
+    assert "Process.Start" not in content
+    assert "BuildChatContent" in window
+    assert "preview: true" in window
+    assert "ChatHistory.Items.Remove(assistantItem)" in window
+
+
 def test_native_chat_uses_real_accessible_xaml_controls():
     root = ET.parse(PROJECT / "MainWindow.xaml").getroot()
     xaml_ns = "{http://schemas.microsoft.com/winfx/2006/xaml}"

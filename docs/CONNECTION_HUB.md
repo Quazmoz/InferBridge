@@ -2,6 +2,14 @@
 
 InferBridge's built-in browser UI includes a **Local Connection Hub** under **Generation Settings > Local API**. It is an operational connection surface for OpenAI-compatible local clients, not a public API-management dashboard.
 
+The native WinUI app now has a dedicated **Local API** navigation page. It reads
+the same `/internal/connection-hub` metadata and runs the same backend-owned
+`/internal/connection-hub/self-test`. Native requests use the currently verified
+loopback engine session, the local UI marker and an optional session-only API key.
+The native client rechecks the engine nonce before displaying returned metadata
+and after the synthetic self-test, rejecting results from a replaced session.
+It does not reconfigure listeners or retrieve DPAPI-managed credentials.
+
 ## Connection values
 
 The Hub derives its values from the running server rather than assuming the default port. This matters for the packaged desktop application, which can select an available port at startup.
@@ -42,6 +50,11 @@ These generic values are intended for Open WebUI, n8n, scripts, and other applic
 5. Authentication behavior
 
 Each check reports `Passed`, `Failed`, or `Skipped` with its own duration and sanitized detail. A skipped generation check is normal when no compatible model is loaded or when the selected model is already busy.
+
+The native page reports every check independently in an accessible result list.
+If the HTTP response is lost or the window closes, the result is *unknown*;
+the client does not automatically retry generation. Copy buttons put only the
+Base URL, selected model example, or placeholder-bearing snippet on the clipboard.
 
 Generation checks use a small synthetic prompt. They do not use conversation history, browser state, files, or other user content. The self-test does not load, unload, convert, delete, or modify models.
 

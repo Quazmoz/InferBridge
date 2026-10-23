@@ -13,6 +13,11 @@ it over verified loopback HTTP.
   copyable conversation text and cancellation. Unsaved history stays in memory
   (20 recent messages, bounded prompt budget). Chat previews appear as tokens arrive, but an incomplete, failed or cancelled reply is removed instead of saved into the in-memory conversation. Cancelling the HTTP request
   does not prove server-side inference has stopped.
+  Completed turns use native selectable text controls for headings, inline
+  emphasis, quotes, bullets and fenced code blocks; individual messages and
+  fenced code have copy buttons. The renderer executes no HTML, scripts, remote
+  images or links. It is a safe Markdown subset, not full CommonMark parity;
+  streaming previews stay plain text until a successful terminal stream event.
 - **Native Settings**: the dedicated Settings page or **Inference settings** in Chat applies max generated tokens (1–4096 native cap), temperature (0–2), and top-p (0–1) to *future messages of the active native conversation* using the existing authenticated SSE route. Defaults (512, 0.7, 1.0) match FastAPI. Those request-only settings are memory-only and reset on a new/restored chat or model switch. A separate **Per-model context window** section reads live options from `/v1/models/context`, shows prompt/output budgets and illustrative FP16 KV-cache estimates when architecture allows them, and changes context via the same backend's authenticated `POST`. Context preferences persist in the engine's model catalog across restarts; a loaded model is rebuilt with rollback before handoff. Applying a context choice does not send a chat request, change existing messages, or persist secrets. Large contexts and hardware allocation remain unverified until tested. Unsupported top-k, repetition penalties, KV-cache quantization and device-wide settings are not exposed.
 - **Saved conversations**: an opt-in native history toggle persists completed user/assistant exchanges as bounded, readable JSON in this installation's data root (`native-conversations.json`), separate from the web browser's local history. The toggle is off for new installations; existing saved files re-enable it on restart. A native picker restores saved conversations with their original model identity; local-only search matches titles, model IDs, and message text. Rename preserves an edited title across subsequent completed replies, and a confirmed Delete action permanently removes a selected chat. Only completed streaming turns are committed. Writes use a temporary file and same-folder atomic replacement; unreadable or malformed history is never overwritten silently. Storage is **not encrypted**, not synced, and may be read by other processes with the same user account's filesystem permissions. Disable saving to stop new writes; delete individual saved conversations to remove them. Up to 40 conversations / 20 turns per conversation are retained.
 - **Model library**: the engine's catalog with readable states. The engine's
@@ -39,6 +44,12 @@ it over verified loopback HTTP.
 - **Engine**: connection status, **Start local engine**, and a session-only
   API-key field (a PasswordBox). The key stays in this window's memory and is
   never written to settings, process arguments, model files or browser storage.
+- **Local API**: a native Connection Hub reads the engine's authoritative
+  loopback Base URL and dynamic port, authentication and LAN status, and loaded
+  generation-capable models. Choose a model for secret-free Python SDK and
+  `curl.exe` examples, or run the existing five-check synthetic self-test.
+  Each result stays distinct. The native UI cannot enable LAN access or
+  recover a stored API key; enter a session key on Engine when required.
 - **Web GUI (secondary)**: an optional link under **Engine** opens the browser interface only on explicit user action. The button re-verifies the engine and uses its loopback URL without credentials. Chat, Model library and other native pages have no persistent browser promotion.
 
 ## Feature parity tracking
@@ -58,12 +69,14 @@ See [the maintained capability and Windows-launch qualification matrix](../docs/
 | Register a newly discovered remote model and convert | Implemented | Implemented in native controls | Native wizard supports bounded ID/name/weight format/context/device and engine queue; more advanced WebGUI conversion tuning still needed |
 | Conversation history | Implemented | Partially implemented | Native saves/searches/renames local history, not synchronized with browser |
 | System Doctor and runtime status | Implemented | Partially implemented | Native summary/report; advanced per-model remediation remains WebGUI-only |
-| Benchmark Lab history and compatible-run comparison | Implemented | Implemented in native controls | Engine-owned history; no synthetic/real cross-comparison; Windows installed execution pending |\n| Benchmark matrix configuration, progress, cancellation | Implemented | WebGUI-only | Native quick benchmark exists under Operations; no native full-matrix execution or engine-side cancel yet |\n| Diagnostics export | Implemented | Implemented | Native sanitized engine export; no copying of private paths or tokens |
-| Rich Markdown, multimodal/vision, embeddings interfaces | Implemented or partial in WebGUI | WebGUI-only | Backend capability depends on installed model/runtime |
+| Benchmark Lab history and compatible-run comparison | Implemented | Implemented in native controls | Engine-owned history; no synthetic/real cross-comparison; Windows installed execution pending |
+| Benchmark matrix configuration, progress, cancellation | Implemented | Native configuration/progress with limits | Native Benchmark Lab supports bounded matrix runs and correlated engine progress; no engine-side benchmark cancel route exists |
+| Diagnostics export | Implemented | Implemented | Native sanitized engine export; no copying of private paths or tokens |
+| Rich Markdown, multimodal/vision, embeddings interfaces | Implemented or partial in WebGUI | Partial native text/Markdown rendering | Native supports headings/emphasis and fenced code with copy actions; full CommonMark and image/vision attachment parity remain open |
 | Request-scoped max tokens, temperature and top-p | Implemented in WebGUI | Native Settings implemented | Explicit Apply/Reset; memory-only, resets on new/restored chat or model switch |
 | Model-aware generation controls | Backend-supported | Partial native | Checks reported embedding backend and output token cap; backend validates actual model/context |
 | Per-model persistent context window | Implemented | Implemented in native Settings | Same backend GET/POST context APIs; engine rebuild and stale-update rollback; hardware qualification pending |
-| Network/API and advanced runtime controls | WebGUI varies | WebGUI-only | No unsupported native controls or duplicate configuration store |
+| Network/API and advanced runtime controls | WebGUI varies | Native read-only Local API Hub | Native displays dynamic endpoint, auth/LAN state, model IDs, copyable examples and five-part self-test; network mutation stays web-only |
 | Engine HF search/access and model queue | Backend-supported | Exposed by both where above | Gated publisher approval, hardware and actual conversion require live verification |
 
 **Qualification is outstanding** for the newest native account/search, custom-model registration, lifecycle progress/cancellation, recovery, and storage commits: the Azure manual build and real Windows tests must run on their final SHA. Mocked C# HTTP contracts and Python/XAML source tests are not substitutes for installing and exercising the WinUI app on Windows. Neither frontend includes a second inference engine or embeds the other.
@@ -131,7 +144,7 @@ and, if needed, set `INFERBRIDGE_NATIVE_DATA_DIR` to its data root.
 ## Tests
 
 The dependency-free contract harness compiles the production
-`BackendClient.cs`, `HuggingFaceClient.cs`, and `NativeDataPaths.cs` with an in-memory HTTP transport
+`BackendClient.cs`, `ConnectionHubClient.cs`, `HuggingFaceClient.cs`, and `NativeDataPaths.cs` with an in-memory HTTP transport
 and temporary directories. It covers data-root resolution, nonce/port
 verification, stale and malformed metadata, redirects, API-key challenges and
 throttling, guarded load/unload/download, engine refusal messages, the
@@ -146,9 +159,11 @@ dotnet run --project .\windows-native\InferBridge.Native.ContractTests\InferBrid
 The Hugging Face contract cases exercise authenticated account requests, invalid and environment-managed tokens, token rejection redaction, bounded search metadata, and custom-model queue requests including device checks, duplicate IDs, gated access, cancellation, timeout-after-success and malformed responses with a mocked transport. They do not contact Hugging Face or verify DPAPI persistence.
 
 `tests/test_native_windows_source_contract.py` guards the XAML controls and
-key safeguards. Builds now run only through the manually queued Azure DevOps
-pipeline (`azure-pipelines.yml`), which invokes `scripts/build_release.ps1`
-and runs the native .NET contract harness. To qualify a Store MSIX separately,
+key safeguards. On each `dev` change touching native sources, GitHub Actions
+`python312-windows.yml` compiles the WinUI app and runs the native .NET contracts.
+The manually queued Azure DevOps pipeline (`azure-pipelines.yml`) invokes
+`scripts/build_release.ps1` to produce combined engine/native artifacts.
+To qualify a Store MSIX separately,
 run `scripts/build_msix.ps1` and `scripts/smoke_test_msix.ps1` on Windows;
 the latter checks package installation/identity, native launch and relaunch,
 and can optionally run the Windows App Certification Kit. These installed
@@ -165,16 +180,25 @@ local engine. Check both the default and smallest permitted window sizes, at
    conversation list must stay visible and scroll independently, with Send,
    Cancel, model selection and the composer accessible. Open **Saved chats**
    to search, restore, rename and delete a saved conversation; closing the
-   flyout must return to the same transcript.
+   flyout must return to the same transcript. Ask for fenced multi-line code,
+   emphasis, headings and literal HTML. Confirm safe native text rendering,
+   selection, Copy code, Copy message, and absence of script/remote loading.
+   Cancel mid-generation and verify no partial assistant turn is saved.
 2. **Model library:** select a model and verify its inventory remains visible
    while the action/details section scrolls. Download/Load/Unload/Delete,
    Refresh, cancellation, and recovery must remain reachable without a
    horizontal scrollbar.
-3. **Navigation and other screens:** collapse and expand the window; the
+3. **Local API:** verify the Base URL matches the active nondefault listener
+   port from desktop session metadata. Try authentication off and on (using a
+   disposable local key), zero/one/multiple loaded chat models, explicit model
+   selection, Python/curl placeholder copies, and all five self-test statuses.
+   Restart the engine while the page is open and confirm stale values/results
+   are invalidated. Confirm the page never enables LAN or firewall changes.
+4. **Navigation and other screens:** collapse and expand the window; the
    navigation pane should adapt automatically. Engine, Hugging Face, Benchmark
    Lab, System Doctor, Operations, Storage and Settings should scroll vertically
    without hiding controls or requiring sideways scrolling.
-4. **High DPI and restart:** repeat the minimum-size and saved-conversation
+5. **High DPI and restart:** repeat the minimum-size and saved-conversation
    tests after changing Windows display scaling, then relaunch the native app.
    The selected model/history controls must still behave normally.
 

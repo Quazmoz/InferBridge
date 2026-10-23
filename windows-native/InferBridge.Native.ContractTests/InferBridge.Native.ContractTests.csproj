@@ -8,6 +8,7 @@
   <ItemGroup>
     <Compile Include="../InferBridge.Native/NativeDataPaths.cs" Link="NativeDataPaths.cs" />
     <Compile Include="../InferBridge.Native/BackendClient.cs" Link="BackendClient.cs" />
+    <Compile Include="../InferBridge.Native/ConnectionHubClient.cs" Link="ConnectionHubClient.cs" />
     <Compile Include="../InferBridge.Native/ContextConfigurationClient.cs" Link="ContextConfigurationClient.cs" />
     <Compile Include="../InferBridge.Native/BenchmarkHistoryClient.cs" Link="BenchmarkHistoryClient.cs" />
     <Compile Include="../InferBridge.Native/BenchmarkLabClient.cs" Link="BenchmarkLabClient.cs" />

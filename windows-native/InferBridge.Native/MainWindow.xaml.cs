@@ -235,6 +235,11 @@ public sealed partial class MainWindow : Window
     {
         string? page = (args.SelectedItem as NavigationViewItem)?.Tag?.ToString();
         OverviewPanel.Visibility = page == "overview" ? Visibility.Visible : Visibility.Collapsed;
+        ConnectionHubPanel.Visibility = page == "connection" ? Visibility.Visible : Visibility.Collapsed;
+        if (page == "connection")
+            _ = RefreshConnectionHubAsync();
+        else
+            _hubGeneration++; // A response from a page we left must not repaint the Hub.
         ModelsPanel.Visibility = page == "models" ? Visibility.Visible : Visibility.Collapsed;
         if (page == "models" && _engineConnected && _rejectedApiKey is null)
             _ = RefreshModelPreparationsAsync();
@@ -1230,6 +1235,13 @@ public sealed partial class MainWindow : Window
         {
             string apiKey = ApiKeyBox.Password;
             var status = await _backend.InspectAsync(_closing.Token, apiKey);
+            if (_hubMetadata is not null && (!status.Connected
+                || status.SessionNonce != _hubMetadata.SessionNonce))
+            {
+                InvalidateConnectionHub();
+                HubInfo.Severity = InfoBarSeverity.Warning;
+                HubInfo.Message = "The engine session changed. Refresh the connection before copying or testing.";
+            }
             bool wasConnected = _engineConnected;
             _engineConnected = status.Connected;
             if ((!status.Connected || status.RequiresAuthentication)
@@ -1537,7 +1549,7 @@ public sealed partial class MainWindow : Window
             // Display preview only. Until [DONE], neither the context nor the
             // prompt is committed, and cancelled/error output is discarded.
             userItem = AppendChat("You", prompt);
-            assistantItem = AppendChat("InferBridge", "Generating…");
+            assistantItem = AppendChat("InferBridge", "Generating…", preview: true);
             long lastPreviewTick = 0;
             string answer = await _backend.StreamChatAsync(
                 modelId, pending, ApiKeyBox.Password, partial =>
@@ -1566,8 +1578,8 @@ public sealed partial class MainWindow : Window
             _turns.Clear();
             _turns.AddRange(pending);
             _turns.Add(new ChatTurn("assistant", answer[..Math.Min(answer.Length, 8000)]));
-            if (assistantItem?.Content is TextBlock finalText)
-                finalText.Text = "InferBridge\n" + (answer.Length > 8000
+            if (assistantItem is not null)
+                assistantItem.Content = BuildChatContent("InferBridge", answer.Length > 8000
                     ? answer[..8000] + "\n… Response truncated for the native conversation."
                     : answer);
             committed = true;
@@ -1649,17 +1661,17 @@ public sealed partial class MainWindow : Window
         ChatEmptyState.Visibility = ChatHistory.Items.Count == 0
             ? Visibility.Visible : Visibility.Collapsed;
 
-    private ListViewItem AppendChat(string speaker, string message)
+    private ListViewItem AppendChat(string speaker, string message, bool preview = false)
     {
         var item = new ListViewItem
         {
-            Content = new TextBlock
+            Content = preview ? new TextBlock
             {
                 Text = speaker + "\n" + message,
                 TextWrapping = TextWrapping.Wrap,
                 IsTextSelectionEnabled = true,
                 Margin = new Thickness(8),
-            },
+            } : BuildChatContent(speaker, message),
         };
         ChatHistory.Items.Add(item);
         UpdateChatEmptyState();

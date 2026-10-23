@@ -124,7 +124,13 @@ copy or migrate large downloads. To share, explicitly set a common
 
 ## Certification regression gate
 
-WACK reports an overall **PASS** for this package. Its two *optional* package-sanity findings, "Archive files usage" (gzipped scikit-learn sample data) and "Blocked executables" (strings such as `cmd` inside Python, PyTorch, OpenVINO and .NET binaries), are heuristics expected for a full-trust desktop app and do not block certification.
+Older Store evaluation evidence reported an overall WACK **PASS**, with optional
+"Archive files usage" and "Blocked executables" package-sanity findings.
+That result is **not** certification of the current `dev` source, its new native
+Connection Hub/chat controls, or any newly built MSIX. Each candidate must
+repeat installed MSIX smoke tests and WACK checks, retaining the actual report
+before making a PASS claim. Optional heuristic findings must be reviewed for
+the specific candidate rather than presumed harmless.
 
 The automated smoke test covers installation, Start-menu-equivalent activation, a visible native window, the engine starting from inside the package with a verified session, and relaunch focusing the existing window. Before submitting, also check on a real Windows 11 PC with the signed sideload package:
 

@@ -7,7 +7,7 @@ passed Windows hardware certification.
 
 | Domain | Native status | Evidence and intentional limitations |
 |---|---|---|
-| Chat, model switching and streaming | Partial native | `MainWindow.xaml.cs`, `BackendClient.cs`: SSE, stop waiting, copy last completed reply, model lifecycle; non-stop SSE finishes cannot enter saved history; web has richer rendering and multimodal surfaces |
+| Chat, model switching and streaming | Partial native | `MainWindow.xaml.cs`, `MainWindow.ChatRendering.cs`, `BackendClient.cs`: SSE, stop waiting, message-level copy, native headings/emphasis/fenced code with copy-code controls; non-stop SSE finishes cannot enter saved history. Full CommonMark, vision attachments and browser-history sync remain unavailable. |
 | Conversation management | Partial native | `NativeConversationStore.cs`: opt-in local search, rename, delete, restore; no browser-history sync |
 | Catalog model discovery and download | Full native | `MainWindow.xaml.cs`, `BackendClient.cs`: curated catalog, preparation progress, retry |
 | Hugging Face search and custom downloads | Partial native | `MainWindow.HuggingFace.cs`, `HuggingFaceClient.cs`: account/search/token, conversion queue; advanced conversion tuning remains web-only |
@@ -19,11 +19,12 @@ passed Windows hardware certification.
 | System Doctor | Partial native | `RunSystemDoctorAsync`, native Doctor screen: core checks and privacy-safe report; some advanced remediation remains web-only |
 | Storage/cache inventory and cleanup | Full native | `GetStorageInventoryAsync` and guarded cleanup; engine rechecks permissions |
 | Hugging Face authentication | Full native | `HuggingFaceClient.cs`: backend-controlled credential storage, verification and removal (as permitted) |
-| Network and API listener configuration | Web-only | native uses verified local loopback; does not expose network listener mutation |
+| Local Connection Hub | Native for read-only details and self-test | `ConnectionHubClient.cs`, `MainWindow.ConnectionHub.cs`: verified dynamic loopback port, authentication and LAN labels, usable loaded models, explicit model selection, secret-free Python/curl examples and individually reported engine-owned synthetic self-tests; listener mutation remains web-only |
+| Network and API listener configuration | Web-only mutation | native Hub reports listener/LAN state; it cannot change bindings, firewall rules or credentials |
 | Diagnostics and support export | Full native | `GetDesktopOperationsAsync`, `ExportDiagnosticsAsync`: server-owned ZIP generation, explicit confirmation |
 | Model preparation recovery | Full native for supported actions | `ModelPreparationClient.cs`: backend-owned action restrictions and recovery IDs |
 | App settings and startup | Partial native | native Settings, `app/startup_registration.py`: local runtime/UX controls; web controls some advanced preferences |
-| Rich Markdown, vision and embedding tools | Web-only / backend-dependent | native chat is text-focused; backend determines actual model capabilities |
+| Full CommonMark, vision and embedding tools | Web-only / backend-dependent | native renders a safe Markdown subset without HTML, script or remote-resource execution; backend determines actual model capabilities |
 
 ## Windows launch qualification inventory
 
@@ -38,9 +39,10 @@ passed Windows hardware certification.
 | Single native foreground window | `windows-native/InferBridge.Native/Program.cs` redirects duplicate activation | Source-inspected; second-window Windows smoke not observed |
 | Engine shutdown and upgrade | `EngineLauncher.cs`, `MainWindow.xaml.cs`, `packaging/installer.iss` | Source-inspected; upgrade with persisted models/settings not observed |
 
-Native and engine builds now run exclusively through the manually queued
-[Azure DevOps pipeline](../azure-pipelines.yml), which invokes the native
-WinUI publish and .NET contract tests in `scripts/build_release.ps1`.
+GitHub's [`python312-windows.yml`](../.github/workflows/python312-windows.yml)
+builds the native WinUI source on `dev` and runs the .NET contract harness;
+the manually queued [Azure DevOps pipeline](../azure-pipelines.yml) builds
+installer, portable and MSIX evaluation candidates with bundled engines.
 The installed MSIX smoke test and Windows certification kit remain available
 as local scripts, but are not automatically run by Azure.
 Build checks and actual user-machine CPU/GPU/NPU qualification are different
@@ -48,6 +50,18 @@ forms of evidence. Never infer a passed package smoke test from a successful
 source, XAML compile or mocked-backend contract test.
 
 ## Next parity milestone
+
+Run the Local API native page and message renderer on Windows 11 at 150% DPI
+with Narrator and a real loaded Intel CPU/GPU model. Check that direct API
+clients still require their own key, that model switching and engine restart
+invalidate stale Hub state, and that an interrupted self-test is not silently
+treated as a passed generation. The new source/HTTP contract tests do not
+qualify an installed package or a physical device.
+
+After that, complete CommonMark parity and optional vision-image attachments
+only against a confirmed backend/model capability contract.
+
+### Existing Benchmark Lab qualification
 
 Qualify the native Benchmark Lab on a Windows machine using local WinUI XAML
 compilation and the contract-test executable, followed by real hardware

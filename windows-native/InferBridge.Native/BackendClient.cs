@@ -118,7 +118,8 @@ internal sealed record BackendSnapshot(
     string Message,
     string Origin,
     IReadOnlyList<ModelInfo> Models,
-    bool RequiresAuthentication)
+    bool RequiresAuthentication,
+    string SessionNonce = "")
 {
     public static BackendSnapshot Offline(string message) =>
         new(false, message, string.Empty, Array.Empty<ModelInfo>(), false);
@@ -247,13 +248,13 @@ internal sealed partial class BackendClient : IDisposable
 
                 return new BackendSnapshot(
                     true, "Connected to the local InferBridge engine.", origin,
-                    models, false);
+                    models, false, nonce);
             }
             catch (UnauthorizedAccessException)
             {
                 return new BackendSnapshot(
                     true, "Engine verified. Enter the configured API key to view models and chat.",
-                    origin, Array.Empty<ModelInfo>(), true);
+                    origin, Array.Empty<ModelInfo>(), true, nonce);
             }
             catch (HttpRequestException error) when (error.StatusCode == HttpStatusCode.TooManyRequests)
             {
@@ -261,7 +262,7 @@ internal sealed partial class BackendClient : IDisposable
                 // still the verified owner, so do not report it offline.
                 return new BackendSnapshot(
                     true, "Engine verified, but it is refusing requests after repeated invalid API keys. Wait a few minutes, check the key, then refresh.",
-                    origin, Array.Empty<ModelInfo>(), true);
+                    origin, Array.Empty<ModelInfo>(), true, nonce);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
