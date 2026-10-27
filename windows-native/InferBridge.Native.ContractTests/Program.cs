@@ -95,6 +95,7 @@ try
     ChatMarkdownContractTests.Run();
     await ChatRequestContractTests.RunAsync(root);
     await OperationsParityContractTests.RunAsync(root);
+    await ModelLibraryContractTests.RunAsync(root);
     return 0;
 }
 finally

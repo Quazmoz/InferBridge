@@ -498,6 +498,31 @@
                                 <Button Grid.Row="2" Grid.Column="0" Content="Refresh"
                                         HorizontalAlignment="Stretch" Click="RefreshButton_Click"
                                         AutomationProperties.Name="Refresh models" />
+                                <DropDownButton x:Name="ModelLibraryToolsButton" Grid.Row="2" Grid.Column="1"
+                                                Content="Import / export" IsEnabled="False"
+                                                HorizontalAlignment="Stretch"
+                                                AutomationProperties.Name="Import, export and register local models">
+                                    <DropDownButton.Flyout>
+                                        <MenuFlyout Placement="Bottom">
+                                            <MenuFlyoutItem x:Name="AdoptLocalModelMenuItem"
+                                                            Text="Register detected local models…"
+                                                            Click="AdoptLocalModelMenuItem_Click" />
+                                            <MenuFlyoutItem x:Name="ImportConvertedMenuItem"
+                                                            Text="Import local / converted model…"
+                                                            Click="ImportConvertedMenuItem_Click" />
+                                            <MenuFlyoutSeparator />
+                                            <MenuFlyoutItem x:Name="ImportDefinitionsMenuItem"
+                                                            Text="Import definitions…"
+                                                            Click="ImportDefinitionsMenuItem_Click" />
+                                            <MenuFlyoutItem x:Name="ExportDefinitionsMenuItem"
+                                                            Text="Export maintained and imported definitions…"
+                                                            Click="ExportDefinitionsMenuItem_Click" />
+                                            <MenuFlyoutItem x:Name="ExportAllDefinitionsMenuItem"
+                                                            Text="Export all registered definitions…"
+                                                            Click="ExportDefinitionsMenuItem_Click" />
+                                        </MenuFlyout>
+                                    </DropDownButton.Flyout>
+                                </DropDownButton>
                             </Grid>
                             <TextBlock x:Name="ModelPreparationSummary"
                                        Text="Select a model to inspect preparation."

@@ -903,3 +903,41 @@ def test_native_conversation_pin_archive_duplicate_match_browser_flags():
     assert 'Title = title + " copy"' in store
     # Local-only: these actions never call the engine.
     assert "_backend." not in flags
+
+
+def test_native_model_library_exchange_uses_web_endpoints_without_overwrite():
+    names = _native_names()
+    for name, kind in (
+        ("ModelLibraryToolsButton", "DropDownButton"),
+        ("AdoptLocalModelMenuItem", "MenuFlyoutItem"),
+        ("ImportConvertedMenuItem", "MenuFlyoutItem"),
+        ("ImportDefinitionsMenuItem", "MenuFlyoutItem"),
+        ("ExportDefinitionsMenuItem", "MenuFlyoutItem"),
+        ("ExportAllDefinitionsMenuItem", "MenuFlyoutItem"),
+    ):
+        assert names[name] == XAML + kind
+    client = (PROJECT / "ModelLibraryClient.cs").read_text(encoding="utf-8")
+    view = (PROJECT / "MainWindow.ModelLibrary.cs").read_text(encoding="utf-8")
+    for endpoint in (
+        '"/v1/model-library/export?include_all="',
+        '"/v1/model-library/import-definitions"',
+        '"/v1/model-library/unregistered-managed"',
+        '"/v1/model-library/adopt-managed"',
+        '"/v1/model-library/import-converted"',
+    ):
+        assert endpoint in client
+    # Every call proves the engine identity and sends the user's API key.
+    assert client.count("RequireVerifiedOriginAsync(apiKey, cancellationToken)") == 4
+    # Never request replacement; never enable remote model code from native.
+    assert "overwrite = true" not in client
+    assert client.count("overwrite = false") == 2
+    assert '"trust_remote_code"' in client
+    assert "trust_remote_code = true" not in client
+    assert "MaximumDefinitionFileBytes = 1_000_000" in client
+    # Imports are confirmed and the library is re-read from the engine after changes.
+    assert 'ConfirmAsync("Import model definitions?"' in view
+    assert "await RefreshAsync()" in view
+    harness = (
+        ROOT / "windows-native" / "InferBridge.Native.ContractTests" / "Program.cs"
+    ).read_text(encoding="utf-8")
+    assert "ModelLibraryContractTests.RunAsync(root)" in harness

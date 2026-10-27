@@ -1289,6 +1289,7 @@ public sealed partial class MainWindow : Window
         DownloadButton.IsEnabled = idle && model?.CanDownload == true;
         RecoverButton.IsEnabled = idle && _engineConnected && model is not null;
         LibraryDevicePicker.IsEnabled = idle && _devicesAvailable;
+        ModelLibraryToolsButton.IsEnabled = ModelLibraryToolsReady;
         UpdateModelPreparationUi();
     }
 

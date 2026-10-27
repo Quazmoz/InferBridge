@@ -19,5 +19,6 @@
     <Compile Include="../InferBridge.Native/ChatMarkdown.cs" Link="ChatMarkdown.cs" />
     <Compile Include="../InferBridge.Native/RuntimeHealthClient.cs" Link="RuntimeHealthClient.cs" />
     <Compile Include="../InferBridge.Native/ReleaseUpdateClient.cs" Link="ReleaseUpdateClient.cs" />
+    <Compile Include="../InferBridge.Native/ModelLibraryClient.cs" Link="ModelLibraryClient.cs" />
   </ItemGroup>
 </Project>
