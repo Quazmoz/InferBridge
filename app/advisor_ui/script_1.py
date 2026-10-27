@@ -46,6 +46,12 @@ SCRIPT_1 = r"""
     let benchmarkProgressTimer = null;
     let benchmarkStartedAt = 0;
     let benchmarkError = '';
+    // Native parity (BenchmarkAttemptGate): a lost POST response is an uncertain
+    // outcome; this window never retries until history confirms the client run id.
+    let benchmarkClientRunId = '';
+    let benchmarkExpectedCombinations = 0;
+    let benchmarkUncertainRunId = '';
+    let benchmarkNotice = '';
     let benchmarkProgress = {
         message: 'Ready to benchmark.',
         current: 0,
