@@ -63,6 +63,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        ClearChatStats();
         ContextSizePicker.SelectionChanged += ContextSizePicker_SelectionChanged;
         BenchmarkPresetPicker.SelectionChanged += BenchmarkPresetPicker_SelectionChanged;
         try
@@ -260,6 +261,8 @@ public sealed partial class MainWindow : Window
         if (page == "huggingface" && !_hfLoaded)
             _ = RefreshHuggingFaceAsync();
         ChatPanel.Visibility = page == "chat" ? Visibility.Visible : Visibility.Collapsed;
+        if (page == "chat" && _engineConnected && _rejectedApiKey is null)
+            _ = RefreshModelPreparationsAsync();
         SettingsPanel.Visibility = page == "settings" ? Visibility.Visible : Visibility.Collapsed;
         if (page == "settings" && _engineConnected && _rejectedApiKey is null)
             _ = RefreshContextConfigurationAsync();
@@ -1741,9 +1744,14 @@ public sealed partial class MainWindow : Window
                 : prompt + "\n\n(" + context.Images.Count + " image(s) attached)");
             assistantItem = AppendChat("InferBridge", "Generating…", preview: true);
             long lastPreviewTick = 0;
+            // Client-side timing for the stats strip (includes loopback HTTP).
+            var timer = Stopwatch.StartNew();
+            long firstTokenTicks = -1;
+            ChatUsage? usage = null;
             string answer = await _backend.StreamChatAsync(
                 modelId, pending, ApiKeyBox.Password, partial =>
                 {
+                    Interlocked.CompareExchange(ref firstTokenTicks, timer.ElapsedTicks, -1);
                     long now = Environment.TickCount64;
                     if (now - lastPreviewTick < 60) return; // Bound UI work during fast streams.
                     lastPreviewTick = now;
@@ -1760,7 +1768,8 @@ public sealed partial class MainWindow : Window
                             ChatHistory.ScrollIntoView(assistantItem);
                         }
                     });
-                }, send.Token, generation, context);
+                }, send.Token, generation, context, value => usage = value);
+            timer.Stop();
             // A late HTTP success must not commit a reply after cancellation.
             if (_closing.IsCancellationRequested || _sendCancellation?.IsCancellationRequested != false)
                 return;
@@ -1773,6 +1782,10 @@ public sealed partial class MainWindow : Window
                     ? answer[..8000] + "\n… Response truncated for the native conversation."
                     : answer);
             committed = true;
+            long firstTicks = Interlocked.Read(ref firstTokenTicks);
+            UpdateChatStats(modelId,
+                firstTicks < 0 ? -1 : firstTicks * 1000.0 / Stopwatch.Frequency,
+                timer.Elapsed.TotalMilliseconds, usage);
             PromptBox.Text = string.Empty;
             // Like the web client, attachments are kept until a reply completes.
             if (context.Images.Count > 0) ClearPendingImages();
@@ -1841,6 +1854,7 @@ public sealed partial class MainWindow : Window
         _turns.Clear();
         ChatHistory.Items.Clear();
         UpdateChatEmptyState();
+        ClearChatStats();
         _currentConversationId = Guid.NewGuid().ToString("N");
         _conversationModelId = SelectedModelId;
         ResetGenerationSettings();

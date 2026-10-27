@@ -1105,6 +1105,9 @@ internal static class BackendContractTests
                     await request.Content!.ReadAsStringAsync(token));
                 Check(parsed.RootElement.GetProperty("stream").GetBoolean(),
                     "native chat request did not enable streaming");
+                Check(parsed.RootElement.GetProperty("stream_options")
+                        .GetProperty("include_usage").GetBoolean(),
+                    "native streamed chat did not request engine token usage");
                 Check(parsed.RootElement.GetProperty("model").GetString() == "model-a",
                     "streamed chat changed the selected model");
                 var payload = parsed.RootElement;
@@ -1123,6 +1126,8 @@ internal static class BackendContractTests
                 return Events("data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}]}\n\n"
                     + Sse(longPiece + "✨") + Sse(" hello") + Sse("", "stop")
                     + "data: {\"choices\":[]}\n\n"
+                    + "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":-1,\"completion_tokens\":3}}\n\n"
+                    + "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":12,\"completion_tokens\":7,\"total_tokens\":19}}\n\n"
                     + "data: [DONE]\n\n");
             }
             return ValidResponse(request);
@@ -1130,9 +1135,12 @@ internal static class BackendContractTests
         using (var client = new BackendClient(streaming, metadata))
         {
             var previews = new List<string>();
+            ChatUsage? reported = null;
             string response = await client.StreamChatAsync(
                 "model-a", new[] { new ChatTurn("user", "hello") },
-                Key, previews.Add, CancellationToken.None);
+                Key, previews.Add, CancellationToken.None, onUsage: value => reported = value);
+            Check(reported == new ChatUsage(12, 7),
+                "valid engine usage was not reported, or an invalid usage event replaced it");
             Check(response == longPiece + "✨ hello",
                 "SSE parser lost an event or UTF-8 data across a buffer boundary");
             Check(previews.Count == 2 && previews[0] == longPiece + "✨"
@@ -1176,6 +1184,8 @@ internal static class BackendContractTests
             Sse("[error: generation failed; see server logs for the request ID]")
                 + Sse("", "stop") + "data: [DONE]\n\n",
             Sse("partial") + Sse("", "length") + "data: [DONE]\n\n",
+            Sse("partial") + "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":2}}\n\n"
+                + Sse("", "length") + "data: [DONE]\n\n",
             Sse("filtered") + Sse("", "content_filter") + "data: [DONE]\n\n",
             Sse("bad") + Sse("", "unexpected") + "data: [DONE]\n\n",
         })
@@ -1184,11 +1194,13 @@ internal static class BackendContractTests
                 Task.FromResult(request.RequestUri!.AbsolutePath == "/v1/chat/completions"
                     ? Events(invalidStream) : ValidResponse(request)));
             using var client = new BackendClient(invalid, metadata);
+            bool usageReported = false;
             await ThrowsAsync<Exception>(
                 () => client.StreamChatAsync("model-a",
                     new[] { new ChatTurn("user", "hello") },
-                    null, _ => { }, CancellationToken.None),
+                    null, _ => { }, CancellationToken.None, onUsage: _ => usageReported = true),
                 "truncated, malformed or failed stream was treated as complete");
+            Check(!usageReported, "usage was reported for an incomplete reply");
         }
 
         // The stream is bounded even if a malicious or broken server never

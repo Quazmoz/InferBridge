@@ -9,8 +9,89 @@ public sealed partial class MainWindow
     private ContextConfiguration? _contextBaseline;
     private bool _contextOperationBusy;
 
+    private bool _chatPaneOpenWide = true;
+    private bool _chatPaneOpenNarrow;
+    private bool _chatPaneNarrow;
+    private bool _syncingGenerationControls;
+
+    // The pane is inline from 900 px of chat width and overlays from the right
+    // below that, so the transcript never collapses to an unreadable column.
+    private void ChatPanel_SizeChanged(object sender, SizeChangedEventArgs args)
+    {
+        bool narrow = args.NewSize.Width < 900;
+        if (narrow == _chatPaneNarrow && args.PreviousSize.Width > 0) return;
+        _chatPaneNarrow = narrow;
+        LayoutChatSettingsPane();
+    }
+
+    private void LayoutChatSettingsPane()
+    {
+        Grid.SetColumn(ChatSettingsPane, _chatPaneNarrow ? 0 : 1);
+        Grid.SetColumnSpan(ChatSettingsPane, _chatPaneNarrow ? 2 : 1);
+        ChatSettingsPane.HorizontalAlignment = _chatPaneNarrow
+            ? HorizontalAlignment.Right : HorizontalAlignment.Stretch;
+        ChatSettingsPane.Margin = _chatPaneNarrow ? new Thickness(0) : new Thickness(16, 0, 0, 0);
+        // The overlay needs an opaque surface; inline it uses the card layer.
+        ChatSettingsPane.Background = Ui.ResBrush(_chatPaneNarrow
+            ? "SolidBackgroundFillColorBaseBrush" : "CardBackgroundFillColorDefaultBrush");
+        Canvas.SetZIndex(ChatSettingsPane, _chatPaneNarrow ? 10 : 0);
+        bool open = _chatPaneNarrow ? _chatPaneOpenNarrow : _chatPaneOpenWide;
+        ChatSettingsPane.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void SetChatSettingsPane(bool open)
+    {
+        if (_chatPaneNarrow) _chatPaneOpenNarrow = open;
+        else _chatPaneOpenWide = open;
+        LayoutChatSettingsPane();
+        if (open) _ = SystemPromptBox.Focus(FocusState.Programmatic);
+        else _ = ChatSettingsPaneButton.Focus(FocusState.Programmatic);
+    }
+
     private void OpenGenerationSettingsButton_Click(object sender, RoutedEventArgs args) =>
-        MainNavigation.SelectedItem = SettingsNavigationItem;
+        SetChatSettingsPane(ChatSettingsPane.Visibility != Visibility.Visible);
+
+    private void CloseChatSettingsPaneButton_Click(object sender, RoutedEventArgs args) =>
+        SetChatSettingsPane(false);
+
+    private void OpenChatSettingsFromSettings_Click(object sender, RoutedEventArgs args)
+    {
+        NavigateTo("chat");
+        SetChatSettingsPane(true);
+    }
+
+    // Sliders and number boxes edit the same value; Apply still validates and commits.
+    private void GenerationSlider_ValueChanged(object sender,
+        Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs args)
+    {
+        if (_syncingGenerationControls || TemperatureBox is null || TopPBox is null || MaxTokensBox is null)
+            return;
+        _syncingGenerationControls = true;
+        try
+        {
+            if (ReferenceEquals(sender, TemperatureSlider)) TemperatureBox.Value = Math.Round(args.NewValue, 2);
+            else if (ReferenceEquals(sender, TopPSlider)) TopPBox.Value = Math.Round(args.NewValue, 2);
+            else if (ReferenceEquals(sender, MaxTokensSlider)) MaxTokensBox.Value = Math.Round(args.NewValue);
+        }
+        finally { _syncingGenerationControls = false; }
+    }
+
+    private void GenerationBox_ValueChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
+    {
+        if (_syncingGenerationControls || !double.IsFinite(args.NewValue)
+            || TemperatureSlider is null || TopPSlider is null || MaxTokensSlider is null)
+            return;
+        _syncingGenerationControls = true;
+        try
+        {
+            Slider? slider = ReferenceEquals(sender, TemperatureBox) ? TemperatureSlider
+                : ReferenceEquals(sender, TopPBox) ? TopPSlider
+                : ReferenceEquals(sender, MaxTokensBox) ? MaxTokensSlider : null;
+            if (slider is not null)
+                slider.Value = Math.Clamp(args.NewValue, slider.Minimum, slider.Maximum);
+        }
+        finally { _syncingGenerationControls = false; }
+    }
 
     private void ResetGenerationSettings()
     {
@@ -23,6 +104,7 @@ public sealed partial class MainWindow
         _systemPrompt = null;
         SystemPromptBox.Text = string.Empty;
         ClearPendingImages();
+        ClearChatStats();
         GenerationSettingsInfo.Title = "Engine defaults";
         GenerationSettingsInfo.Message = "Defaults restored for this chat. Nothing was persisted.";
         GenerationSettingsInfo.Severity = InfoBarSeverity.Informational;
@@ -98,6 +180,9 @@ public sealed partial class MainWindow
         MaxTokensBox.IsEnabled = editable;
         TemperatureBox.IsEnabled = editable;
         TopPBox.IsEnabled = editable;
+        MaxTokensSlider.IsEnabled = editable;
+        TemperatureSlider.IsEnabled = editable;
+        TopPSlider.IsEnabled = editable;
         SystemPromptBox.IsEnabled = editable;
         ApplyGenerationSettingsButton.IsEnabled = editable && generationModel;
         ResetGenerationSettingsButton.IsEnabled = editable;

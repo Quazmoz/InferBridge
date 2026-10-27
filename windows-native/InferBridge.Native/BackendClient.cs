@@ -47,6 +47,23 @@ internal sealed class EngineRequestException(string message) : InvalidOperationE
 
 internal sealed record ChatTurn(string Role, string Content);
 
+/// <summary>Engine-reported token counts for one completed streamed reply.</summary>
+internal sealed record ChatUsage(int PromptTokens, int CompletionTokens)
+{
+    public static ChatUsage? TryParse(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object
+            || !root.TryGetProperty("usage", out var usage)
+            || usage.ValueKind != JsonValueKind.Object) return null;
+        static int? Count(JsonElement owner, string name, int maximum) =>
+            owner.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number
+                && value.TryGetInt32(out int count) && count >= 0 && count <= maximum ? count : null;
+        return Count(usage, "prompt_tokens", 10_000_000) is int prompt
+            && Count(usage, "completion_tokens", 1_000_000) is int completion
+            ? new ChatUsage(prompt, completion) : null;
+    }
+}
+
 // These request-scoped options are validated before contacting the Python engine.
 internal sealed record GenerationOptions(int MaxTokens, double Temperature, double TopP)
 {
@@ -474,7 +491,8 @@ internal sealed partial class BackendClient : IDisposable
     public async Task<string> StreamChatAsync(
         string modelId, IReadOnlyList<ChatTurn> turns, string? apiKey,
         Action<string> onPartial, CancellationToken cancellationToken,
-        GenerationOptions? options = null, ChatRequestContext? context = null)
+        GenerationOptions? options = null, ChatRequestContext? context = null,
+        Action<ChatUsage>? onUsage = null)
     {
         ValidateChatTurns(modelId, turns);
         var generation = options ?? GenerationOptions.Default;
@@ -495,6 +513,9 @@ internal sealed partial class BackendClient : IDisposable
             model = modelId,
             messages = BuildChatMessages(turns, context),
             stream = true,
+            // Token counts for the native stats strip; the engine sends them
+            // in a final choices-less chunk only when asked.
+            stream_options = new { include_usage = true },
             max_tokens = generation.MaxTokens,
             temperature = generation.Temperature,
             top_p = generation.TopP,
@@ -527,6 +548,7 @@ internal sealed partial class BackendClient : IDisposable
         bool done = false;
         bool finished = false;
         int totalBytes = 0;
+        ChatUsage? usage = null;
 
         void ProcessEvent(string payload)
         {
@@ -544,7 +566,11 @@ internal sealed partial class BackendClient : IDisposable
                 || !root.TryGetProperty("choices", out var choices)
                 || choices.ValueKind != JsonValueKind.Array)
                 throw new JsonException("Invalid streaming chat event.");
-            if (choices.GetArrayLength() == 0) return; // Optional usage event.
+            if (choices.GetArrayLength() == 0)
+            {
+                usage = ChatUsage.TryParse(root) ?? usage; // Optional usage event.
+                return;
+            }
             var choice = choices[0];
             if (choice.ValueKind != JsonValueKind.Object)
                 throw new JsonException("Invalid streaming chat choice.");
@@ -616,6 +642,8 @@ internal sealed partial class BackendClient : IDisposable
             throw new IOException("The engine disconnected before completing the chat stream.");
         if (answer.Length == 0)
             throw new JsonException("The engine returned an empty streamed answer.");
+        // Reported only for a completed reply; counts are display-only.
+        if (usage is not null) onUsage?.Invoke(usage);
         return answer.ToString();
     }
 

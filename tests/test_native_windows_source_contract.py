@@ -1119,3 +1119,47 @@ def test_native_charts_are_in_house_accessible_and_theme_aware():
     assert "ChartMathContractTests.Run();" in (contracts / "Program.cs").read_text(encoding="utf-8")
     layout = (PROJECT / "AdaptiveLayout.cs").read_text(encoding="utf-8")
     assert "ChartMath.Columns(" in layout
+
+
+def test_native_chat_has_inference_pane_and_live_stats_from_real_data():
+    root = ET.parse(PROJECT / "MainWindow.xaml").getroot()
+    named = "{http://schemas.microsoft.com/winfx/2006/xaml}Name"
+    chat = next(node for node in root.iter() if node.get(named) == "ChatPanel")
+    columns = chat.find(XAML + "Grid.ColumnDefinitions")
+    assert [column.get("Width") for column in columns] == ["*", "Auto"]
+    pane = next(node for node in chat if node.get(named) == "ChatSettingsPane")
+    assert pane.get("Grid.Column") == "1" and pane.get("Grid.RowSpan") == "3"
+    inside = {node.get(named): _presentation_tag(node) for node in pane.iter() if node.get(named)}
+    for name, kind in (
+        ("SystemPromptBox", "TextBox"),
+        ("TemperatureBox", "NumberBox"),
+        ("TopPBox", "NumberBox"),
+        ("MaxTokensBox", "NumberBox"),
+        ("TemperatureSlider", "Slider"),
+        ("TopPSlider", "Slider"),
+        ("MaxTokensSlider", "Slider"),
+        ("ApplyGenerationSettingsButton", "Button"),
+        ("ResetGenerationSettingsButton", "Button"),
+        ("GenerationSettingsInfo", "InfoBar"),
+    ):
+        assert inside[name] == kind
+    assert any(node.get(named) == "ChatContextMeter" for node in pane.iter())
+    assert any(node.get(named) == "ChatStatsStrip" for node in chat.iter())
+    settings = (PROJECT / "MainWindow.GenerationSettings.cs").read_text(encoding="utf-8")
+    assert "_chatPaneNarrow" in settings and "args.NewSize.Width < 900" in settings
+    assert '"SolidBackgroundFillColorBaseBrush"' in settings  # Opaque overlay when narrow.
+    # The pane edits values; only Apply commits them through GenerationOptions validation.
+    assert "GenerationOptions.FromNumbers(" in settings
+    stats = (PROJECT / "MainWindow.ChatStats.cs").read_text(encoding="utf-8")
+    assert "ChartMath.DecodeTokensPerSecond(usage?.CompletionTokens" in stats
+    assert "Tokens not reported" in stats and "Decode speed not reported" in stats
+    window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    send = _method_body(
+        window, "private async void SendButton_Click(object sender, RoutedEventArgs args)"
+    )
+    assert "Stopwatch.StartNew()" in send
+    # Stats are shown only after a reply is committed.
+    assert send.index("committed = true;") < send.index("UpdateChatStats(")
+    client = (PROJECT / "BackendClient.cs").read_text(encoding="utf-8")
+    assert "stream_options = new { include_usage = true }" in client
+    assert "if (usage is not null) onUsage?.Invoke(usage);" in client

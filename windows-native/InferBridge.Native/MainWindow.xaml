@@ -612,40 +612,13 @@
                               HorizontalScrollBarVisibility="Disabled">
                     <StackPanel MaxWidth="760" HorizontalAlignment="Left" Spacing="14">
                         <TextBlock Text="Settings" FontSize="28" FontWeight="SemiBold" />
-                        <TextBlock Text="Inference for this conversation" FontSize="18" FontWeight="SemiBold" />
-                        <TextBlock Text="Apply settings to future messages in the current native chat. Changes are not saved to disk or the engine, and reset when you switch models, start a new chat or restore history." TextWrapping="Wrap" Opacity="0.8" />
-                        <InfoBar x:Name="GenerationSettingsInfo" Title="Engine defaults"
-                                 Message="Adjust and apply controls for this chat."
-                                 IsOpen="True" IsClosable="False" Severity="Informational" />
-                        <TextBlock x:Name="SettingsCurrentModel" TextWrapping="Wrap"
-                                   AutomationProperties.LiveSetting="Polite" />
-                        <TextBox x:Name="SystemPromptBox" Header="System prompt"
-                                 PlaceholderText="Optional system instructions…"
-                                 AcceptsReturn="True" TextWrapping="Wrap"
-                                 MinHeight="72" MaxHeight="180" MaxLength="32768"
-                                 AutomationProperties.Name="System prompt for this chat" />
-                        <TextBlock Text="Sent first in every request for this chat, like the Web UI system prompt. Not saved to the engine." TextWrapping="Wrap" Opacity="0.8" />
-                        <NumberBox x:Name="MaxTokensBox" Header="Maximum generated tokens"
-                                   Value="512" Minimum="1" Maximum="4096" SmallChange="64"
-                                   SpinButtonPlacementMode="Compact" ValidationMode="Disabled"
-                                   AutomationProperties.Name="Maximum output tokens" />
-                        <TextBlock Text="Engine default: 512. Actual generation can be shorter when context space is limited." TextWrapping="Wrap" Opacity="0.8" />
-                        <NumberBox x:Name="TemperatureBox" Header="Temperature"
-                                   Value="0.7" Minimum="0" Maximum="2" SmallChange="0.1"
-                                   SpinButtonPlacementMode="Compact" ValidationMode="Disabled"
-                                   AutomationProperties.Name="Temperature from zero to two" />
-                        <TextBlock Text="Engine default: 0.7. Zero disables sampling; higher values increase variation." TextWrapping="Wrap" Opacity="0.8" />
-                        <NumberBox x:Name="TopPBox" Header="Top-p sampling"
-                                   Value="1" Minimum="0" Maximum="1" SmallChange="0.05"
-                                   SpinButtonPlacementMode="Compact" ValidationMode="Disabled"
-                                   AutomationProperties.Name="Top-p from zero to one" />
-                        <TextBlock Text="Engine default: 1.0. Lower values restrict nucleus sampling." TextWrapping="Wrap" Opacity="0.8" />
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <Button x:Name="ApplyGenerationSettingsButton" Content="Apply to this chat"
-                                    Click="ApplyGenerationSettingsButton_Click" />
-                            <Button x:Name="ResetGenerationSettingsButton" Content="Reset to engine defaults"
-                                    Click="ResetGenerationSettingsButton_Click" />
-                        </StackPanel>
+                        <InfoBar Title="Inference settings moved to Chat" IsOpen="True" IsClosable="False"
+                                 Severity="Informational"
+                                 Message="System prompt, temperature, top-p and maximum tokens for the current conversation are in the Inference settings pane beside the chat.">
+                            <InfoBar.ActionButton>
+                                <Button Content="Open inference settings" Click="OpenChatSettingsFromSettings_Click" />
+                            </InfoBar.ActionButton>
+                        </InfoBar>
                         <TextBlock Text="Per-model context window" FontSize="18" FontWeight="SemiBold" />
                         <TextBlock Text="Model context persists across restarts. Applying to a loaded model rebuilds its OpenVINO engine; your chat history stays intact. Larger values are trials until verified on this hardware." TextWrapping="Wrap" Opacity="0.8" />
                         <InfoBar x:Name="ContextConfigurationInfo" Title="Context configuration"
@@ -695,12 +668,18 @@
                 </ScrollViewer>
                 <!-- One compact command bar; saved-chat and detailed status flyouts
                      never consume the transcript's star-sized viewport. -->
-                <Grid x:Name="ChatPanel" RowSpacing="10">
+                <!-- Chat: conversation column plus the Inference settings pane, inline
+                     at 900 px and wider, overlaying from the right when narrower. -->
+                <Grid x:Name="ChatPanel" RowSpacing="10" SizeChanged="ChatPanel_SizeChanged">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
                     <StackPanel Grid.Row="0" Spacing="6">
                     <Grid x:Name="ChatToolbar" ColumnSpacing="6"
                           SizeChanged="ChatToolbar_SizeChanged"
@@ -818,11 +797,11 @@
                                 </Flyout>
                             </Button.Flyout>
                         </Button>
-                        <Button Grid.Column="4" VerticalAlignment="Center"
+                        <Button x:Name="ChatSettingsPaneButton" Grid.Column="4" VerticalAlignment="Center"
                                 Click="OpenGenerationSettingsButton_Click"
-                                AutomationProperties.Name="Inference settings"
-                                ToolTipService.ToolTip="Inference settings">
-                            <SymbolIcon Symbol="Setting" />
+                                AutomationProperties.Name="Show or hide inference settings"
+                                ToolTipService.ToolTip="Inference settings (system prompt, sampling, context)">
+                            <FontIcon Glyph="&#xE9E9;" />
                         </Button>
                         <Button x:Name="NewChatButton" Grid.Column="5" VerticalAlignment="Center"
                                 Click="NewChatButton_Click"
@@ -831,6 +810,8 @@
                             <SymbolIcon Symbol="Add" />
                         </Button>
                     </Grid>
+                    <!-- Model + device bar: where the selected model runs next, and where it runs now. -->
+                    <Border Style="{StaticResource InferBridgeCardStyle}" Padding="12">
                     <Grid ColumnSpacing="8" RowSpacing="4">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
@@ -859,9 +840,11 @@
                                    TextWrapping="Wrap" FontSize="12" Opacity="0.8"
                                    AutomationProperties.LiveSetting="Polite" />
                         <TextBlock x:Name="ChatGenerationSummary" Grid.Row="2" Grid.ColumnSpan="2"
-                                   TextWrapping="Wrap" FontSize="12" Opacity="0.7"
+                                   TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    AutomationProperties.Name="Current inference settings" />
                     </Grid>
+                    </Border>
                     </StackPanel>
                     <Grid Grid.Row="1" MinHeight="0">
                         <ListView x:Name="ChatHistory"
@@ -927,14 +910,108 @@
                                         IsEnabled="False" Click="CopyLastReplyButton_Click"
                                         AutomationProperties.Name="Copy last completed assistant reply" />
                             </StackPanel>
-                            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
+                            <!-- Live stats strip: client-measured timing plus engine-reported tokens. -->
+                            <local:WrapRow Grid.Row="1" Spacing="8">
                                 <ProgressRing x:Name="ChatProgress" IsActive="False"
-                                              Width="20" Height="20" />
+                                              Width="20" Height="20" VerticalAlignment="Center" />
                                 <TextBlock Text="Ctrl+Enter to send" VerticalAlignment="Center"
-                                           FontSize="12" Opacity="0.6" />
-                            </StackPanel>
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <local:WrapRow x:Name="ChatStatsStrip" Spacing="6"
+                                               AutomationProperties.Name="Last reply performance"
+                                               AutomationProperties.LiveSetting="Polite" />
+                            </local:WrapRow>
                         </Grid>
                     </Grid>
+                    <Border x:Name="ChatSettingsPane" Grid.Column="1" Grid.RowSpan="3"
+                            Width="320" Margin="16,0,0,0" Padding="0"
+                            Style="{StaticResource InferBridgeCardStyle}"
+                            AutomationProperties.Name="Inference settings for this chat">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <Grid Padding="16,12,8,8" ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Inference settings" VerticalAlignment="Center"
+                                           Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
+                                <Button Grid.Column="1" Click="CloseChatSettingsPaneButton_Click"
+                                        AutomationProperties.Name="Close inference settings"
+                                        ToolTipService.ToolTip="Close">
+                                    <FontIcon Glyph="&#xE711;" FontSize="12" />
+                                </Button>
+                            </Grid>
+                            <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled"
+                                          VerticalScrollBarVisibility="Auto">
+                                <StackPanel Spacing="12" Padding="16,0,16,16">
+                                    <InfoBar x:Name="GenerationSettingsInfo" Title="Engine defaults"
+                                             Message="Adjust and apply controls for this chat."
+                                             IsOpen="True" IsClosable="False" Severity="Informational" />
+                                    <TextBlock x:Name="SettingsCurrentModel" TextWrapping="Wrap"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               AutomationProperties.LiveSetting="Polite" />
+                                    <local:RingMeter x:Name="ChatContextMeter" Title="Context used"
+                                                     HorizontalAlignment="Center" />
+                                    <TextBox x:Name="SystemPromptBox" Header="System prompt"
+                                             PlaceholderText="Optional system instructions…"
+                                             AcceptsReturn="True" TextWrapping="Wrap"
+                                             MinHeight="72" MaxHeight="180" MaxLength="32768"
+                                             AutomationProperties.Name="System prompt for this chat" />
+                                    <TextBlock Text="Sent first in every request for this chat, like the Web UI system prompt. Not saved to the engine."
+                                               Style="{StaticResource InferBridgeHelpTextStyle}" />
+                                    <Slider x:Name="TemperatureSlider" Header="Temperature"
+                                            Minimum="0" Maximum="2" StepFrequency="0.05" SmallChange="0.05"
+                                            LargeChange="0.25" Value="0.7"
+                                            ValueChanged="GenerationSlider_ValueChanged"
+                                            AutomationProperties.Name="Temperature slider from zero to two" />
+                                    <NumberBox x:Name="TemperatureBox"
+                                               Value="0.7" Minimum="0" Maximum="2" SmallChange="0.1"
+                                               SpinButtonPlacementMode="Compact" ValidationMode="Disabled"
+                                               ValueChanged="GenerationBox_ValueChanged"
+                                               AutomationProperties.Name="Temperature from zero to two" />
+                                    <TextBlock Text="Engine default: 0.7. Zero disables sampling; higher values increase variation."
+                                               Style="{StaticResource InferBridgeHelpTextStyle}" />
+                                    <Slider x:Name="TopPSlider" Header="Top-p sampling"
+                                            Minimum="0" Maximum="1" StepFrequency="0.01" SmallChange="0.05"
+                                            LargeChange="0.1" Value="1"
+                                            ValueChanged="GenerationSlider_ValueChanged"
+                                            AutomationProperties.Name="Top-p slider from zero to one" />
+                                    <NumberBox x:Name="TopPBox"
+                                               Value="1" Minimum="0" Maximum="1" SmallChange="0.05"
+                                               SpinButtonPlacementMode="Compact" ValidationMode="Disabled"
+                                               ValueChanged="GenerationBox_ValueChanged"
+                                               AutomationProperties.Name="Top-p from zero to one" />
+                                    <TextBlock Text="Engine default: 1.0. Lower values restrict nucleus sampling."
+                                               Style="{StaticResource InferBridgeHelpTextStyle}" />
+                                    <Slider x:Name="MaxTokensSlider" Header="Maximum generated tokens"
+                                            Minimum="1" Maximum="4096" StepFrequency="1" SmallChange="64"
+                                            LargeChange="512" Value="512"
+                                            ValueChanged="GenerationSlider_ValueChanged"
+                                            AutomationProperties.Name="Maximum output tokens slider" />
+                                    <NumberBox x:Name="MaxTokensBox"
+                                               Value="512" Minimum="1" Maximum="4096" SmallChange="64"
+                                               SpinButtonPlacementMode="Compact" ValidationMode="Disabled"
+                                               ValueChanged="GenerationBox_ValueChanged"
+                                               AutomationProperties.Name="Maximum output tokens" />
+                                    <TextBlock Text="Engine default: 512. Actual generation can be shorter when context space is limited."
+                                               Style="{StaticResource InferBridgeHelpTextStyle}" />
+                                    <local:WrapRow Spacing="8">
+                                        <Button x:Name="ApplyGenerationSettingsButton" Content="Apply to this chat"
+                                                Style="{StaticResource AccentButtonStyle}"
+                                                Click="ApplyGenerationSettingsButton_Click" />
+                                        <Button x:Name="ResetGenerationSettingsButton" Content="Reset to engine defaults"
+                                                Click="ResetGenerationSettingsButton_Click" />
+                                    </local:WrapRow>
+                                    <TextBlock Text="Applies to future messages in this chat only. Nothing is saved to disk or the engine; values reset when you switch models, start a new chat or restore history. Top-k and repetition penalty are not exposed by the chat API."
+                                               Style="{StaticResource InferBridgeHelpTextStyle}" />
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+                    </Border>
                 </Grid>
             </Grid>
         </NavigationView>
