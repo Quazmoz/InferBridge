@@ -257,6 +257,9 @@ public sealed partial class MainWindow : Window
         ModelsPanel.Visibility = page == "models" ? Visibility.Visible : Visibility.Collapsed;
         if (page == "models" && _engineConnected && _rejectedApiKey is null)
             _ = RefreshModelPreparationsAsync();
+        // Read-only: lets model cards offer Revalidate only where the engine recommends it.
+        if (page == "models" && _modelHealth is null && MaintenanceReady)
+            _ = RefreshModelHealthAsync();
         HuggingFacePanel.Visibility = page == "huggingface" ? Visibility.Visible : Visibility.Collapsed;
         if (page == "huggingface" && !_hfLoaded)
             _ = RefreshHuggingFaceAsync();
@@ -1352,18 +1355,21 @@ public sealed partial class MainWindow : Window
         {
             ChatModelPicker.Items.Clear();
             ModelsList.Items.Clear();
+            _modelRowButtons.Clear();
+            _modelRowDetails.Clear();
             // The engine's recommendation leads the library and is preselected.
             string? recommended = _recommendation?.Id;
             foreach (ModelInfo model in models.OrderBy(m => m.Id != recommended))
             {
                 var libraryItem = new ListViewItem
                 {
-                    Content = (model.Id == recommended ? "Recommended  ·  " : string.Empty)
-                        + model.Name + "  ·  " + model.StatusLabel
-                        + (model.Name.Contains(model.Id, StringComparison.Ordinal)
-                            ? string.Empty : "  (" + model.Id + ")"),
+                    Content = BuildModelCard(model, model.Id == recommended),
                     Tag = model,
+                    HorizontalContentAlignment = HorizontalAlignment.Stretch,
                 };
+                // Narrator reads the same one-line summary the list used to show.
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+                    libraryItem, ModelRowLabel(model, model.Id == recommended));
                 ModelsList.Items.Add(libraryItem);
                 if (model.Id == (selectedLibraryId ?? recommended))
                     ModelsList.SelectedItem = libraryItem;
@@ -1389,6 +1395,7 @@ public sealed partial class MainWindow : Window
         {
             _updatingModelPicker = false;
         }
+        ModelsFilterBox_TextChanged(ModelsFilterBox, null!);
     }
 
     private void ChatModelPicker_DropDownClosed(object sender, object args)

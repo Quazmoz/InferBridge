@@ -299,6 +299,7 @@ public sealed partial class MainWindow
         ModelHealthRefreshButton.IsEnabled = ready;
         ModelHealthRevalidateButton.IsEnabled = ready && _modelHealth?.BatchCandidates("revalidate").Count > 0;
         ModelHealthCacheButton.IsEnabled = ready && _modelHealth?.BatchCandidates("rebuild_compiled_cache").Count > 0;
+        UpdateModelRowStates();
     }
 
     private async Task RefreshModelHealthAsync()

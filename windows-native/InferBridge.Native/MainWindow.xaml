@@ -508,14 +508,30 @@
                     <ScrollViewer MaxHeight="160" VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled">
                         <StackPanel Spacing="8">
-                            <TextBlock Text="Model library" FontSize="28" FontWeight="SemiBold" />
-                            <TextBlock x:Name="ModelsSummary" TextWrapping="Wrap" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Style="{StaticResource InferBridgeHeaderRuleStyle}" />
+                                <StackPanel Grid.Column="1" Spacing="2">
+                                    <TextBlock Text="Model library" Style="{StaticResource InferBridgePageTitleStyle}" />
+                                    <TextBlock x:Name="ModelsSummary" Style="{StaticResource InferBridgeHelpTextStyle}" />
+                                </StackPanel>
+                            </Grid>
+                            <TextBox x:Name="ModelsFilterBox" PlaceholderText="Filter by name, ID or status"
+                                     MaxWidth="420" MinWidth="240" HorizontalAlignment="Left" MaxLength="120"
+                                     TextChanged="ModelsFilterBox_TextChanged"
+                                     AutomationProperties.Name="Filter the model list on this PC" />
                             <InfoBar x:Name="ModelsInfo" Title="Model library" IsOpen="False"
                                      IsClosable="True" />
                         </StackPanel>
                     </ScrollViewer>
+                    <!-- Each row is a card with its own Load / Unload / Download / Delete /
+                         Revalidate commands; Local tab navigation reaches them by keyboard. -->
                     <ListView x:Name="ModelsList" Grid.Row="1"
                               SelectionMode="Single"
+                              TabFocusNavigation="Local"
                               SelectionChanged="ModelsList_SelectionChanged"
                               HorizontalContentAlignment="Stretch"
                               AutomationProperties.Name="Engine model inventory" />
@@ -523,7 +539,8 @@
                                   VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled"
                                   AutomationProperties.Name="Selected model actions and details">
-                        <StackPanel Spacing="8">
+                        <StackPanel Spacing="8" Padding="0,8,0,0">
+                            <TextBlock Text="Selected model" Style="{StaticResource InferBridgeSectionHeaderStyle}" />
                             <ComboBox x:Name="LibraryDevicePicker" Header="Inference device"
                                       SelectedIndex="0" MinWidth="215" MaxWidth="280"
                                       HorizontalAlignment="Left"

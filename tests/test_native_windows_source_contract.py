@@ -1163,3 +1163,34 @@ def test_native_chat_has_inference_pane_and_live_stats_from_real_data():
     client = (PROJECT / "BackendClient.cs").read_text(encoding="utf-8")
     assert "stream_options = new { include_usage = true }" in client
     assert "if (usage is not null) onUsage?.Invoke(usage);" in client
+
+
+def test_native_model_library_rows_are_actionable_cards_sharing_guards():
+    root = ET.parse(PROJECT / "MainWindow.xaml").getroot()
+    named = "{http://schemas.microsoft.com/winfx/2006/xaml}Name"
+    inventory = next(node for node in root.iter() if node.get(named) == "ModelsList")
+    assert inventory.get("TabFocusNavigation") == "Local"
+    assert any(node.get(named) == "ModelsFilterBox" for node in root.iter())
+    window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    assert "Content = BuildModelCard(model, model.Id == recommended)," in window
+    assert "ModelRowLabel(model, model.Id == recommended)" in window
+    cards = (PROJECT / "MainWindow.ModelCards.cs").read_text(encoding="utf-8")
+    # Row commands reuse the page handlers (and so their guards and dialogs).
+    for handler in (
+        "LoadButton_Click(sender, args)",
+        "UnloadButton_Click(sender, args)",
+        "DownloadButton_Click(sender, args)",
+        "DeleteButton_Click(sender, args)",
+        "ModelHealthAction_Click(sender, args)",
+    ):
+        assert handler in cards
+    assert "ModelsList.SelectedItem = item;" in cards
+    # Revalidate is offered only where the engine health center recommends it.
+    assert 'health is { Action: "revalidate", ActionAvailable: true }' in cards
+    # Row state and filtering change properties; they never replace list items.
+    states = _method_body(cards, "private void UpdateModelRowStates()")
+    assert "Items.Clear()" not in states and "Items.Add(" not in states
+    filter_body = _method_body(
+        cards, "private void ModelsFilterBox_TextChanged(object sender, TextChangedEventArgs args)"
+    )
+    assert "item.Visibility" in filter_body and "Items.Clear()" not in filter_body

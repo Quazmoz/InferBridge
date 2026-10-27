@@ -76,6 +76,7 @@ public sealed partial class MainWindow
             && !_isManaging && !RefreshLocksControls && !_chatBusy && !_quitting
             && !_closing.IsCancellationRequested && _engineConnected
             && _rejectedApiKey is null;
+        UpdateModelRowStates();
     }
 
     private async Task RefreshModelPreparationsAsync()
