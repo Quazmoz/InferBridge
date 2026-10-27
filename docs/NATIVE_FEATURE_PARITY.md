@@ -10,9 +10,9 @@ passed Windows hardware certification.
 | Chat, model switching and streaming | Full native for the shared subset | `MainWindow.xaml.cs`, `MainWindow.ChatRendering.cs`, `MainWindow.ChatTools.cs`, `BackendClient.cs`: SSE, stop waiting, message-level copy, per-chat system prompt; non-stop SSE finishes cannot enter saved history |
 | Chat Markdown rendering | Same safe subset on both sides | `ChatMarkdown.cs` mirrors `renderMarkdown` in `web/index.html`: ATX headings (h1–h6), fenced code with copy-code, thematic breaks, flat bullet/ordered lists, block quotes, inline code, strong and emphasis. Links, images and raw HTML stay literal text. Neither native nor web implements full CommonMark |
 | Vision image attachments | Native, capability-gated | `MainWindow.ChatTools.cs`: attachments are only offered when the engine reports `supports_vision` for the selected model (`GetModelSupportsVisionAsync`) and are sent as OpenAI `image_url` content parts; actual image understanding depends on the backend and model |
-| Conversation management | Partial native | `NativeConversationStore.cs`: opt-in local search, rename, delete, restore, Markdown export and `inferbridge-conversation` JSON export/import (4 MiB limit, same as web). JSON files are a manual exchange format; there is no automatic native↔browser history sync. Pin, archive and duplicate remain web-only |
+| Conversation management | Full native for the shared subset | `NativeConversationStore.cs`, `MainWindow.ConversationFlags.cs`: opt-in local search, rename, delete, restore, pin/unpin, archive/restore (separate archived view), duplicate ("… copy", unpinned, active), Markdown export and `inferbridge-conversation` JSON export/import (4 MiB limit, same as web). Pinned/archived flags round-trip through the JSON format (only a literal `true` sets one, like the browser) and default to off for older history files. Retention never removes a pinned chat; a history made only of pinned chats refuses new saves instead of dropping one. Native keeps its stricter 40-chat / 20-turn limits. JSON files are a manual exchange format; there is no automatic native↔browser history sync |
 | Catalog model discovery and download | Full native | `MainWindow.xaml.cs`, `BackendClient.cs`: curated catalog, preparation progress, retry |
-| Verified Model Library import/export/adopt | Web-only | native lists and downloads catalog models but cannot import, export or adopt a Verified Model Library bundle |
+| Verified Model Library import/export/adopt | Full native via the engine | `ModelLibraryClient.cs`, `MainWindow.ModelLibrary.cs` (Model library → **Import / export**): definitions export (`GET /v1/model-library/export`, default or all registered), confirmed definitions import (`POST /v1/model-library/import-definitions`, 1 MB / 50 definitions, always `overwrite=false`), detected managed-folder adoption (`/unregistered-managed`, `/adopt-managed`) and converted-directory import (`/import-converted`), with the web form's fields. The engine keeps validating IR markers, links, disk space and active-model conflicts. Definition files that set `trust_remote_code` are refused natively (import them in the web UI). Responses are parsed strictly; a lost response after a long copy is reported, not retried. Not yet exercised against real model folders on Windows hardware |
 | Hugging Face search and custom downloads | Full native for supported options | `MainWindow.HuggingFace.cs`, `HuggingFaceClient.cs`: account/search/token, conversion queue and conversion options (backend, weight format, group size, ratio, symmetric quantization, device, context/output tokens, load-after). `trust_remote_code` is deliberately always `false` from native; models that need remote code must use the web UI |
 | Model conversion and recovery | Partial native | `MainWindow.ModelPreparation.cs`, `ModelPreparationClient.cs`: guarded recovery and cancellation |
 | Inference and generation configuration | Partial native | `MainWindow.GenerationSettings.cs`, `ContextConfigurationClient.cs`: request-only tokens/temperature/top-p plus persistent per-model context via backend; the web chat settings now also send `top_p` (persisted locally). No NPU KV precision switch or arbitrary runtime options; Windows hardware validation pending |
@@ -33,7 +33,7 @@ passed Windows hardware certification.
 
 ### Remaining intentional gaps
 
-- Web-only: Verified Model Library import/export/adopt; conversation pin, archive and duplicate; `trust_remote_code` Hugging Face conversions.
+- Web-only: `trust_remote_code` Hugging Face conversions and model definitions that enable it (deliberate).
 - Native-only: chat device routing selector and Benchmark Lab.
 - Neither side: full CommonMark, automatic native↔browser conversation sync.
 
@@ -73,7 +73,10 @@ Also exercise, on real Windows hardware, the new native parity surfaces:
 network/listener changes through `/internal/desktop-network` (including LAN
 exposure and API-key rotation), engine restart, model-health remediation,
 update settings, conversation JSON export/import round-trips with the browser,
-and an image attachment against a model that reports `supports_vision`. These
+an image attachment against a model that reports `supports_vision`, conversation
+pin/archive/duplicate with a browser JSON round-trip, and Verified Model Library
+definition export/import, detected-folder adoption and converted-directory import
+against real OpenVINO IR folders. These
 are covered by source and mocked-HTTP contract tests only; none of them has
 been qualified on Windows hardware or in an installed package.
 
