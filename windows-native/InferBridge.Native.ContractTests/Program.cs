@@ -94,6 +94,7 @@ try
     NativeConversationContractTests.Run(root);
     ChatMarkdownContractTests.Run();
     PickerRefreshContractTests.Run();
+    ChartMathContractTests.Run();
     await ChatRequestContractTests.RunAsync(root);
     await OperationsParityContractTests.RunAsync(root);
     await ModelLibraryContractTests.RunAsync(root);

@@ -163,7 +163,7 @@ public sealed partial class MainWindow
         layout.Children.Add(new TextBlock
         {
             Text = "Compatibility stays unverified until you load and benchmark the model on this PC. Remote model code is never enabled.",
-            TextWrapping = TextWrapping.Wrap, Opacity = 0.8,
+            TextWrapping = TextWrapping.Wrap, Foreground = Ui.ResBrush("TextFillColorSecondaryBrush"),
         });
         if (folders is not null)
         {

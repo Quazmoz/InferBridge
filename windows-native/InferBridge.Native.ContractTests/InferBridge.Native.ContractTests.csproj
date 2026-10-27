@@ -21,5 +21,6 @@
     <Compile Include="../InferBridge.Native/ReleaseUpdateClient.cs" Link="ReleaseUpdateClient.cs" />
     <Compile Include="../InferBridge.Native/ModelLibraryClient.cs" Link="ModelLibraryClient.cs" />
     <Compile Include="../InferBridge.Native/PickerRefresh.cs" Link="PickerRefresh.cs" />
+    <Compile Include="../InferBridge.Native/ChartMath.cs" Link="ChartMath.cs" />
   </ItemGroup>
 </Project>

@@ -370,8 +370,7 @@ public sealed partial class MainWindow
 
     private void BenchmarkOpenQuickButton_Click(object sender, RoutedEventArgs args)
     {
-        MainNavigation.SelectedItem = MainNavigation.MenuItems
-            .OfType<NavigationViewItem>().First(item => (string?)item.Tag == "operations");
+        NavigateTo("operations");
     }
 
     private async Task RefreshBenchmarkHistoryAsync()

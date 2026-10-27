@@ -107,7 +107,7 @@ public sealed partial class MainWindow
         header.Children.Add(new TextBlock
         {
             Text = speaker, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            VerticalAlignment = VerticalAlignment.Center, Opacity = 0.88,
+            VerticalAlignment = VerticalAlignment.Center,
         });
         var copyMessage = new Button
         {
@@ -128,13 +128,13 @@ public sealed partial class MainWindow
                 MarkdownBlockKind.Code => RenderCodeBlock(string.Join("\n", block.Lines), block.Language),
                 MarkdownBlockKind.Rule => new Border
                 {
-                    Height = 1, Opacity = 0.4, Margin = new Thickness(0, 4, 0, 4),
-                    Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray),
+                    Height = 1, Margin = new Thickness(0, 4, 0, 4),
+                    Background = Ui.ResBrush("DividerStrokeColorDefaultBrush"),
                 },
                 MarkdownBlockKind.Quote => new Border
                 {
                     BorderThickness = new Thickness(3, 0, 0, 0), Padding = new Thickness(10, 2, 0, 2),
-                    BorderBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray),
+                    BorderBrush = Ui.ResBrush("InferBridgeBrandBrush"),
                     Child = RenderInlineMarkdown(block.Lines),
                 },
                 MarkdownBlockKind.Heading => RenderInlineMarkdown(block.Lines, block.Level),

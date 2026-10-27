@@ -245,7 +245,7 @@ public sealed partial class MainWindow
                         + " · " + model.Downloads.ToString("N0") + " downloads · "
                         + model.Likes.ToString("N0") + " likes",
                     TextWrapping = TextWrapping.Wrap,
-                    Opacity = 0.8,
+                    Foreground = Ui.ResBrush("TextFillColorSecondaryBrush"),
                 });
                 var open = new Button
                 {
@@ -468,9 +468,7 @@ public sealed partial class MainWindow
             var selected = ModelsList.Items.OfType<ListViewItem>().FirstOrDefault(item =>
                 (item.Tag as ModelInfo)?.Id == request.LocalId);
             if (selected is not null) ModelsList.SelectedItem = selected;
-            var libraryPage = MainNavigation.MenuItems.OfType<NavigationViewItem>()
-                .FirstOrDefault(item => (string?)item.Tag == "models");
-            if (libraryPage is not null) MainNavigation.SelectedItem = libraryPage;
+            NavigateTo("models");
             ShowModelsInfo(result, InfoBarSeverity.Success);
         }
         catch (Exception) when (_closing.IsCancellationRequested) { }

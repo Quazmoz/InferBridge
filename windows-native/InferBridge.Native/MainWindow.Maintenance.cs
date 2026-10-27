@@ -282,13 +282,14 @@ public sealed partial class MainWindow
             row.Children.Add(actions);
             ModelHealthRows.Children.Add(new Border
             {
-                Child = row, Padding = new Thickness(10), CornerRadius = new CornerRadius(6),
+                Child = row, Padding = new Thickness(12), CornerRadius = new CornerRadius(8),
                 BorderThickness = new Thickness(1),
-                BorderBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray),
+                BorderBrush = Ui.ResBrush("CardStrokeColorDefaultBrush"),
+                Background = Ui.ResBrush("CardBackgroundFillColorDefaultBrush"),
             });
         }
         if (ModelHealthRows.Children.Count == 0)
-            ModelHealthRows.Children.Add(new TextBlock { Text = "No model needs maintenance.", Opacity = 0.8 });
+            ModelHealthRows.Children.Add(Ui.Text("No model needs maintenance.", secondary: true));
         UpdateModelHealthButtons();
     }
 

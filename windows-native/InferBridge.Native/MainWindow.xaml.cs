@@ -337,7 +337,7 @@ public sealed partial class MainWindow : Window
                             ? FormatStorageBytes(option.ReclaimableBytes) + " reclaimable"
                             : option.Reason.Length > 0 ? option.Reason : "Not currently reclaimable"),
                     TextWrapping = TextWrapping.Wrap,
-                    Opacity = 0.8,
+                    Foreground = Ui.ResBrush("TextFillColorSecondaryBrush"),
                 });
                 var button = new Button
                 {
@@ -502,7 +502,7 @@ public sealed partial class MainWindow : Window
                         Text = "Next: " + check.NextStep,
                         TextWrapping = TextWrapping.Wrap,
                         IsTextSelectionEnabled = true,
-                        Opacity = 0.8,
+                        Foreground = Ui.ResBrush("TextFillColorSecondaryBrush"),
                     });
                 DoctorChecks.Items.Add(item);
             }
@@ -1332,6 +1332,7 @@ public sealed partial class MainWindow : Window
         UpdateGenerationSettingsInfo();
         UpdateModelButtons();
         UpdateHuggingFaceButtons();
+        UpdateShellStatus();
     }
 
     private void ApplyModelInventory(IReadOnlyList<ModelInfo> models)
@@ -1464,6 +1465,7 @@ public sealed partial class MainWindow : Window
             }
             bool wasConnected = _engineConnected;
             _engineConnected = status.Connected;
+            _engineOrigin = status.Connected ? status.Origin : null;
             if ((!status.Connected || status.RequiresAuthentication)
                 && (_hfLoaded || wasConnected))
             {
@@ -1868,10 +1870,10 @@ public sealed partial class MainWindow : Window
             Margin = isUser ? new Thickness(56, 5, 8, 5) : new Thickness(8, 5, 56, 5),
             MaxWidth = 980,
             HorizontalAlignment = isUser ? HorizontalAlignment.Right : HorizontalAlignment.Left,
-            Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(
-                Windows.UI.Color.FromArgb(isUser ? (byte)34 : (byte)22, 120, 145, 170)),
-            BorderBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(
-                Windows.UI.Color.FromArgb(55, 130, 140, 150)),
+            // Theme resources keep bubbles legible in light, dark and high contrast.
+            Background = Ui.ResBrush(isUser ? "SystemFillColorAttentionBackgroundBrush"
+                : "CardBackgroundFillColorDefaultBrush"),
+            BorderBrush = Ui.ResBrush("CardStrokeColorDefaultBrush"),
             BorderThickness = new Thickness(1),
         };
         var item = new ListViewItem

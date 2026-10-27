@@ -1007,3 +1007,115 @@ def test_native_polling_paths_do_not_reassign_items_source_unconditionally():
     for path in PROJECT.glob("*.cs"):
         source = path.read_text(encoding="utf-8")
         assert "ItemsSource =" not in source, path.name
+
+
+def _presentation_tag(node: ET.Element) -> str:
+    return node.tag.replace(XAML, "")
+
+
+def test_native_shell_uses_grouped_navigation_with_icons_and_access_keys():
+    root = ET.parse(PROJECT / "MainWindow.xaml").getroot()
+    navigation = root.find(".//" + XAML + "NavigationView")
+    assert navigation is not None
+    menu = navigation.find(XAML + "NavigationView.MenuItems")
+    footer = navigation.find(XAML + "NavigationView.FooterMenuItems")
+    assert menu is not None and footer is not None
+    items = [node for node in menu if _presentation_tag(node) == "NavigationViewItem"]
+    headers = [
+        node.get("Content")
+        for node in menu
+        if _presentation_tag(node) == "NavigationViewItemHeader"
+    ]
+    assert headers == ["Models", "Engine"]
+    # The first menu entry stays Chat: the window selects MenuItems[0] at startup.
+    assert _presentation_tag(menu[0]) == "NavigationViewItem" and menu[0].get("Tag") == "chat"
+    tags = [node.get("Tag") for node in items]
+    assert tags == [
+        "chat",
+        "models",
+        "huggingface",
+        "overview",
+        "benchmark",
+        "doctor",
+        "connection",
+        "operations",
+        "storage",
+    ]
+    settings = [node for node in footer if node.get("Tag") == "settings"]
+    assert len(settings) == 1
+    assert (
+        settings[0].get("{http://schemas.microsoft.com/winfx/2006/xaml}Name")
+        == "SettingsNavigationItem"
+    )
+    keys = []
+    for item in [*items, *settings]:
+        assert item.find(".//" + XAML + "FontIcon") is not None, item.get("Tag")
+        keys.append(item.get("AccessKey"))
+    assert all(keys) and len(set(keys)) == len(keys)
+    pane_footer = navigation.find(XAML + "NavigationView.PaneFooter")
+    assert pane_footer is not None
+    assert any(
+        node.get("{http://schemas.microsoft.com/winfx/2006/xaml}Name") == "ShellStatusPills"
+        for node in pane_footer.iter()
+    )
+    shell = (PROJECT / "MainWindow.Shell.cs").read_text(encoding="utf-8")
+    assert "private void NavigateTo(string tag)" in shell
+    assert "FooterMenuItems" in shell
+    # Pills are rebuilt only when their content changes, never touching pickers.
+    assert "signature == _shellStatusSignature" in shell
+    assert "Picker" not in shell
+
+
+def test_native_xaml_uses_theme_resources_not_literal_colors():
+    import re
+
+    window = (PROJECT / "MainWindow.xaml").read_text(encoding="utf-8")
+    assert not re.search(r'"#[0-9A-Fa-f]{3,8}"', window)
+    for color in ("Red", "Green", "Blue", "White", "Black", "Gray", "Orange", "Yellow"):
+        assert f'="{color}"' not in window
+    app = ET.parse(PROJECT / "App.xaml").getroot()
+    themes = app.find(".//" + XAML + "ResourceDictionary.ThemeDictionaries")
+    assert themes is not None
+    keys = {node.get("{http://schemas.microsoft.com/winfx/2006/xaml}Key") for node in themes}
+    assert keys == {"Light", "Dark", "HighContrast"}
+    # Literal colors live only inside the theme dictionaries.
+    app_text = (PROJECT / "App.xaml").read_text(encoding="utf-8")
+    theme_block = app_text.split("<ResourceDictionary.ThemeDictionaries>", 1)[1].split(
+        "</ResourceDictionary.ThemeDictionaries>", 1
+    )[0]
+    outside = app_text.replace(theme_block, "")
+    assert not re.search(r"#[0-9A-Fa-f]{6,8}", outside)
+    high_contrast = next(
+        node
+        for node in themes
+        if node.get("{http://schemas.microsoft.com/winfx/2006/xaml}Key") == "HighContrast"
+    )
+    assert "#" not in ET.tostring(high_contrast, encoding="unicode")
+    for path in PROJECT.glob("*.cs"):
+        source = path.read_text(encoding="utf-8")
+        assert "Color.FromArgb" not in source, path.name
+        assert "Colors." not in source, path.name
+
+
+def test_native_charts_are_in_house_accessible_and_theme_aware():
+    charts = (PROJECT / "ChartControls.cs").read_text(encoding="utf-8")
+    math = (PROJECT / "ChartMath.cs").read_text(encoding="utf-8")
+    for control in ("class BarChart", "class Sparkline", "class RingMeter"):
+        assert control in charts
+    assert "AutomationProperties.SetName(this, name)" in charts
+    assert "AutomationProperties.SetHelpText(this, help)" in charts
+    assert "IsTabStop = true" in charts
+    assert "ActualThemeChanged += (_, _) => Render();" in charts
+    assert "ChartMath.Describe(" in charts and "ChartMath.DescribeTrend(" in charts
+    assert "using Microsoft.UI" not in math  # Pure math, compiled into contract tests.
+    assert "NotReported" in math
+    project = (PROJECT / "InferBridge.Native.csproj").read_text(encoding="utf-8")
+    for package in ("LiveCharts", "OxyPlot", "ScottPlot", "Syncfusion", "Telerik", "WinUIEx"):
+        assert package not in project
+    contracts = PROJECT.parent / "InferBridge.Native.ContractTests"
+    assert "ChartMath.cs" in (contracts / "InferBridge.Native.ContractTests.csproj").read_text(
+        encoding="utf-8"
+    )
+    assert "ChartMathContractTests.Run();" in (contracts / "Program.cs").read_text(encoding="utf-8")
+    layout = (PROJECT / "AdaptiveLayout.cs").read_text(encoding="utf-8")
+    assert "ChartMath.Columns(" in layout
