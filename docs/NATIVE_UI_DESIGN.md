@@ -157,6 +157,15 @@ Every page and component distinguishes:
 * Text scaling / DPI: no fixed heights on text containers, `TextWrapping="Wrap"`
   instead of trimming for data, wrapping command rows, 32 px minimum targets
   (Fluent default button height).
+* Code-built text: never assign `null` to `Foreground` or `Style`; a local null
+  clears the inherited theme brush and the text disappears (the 1.1.0-beta.1
+  blank System Doctor cards). `Ui.Text` only sets them when asked.
+* No clipping: wrapping text never sits in a horizontal `StackPanel` (it is
+  measured unbounded); use a `Grid` with an `Auto` + `*` column or `WrapRow`.
+  Pills wrap to two lines, then ellipsize with the full text as a tooltip.
+* Every card has a heading; every chart has a title and an empty-state or
+  "Not reported" label. Source contracts in
+  `tests/test_native_windows_source_contract.py` guard these rules.
 
 ## Distinct InferBridge identity
 

@@ -20,7 +20,7 @@ OpenVINO GenAI remains the inference runtime. InferBridge does not replace OpenV
 - [Portable ZIP](https://github.com/Quazmoz/InferBridge/releases/download/v1.0.0/InferBridge-1.0.0-windows-x64-portable.zip)
 - [SHA-256 checksums](https://github.com/Quazmoz/InferBridge/releases/download/v1.0.0/InferBridge-1.0.0-checksums.txt)
 
-> **Important — native-first from the next release:** The published **1.0.0** installer and portable ZIP are **browser-first**, even if the source tree has the native WinUI app. They cannot launch native XAML screens because the native executable was not part of those artifacts. The `dev` release builder now stages the WinUI client into `native\InferBridge.Native.exe` and points installed shortcuts to it. This fix is **not** included in 1.0.0 and has not yet been Windows release-qualified or promoted to `main`.
+> **Important — native-first from the next release:** The published **1.0.0** installer and portable ZIP are **browser-first**, even if the source tree has the native WinUI app. They cannot launch native XAML screens because the native executable was not part of those artifacts. The `dev` release builder now stages the WinUI client into `native\InferBridge.Native.exe` and points installed shortcuts to it. This fix is **not** included in 1.0.0. The source version `1.1.0-beta.1` carries it, but it has not yet been Windows release-qualified or published.
 
 Native-first improvements currently live on `dev` and are not represented by the published 1.0.0 binary artifacts. Beta and nightly builds, if published, are marked as pre-releases on GitHub.
 

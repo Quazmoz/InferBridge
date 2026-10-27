@@ -361,8 +361,9 @@
                         <local:CardGrid MaxColumns="3">
                             <Border Style="{StaticResource InferBridgeCardStyle}">
                                 <StackPanel Spacing="10">
+                                    <TextBlock Text="Health summary" Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
                                     <TextBlock x:Name="DoctorSummary" TextWrapping="Wrap"
-                                               Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0"
+                                               Style="{StaticResource BodyStrongTextBlockStyle}"
                                                AutomationProperties.LiveSetting="Polite"
                                                IsTextSelectionEnabled="True"
                                                Text="Open System Doctor to inspect hardware and runtime readiness." />
@@ -379,6 +380,7 @@
                             </Border>
                             <Border Style="{StaticResource InferBridgeCardStyle}">
                                 <StackPanel Spacing="8">
+                                    <TextBlock Text="Devices &amp; models" Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
                                     <TextBlock Text="Detected OpenVINO devices" Style="{StaticResource BodyStrongTextBlockStyle}" />
                                     <TextBlock x:Name="DoctorDevices" TextWrapping="Wrap"
                                                IsTextSelectionEnabled="True" Text="Not checked" />
@@ -577,14 +579,18 @@
                                     <ProgressBar x:Name="BenchmarkActivityProgress" Minimum="0" Maximum="100"
                                                  IsIndeterminate="False" Value="0"
                                                  AutomationProperties.Name="Engine-reported benchmark completion" />
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
                                         <ProgressRing x:Name="BenchmarkActivityRing" Width="20" Height="20"
                                                       IsActive="False" />
-                                        <TextBlock x:Name="BenchmarkActivityLabel" TextWrapping="Wrap"
+                                        <TextBlock x:Name="BenchmarkActivityLabel" Grid.Column="1" TextWrapping="Wrap"
                                                    VerticalAlignment="Center"
                                                    AutomationProperties.LiveSetting="Polite"
                                                    Text="No benchmark running in this window." />
-                                    </StackPanel>
+                                    </Grid>
                                     <TextBlock Text="No benchmark cancellation API is available. Stopping monitoring or closing the window is not a cancellation command. Requested AUTO and actual execution devices are reported separately."
                                                Style="{StaticResource InferBridgeHelpTextStyle}" />
                                 </StackPanel>

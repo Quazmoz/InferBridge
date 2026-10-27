@@ -1262,3 +1262,85 @@ def test_native_pages_share_header_cards_and_theme_text_styles():
     assert not re.search(r'<TextBlock[^>]*FontSize="(18|24|28)"', xaml)
     assert xaml.count("InferBridgeCardStyle") >= 20
     assert xaml.count("<local:CardGrid") >= 8
+
+
+def test_native_code_built_text_never_clears_the_theme_brush():
+    """A null Style/Foreground erases inherited theme text (the blank Doctor cards)."""
+    import re
+
+    charts = (PROJECT / "ChartControls.cs").read_text(encoding="utf-8")
+    helper = charts[charts.index("public static TextBlock Text(") :]
+    helper = helper[: helper.index("public static Border Pill(")]
+    assert "if (secondary) block.Foreground" in helper
+    assert "if (style is not null" in helper
+    null_assignment = re.compile(
+        r"\b(Style|Foreground|Background|BorderBrush)\s*=\s*[^;\n]*\?[^;\n]*:\s*null\b"
+    )
+    for source in PROJECT.glob("*.cs"):
+        content = source.read_text(encoding="utf-8")
+        assert not null_assignment.search(content), source.name
+        assert not re.search(r"\b(Foreground|Style)\s*=\s*null\b", content), source.name
+
+
+def test_native_doctor_check_cards_show_title_detail_and_next_step():
+    code = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    loop = code[code.index("foreach (DoctorCheck check in report.Checks)") :]
+    loop = loop[: loop.index("DoctorChecks.Items.Add(card);")]
+    assert "Ui.Pill(" in loop
+    assert 'Ui.Text(check.Title, "BodyStrongTextBlockStyle")' in loop
+    assert "Ui.Text(check.Detail)" in loop
+    assert '"Next: " + check.NextStep' in loop
+    assert "AutomationProperties.SetName(card" in loop
+
+
+def test_native_every_card_has_a_heading_and_charts_have_labels():
+    root = ET.parse(PROJECT / "MainWindow.xaml").getroot()
+    local = "{using:InferBridge.Native}"
+    charts = (local + "BarChart", local + "Sparkline", local + "RingMeter")
+    cards = [
+        node
+        for node in root.iter(XAML + "Border")
+        if "InferBridgeCardStyle" in (node.get("Style") or "")
+    ]
+    assert len(cards) >= 20
+    for card in cards:
+        labelled = any(
+            (node.tag == XAML + "TextBlock" and (node.get("Text") or "").strip())
+            or (node.tag in charts and (node.get("Title") or "").strip())
+            or (node.get("Header") or "").strip()
+            for node in card.iter()
+        )
+        assert labelled, ET.tostring(card, encoding="unicode")[:200]
+    for chart in root.iter():
+        if chart.tag in charts:
+            assert (chart.get("Title") or "").strip(), chart.get(
+                "{http://schemas.microsoft.com/winfx/2006/xaml}Name"
+            )
+        if chart.tag == local + "BarChart":
+            assert (chart.get("EmptyText") or "").strip()
+    source = (PROJECT / "ChartControls.cs").read_text(encoding="utf-8")
+    sparkline = source[source.index("class Sparkline") : source.index("class RingMeter")]
+    assert "_title.Text = Title;" in sparkline
+    assert "Not enough measurements for a trend." in sparkline
+    assert "ChartMath.NotReported" in source[source.index("class RingMeter") :]
+
+
+def test_native_status_pills_wrap_and_trim_instead_of_clipping():
+    source = (PROJECT / "ChartControls.cs").read_text(encoding="utf-8")
+    pill = source[
+        source.index("public static Border Pill(") : source.index("public static FontIcon")
+    ]
+    assert "Orientation.Horizontal" not in pill  # A horizontal StackPanel never wraps.
+    assert "TextTrimming.CharacterEllipsis" in pill and "MaxLines = 2" in pill
+    assert "ToolTipService.SetToolTip(pill, text)" in pill
+    xaml = (PROJECT / "MainWindow.xaml").read_text(encoding="utf-8")
+    # Wrapping text must never sit in a horizontal StackPanel (it is measured unbounded).
+    import re
+
+    for block in re.findall(
+        r'<StackPanel[^>]*Orientation="Horizontal".*?</StackPanel>', xaml, re.S
+    ):
+        assert 'TextWrapping="Wrap"' not in block, block[:160]
+    for name in ("MainWindow.ModelCards.cs", "MainWindow.Maintenance.cs"):
+        content = (PROJECT / name).read_text(encoding="utf-8")
+        assert "new WrapRow" in content

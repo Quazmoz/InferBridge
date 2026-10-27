@@ -255,7 +255,7 @@ public sealed partial class MainWindow
                     + (model.Reason.Length > 0 ? "\n" + model.Reason : ""),
                 TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true,
             });
-            var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            var actions = new WrapRow { Spacing = 8 };
             if (model.Action != "leave_unchanged")
             {
                 string label = model.ActionLabel.Length > 0 ? model.ActionLabel : model.Action;

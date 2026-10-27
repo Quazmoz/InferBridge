@@ -63,6 +63,9 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        // Status pills need the open, expanded pane; sync once in case no display-mode change fires.
+        MainNavigation.Loaded += (_, _) => UpdateShellStatusVisibility(
+            MainNavigation.DisplayMode == NavigationViewDisplayMode.Expanded && MainNavigation.IsPaneOpen);
         ClearChatStats();
         ContextSizePicker.SelectionChanged += ContextSizePicker_SelectionChanged;
         BenchmarkPresetPicker.SelectionChanged += BenchmarkPresetPicker_SelectionChanged;

@@ -11,7 +11,7 @@ namespace InferBridge.Native;
 public sealed partial class MainWindow
 {
     private readonly List<(Button Button, ModelInfo Model, string Action)> _modelRowButtons = new();
-    private readonly Dictionary<string, (StackPanel Pills, string Signature)> _modelRowDetails =
+    private readonly Dictionary<string, (Panel Pills, string Signature)> _modelRowDetails =
         new(StringComparer.Ordinal);
 
     private static string ModelRowLabel(ModelInfo model, bool recommended) =>
@@ -55,7 +55,7 @@ public sealed partial class MainWindow
         if (model.CanUnload)
             pills.Children.Add(Ui.Pill("Running on " + (model.Device is { Length: > 0 } device
                 ? device : "device not reported"), "neutral"));
-        var details = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        var details = new WrapRow { Spacing = 6 };
         pills.Children.Add(details);
         names.Children.Add(pills);
         Grid.SetColumn(names, 1);
@@ -70,8 +70,9 @@ public sealed partial class MainWindow
             var button = new Button
             {
                 Content = Ui.IconLabel(glyph, label), Tag = (model.Id, action), MinHeight = 32,
-                Style = accent ? Ui.ResStyle("AccentButtonStyle") : null,
             };
+            // Only assign a style when asked: a null Style would drop the themed default.
+            if (accent && Ui.ResStyle("AccentButtonStyle") is Style accentStyle) button.Style = accentStyle;
             AutomationProperties.SetName(button, label + " " + model.Name);
             button.Click += ModelRowAction_Click;
             actions.Children.Add(button);

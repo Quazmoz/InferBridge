@@ -25,13 +25,18 @@ internal static class Ui
 
     public static Style? ResStyle(string key) => Lookup(key) as Style;
 
-    public static TextBlock Text(string text, string? style = null, bool secondary = false) => new()
+    /// <summary>
+    /// Wrapping text for code-built cards. Style and Foreground are only assigned
+    /// when asked for: assigning null clears the inherited theme brush, which is
+    /// what left System Doctor check titles and details invisible.
+    /// </summary>
+    public static TextBlock Text(string text, string? style = null, bool secondary = false)
     {
-        Text = text,
-        TextWrapping = TextWrapping.Wrap,
-        Style = style is null ? null : ResStyle(style),
-        Foreground = secondary ? ResBrush("TextFillColorSecondaryBrush") : null,
-    };
+        var block = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap };
+        if (style is not null && ResStyle(style) is Style resolved) block.Style = resolved;
+        if (secondary) block.Foreground = ResBrush("TextFillColorSecondaryBrush");
+        return block;
+    }
 
     /// <summary>A rounded status pill: colored dot plus readable primary text.</summary>
     public static Border Pill(string text, string kind = "neutral")
@@ -44,17 +49,23 @@ internal static class Ui
             "accent" => "Attention",
             _ => "Neutral",
         };
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        // A Grid (not a horizontal StackPanel) gives the label a finite width, so a
+        // long model/device name wraps to two lines and then ellipsizes instead of
+        // being clipped at the rail edge. The tooltip always carries the full text.
+        var row = new Grid { ColumnSpacing = 6 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         row.Children.Add(new Ellipse
         {
             Width = 8, Height = 8, VerticalAlignment = VerticalAlignment.Center,
             Fill = ResBrush(kind == "accent" ? "InferBridgeBrandBrush" : "SystemFillColor" + tone + "Brush"),
         });
-        row.Children.Add(new TextBlock
-        {
-            Text = text, VerticalAlignment = VerticalAlignment.Center,
-            Style = ResStyle("CaptionTextBlockStyle"), TextWrapping = TextWrapping.Wrap,
-        });
+        var label = Text(text, "CaptionTextBlockStyle");
+        label.VerticalAlignment = VerticalAlignment.Center;
+        label.MaxLines = 2;
+        label.TextTrimming = TextTrimming.CharacterEllipsis;
+        Grid.SetColumn(label, 1);
+        row.Children.Add(label);
         var pill = new Border
         {
             Child = row,
@@ -65,6 +76,7 @@ internal static class Ui
             Background = ResBrush("SystemFillColor" + tone + "BackgroundBrush"),
         };
         AutomationProperties.SetName(pill, text);
+        ToolTipService.SetToolTip(pill, text);
         return pill;
     }
 
@@ -180,11 +192,13 @@ public sealed partial class Sparkline : ChartBase
 {
     private IReadOnlyList<double?> _values = Array.Empty<double?>();
     private readonly Canvas _canvas = new() { Height = 56 };
+    private readonly TextBlock _title = Ui.Text("", "BodyStrongTextBlockStyle");
     private readonly TextBlock _caption = Ui.Text("", "CaptionTextBlockStyle", secondary: true);
 
     public Sparkline()
     {
         var root = new StackPanel { Spacing = 6 };
+        root.Children.Add(_title);
         root.Children.Add(_canvas);
         root.Children.Add(_caption);
         Content = root;
@@ -202,6 +216,8 @@ public sealed partial class Sparkline : ChartBase
         _canvas.Children.Clear();
         var points = ChartMath.Sparkline(_values, _canvas.ActualWidth, _canvas.ActualHeight, 4);
         string description = ChartMath.DescribeTrend(Title, _values, Unit);
+        _title.Text = Title;
+        _title.Visibility = Title.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         _caption.Text = points.Count == 0 ? "Not enough measurements for a trend." : description;
         if (points.Count > 0)
         {
