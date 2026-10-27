@@ -7,24 +7,35 @@ passed Windows hardware certification.
 
 | Domain | Native status | Evidence and intentional limitations |
 |---|---|---|
-| Chat, model switching and streaming | Partial native | `MainWindow.xaml.cs`, `MainWindow.ChatRendering.cs`, `BackendClient.cs`: SSE, stop waiting, message-level copy, native headings/emphasis/fenced code with copy-code controls; non-stop SSE finishes cannot enter saved history. Full CommonMark, vision attachments and browser-history sync remain unavailable. |
-| Conversation management | Partial native | `NativeConversationStore.cs`: opt-in local search, rename, delete, restore; no browser-history sync |
+| Chat, model switching and streaming | Full native for the shared subset | `MainWindow.xaml.cs`, `MainWindow.ChatRendering.cs`, `MainWindow.ChatTools.cs`, `BackendClient.cs`: SSE, stop waiting, message-level copy, per-chat system prompt; non-stop SSE finishes cannot enter saved history |
+| Chat Markdown rendering | Same safe subset on both sides | `ChatMarkdown.cs` mirrors `renderMarkdown` in `web/index.html`: ATX headings (h1–h6), fenced code with copy-code, thematic breaks, flat bullet/ordered lists, block quotes, inline code, strong and emphasis. Links, images and raw HTML stay literal text. Neither native nor web implements full CommonMark |
+| Vision image attachments | Native, capability-gated | `MainWindow.ChatTools.cs`: attachments are only offered when the engine reports `supports_vision` for the selected model (`GetModelSupportsVisionAsync`) and are sent as OpenAI `image_url` content parts; actual image understanding depends on the backend and model |
+| Conversation management | Partial native | `NativeConversationStore.cs`: opt-in local search, rename, delete, restore, Markdown export and `inferbridge-conversation` JSON export/import (4 MiB limit, same as web). JSON files are a manual exchange format; there is no automatic native↔browser history sync. Pin, archive and duplicate remain web-only |
 | Catalog model discovery and download | Full native | `MainWindow.xaml.cs`, `BackendClient.cs`: curated catalog, preparation progress, retry |
-| Hugging Face search and custom downloads | Partial native | `MainWindow.HuggingFace.cs`, `HuggingFaceClient.cs`: account/search/token, conversion queue; advanced conversion tuning remains web-only |
-| Model conversion and recovery | Partial native | `MainWindow.ModelPreparation.cs`, `ModelPreparationClient.cs`: guarded recovery and cancellation, not all web conversion options |
-| Inference and generation configuration | Partial native | `MainWindow.GenerationSettings.cs` and `ContextConfigurationClient.cs`: request-only tokens/temperature/top-p plus persistent per-model context via backend; no NPU KV precision switch or arbitrary runtime options; Windows hardware validation pending |
-| Hardware/device inspection and chat target selection | Native selector, hardware verification pending | `GetDevicesAsync` exposes detected CPU/GPU/NPU and backend-suggested AUTO/MULTI/HETERO combinations. Chat offers an explicit load/switch request, with requested target distinct from the engine-reported active device; real multi-device behavior is experimental and unverified |
+| Verified Model Library import/export/adopt | Web-only | native lists and downloads catalog models but cannot import, export or adopt a Verified Model Library bundle |
+| Hugging Face search and custom downloads | Full native for supported options | `MainWindow.HuggingFace.cs`, `HuggingFaceClient.cs`: account/search/token, conversion queue and conversion options (backend, weight format, group size, ratio, symmetric quantization, device, context/output tokens, load-after). `trust_remote_code` is deliberately always `false` from native; models that need remote code must use the web UI |
+| Model conversion and recovery | Partial native | `MainWindow.ModelPreparation.cs`, `ModelPreparationClient.cs`: guarded recovery and cancellation |
+| Inference and generation configuration | Partial native | `MainWindow.GenerationSettings.cs`, `ContextConfigurationClient.cs`: request-only tokens/temperature/top-p plus persistent per-model context via backend; the web chat settings now also send `top_p` (persisted locally). No NPU KV precision switch or arbitrary runtime options; Windows hardware validation pending |
+| Hardware/device inspection and chat target selection | Native-only selector, hardware verification pending | `GetDevicesAsync` exposes detected CPU/GPU/NPU and backend-suggested AUTO/MULTI/HETERO combinations. Chat offers an explicit load/switch request, with requested target distinct from the engine-reported active device; real multi-device behavior is experimental and unverified. The web UI has no equivalent selector |
 | Benchmark run history and comparable results | Full native for history | `BenchmarkHistoryClient.cs`, `MainWindow.Benchmark.cs`: authenticated bounded history, per-row measurement and strict compatibility; actual Windows execution awaits CI |
-| Native Benchmark Lab matrix and progress | Native configuration and execution | `MainWindow.Benchmark.cs`, `BenchmarkLabClient.cs`: multiple prepared generation models, discovered direct devices and AUTO routing, Quick/Standard/Thorough presets, bounded eight-combination runs and operation-correlated engine-event progress; missing/truncated events remain indeterminate and no server-side cancellation API exists |
-| System Doctor | Partial native | `RunSystemDoctorAsync`, native Doctor screen: core checks and privacy-safe report; some advanced remediation remains web-only |
+| Native Benchmark Lab matrix and progress | Native-only | `MainWindow.Benchmark.cs`, `BenchmarkLabClient.cs`: multiple prepared generation models, discovered direct devices and AUTO routing, Quick/Standard/Thorough presets, bounded eight-combination runs and operation-correlated engine-event progress; missing/truncated events remain indeterminate and no server-side cancellation API exists. No web equivalent |
+| System Doctor and model health | Full native for existing remediation | native Doctor screen, `RuntimeHealthClient.cs`, `MainWindow.Maintenance.cs`: core checks, privacy-safe report, and model-health remediation through the existing protected `/v1/runtime-health/action` and `/v1/runtime-health/batch` endpoints with explicit confirmation |
 | Storage/cache inventory and cleanup | Full native | `GetStorageInventoryAsync` and guarded cleanup; engine rechecks permissions |
 | Hugging Face authentication | Full native | `HuggingFaceClient.cs`: backend-controlled credential storage, verification and removal (as permitted) |
-| Local Connection Hub | Native for read-only details and self-test | `ConnectionHubClient.cs`, `MainWindow.ConnectionHub.cs`: verified dynamic loopback port, authentication and LAN labels, usable loaded models, explicit model selection, secret-free Python/curl examples and individually reported engine-owned synthetic self-tests; listener mutation remains web-only |
-| Network and API listener configuration | Web-only mutation | native Hub reports listener/LAN state; it cannot change bindings, firewall rules or credentials |
+| Local Connection Hub | Native for details and self-test | `ConnectionHubClient.cs`, `MainWindow.ConnectionHub.cs`: verified dynamic loopback port, authentication and LAN labels, usable loaded models, explicit model selection, secret-free Python/curl examples and individually reported engine-owned synthetic self-tests |
+| Network and API listener configuration | Full native via the engine | `ConnectionHubClient.cs`, `MainWindow.Maintenance.cs`: reads and changes listener/LAN, CORS and API-key settings through the same protected `/internal/desktop-network` endpoint the browser uses (verified origin, `X-OV-LLM-UI` header, confirmation for risky choices such as wildcard CORS). Firewall rules stay outside the app |
+| Engine restart | Full native | `POST /v1/desktop/operations/restart-server` with confirmation (tray controller restarts the engine; refused while a benchmark or model preparation runs); cached network state is discarded afterwards |
 | Diagnostics and support export | Full native | `GetDesktopOperationsAsync`, `ExportDiagnosticsAsync`: server-owned ZIP generation, explicit confirmation |
 | Model preparation recovery | Full native for supported actions | `ModelPreparationClient.cs`: backend-owned action restrictions and recovery IDs |
+| Update settings and checks | Full native | `ReleaseUpdateClient.cs`: reads/saves `/desktop/release/settings`, checks and skips releases; release links are restricted to official release URLs (`IsOfficialReleaseUrl`). Installing an update is still handed to the official installer/package |
 | App settings and startup | Partial native | native Settings, `app/startup_registration.py`: local runtime/UX controls; web controls some advanced preferences |
-| Full CommonMark, vision and embedding tools | Web-only / backend-dependent | native renders a safe Markdown subset without HTML, script or remote-resource execution; backend determines actual model capabilities |
+| Embedding tools | Web-only / backend-dependent | backend determines actual model capabilities |
+
+### Remaining intentional gaps
+
+- Web-only: Verified Model Library import/export/adopt; conversation pin, archive and duplicate; `trust_remote_code` Hugging Face conversions.
+- Native-only: chat device routing selector and Benchmark Lab.
+- Neither side: full CommonMark, automatic native↔browser conversation sync.
 
 ## Windows launch qualification inventory
 
@@ -58,8 +69,13 @@ invalidate stale Hub state, and that an interrupted self-test is not silently
 treated as a passed generation. The new source/HTTP contract tests do not
 qualify an installed package or a physical device.
 
-After that, complete CommonMark parity and optional vision-image attachments
-only against a confirmed backend/model capability contract.
+Also exercise, on real Windows hardware, the new native parity surfaces:
+network/listener changes through `/internal/desktop-network` (including LAN
+exposure and API-key rotation), engine restart, model-health remediation,
+update settings, conversation JSON export/import round-trips with the browser,
+and an image attachment against a model that reports `supports_vision`. These
+are covered by source and mocked-HTTP contract tests only; none of them has
+been qualified on Windows hardware or in an installed package.
 
 ### Existing Benchmark Lab qualification
 
