@@ -330,6 +330,8 @@ public sealed partial class MainWindow
             };
             foreach (string device in available)
                 target.Items.Add(new ComboBoxItem { Content = device, Tag = device });
+            // AUTO lets OpenVINO choose among detected devices, as in the web form.
+            target.Items.Add(new ComboBoxItem { Content = "AUTO (OpenVINO selects)", Tag = "AUTO" });
             target.SelectedIndex = 0;
 
             var format = new ComboBox
@@ -342,19 +344,57 @@ public sealed partial class MainWindow
                 format.Items.Add(new ComboBoxItem { Content = weight, Tag = weight });
             format.SelectedIndex = model.Backend == "openvino-embeddings" ? 1 : 0;
 
-            var context = new ComboBox
+            bool embeddings = model.Backend == "openvino-embeddings";
+            var context = new NumberBox
             {
-                Header = "Requested context tokens",
-                HorizontalAlignment = HorizontalAlignment.Left,
-                MinWidth = 230,
+                Header = "Max context length (128–262,144 tokens)",
+                Value = embeddings ? 512 : 2048, Minimum = 128, Maximum = 262144,
+                SmallChange = 512, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact,
+                ValidationMode = NumberBoxValidationMode.Disabled,
+                HorizontalAlignment = HorizontalAlignment.Left, MinWidth = 230,
             };
-            foreach (int tokenLimit in model.Backend == "openvino-embeddings"
-                ? new[] { 512, 1024, 2048 } : new[] { 2048, 4096, 8192 })
-                context.Items.Add(new ComboBoxItem
-                {
-                    Content = tokenLimit.ToString("N0") + " tokens", Tag = tokenLimit,
-                });
-            context.SelectedIndex = 0;
+            var output = new NumberBox
+            {
+                Header = embeddings ? "Max output tokens (embeddings use 0)" : "Max output tokens",
+                Value = embeddings ? 0 : 512, Minimum = embeddings ? 0 : 1, Maximum = 65536,
+                SmallChange = 64, IsEnabled = !embeddings,
+                SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact,
+                ValidationMode = NumberBoxValidationMode.Disabled,
+                HorizontalAlignment = HorizontalAlignment.Left, MinWidth = 230,
+            };
+            // Same INT4 controls and defaults as the web "Granular Quantization Options".
+            var groupSize = new ComboBox
+            {
+                Header = "INT4 group size", HorizontalAlignment = HorizontalAlignment.Left, MinWidth = 230,
+            };
+            groupSize.Items.Add(new ComboBoxItem { Content = "128 (standard)", Tag = 128 });
+            groupSize.Items.Add(new ComboBoxItem { Content = "-1 (channel-wise / NPU optimized)", Tag = -1 });
+            groupSize.SelectedIndex = 0;
+            var ratio = new NumberBox
+            {
+                Header = "INT4 weight ratio (0–1)", Value = 1.0, Minimum = 0, Maximum = 1, SmallChange = 0.1,
+                SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact,
+                ValidationMode = NumberBoxValidationMode.Disabled,
+                HorizontalAlignment = HorizontalAlignment.Left, MinWidth = 230,
+            };
+            var symmetric = new CheckBox
+            {
+                Content = "Symmetric quantization (recommended for NPUs)", IsChecked = true,
+            };
+            var int4Options = new StackPanel { Spacing = 8 };
+            int4Options.Children.Add(groupSize);
+            int4Options.Children.Add(ratio);
+            int4Options.Children.Add(symmetric);
+            void UpdateInt4Visibility() => int4Options.Visibility =
+                (format.SelectedItem as ComboBoxItem)?.Tag as string == "int4"
+                    ? Visibility.Visible : Visibility.Collapsed;
+            format.SelectionChanged += (_, _) => UpdateInt4Visibility();
+            UpdateInt4Visibility();
+            var description = new TextBox
+            {
+                Header = "Description (optional)", MaxLength = 500,
+                PlaceholderText = "Optional description…",
+            };
 
             var loadAfter = new CheckBox
             {
@@ -374,7 +414,10 @@ public sealed partial class MainWindow
             layout.Children.Add(modelName);
             layout.Children.Add(target);
             layout.Children.Add(format);
+            layout.Children.Add(int4Options);
             layout.Children.Add(context);
+            layout.Children.Add(output);
+            layout.Children.Add(description);
             layout.Children.Add(loadAfter);
 
             var dialog = new ContentDialog
@@ -393,14 +436,24 @@ public sealed partial class MainWindow
             };
             if (await dialog.ShowAsync() != ContentDialogResult.Primary
                 || _closing.IsCancellationRequested) return;
+            string weightFormat = (format.SelectedItem as ComboBoxItem)?.Tag as string ?? "int4";
+            bool int4 = weightFormat == "int4";
+            static int WholeNumber(double value) =>
+                double.IsFinite(value) && value == Math.Truncate(value) && Math.Abs(value) <= 1_000_000
+                    ? (int)value : -2; // Invalid values fail the client contract below.
             var request = new HuggingFaceDownloadRequest(
                 modelId.Text.Trim(), modelName.Text.Trim(), model.Id,
-                model.Backend,
-                (format.SelectedItem as ComboBoxItem)?.Tag as string ?? "int4",
+                model.Backend, weightFormat,
                 (target.SelectedItem as ComboBoxItem)?.Tag as string ?? "",
-                (context.SelectedItem as ComboBoxItem)?.Tag is int tokens ? tokens : 0,
-                model.Backend == "openvino-embeddings" ? 0 : 512,
-                loadAfter.IsChecked == true);
+                WholeNumber(context.Value),
+                embeddings ? 0 : WholeNumber(output.Value),
+                loadAfter.IsChecked == true)
+            {
+                GroupSize = int4 ? (groupSize.SelectedItem as ComboBoxItem)?.Tag as int? : null,
+                Ratio = int4 ? Math.Round(ratio.Value, 2) : null,
+                Symmetric = int4 ? symmetric.IsChecked == true : null,
+                Description = string.IsNullOrWhiteSpace(description.Text) ? null : description.Text.Trim(),
+            };
 
             HfSearchSummary.Text = "Rechecking local catalog and device, then requesting preparation…";
             string result = await _backend.QueueHuggingFaceModelAsync(

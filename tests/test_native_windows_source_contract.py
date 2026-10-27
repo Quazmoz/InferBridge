@@ -170,11 +170,19 @@ def test_native_chat_toolbar_preserves_a_real_transcript_viewport():
     assert [row.get("Height") for row in composer.find(XAML + "Grid.RowDefinitions")] == [
         "Auto",
         "Auto",
+        "Auto",
     ]
     prompt = next(node for node in composer if node.get(named) == "PromptBox")
     assert prompt.get("MaxHeight") == "112"
     assert prompt.get("Header") is None
-    for name in ("SendButton", "CancelButton", "ChatProgress"):
+    for name in (
+        "SendButton",
+        "CancelButton",
+        "ChatProgress",
+        "AttachImagesButton",
+        "ClearImagesButton",
+        "ChatAttachmentSummary",
+    ):
         assert any(node.get(named) == name for node in composer.iter())
 
 
@@ -778,3 +786,93 @@ def test_native_model_details_and_session_invalidation_contract():
     assert 'x:Name="ModelDetailsSummary"' in xaml
     assert "ModelDetailsSummary.Text" in view
     assert "untrusted metadata reached the native model details" in tests
+
+
+def _native_names() -> dict[str, str]:
+    root = ET.parse(PROJECT / "MainWindow.xaml").getroot()
+    named = "{http://schemas.microsoft.com/winfx/2006/xaml}Name"
+    return {node.get(named): node.tag for node in root.iter() if node.get(named)}
+
+
+def test_native_chat_parity_controls_reuse_web_contracts():
+    names = _native_names()
+    for name, kind in (
+        ("SystemPromptBox", "TextBox"),
+        ("AttachImagesButton", "Button"),
+        ("ClearImagesButton", "Button"),
+        ("ExportChatMarkdownButton", "Button"),
+        ("ExportChatJsonButton", "Button"),
+        ("ImportChatJsonButton", "Button"),
+    ):
+        assert names[name] == XAML + kind
+    client = (PROJECT / "BackendClient.cs").read_text(encoding="utf-8")
+    tools = (PROJECT / "MainWindow.ChatTools.cs").read_text(encoding="utf-8")
+    markdown = (PROJECT / "ChatMarkdown.cs").read_text(encoding="utf-8")
+    store = (PROJECT / "NativeConversationStore.cs").read_text(encoding="utf-8")
+    # Images only after the engine's own supports_vision contract confirms support.
+    assert '"/v1/models/status"' in client
+    assert "vision.ValueKind == JsonValueKind.True" in client
+    assert "await RequireVisionModelAsync(origin, modelId, apiKey, cancellationToken);" in client
+    assert 'type = "image_url"' in client
+    assert "GetModelSupportsVisionAsync" in tools
+    # Markdown mirrors the browser subset and never produces markup or remote loads.
+    for forbidden in ("Hyperlink", "Process.Start", "WebView", "BitmapImage"):
+        assert forbidden not in markdown
+    assert '"inferbridge-conversation"' in store
+
+
+def test_native_maintenance_parity_uses_existing_protected_endpoints():
+    names = _native_names()
+    for name, kind in (
+        ("NetworkAllowLanToggle", "ToggleSwitch"),
+        ("NetworkCorsBox", "TextBox"),
+        ("NetworkApiKeyBox", "PasswordBox"),
+        ("NetworkApplyButton", "Button"),
+        ("RestartEngineButton", "Button"),
+        ("ModelHealthRows", "StackPanel"),
+        ("ModelHealthRevalidateButton", "Button"),
+        ("UpdateChecksToggle", "ToggleSwitch"),
+        ("CheckUpdatesButton", "Button"),
+    ):
+        assert names[name] == XAML + kind
+    hub = (PROJECT / "ConnectionHubClient.cs").read_text(encoding="utf-8")
+    health = (PROJECT / "RuntimeHealthClient.cs").read_text(encoding="utf-8")
+    release = (PROJECT / "ReleaseUpdateClient.cs").read_text(encoding="utf-8")
+    view = (PROJECT / "MainWindow.Maintenance.cs").read_text(encoding="utf-8")
+    assert '"/internal/desktop-network"' in hub
+    assert hub.count('request.Headers.Add("X-OV-LLM-UI", "1");') >= 4
+    assert "RequireVerifiedOriginAsync(apiKey, cancellationToken)" in hub
+    assert '"/v1/desktop/operations/restart-server"' in hub
+    assert '"/v1/runtime-health/action"' in health
+    assert '"/v1/runtime-health/batch"' in health
+    assert '"/desktop/release/settings"' in release
+    assert "IsOfficialReleaseUrl" in release
+    assert "Wildcard CORS allows browser scripts from any origin" in view
+    assert "ConfirmAsync(" in view
+    harness = (
+        ROOT / "windows-native" / "InferBridge.Native.ContractTests" / "Program.cs"
+    ).read_text(encoding="utf-8")
+    assert "OperationsParityContractTests.RunAsync(root)" in harness
+    assert "ChatRequestContractTests.RunAsync(root)" in harness
+    assert "ChatMarkdownContractTests.Run()" in harness
+
+
+def test_native_huggingface_dialog_offers_web_conversion_options():
+    view = (PROJECT / "MainWindow.HuggingFace.cs").read_text(encoding="utf-8")
+    client = (PROJECT / "HuggingFaceClient.cs").read_text(encoding="utf-8")
+    for option in (
+        "INT4 group size",
+        "INT4 weight ratio",
+        "Symmetric quantization",
+        "Max output tokens",
+    ):
+        assert option in view
+    assert 'Tag = "AUTO"' in view
+    for field in (
+        "group_size = selection.GroupSize",
+        "ratio = selection.Ratio",
+        "sym = selection.Symmetric",
+    ):
+        assert field in client
+    # Remote code stays disabled in native even though the web offers an opt-in.
+    assert "trust_remote_code = false" in client

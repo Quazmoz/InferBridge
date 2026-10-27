@@ -238,6 +238,8 @@ public sealed partial class MainWindow : Window
         ConnectionHubPanel.Visibility = page == "connection" ? Visibility.Visible : Visibility.Collapsed;
         if (page == "connection")
             _ = RefreshConnectionHubAsync();
+        if (page == "connection" && !_networkLoaded)
+            _ = RefreshNetworkSettingsAsync();
         else
             _hubGeneration++; // A response from a page we left must not repaint the Hub.
         ModelsPanel.Visibility = page == "models" ? Visibility.Visible : Visibility.Collapsed;
@@ -252,6 +254,8 @@ public sealed partial class MainWindow : Window
             _ = RefreshContextConfigurationAsync();
         if (page == "settings" && _engineConnected && _rejectedApiKey is null)
             _ = RefreshModelPreparationsAsync();
+        if (page == "settings" && _releaseStatus is null)
+            _ = RefreshReleaseStatusAsync();
         UpdateGenerationSettingsInfo();
         OperationsPanel.Visibility = page == "operations" ? Visibility.Visible : Visibility.Collapsed;
         BenchmarkPanel.Visibility = page == "benchmark" ? Visibility.Visible : Visibility.Collapsed;
@@ -264,6 +268,8 @@ public sealed partial class MainWindow : Window
         DoctorPanel.Visibility = page == "doctor" ? Visibility.Visible : Visibility.Collapsed;
         if (page == "doctor" && !_doctorLoaded)
             _ = RefreshDoctorAsync();
+        if (page == "doctor" && _modelHealth is null)
+            _ = RefreshModelHealthAsync();
         StoragePanel.Visibility = page == "storage" ? Visibility.Visible : Visibility.Collapsed;
         if (page == "storage" && !_storageLoaded)
             _ = RefreshStorageAsync();
@@ -567,6 +573,8 @@ public sealed partial class MainWindow : Window
                 : state.LatestBenchmark;
             DiagnosticsResult.Text = "Last diagnostics export: " + state.LastDiagnosticsExport;
             DiagnosticsExportButton.IsEnabled = true;
+            // The engine refuses a restart without its tray controller; mirror that.
+            RestartEngineButton.IsEnabled = state.ControllerAvailable && !state.BenchmarkRunning;
             _quickBenchmarkModelId = state.ActiveModelId;
             _quickBenchmarkDevice = state.ActualDevice;
             if (string.IsNullOrWhiteSpace(_quickBenchmarkModelId)
@@ -582,6 +590,7 @@ public sealed partial class MainWindow : Window
             OperationsDetails.Text = "Reconnect to the local engine, then refresh.";
             OperationsBenchmarks.Text = "Unavailable until the engine responds.";
             DiagnosticsExportButton.IsEnabled = false;
+            RestartEngineButton.IsEnabled = false;
             _quickBenchmarkModelId = null;
             _quickBenchmarkDevice = null;
         }
@@ -1282,6 +1291,7 @@ public sealed partial class MainWindow : Window
         PromptBox.IsEnabled = !_chatBusy;
         NewChatButton.IsEnabled = !_chatBusy && !_quitting;
         ChatProgress.IsActive = _chatBusy;
+        UpdateAttachmentSummary();
         UpdateGenerationSettingsInfo();
         UpdateModelButtons();
         UpdateHuggingFaceButtons();
@@ -1605,6 +1615,7 @@ public sealed partial class MainWindow : Window
             return;
         }
         GenerationOptions generation = _generationOptions;
+        ChatRequestContext context = CurrentChatContext();
         _chatBusy = true;
         _sendCancellation = CancellationTokenSource.CreateLinkedTokenSource(_closing.Token);
         CancellationTokenSource send = _sendCancellation;
@@ -1618,7 +1629,8 @@ public sealed partial class MainWindow : Window
         {
             // Display preview only. Until [DONE], neither the context nor the
             // prompt is committed, and cancelled/error output is discarded.
-            userItem = AppendChat("You", prompt);
+            userItem = AppendChat("You", context.Images.Count == 0 ? prompt
+                : prompt + "\n\n(" + context.Images.Count + " image(s) attached)");
             assistantItem = AppendChat("InferBridge", "Generating…", preview: true);
             long lastPreviewTick = 0;
             string answer = await _backend.StreamChatAsync(
@@ -1640,7 +1652,7 @@ public sealed partial class MainWindow : Window
                             ChatHistory.ScrollIntoView(assistantItem);
                         }
                     });
-                }, send.Token, generation);
+                }, send.Token, generation, context);
             // A late HTTP success must not commit a reply after cancellation.
             if (_closing.IsCancellationRequested || _sendCancellation?.IsCancellationRequested != false)
                 return;
@@ -1654,6 +1666,8 @@ public sealed partial class MainWindow : Window
                     : answer);
             committed = true;
             PromptBox.Text = string.Empty;
+            // Like the web client, attachments are kept until a reply completes.
+            if (context.Images.Count > 0) ClearPendingImages();
             if (TrySaveCurrentChat())
                 ShowChatInfo("Response complete",
                     SaveHistoryToggle.IsChecked == true

@@ -131,8 +131,39 @@
                                    TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
                         <ListView x:Name="HubTestResults" SelectionMode="None"
                                   AutomationProperties.Name="Individual local API self-test results" />
-                        <TextBlock Text="Credentials are never copied. For secured engines, replace the example placeholder with your own API key in your client. Native settings do not enable LAN access or change firewall rules."
+                        <TextBlock Text="Credentials are never copied. For secured engines, replace the example placeholder with your own API key in your client."
                                    TextWrapping="Wrap" Opacity="0.8" />
+                        <TextBlock Text="Network and API listener" FontSize="18" FontWeight="SemiBold" />
+                        <TextBlock Text="The same settings and safeguards as the Web UI network panel, saved by the engine. LAN access requires an API key; wildcard CORS requires a key and explicit confirmation. InferBridge never changes Windows Firewall rules. Listener changes apply after an engine restart."
+                                   TextWrapping="Wrap" Opacity="0.8" />
+                        <InfoBar x:Name="NetworkInfo" Title="Network settings" IsOpen="True"
+                                 IsClosable="False" Severity="Informational"
+                                 Message="Load network settings to review the listener." />
+                        <TextBlock x:Name="NetworkStatusText" TextWrapping="Wrap"
+                                   IsTextSelectionEnabled="True"
+                                   AutomationProperties.LiveSetting="Polite" />
+                        <ToggleSwitch x:Name="NetworkAllowLanToggle" IsEnabled="False"
+                                      Header="Allow access from other devices on this network (LAN)"
+                                      AutomationProperties.Name="Allow LAN access. Requires an API key." />
+                        <TextBox x:Name="NetworkCorsBox" IsEnabled="False" MaxLength="2048"
+                                 Header="Allowed browser origins (comma-separated, optional)"
+                                 PlaceholderText="https://app.example.com"
+                                 AutomationProperties.Name="Allowed browser origins for CORS" />
+                        <PasswordBox x:Name="NetworkApiKeyBox" IsEnabled="False" MaxLength="512"
+                                     Header="Set a new API key (optional)"
+                                     AutomationProperties.Name="New API key for the local engine" />
+                        <CheckBox x:Name="NetworkGenerateKeyCheck" IsEnabled="False"
+                                  Content="Generate a new random API key (shown once)"
+                                  Checked="NetworkKeyOption_Changed" Unchecked="NetworkKeyOption_Changed" />
+                        <CheckBox x:Name="NetworkRemoveKeyCheck" IsEnabled="False"
+                                  Content="Remove the stored API key"
+                                  Checked="NetworkKeyOption_Changed" Unchecked="NetworkKeyOption_Changed" />
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Button x:Name="NetworkRefreshButton" Content="Load network settings"
+                                    Click="NetworkRefreshButton_Click" />
+                            <Button x:Name="NetworkApplyButton" Content="Save network settings"
+                                    IsEnabled="False" Click="NetworkApplyButton_Click" />
+                        </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
                 <ScrollViewer x:Name="DoctorPanel" Visibility="Collapsed"
@@ -169,6 +200,23 @@
                                    FontWeight="SemiBold" />
                         <ItemsControl x:Name="DoctorChecks"
                                       AutomationProperties.Name="System Doctor health checks" />
+                        <TextBlock Text="Runtime upgrade and model health" FontSize="18"
+                                   FontWeight="SemiBold" />
+                        <TextBlock Text="Remediation from the Web UI model health center: the engine recommends revalidation, compiled-cache rebuild, reconversion or acknowledgement for each converted model after an OpenVINO change. Conversion provenance is never rewritten by validation. Each action asks for confirmation."
+                                   TextWrapping="Wrap" Opacity="0.8" />
+                        <Button x:Name="ModelHealthRefreshButton" Content="Check model health"
+                                Click="ModelHealthRefreshButton_Click" />
+                        <TextBlock x:Name="ModelHealthSummary" TextWrapping="Wrap"
+                                   IsTextSelectionEnabled="True" Text="Not checked"
+                                   AutomationProperties.LiveSetting="Polite" />
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Button x:Name="ModelHealthRevalidateButton" Content="Revalidate eligible"
+                                    Tag="revalidate" IsEnabled="False" Click="ModelHealthBatch_Click" />
+                            <Button x:Name="ModelHealthCacheButton" Content="Rebuild affected caches"
+                                    Tag="rebuild_compiled_cache" IsEnabled="False" Click="ModelHealthBatch_Click" />
+                        </StackPanel>
+                        <StackPanel x:Name="ModelHealthRows" Spacing="8"
+                                    AutomationProperties.Name="Per-model runtime health and actions" />
                         <TextBlock Text="The support report excludes credentials, prompts, chat content, model errors, and local file paths. Review copied text before sharing."
                                    TextWrapping="Wrap" Opacity="0.8" />
                     </StackPanel>
@@ -214,6 +262,12 @@
                                 Click="DiagnosticsExportButton_Click" />
                         <TextBlock x:Name="DiagnosticsResult" TextWrapping="Wrap"
                                    AutomationProperties.LiveSetting="Polite" />
+                        <TextBlock Text="Restart engine" FontSize="18" FontWeight="SemiBold" />
+                        <TextBlock Text="Ask the tray controller to restart the local engine, as the Web UI Operations panel does. Needed after saving network settings. Loaded models are unloaded and in-progress chats end."
+                                   TextWrapping="Wrap" Opacity="0.8" />
+                        <Button x:Name="RestartEngineButton" Content="Restart engine"
+                                IsEnabled="False" HorizontalAlignment="Left"
+                                Click="RestartEngineButton_Click" />
                     </StackPanel>
                 </ScrollViewer>
                 <ScrollViewer x:Name="BenchmarkPanel" Visibility="Collapsed"
@@ -477,6 +531,12 @@
                                  IsOpen="True" IsClosable="False" Severity="Informational" />
                         <TextBlock x:Name="SettingsCurrentModel" TextWrapping="Wrap"
                                    AutomationProperties.LiveSetting="Polite" />
+                        <TextBox x:Name="SystemPromptBox" Header="System prompt"
+                                 PlaceholderText="Optional system instructions…"
+                                 AcceptsReturn="True" TextWrapping="Wrap"
+                                 MinHeight="72" MaxHeight="180" MaxLength="32768"
+                                 AutomationProperties.Name="System prompt for this chat" />
+                        <TextBlock Text="Sent first in every request for this chat, like the Web UI system prompt. Not saved to the engine." TextWrapping="Wrap" Opacity="0.8" />
                         <NumberBox x:Name="MaxTokensBox" Header="Maximum generated tokens"
                                    Value="512" Minimum="1" Maximum="4096" SmallChange="64"
                                    SpinButtonPlacementMode="Compact" ValidationMode="Disabled"
@@ -515,6 +575,34 @@
                             <Button Content="Refresh" Click="ContextRefreshButton_Click" />
                         </StackPanel>
                         <TextBlock Text="Choose a device directly from Chat or Model library. Advanced AUTO/MULTI/HETERO targets depend on detected hardware; MULTI/HETERO are experimental. Top-k and repetition penalty are not exposed by the chat API." TextWrapping="Wrap" Opacity="0.8" />
+                        <TextBlock Text="About &amp; updates" FontSize="18" FontWeight="SemiBold" />
+                        <TextBlock Text="Update discovery is opt-in and happens only when you select Check now, through the same engine release routes as the Web UI. Microsoft Store installations are updated by the Store."
+                                   TextWrapping="Wrap" Opacity="0.8" />
+                        <TextBlock x:Name="ReleaseStatusText" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                                   Text="Load to see the version and update settings."
+                                   AutomationProperties.LiveSetting="Polite" />
+                        <ToggleSwitch x:Name="UpdateChecksToggle" IsEnabled="False"
+                                      Header="Allow update checks when I ask" />
+                        <ComboBox x:Name="UpdateChannelPicker" Header="Update channel" IsEnabled="False"
+                                  MinWidth="200" AutomationProperties.Name="Update channel">
+                            <ComboBoxItem Content="Stable" Tag="stable" />
+                            <ComboBoxItem Content="Beta" Tag="beta" />
+                        </ComboBox>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Button x:Name="ReleaseRefreshButton" Content="Load" Click="ReleaseRefreshButton_Click" />
+                            <Button x:Name="SaveUpdateSettingsButton" Content="Save update settings"
+                                    IsEnabled="False" Click="SaveUpdateSettingsButton_Click" />
+                            <Button x:Name="CheckUpdatesButton" Content="Check now"
+                                    IsEnabled="False" Click="CheckUpdatesButton_Click" />
+                        </StackPanel>
+                        <TextBlock x:Name="UpdateCheckResult" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                                   AutomationProperties.LiveSetting="Polite" />
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <HyperlinkButton x:Name="UpdateDownloadLink" Content="Open official download"
+                                             Visibility="Collapsed" />
+                            <Button x:Name="SkipUpdateButton" Content="Skip this version"
+                                    Visibility="Collapsed" Click="SkipUpdateButton_Click" />
+                        </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
                 <!-- One compact command bar; saved-chat and detailed status flyouts
@@ -601,6 +689,19 @@
                                                 <Button x:Name="DeleteSavedChatButton" Content="Delete saved chat"
                                                         IsEnabled="False" Click="DeleteSavedChatButton_Click" />
                                             </StackPanel>
+                                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                                <Button x:Name="ExportChatMarkdownButton" Content="Export Markdown"
+                                                        IsEnabled="False" Click="ExportChatButton_Click"
+                                                        AutomationProperties.Name="Export current conversation as Markdown" />
+                                                <Button x:Name="ExportChatJsonButton" Content="Export JSON"
+                                                        IsEnabled="False" Click="ExportChatButton_Click"
+                                                        AutomationProperties.Name="Export current conversation as InferBridge JSON" />
+                                            </StackPanel>
+                                            <Button x:Name="ImportChatJsonButton" Content="Import JSON"
+                                                    Click="ImportChatJsonButton_Click"
+                                                    AutomationProperties.Name="Import an InferBridge conversation JSON export" />
+                                            <TextBlock Text="JSON uses the same format as the Web UI's Export/Import JSON, so conversations can move between the browser and this app. There is no automatic sync."
+                                                       TextWrapping="Wrap" Opacity="0.8" />
                                             <CheckBox x:Name="SaveHistoryToggle"
                                                       Content="Save completed chats locally"
                                                       Checked="SaveHistoryToggle_Changed"
@@ -676,14 +777,32 @@
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <TextBox x:Name="PromptBox" Grid.Row="0"
                                  PlaceholderText="Message your local model…"
                                  AcceptsReturn="True" TextWrapping="Wrap"
                                  MinHeight="64" MaxHeight="112" MaxLength="8000"
                                  AutomationProperties.Name="Chat prompt" />
+                        <Grid Grid.Row="1" ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="AttachImagesButton" Grid.Column="0" Content="Attach images"
+                                    IsEnabled="False" Click="AttachImagesButton_Click"
+                                    AutomationProperties.Name="Attach JPEG, PNG or WebP images for a vision-capable model" />
+                            <Button x:Name="ClearImagesButton" Grid.Column="1" Content="Clear images"
+                                    IsEnabled="False" Click="ClearImagesButton_Click"
+                                    AutomationProperties.Name="Remove attached images" />
+                            <TextBlock x:Name="ChatAttachmentSummary" Grid.Column="2"
+                                       VerticalAlignment="Center" TextWrapping="Wrap"
+                                       FontSize="12" Opacity="0.75"
+                                       AutomationProperties.LiveSetting="Polite" />
+                        </Grid>
                         <!-- Keep actions on a separate row from progress for narrower windows and text scaling. -->
-                        <Grid Grid.Row="1" RowSpacing="4">
+                        <Grid Grid.Row="2" RowSpacing="4">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />

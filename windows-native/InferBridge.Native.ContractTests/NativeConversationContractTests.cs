@@ -112,6 +112,56 @@ internal static class NativeConversationContractTests
         Expect<InvalidDataException>(() => storage.ReadAll(),
             "oversized local history was accepted");
         Check(File.Exists(filename), "oversized history was destructively removed");
+        // Browser <-> native interchange uses the web export format exactly.
+        var now = DateTimeOffset.Parse("2026-10-27T08:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
+        string exported = NativeConversationStore.ExportJson("Ti\u0007tle", turns, "model-a", "Be terse.", now);
+        using (var doc = JsonDocument.Parse(exported))
+        {
+            var r = doc.RootElement;
+            Check(r.GetProperty("format").GetString() == "inferbridge-conversation"
+                && r.GetProperty("schema_version").GetInt32() == 1
+                && r.GetProperty("application").GetString() == "InferBridge"
+                && r.GetProperty("conversation").GetProperty("title").GetString() == "Title"
+                && r.GetProperty("conversation").GetProperty("messages").GetArrayLength() == 2,
+                "JSON export does not match the browser conversation export schema");
+        }
+        var roundTrip = NativeConversationStore.ImportJson(System.Text.Encoding.UTF8.GetBytes(exported));
+        Check(roundTrip.Turns.SequenceEqual(turns) && roundTrip.ModelId == "model-a"
+            && roundTrip.SystemPrompt == "Be terse." && roundTrip.SourceMessages == 2,
+            "native JSON export did not round-trip");
+        string markdown = NativeConversationStore.ExportMarkdown("T", turns, "model-a", now);
+        Check(markdown.StartsWith("# T\n", StringComparison.Ordinal) && markdown.Contains("## You\n\nHow does")
+            && markdown.Contains("## Assistant"), "Markdown export differs from the browser layout");
+
+        // A browser export with a long or irregular history opens only its newest complete pairs.
+        var browserMessages = new List<object> { new { role = "assistant", content = "orphan" } };
+        for (int i = 0; i < 15; i++)
+        {
+            browserMessages.Add(new { role = "user", content = "q" + i, meta = new { model = "m" } });
+            browserMessages.Add(new { role = "assistant", content = "a" + i });
+        }
+        byte[] browser = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            format = "inferbridge-conversation", schema_version = 1, application = "InferBridge",
+            conversation = new { title = "From browser", model_id = (string?)null, messages = browserMessages },
+        });
+        var fromBrowser = NativeConversationStore.ImportJson(browser);
+        Check(fromBrowser.Turns.Count == 20 && fromBrowser.Turns[0].Content == "q5"
+            && fromBrowser.Turns[^1].Content == "a14" && fromBrowser.SourceMessages == 31
+            && fromBrowser.ModelId is null,
+            "browser import did not keep the newest complete pairs within native limits");
+        foreach (string bad in new[]
+        {
+            "[]", "{\"format\":\"other\",\"schema_version\":1,\"application\":\"InferBridge\",\"conversation\":{\"messages\":[]}}",
+            "{\"format\":\"inferbridge-conversation\",\"schema_version\":2,\"application\":\"InferBridge\",\"conversation\":{\"messages\":[]}}",
+            "{\"format\":\"inferbridge-conversation\",\"schema_version\":1,\"application\":\"InferBridge\",\"conversation\":{\"messages\":[{\"role\":\"system\",\"content\":\"x\"}]}}",
+            "{\"format\":\"inferbridge-conversation\",\"schema_version\":1,\"application\":\"InferBridge\",\"conversation\":{\"messages\":[{\"role\":\"user\",\"content\":\"only a question\"}]}}",
+            "not json",
+        })
+            Expect<InvalidDataException>(() => NativeConversationStore.ImportJson(
+                System.Text.Encoding.UTF8.GetBytes(bad)), "unsupported import was accepted: " + bad);
+        Expect<InvalidDataException>(() => NativeConversationStore.ImportJson(
+            new byte[NativeConversationStore.MaximumImportBytes + 1]), "oversized import was accepted");
         Console.WriteLine("Native opt-in conversation history contract: all cases passed.");
     }
 }

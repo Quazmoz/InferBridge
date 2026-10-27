@@ -1,5 +1,3 @@
-using System.Text;
-using System.Text.RegularExpressions;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
@@ -9,11 +7,9 @@ namespace InferBridge.Native;
 
 public sealed partial class MainWindow
 {
-    // All model text is rendered into WinUI text controls; Markdown is never
-    // interpreted as HTML, launched as a URL, or loaded as a remote resource.
-    private static readonly Regex InlineMarkdown = new(
-        @"\*\*(?<strong>[^*\r\n]+)\*\*|(?<!\*)\*(?<em>[^*\r\n]+)\*(?!\*)|`(?<code>[^`\r\n]+)`",
-        RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+    // All model text is rendered into WinUI text controls through ChatMarkdown;
+    // Markdown is never interpreted as HTML, launched as a URL, or loaded as a
+    // remote resource.
 
     private void CopyChatMessage(string value, string label)
     {
@@ -31,45 +27,45 @@ public sealed partial class MainWindow
         }
     }
 
-    private static RichTextBlock RenderInlineMarkdown(string value, bool heading = false)
+    private static void AddInlines(InlineCollection inlines, string value)
+    {
+        foreach (MarkdownSpan span in ChatMarkdown.ParseInline(value))
+        {
+            Inline inline = span.Kind switch
+            {
+                MarkdownSpanKind.Strong => new Bold { Inlines = { new Run { Text = span.Text } } },
+                MarkdownSpanKind.Emphasis => new Italic { Inlines = { new Run { Text = span.Text } } },
+                MarkdownSpanKind.Code => new Run
+                {
+                    Text = span.Text,
+                    FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas"),
+                },
+                _ => new Run { Text = span.Text },
+            };
+            inlines.Add(inline);
+        }
+    }
+
+    private static RichTextBlock RenderInlineMarkdown(
+        IReadOnlyList<string> lines, int headingLevel = 0, string marker = "")
     {
         var text = new RichTextBlock
         {
             TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true,
-            FontSize = heading ? 18 : 14,
+            FontSize = headingLevel switch { 1 => 22, 2 => 20, 3 => 18, 4 => 16, 5 => 15, _ => 14 },
         };
         var paragraph = new Paragraph();
-        int cursor = 0;
-        int tokens = 0;
-        try
+        if (marker.Length > 0)
         {
-            foreach (Match match in InlineMarkdown.Matches(value))
-            {
-                if (++tokens > 128)
-                {
-                    paragraph.Inlines.Clear();
-                    cursor = 0; // Bound rich-text elements even for adversarial model output.
-                    break;
-                }
-                if (match.Index > cursor)
-                    paragraph.Inlines.Add(new Run { Text = value[cursor..match.Index] });
-                if (match.Groups["strong"].Success)
-                    paragraph.Inlines.Add(new Bold { Inlines = { new Run { Text = match.Groups["strong"].Value } } });
-                else if (match.Groups["em"].Success)
-                    paragraph.Inlines.Add(new Italic { Inlines = { new Run { Text = match.Groups["em"].Value } } });
-                else
-                    paragraph.Inlines.Add(new Run { Text = match.Groups["code"].Value });
-                cursor = match.Index + match.Length;
-            }
+            paragraph.Inlines.Add(new Run { Text = marker + " " });
+            text.Margin = new Thickness(12, 0, 0, 0);
         }
-        catch (RegexMatchTimeoutException)
+        for (int i = 0; i < lines.Count; i++)
         {
-            paragraph.Inlines.Clear();
-            cursor = 0; // Plain text remains safe if inline parsing takes too long.
+            if (i > 0) paragraph.Inlines.Add(new LineBreak());
+            AddInlines(paragraph.Inlines, lines[i]);
         }
-        if (cursor < value.Length)
-            paragraph.Inlines.Add(new Run { Text = value[cursor..] });
-        if (heading) paragraph.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
+        if (headingLevel > 0) paragraph.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
         text.Blocks.Add(paragraph);
         return text;
     }
@@ -124,70 +120,37 @@ public sealed partial class MainWindow
         Grid.SetColumn(copyMessage, 1);
         header.Children.Add(copyMessage);
         container.Children.Add(header);
-        var lines = message.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
-        var code = new StringBuilder();
-        bool inCode = false;
-        string language = "";
-        int blocks = 0;
-        foreach (string line in lines)
+        var blocks = ChatMarkdown.Parse(message, out bool truncated);
+        foreach (MarkdownBlock block in blocks)
         {
-            // A reply can contain thousands of short lines. Limit the number of
-            // WinUI elements per turn; full text remains available via Copy message.
-            if (++blocks > 160)
+            container.Children.Add(block.Kind switch
             {
-                container.Children.Add(new TextBlock
+                MarkdownBlockKind.Code => RenderCodeBlock(string.Join("\n", block.Lines), block.Language),
+                MarkdownBlockKind.Rule => new Border
                 {
-                    Text = "Long message preview limited to 160 lines. Use Copy message for all text.",
-                    TextWrapping = TextWrapping.Wrap,
-                });
-                inCode = false;
-                break;
-            }
-            if (line.TrimStart().StartsWith("```", StringComparison.Ordinal))
-            {
-                if (inCode)
+                    Height = 1, Opacity = 0.4, Margin = new Thickness(0, 4, 0, 4),
+                    Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray),
+                },
+                MarkdownBlockKind.Quote => new Border
                 {
-                    container.Children.Add(RenderCodeBlock(code.ToString().TrimEnd('\n'), language));
-                    code.Clear();
-                    inCode = false;
-                }
-                else
-                {
-                    language = line.Trim()[3..];
-                    if (language.Length > 32 || language.Any(char.IsControl)) language = "";
-                    inCode = true;
-                }
-                continue;
-            }
-            if (inCode)
-            {
-                code.AppendLine(line);
-                continue;
-            }
-            if (string.IsNullOrWhiteSpace(line))
-            {
-                // Preserve paragraph breaks instead of collapsing every blank line.
-                container.Children.Add(new Border { Height = 5 });
-                continue;
-            }
-            string content = line.TrimStart();
-            bool heading = content.StartsWith('#');
-            if (heading)
-            {
-                int count = content.TakeWhile(ch => ch == '#').Count();
-                if (count <= 6 && count < content.Length && content[count] == ' ')
-                    content = content[(count + 1)..];
-                else heading = false;
-            }
-            else if (content.StartsWith("- ", StringComparison.Ordinal)
-                || content.StartsWith("* ", StringComparison.Ordinal))
-                content = "• " + content[2..];
-            else if (content.StartsWith("> ", StringComparison.Ordinal))
-                content = "│ " + content[2..];
-            container.Children.Add(RenderInlineMarkdown(content, heading));
+                    BorderThickness = new Thickness(3, 0, 0, 0), Padding = new Thickness(10, 2, 0, 2),
+                    BorderBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray),
+                    Child = RenderInlineMarkdown(block.Lines),
+                },
+                MarkdownBlockKind.Heading => RenderInlineMarkdown(block.Lines, block.Level),
+                MarkdownBlockKind.ListItem => RenderInlineMarkdown(block.Lines, marker: block.Marker),
+                _ => RenderInlineMarkdown(block.Lines),
+            });
         }
-        if (inCode) // Keep malformed/unclosed fences readable; never discard model text.
-            container.Children.Add(RenderInlineMarkdown("```" + language + "\n" + code));
+        // A reply can contain thousands of short blocks. Limit WinUI elements per
+        // turn; full text remains available via Copy message.
+        if (truncated)
+            container.Children.Add(new TextBlock
+            {
+                Text = "Long message preview limited to " + ChatMarkdown.MaximumBlocks
+                    + " blocks. Use Copy message for all text.",
+                TextWrapping = TextWrapping.Wrap,
+            });
         return container;
     }
 }

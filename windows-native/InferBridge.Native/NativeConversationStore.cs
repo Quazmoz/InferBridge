@@ -153,6 +153,139 @@ internal sealed class NativeConversationStore
         return true;
     }
 
+    // --- Interchange with the browser's conversation export (format
+    // "inferbridge-conversation", schema 1). Browser history lives in the
+    // browser profile; this is explicit, user-initiated file exchange, not sync.
+    internal const string ExportFormat = "inferbridge-conversation";
+    internal const int MaximumImportBytes = 4 * 1024 * 1024; // Same as the web import.
+
+    internal sealed record ImportedChat(string Title, string? ModelId, string? SystemPrompt,
+        List<ChatTurn> Turns, int SourceMessages);
+
+    internal static string ExportMarkdown(string title, IReadOnlyList<ChatTurn> turns,
+        string? modelId, DateTimeOffset now)
+    {
+        var lines = new List<string>
+        {
+            "# " + SafeTitle(title), "",
+            "> Exported from InferBridge native. This conversation was stored locally on the PC that created the export.",
+            "", "- Exported: " + now.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ss.fffZ",
+                System.Globalization.CultureInfo.InvariantCulture),
+        };
+        if (!string.IsNullOrWhiteSpace(modelId)) lines.Add("- Model: " + modelId);
+        lines.AddRange(new[] { "", "---", "" });
+        foreach (ChatTurn turn in turns)
+            lines.AddRange(new[] { "## " + (turn.Role == "user" ? "You" : "Assistant"), "", turn.Content, "" });
+        return string.Join("\n", lines).TrimEnd() + "\n";
+    }
+
+    internal static string ExportJson(string title, IReadOnlyList<ChatTurn> turns,
+        string? modelId, string? systemPrompt, DateTimeOffset now)
+    {
+        long stamp = now.ToUnixTimeMilliseconds();
+        return JsonSerializer.Serialize(new
+        {
+            format = ExportFormat,
+            schema_version = 1,
+            application = "InferBridge",
+            exported_at = now.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ss.fffZ",
+                System.Globalization.CultureInfo.InvariantCulture),
+            conversation = new
+            {
+                title = SafeTitle(title),
+                created = stamp,
+                updated = stamp,
+                pinned = false,
+                archived = false,
+                model_id = string.IsNullOrWhiteSpace(modelId) ? null : modelId,
+                system_prompt = systemPrompt ?? "",
+                messages = turns.Select(turn => new { role = turn.Role, content = turn.Content }),
+            },
+        }, new JsonSerializerOptions { WriteIndented = true }) + "\n";
+    }
+
+    private static string SafeTitle(string title)
+    {
+        string clean = string.Join(" ", (title ?? "").Split((char[]?)null,
+            StringSplitOptions.RemoveEmptyEntries)).Trim();
+        clean = new string(clean.Where(ch => !char.IsControl(ch)).ToArray());
+        return clean.Length == 0 ? "InferBridge conversation" : clean[..Math.Min(clean.Length, 120)];
+    }
+
+    /// <summary>
+    /// Validate a browser or native JSON export. The native transcript keeps its
+    /// stricter limits (alternating user/assistant pairs, 20 turns, 8,000
+    /// characters per turn): only the most recent complete pairs are opened and
+    /// the caller reports how many source messages were left in the file.
+    /// </summary>
+    internal static ImportedChat ImportJson(byte[] bytes)
+    {
+        ArgumentNullException.ThrowIfNull(bytes);
+        if (bytes.Length is < 2 or > MaximumImportBytes)
+            throw new InvalidDataException("JSON import is empty or larger than the 4 MiB safety limit.");
+        JsonDocument document;
+        try { document = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 16 }); }
+        catch (JsonException error) { throw new InvalidDataException("The file is not valid JSON.", error); }
+        using (document)
+        {
+            JsonElement root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object
+                || !root.TryGetProperty("format", out var format) || format.ValueKind != JsonValueKind.String
+                || format.GetString() != ExportFormat
+                || !root.TryGetProperty("schema_version", out var schema)
+                || schema.ValueKind != JsonValueKind.Number || !schema.TryGetInt32(out int version) || version != 1
+                || !root.TryGetProperty("application", out var app) || app.ValueKind != JsonValueKind.String
+                || app.GetString() != "InferBridge"
+                || !root.TryGetProperty("conversation", out var source) || source.ValueKind != JsonValueKind.Object
+                || !source.TryGetProperty("messages", out var messages) || messages.ValueKind != JsonValueKind.Array)
+                throw new InvalidDataException("This is not a supported InferBridge conversation export.");
+            if (messages.GetArrayLength() > 2000)
+                throw new InvalidDataException("Conversation exports may contain at most 2000 messages.");
+            string? Text(string name, int limit)
+            {
+                if (!source.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null) return null;
+                if (value.ValueKind != JsonValueKind.String)
+                    throw new InvalidDataException("Conversation " + name + " must be text.");
+                string text = value.GetString() ?? "";
+                return text[..Math.Min(text.Length, limit)];
+            }
+            var turns = new List<ChatTurn>();
+            foreach (JsonElement message in messages.EnumerateArray())
+            {
+                string role = message.ValueKind == JsonValueKind.Object
+                    && message.TryGetProperty("role", out var r) && r.ValueKind == JsonValueKind.String
+                    ? r.GetString() ?? "" : "";
+                if (role is not ("user" or "assistant")
+                    || !message.TryGetProperty("content", out var content)
+                    || content.ValueKind != JsonValueKind.String)
+                    throw new InvalidDataException("Imported messages may only be user or assistant text.");
+                turns.Add(new ChatTurn(role, content.GetString() ?? ""));
+            }
+            // Keep the newest complete, valid user/assistant pairs.
+            var kept = new List<ChatTurn>();
+            for (int i = turns.Count - 1; i >= 1 && kept.Count < 20; i--)
+            {
+                ChatTurn reply = turns[i], ask = turns[i - 1];
+                if (reply.Role != "assistant" || ask.Role != "user"
+                    || string.IsNullOrWhiteSpace(reply.Content) || string.IsNullOrWhiteSpace(ask.Content)
+                    || reply.Content.Length > 8000 || ask.Content.Length > 8000
+                    || kept.Sum(t => t.Content.Length) + reply.Content.Length + ask.Content.Length > 30000)
+                    break;
+                kept.InsertRange(0, new[] { ask, reply });
+                i--;
+            }
+            if (kept.Count == 0)
+                throw new InvalidDataException(
+                    "The export has no complete user/assistant exchange that fits the native chat limits.");
+            string? model = Text("model_id", 512)?.Trim();
+            string? system = Text("system_prompt", ChatRequestContext.MaximumSystemPromptChars);
+            string title = SafeTitle(Text("title", 120) ?? "Imported conversation");
+            return new ImportedChat(title[..Math.Min(title.Length, 80)],
+                string.IsNullOrWhiteSpace(model) ? null : model,
+                string.IsNullOrWhiteSpace(system) ? null : system, kept, turns.Count);
+        }
+    }
+
     private void Write(List<SavedChat> chats)
     {
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(new Envelope(1, chats));

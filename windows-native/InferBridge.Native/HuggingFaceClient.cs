@@ -19,7 +19,21 @@ internal sealed record HuggingFaceModel(
 internal sealed record HuggingFaceDownloadRequest(
     string LocalId, string Name, string SourceModel, string Backend,
     string WeightFormat, string Device, int ContextTokens,
-    int OutputTokens, bool LoadAfter);
+    int OutputTokens, bool LoadAfter)
+{
+    // Web "Granular Quantization Options (INT4)": sent only for int4, as in the web form.
+    public int? GroupSize { get; init; }
+    public double? Ratio { get; init; }
+    public bool? Symmetric { get; init; }
+    public string? Description { get; init; }
+
+    // All-null keeps the engine's conversion defaults; otherwise all three are set.
+    public bool HasValidQuantization =>
+        (GroupSize is null && Ratio is null && Symmetric is null)
+        || (WeightFormat == "int4" && GroupSize is 128 or -1
+            && Ratio is double ratio && double.IsFinite(ratio) && ratio is >= 0 and <= 1
+            && Symmetric is not null);
+}
 
 internal sealed class HuggingFaceCredentialException(string message) : Exception(message);
 
@@ -202,7 +216,10 @@ internal sealed partial class BackendClient
             || selection.Backend is not ("openvino-genai" or "openvino-embeddings"
                 or "openvino-vlm")
             || selection.WeightFormat is not ("int4" or "int8" or "fp16")
-            || selection.Device is not ("CPU" or "GPU" or "NPU")
+            || selection.Device is not ("CPU" or "GPU" or "NPU" or "AUTO")
+            || !selection.HasValidQuantization
+            || selection.Description is { } description
+                && (description.Length > 500 || description.Any(char.IsControl))
             || selection.ContextTokens is < 128 or > 262144
             || (selection.Backend == "openvino-embeddings"
                 ? selection.OutputTokens != 0
@@ -211,7 +228,7 @@ internal sealed partial class BackendClient
             throw new ArgumentException("Review the model ID, device and conversion settings.");
 
         DeviceInventory devices = await GetDevicesAsync(apiKey, cancellationToken);
-        if (!devices.Available.Any(found =>
+        if (selection.Device != "AUTO" && !devices.Available.Any(found =>
             found == selection.Device
             || found.StartsWith(selection.Device + ".", StringComparison.Ordinal)))
             throw new EngineRequestException(
@@ -241,12 +258,17 @@ internal sealed partial class BackendClient
                 source_model = selection.SourceModel,
                 backend = selection.Backend,
                 weight_format = selection.WeightFormat,
+                group_size = selection.GroupSize,
+                ratio = selection.Ratio,
+                sym = selection.Symmetric,
                 recommended_device = selection.Device,
                 max_context_len = selection.ContextTokens,
                 max_output_tokens = selection.OutputTokens,
                 load_after = selection.LoadAfter,
                 trust_remote_code = false,
-                description = "Hugging Face model registered from native InferBridge.",
+                description = string.IsNullOrWhiteSpace(selection.Description)
+                    ? "Hugging Face model registered from native InferBridge."
+                    : selection.Description.Trim(),
             }), apiKey, cancellationToken, TimeSpan.FromSeconds(65), MaximumJsonBytes);
 
         JsonElement result = response.RootElement;

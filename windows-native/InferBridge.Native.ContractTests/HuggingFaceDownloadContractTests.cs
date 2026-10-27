@@ -121,6 +121,48 @@ internal static class HuggingFaceDownloadContractTests
                     requested with { Backend = "openvino-embeddings" },
                     ApiKey, CancellationToken.None));
         }
+        // Web-parity INT4 tuning, AUTO target and description are forwarded verbatim.
+        var tuned = requested with
+        {
+            Device = "AUTO", GroupSize = -1, Ratio = 0.8, Symmetric = true,
+            Description = "NPU tuned", OutputTokens = 1024, ContextTokens = 4096,
+        };
+        string? tunedBody = null;
+        var tunedTransport = new Handler(async (request, ct) =>
+        {
+            if (request.RequestUri!.AbsolutePath != "/v1/models/download-custom")
+                return Base(request);
+            tunedBody = await request.Content!.ReadAsStringAsync(ct);
+            return Json(
+                """{"status":"queued_convert","model":{"id":"org-safe-model","source_model":"org/safe-model","backend":"openvino-genai"}}""");
+        });
+        using (var client = new BackendClient(tunedTransport, metadata))
+        {
+            await client.QueueHuggingFaceModelAsync(tuned, ApiKey, CancellationToken.None);
+            foreach (var invalid in new[]
+            {
+                tuned with { GroupSize = 64 }, tuned with { Ratio = 1.5 },
+                tuned with { Ratio = double.NaN }, tuned with { Symmetric = null },
+                tuned with { WeightFormat = "int8" }, tuned with { Description = "bad\u0001" },
+                tuned with { Description = new string('d', 501) },
+            })
+                await ExpectAsync<ArgumentException>(() => client.QueueHuggingFaceModelAsync(
+                    invalid, ApiKey, CancellationToken.None));
+        }
+        using (var tunedJson = JsonDocument.Parse(tunedBody!))
+        {
+            var body = tunedJson.RootElement;
+            Require(body.GetProperty("recommended_device").GetString() == "AUTO"
+                && body.GetProperty("group_size").GetInt32() == -1
+                && Math.Abs(body.GetProperty("ratio").GetDouble() - 0.8) < 1e-9
+                && body.GetProperty("sym").GetBoolean()
+                && body.GetProperty("description").GetString() == "NPU tuned"
+                && body.GetProperty("max_output_tokens").GetInt32() == 1024
+                && !body.GetProperty("trust_remote_code").GetBoolean(),
+                "advanced conversion options differ from the web download-custom contract");
+        }
+        Require(tunedTransport.Posts == 1, "invalid advanced options reached the engine");
+
         Require(successTransport.Posts == 1 && successTransport.DeviceChecks == 1
             && successTransport.CatalogChecks > 0,
             "invalid calls posted or checks were skipped");

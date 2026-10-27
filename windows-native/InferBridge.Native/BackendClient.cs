@@ -71,6 +71,54 @@ internal sealed record GenerationOptions(int MaxTokens, double Temperature, doub
     }
 }
 
+/// <summary>
+/// One JPEG, PNG or WebP image for a vision-capable model, mirroring the web
+/// attachment limits (4 images, 10 MiB each, 24 MiB per request). The format is
+/// taken from the file signature, never the extension; the engine still decodes
+/// and enforces pixel limits authoritatively.
+/// </summary>
+internal sealed record ChatImage(string MediaType, string DataUrl, int ByteCount)
+{
+    public const int MaximumImages = 4;
+    public const int MaximumBytes = 10 * 1024 * 1024;
+    public const int MaximumTotalBytes = 24 * 1024 * 1024;
+
+    public static ChatImage FromBytes(byte[] bytes)
+    {
+        ArgumentNullException.ThrowIfNull(bytes);
+        if (bytes.Length is < 12 or > MaximumBytes)
+            throw new ArgumentException("Images must be between 12 bytes and 10 MiB.");
+        string? type =
+            bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF ? "image/jpeg"
+            : bytes.AsSpan(0, 8).SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A })
+                ? "image/png"
+            : bytes.AsSpan(0, 4).SequenceEqual("RIFF"u8) && bytes.AsSpan(8, 4).SequenceEqual("WEBP"u8)
+                ? "image/webp"
+            : null;
+        if (type is null)
+            throw new ArgumentException("Only JPEG, PNG and WebP images are supported.");
+        return new ChatImage(type, "data:" + type + ";base64," + Convert.ToBase64String(bytes), bytes.Length);
+    }
+}
+
+/// <summary>Request-only chat additions: a system prompt and vision images.</summary>
+internal sealed record ChatRequestContext(string? SystemPrompt, IReadOnlyList<ChatImage> Images)
+{
+    public const int MaximumSystemPromptChars = 32768; // Same cap as the web client.
+    public static ChatRequestContext Empty { get; } = new(null, Array.Empty<ChatImage>());
+
+    public void Validate()
+    {
+        if (SystemPrompt is { } prompt && (prompt.Length > MaximumSystemPromptChars
+            || prompt.Any(ch => char.IsControl(ch) && ch is not ('\n' or '\r' or '\t'))))
+            throw new ArgumentException("System prompt must be readable text up to 32,768 characters.");
+        if (Images is null || Images.Count > ChatImage.MaximumImages
+            || Images.Any(image => image is null)
+            || Images.Sum(image => (long)image.ByteCount) > ChatImage.MaximumTotalBytes)
+            throw new ArgumentException("Attach at most 4 images totalling 24 MiB.");
+    }
+}
+
 internal sealed record ModelRecoveryInfo(
     string ModelId, string ModelName, string RecoveryId, string FailedStage,
     string LastCompletedStage, string DownloadedFiles, string ConversionOutput,
@@ -296,14 +344,19 @@ internal sealed partial class BackendClient : IDisposable
 
     public async Task<string> CompleteChatAsync(
         string modelId, IReadOnlyList<ChatTurn> turns, string? apiKey,
-        CancellationToken cancellationToken, GenerationOptions? options = null)
+        CancellationToken cancellationToken, GenerationOptions? options = null,
+        ChatRequestContext? context = null)
     {
         ValidateChatTurns(modelId, turns);
         var generation = options ?? GenerationOptions.Default;
         generation.Validate();
+        context ??= ChatRequestContext.Empty;
+        context.Validate();
 
         string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
-        var messages = turns.Select(t => new { role = t.Role, content = t.Content }).ToArray();
+        if (context.Images.Count > 0)
+            await RequireVisionModelAsync(origin, modelId, apiKey, cancellationToken);
+        var messages = BuildChatMessages(turns, context);
         var body = JsonSerializer.Serialize(new
         {
             model = modelId,
@@ -334,6 +387,75 @@ internal sealed partial class BackendClient : IDisposable
         return answer;
     }
 
+    // OpenAI-compatible messages: optional system prompt first; images attach to
+    // the final user turn as image_url content parts, exactly like the web client.
+    internal static object[] BuildChatMessages(IReadOnlyList<ChatTurn> turns, ChatRequestContext context)
+    {
+        var messages = new List<object>();
+        if (!string.IsNullOrWhiteSpace(context.SystemPrompt))
+            messages.Add(new { role = "system", content = context.SystemPrompt.Trim() });
+        int lastUser = -1;
+        for (int i = 0; i < turns.Count; i++)
+            if (turns[i].Role == "user") lastUser = i;
+        if (context.Images.Count > 0 && lastUser < 0)
+            throw new ArgumentException("Images require a user message.");
+        for (int i = 0; i < turns.Count; i++)
+        {
+            if (i == lastUser && context.Images.Count > 0)
+            {
+                var parts = new List<object> { new { type = "text", text = turns[i].Content } };
+                parts.AddRange(context.Images.Select(image => (object)new
+                {
+                    type = "image_url",
+                    image_url = new { url = image.DataUrl, detail = "auto" },
+                }));
+                messages.Add(new { role = "user", content = parts });
+            }
+            else messages.Add(new { role = turns[i].Role, content = turns[i].Content });
+        }
+        return messages.ToArray();
+    }
+
+    /// <summary>
+    /// The engine's own capability contract (<c>supports_vision</c> on
+    /// <c>/v1/models/status</c>), the same field the web client gates on. Missing
+    /// or non-boolean values are treated as not vision-capable.
+    /// </summary>
+    public async Task<bool> GetModelSupportsVisionAsync(
+        string modelId, string? apiKey, CancellationToken cancellationToken)
+    {
+        string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
+        return await ReadVisionSupportAsync(origin, modelId, apiKey, cancellationToken);
+    }
+
+    private async Task<bool> ReadVisionSupportAsync(
+        string origin, string modelId, string? apiKey, CancellationToken cancellationToken)
+    {
+        using var status = await GetJsonAsync(origin + "/v1/models/status", apiKey,
+            cancellationToken, TimeSpan.FromSeconds(8), MaximumChatBytes);
+        if (status.RootElement.ValueKind != JsonValueKind.Object
+            || !status.RootElement.TryGetProperty("models", out var models)
+            || models.ValueKind != JsonValueKind.Object
+            || !models.TryGetProperty("available", out var available)
+            || available.ValueKind != JsonValueKind.Array)
+            throw new JsonException("Invalid model capability status.");
+        foreach (var entry in available.EnumerateArray())
+        {
+            if (ReadString(entry, "id") != modelId) continue;
+            return entry.TryGetProperty("supports_vision", out var vision)
+                && vision.ValueKind == JsonValueKind.True;
+        }
+        return false;
+    }
+
+    private async Task RequireVisionModelAsync(
+        string origin, string modelId, string? apiKey, CancellationToken cancellationToken)
+    {
+        if (!await ReadVisionSupportAsync(origin, modelId, apiKey, cancellationToken))
+            throw new EngineRequestException(
+                "The selected model cannot process images. Choose a vision-capable model.");
+    }
+
     private static void ValidateChatTurns(string modelId, IReadOnlyList<ChatTurn> turns)
     {
         if (string.IsNullOrWhiteSpace(modelId) || modelId.Length > 512
@@ -352,20 +474,26 @@ internal sealed partial class BackendClient : IDisposable
     public async Task<string> StreamChatAsync(
         string modelId, IReadOnlyList<ChatTurn> turns, string? apiKey,
         Action<string> onPartial, CancellationToken cancellationToken,
-        GenerationOptions? options = null)
+        GenerationOptions? options = null, ChatRequestContext? context = null)
     {
         ValidateChatTurns(modelId, turns);
         var generation = options ?? GenerationOptions.Default;
         generation.Validate();
+        context ??= ChatRequestContext.Empty;
+        context.Validate();
         ArgumentNullException.ThrowIfNull(onPartial);
         string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
+        // Fail closed: images are sent only when the engine reports the selected
+        // model as vision-capable immediately before this request.
+        if (context.Images.Count > 0)
+            await RequireVisionModelAsync(origin, modelId, apiKey, cancellationToken);
         using var request = new HttpRequestMessage(
             HttpMethod.Post, origin + "/v1/chat/completions");
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
         request.Content = new StringContent(JsonSerializer.Serialize(new
         {
             model = modelId,
-            messages = turns.Select(t => new { role = t.Role, content = t.Content }).ToArray(),
+            messages = BuildChatMessages(turns, context),
             stream = true,
             max_tokens = generation.MaxTokens,
             temperature = generation.Temperature,

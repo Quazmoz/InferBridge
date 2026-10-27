@@ -92,6 +92,9 @@ try
     await HuggingFaceDownloadContractTests.RunAsync(root);
     await ModelPreparationContractTests.RunAsync(root);
     NativeConversationContractTests.Run(root);
+    ChatMarkdownContractTests.Run();
+    await ChatRequestContractTests.RunAsync(root);
+    await OperationsParityContractTests.RunAsync(root);
     return 0;
 }
 finally

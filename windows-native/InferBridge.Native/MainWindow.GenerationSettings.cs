@@ -18,6 +18,11 @@ public sealed partial class MainWindow
         MaxTokensBox.Value = _generationOptions.MaxTokens;
         TemperatureBox.Value = _generationOptions.Temperature;
         TopPBox.Value = _generationOptions.TopP;
+        // Every caller is a conversation boundary (new chat, model switch,
+        // restore/import), so request-only additions reset with it.
+        _systemPrompt = null;
+        SystemPromptBox.Text = string.Empty;
+        ClearPendingImages();
         GenerationSettingsInfo.Title = "Engine defaults";
         GenerationSettingsInfo.Message = "Defaults restored for this chat. Nothing was persisted.";
         GenerationSettingsInfo.Severity = InfoBarSeverity.Informational;
@@ -65,7 +70,8 @@ public sealed partial class MainWindow
             + " · temp " + _generationOptions.Temperature.ToString("0.##",
                 System.Globalization.CultureInfo.InvariantCulture)
             + " · top-p " + _generationOptions.TopP.ToString("0.##",
-                System.Globalization.CultureInfo.InvariantCulture);
+                System.Globalization.CultureInfo.InvariantCulture)
+            + (_systemPrompt is null ? "" : " · system prompt");
         string? modelId = SelectedModelId;
         if (modelId is null)
             SettingsCurrentModel.Text = "No chat model selected. Choose a generation model in Chat.";
@@ -92,6 +98,7 @@ public sealed partial class MainWindow
         MaxTokensBox.IsEnabled = editable;
         TemperatureBox.IsEnabled = editable;
         TopPBox.IsEnabled = editable;
+        SystemPromptBox.IsEnabled = editable;
         ApplyGenerationSettingsButton.IsEnabled = editable && generationModel;
         ResetGenerationSettingsButton.IsEnabled = editable;
         UpdateContextControls();
@@ -106,7 +113,11 @@ public sealed partial class MainWindow
                 MaxTokensBox.Value, TemperatureBox.Value, TopPBox.Value);
             if (!CanUseGenerationOptions(SelectedModelId, requested, out string reason))
                 throw new ArgumentException(reason);
+            string? systemPrompt = string.IsNullOrWhiteSpace(SystemPromptBox.Text)
+                ? null : SystemPromptBox.Text;
+            new ChatRequestContext(systemPrompt, Array.Empty<ChatImage>()).Validate();
             _generationOptions = requested;
+            _systemPrompt = systemPrompt;
             GenerationSettingsInfo.Title = "Applied to current chat";
             GenerationSettingsInfo.Message = "Future requests use these values. No engine setting was changed.";
             GenerationSettingsInfo.Severity = InfoBarSeverity.Success;
