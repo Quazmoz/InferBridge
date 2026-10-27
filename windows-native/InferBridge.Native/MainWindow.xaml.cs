@@ -247,6 +247,8 @@ public sealed partial class MainWindow : Window
     {
         string? page = (args.SelectedItem as NavigationViewItem)?.Tag?.ToString();
         OverviewPanel.Visibility = page == "overview" ? Visibility.Visible : Visibility.Collapsed;
+        if (page == "overview" && !_doctorLoaded && _engineConnected && _rejectedApiKey is null)
+            _ = RefreshDoctorAsync(); // Read-only status for the memory gauge.
         ConnectionHubPanel.Visibility = page == "connection" ? Visibility.Visible : Visibility.Collapsed;
         if (page == "connection")
             _ = RefreshConnectionHubAsync();
@@ -489,29 +491,34 @@ public sealed partial class MainWindow : Window
             DoctorChecks.Items.Clear();
             foreach (DoctorCheck check in report.Checks)
             {
-                var item = new StackPanel { Spacing = 3, Margin = new Thickness(0, 0, 0, 14) };
-                item.Children.Add(new TextBlock
+                var item = new StackPanel { Spacing = 4 };
+                var title = new WrapRow { Spacing = 8 };
+                title.Children.Add(Ui.Pill(check.Level switch
                 {
-                    Text = "[" + check.Level.ToUpperInvariant() + "] " + check.Title,
-                    FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-                    TextWrapping = TextWrapping.Wrap,
-                });
-                item.Children.Add(new TextBlock
+                    "pass" => "Passed", "warning" => "Warning", "error" => "Error", _ => "Info",
+                }, check.Level switch
                 {
-                    Text = check.Detail,
-                    TextWrapping = TextWrapping.Wrap,
-                    IsTextSelectionEnabled = true,
-                });
+                    "pass" => "success", "warning" => "warning", "error" => "error", _ => "neutral",
+                }));
+                title.Children.Add(Ui.Text(check.Title, "BodyStrongTextBlockStyle"));
+                item.Children.Add(title);
+                var detail = Ui.Text(check.Detail);
+                detail.IsTextSelectionEnabled = true;
+                item.Children.Add(detail);
                 if (check.NextStep.Length > 0)
-                    item.Children.Add(new TextBlock
-                    {
-                        Text = "Next: " + check.NextStep,
-                        TextWrapping = TextWrapping.Wrap,
-                        IsTextSelectionEnabled = true,
-                        Foreground = Ui.ResBrush("TextFillColorSecondaryBrush"),
-                    });
-                DoctorChecks.Items.Add(item);
+                {
+                    var next = Ui.Text("Next: " + check.NextStep, secondary: true);
+                    next.IsTextSelectionEnabled = true;
+                    item.Children.Add(next);
+                }
+                var card = Ui.Card(item);
+                card.Margin = new Thickness(0, 0, 0, 8);
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(card,
+                    check.Level + ": " + check.Title + ". " + check.Detail);
+                DoctorChecks.Items.Add(card);
             }
+            DoctorLevelChart.SetData(ChartMath.LevelCounts(report.Checks.Select(check => check.Level)));
+            UpdateMemoryGauges(report);
             DoctorCopyButton.IsEnabled = true;
         }
         catch (Exception) when (_closing.IsCancellationRequested) { }
@@ -524,6 +531,8 @@ public sealed partial class MainWindow : Window
             DoctorDevices.Text = "Not checked";
             DoctorModels.Text = "Not checked";
             DoctorChecks.Items.Clear();
+            DoctorLevelChart.SetData(Array.Empty<(string, double?)>());
+            UpdateMemoryGauges(null);
         }
         finally
         {
@@ -1250,6 +1259,12 @@ public sealed partial class MainWindow : Window
             string loadedSummary = await _backend.GetRuntimeSummaryAsync(
                 ApiKeyBox.Password, _closing.Token);
             if (_closing.IsCancellationRequested) return;
+            DevicePills.Children.Clear();
+            foreach (string device in inventory.Available)
+                DevicePills.Children.Add(Ui.Pill(device + (device == inventory.Default ? " · default" : ""),
+                    device.StartsWith("NPU", StringComparison.Ordinal) ? "accent" : "success"));
+            if (inventory.Mock) DevicePills.Children.Add(Ui.Pill("Mock inference mode", "warning"));
+            if (inventory.Available.Count == 0) DevicePills.Children.Add(Ui.Pill("No devices reported", "error"));
             HardwareSummary.Text = loadedSummary + "\nEngine default: " + inventory.Default
                 + ". Detected devices: "
                 + (inventory.Available.Count > 0
@@ -1263,6 +1278,7 @@ public sealed partial class MainWindow : Window
             _devicesAvailable = false;
             _devicesScanned = false;
             HardwareSummary.Text = "Hardware scan unavailable. Retry to select a verified target.";
+            DevicePills.Children.Clear();
             _shownDevices = null;
             _pendingDevices = null;
             LibraryDevicePicker.Items.Clear();

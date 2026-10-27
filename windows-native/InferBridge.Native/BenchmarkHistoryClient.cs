@@ -149,6 +149,40 @@ internal static class BenchmarkHistory
         return results;
     }
 
+    // --- Chart series: only engine-measured values; failures and gaps stay null ---
+
+    public static string ResultLabel(BenchmarkMeasurement row) =>
+        row.ModelId + (row.Precision.Length > 0 ? " " + row.Precision : "") + " · "
+        + (row.ActualDevice.Length > 0 ? row.ActualDevice : row.RequestedDevice + " (actual not reported)");
+
+    /// <summary>Decode tok/s per result; the older inclusive metric is used only when labelled.</summary>
+    public static IReadOnlyList<(string Label, double? Value)> SpeedSeries(BenchmarkRun run) =>
+        run.Results.Select(row => (
+            ResultLabel(row) + (row.Success && row.DecodeTokensPerSecond is null
+                && row.LegacyTokensPerSecond is not null ? " (legacy overall)" : ""),
+            row.Success ? row.DecodeTokensPerSecond ?? row.LegacyTokensPerSecond : null)).ToArray();
+
+    public static IReadOnlyList<(string Label, double? Value)> FirstTokenSeries(BenchmarkRun run) =>
+        run.Results.Select(row => (ResultLabel(row), row.Success ? row.FirstTokenMilliseconds : null)).ToArray();
+
+    /// <summary>
+    /// Best decode tok/s per saved run, oldest first, for runs of the same
+    /// real/synthetic mode with a parseable timestamp. Runs without a decode
+    /// measurement stay null rather than borrowing the legacy metric.
+    /// </summary>
+    public static IReadOnlyList<double?> DecodeTrend(IEnumerable<BenchmarkRun> history, bool synthetic) =>
+        history.Where(run => run.Synthetic == synthetic)
+            .Select(run => (Run: run, Ok: DateTimeOffset.TryParse(run.Timestamp, CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal, out DateTimeOffset at), At: at))
+            .Where(item => item.Ok)
+            .OrderBy(item => item.At)
+            .Select(item => item.Run.Results
+                .Where(row => row.Success && row.DecodeTokensPerSecond is double value
+                    && double.IsFinite(value) && value > 0)
+                .Select(row => row.DecodeTokensPerSecond)
+                .DefaultIfEmpty(null).Max())
+            .ToArray();
+
     public static string FormatMetric(double? value, string suffix)
         => value is { } measured
             ? measured.ToString("0.##", CultureInfo.InvariantCulture) + suffix

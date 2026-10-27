@@ -181,7 +181,14 @@ internal sealed record DoctorCheck(string Level, string Title, string Detail, st
 
 internal sealed record DoctorReport(
     string Overall, int Errors, int Warnings, string Devices,
-    string ModelSummary, IReadOnlyList<DoctorCheck> Checks, string SupportReport);
+    string ModelSummary, IReadOnlyList<DoctorCheck> Checks, string SupportReport)
+{
+    // Engine telemetry for gauges; null when the engine did not report it.
+    public double? AvailableRamGb { get; init; }
+    public double? TotalRamGb { get; init; }
+    public double? FreeDiskGb { get; init; }
+    public double? ModelsDiskGb { get; init; }
+}
 
 
 internal sealed record BackendSnapshot(
@@ -1048,8 +1055,17 @@ internal sealed partial class BackendClient : IDisposable
                 + c.Title + ": " + c.Detail
                 + (c.NextStep.Length > 0 ? " Next: " + c.NextStep : "")))
             + "\nPrivacy: API keys, prompts, conversations, model errors, and local paths are excluded.";
+        static double? Known(double value) => value > 0 ? value : null;
         return new DoctorReport(overall, errors, warnings, devicesText,
-            modelsText, checks, report);
+            modelsText, checks, report)
+        {
+            AvailableRamGb = Known(availableRam),
+            TotalRamGb = Known(totalRam),
+            FreeDiskGb = Known(freeDisk),
+            // Zero is a real reading here, so only an absent/invalid field is unknown.
+            ModelsDiskGb = disk.TryGetProperty("models_gb", out var modelsField)
+                && modelsField.ValueKind == JsonValueKind.Number ? modelsDisk : null,
+        };
     }
 
     /// <summary>One explicitly requested 32-token measurement on a verified loaded model.</summary>

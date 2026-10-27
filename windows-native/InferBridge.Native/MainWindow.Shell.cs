@@ -59,4 +59,21 @@ public sealed partial class MainWindow
         foreach (var (text, kind) in pills)
             ShellStatusPills.Children.Add(Ui.Pill(text, kind));
     }
+
+    // RAM gauges on Engine & devices and System Doctor share one engine reading.
+    private void UpdateMemoryGauges(DoctorReport? report)
+    {
+        static string Gb(double? value) => ChartMath.Format(value, " GB");
+        double? used = report?.TotalRamGb is double total && report.AvailableRamGb is double free
+            ? Math.Max(0, total - free) : null;
+        double? fraction = ChartMath.Fraction(used, report?.TotalRamGb);
+        string detail = fraction is null ? "RAM not reported"
+            : Gb(used) + " used of " + Gb(report!.TotalRamGb) + " · " + Gb(report.AvailableRamGb) + " available";
+        HardwareRamMeter.SetValue(fraction, detail);
+        DoctorRamMeter.SetValue(fraction, detail);
+        HardwareStorageText.Text = report?.FreeDiskGb is double disk
+            ? "Model volume: " + Gb(disk) + " free" + (report.ModelsDiskGb is double models
+                ? " · " + Gb(models) + " in converted models" : "") + "."
+            : "Model storage not reported yet. Run System Doctor checks to read it.";
+    }
 }

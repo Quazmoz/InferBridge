@@ -1194,3 +1194,43 @@ def test_native_model_library_rows_are_actionable_cards_sharing_guards():
         cards, "private void ModelsFilterBox_TextChanged(object sender, TextChangedEventArgs args)"
     )
     assert "item.Visibility" in filter_body and "Items.Clear()" not in filter_body
+
+
+def test_native_benchmark_health_and_engine_pages_chart_real_engine_data():
+    root = ET.parse(PROJECT / "MainWindow.xaml").getroot()
+    named = "{http://schemas.microsoft.com/winfx/2006/xaml}Name"
+    local = "{using:InferBridge.Native}"
+    charts = {
+        node.get(named): node.tag.replace(local, "") for node in root.iter() if node.get(named)
+    }
+    expected = {
+        "BenchmarkSpeedChart": ("BenchmarkPanel", "BarChart"),
+        "BenchmarkTtftChart": ("BenchmarkPanel", "BarChart"),
+        "BenchmarkTrend": ("BenchmarkPanel", "Sparkline"),
+        "DoctorLevelChart": ("DoctorPanel", "BarChart"),
+        "DoctorRamMeter": ("DoctorPanel", "RingMeter"),
+        "HardwareRamMeter": ("OverviewPanel", "RingMeter"),
+        "ChatContextMeter": ("ChatPanel", "RingMeter"),
+    }
+    for name, (page, kind) in expected.items():
+        assert charts[name] == kind, name
+        panel = next(node for node in root.iter() if node.get(named) == page)
+        assert any(node.get(named) == name for node in panel.iter()), name
+        chart = next(node for node in root.iter() if node.get(named) == name)
+        assert chart.get("Title"), name  # Title feeds the Narrator name and HelpText.
+    ttft = next(node for node in root.iter() if node.get(named) == "BenchmarkTtftChart")
+    assert ttft.get("LowerIsBetter") == "True"
+    benchmark = (PROJECT / "MainWindow.Benchmark.cs").read_text(encoding="utf-8")
+    assert "BenchmarkHistory.SpeedSeries(run)" in benchmark
+    assert "BenchmarkHistory.FirstTokenSeries(run)" in benchmark
+    assert "BenchmarkHistory.DecodeTrend(_benchmarkHistory, run?.Synthetic ?? false)" in benchmark
+    history = (PROJECT / "BenchmarkHistoryClient.cs").read_text(encoding="utf-8")
+    assert '" (legacy overall)"' in history
+    window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    assert "ChartMath.LevelCounts(report.Checks.Select(check => check.Level))" in window
+    assert "UpdateMemoryGauges(report);" in window and "UpdateMemoryGauges(null);" in window
+    shell = (PROJECT / "MainWindow.Shell.cs").read_text(encoding="utf-8")
+    assert "ChartMath.Fraction(used, report?.TotalRamGb)" in shell
+    assert '"RAM not reported"' in shell
+    client = (PROJECT / "BackendClient.cs").read_text(encoding="utf-8")
+    assert "static double? Known(double value) => value > 0 ? value : null;" in client

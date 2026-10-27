@@ -267,6 +267,10 @@ internal static class BackendContractTests
             Check(report.Checks.Any(check => check.Title == "Fallback routing in use")
                 && report.Checks.Any(check => check.Title == "NPU not detected"),
                 "System Doctor missed fallback routing and absent NPU");
+            // Gauge telemetry: reported values pass through; absent models_gb stays unknown.
+            Check(report.AvailableRamGb == 1 && report.TotalRamGb == 16 && report.FreeDiskGb == 2
+                && report.ModelsDiskGb is null,
+                "System Doctor memory/disk telemetry for gauges changed");
             Check(!report.SupportReport.Contains("secret", StringComparison.OrdinalIgnoreCase)
                 && !report.SupportReport.Contains("private", StringComparison.OrdinalIgnoreCase),
                 "malicious model-error content leaked into the support report");

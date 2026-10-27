@@ -364,6 +364,33 @@ public sealed partial class MainWindow
     private bool _benchmarkHistoryBusy;
     private bool _benchmarkHistoryLoaded;
     private bool _benchmarkPickerUpdating;
+    private IReadOnlyList<BenchmarkRun> _benchmarkHistory = Array.Empty<BenchmarkRun>();
+
+    // A labelled metric tile; the value stays selectable for copying.
+    private static Border MetricTile(string label, string value)
+    {
+        var panel = new StackPanel { Spacing = 2, MinWidth = 120 };
+        panel.Children.Add(Ui.Text(label, "CaptionTextBlockStyle", secondary: true));
+        var text = Ui.Text(value, "BodyStrongTextBlockStyle");
+        text.IsTextSelectionEnabled = true;
+        panel.Children.Add(text);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(panel, label + ": " + value);
+        return new Border
+        {
+            Child = panel, Padding = new Thickness(12, 8, 12, 8), CornerRadius = new CornerRadius(6),
+            Background = Ui.ResBrush("SubtleFillColorSecondaryBrush"),
+        };
+    }
+
+    private void RenderBenchmarkCharts(BenchmarkRun? run)
+    {
+        BenchmarkSpeedChart.SetData(run is null ? Array.Empty<(string, double?)>() : BenchmarkHistory.SpeedSeries(run));
+        BenchmarkTtftChart.SetData(run is null ? Array.Empty<(string, double?)>() : BenchmarkHistory.FirstTokenSeries(run));
+        BenchmarkTrend.Title = run?.Synthetic == true
+            ? "Best decode throughput per saved run (synthetic runs only)"
+            : "Best decode throughput per saved run";
+        BenchmarkTrend.SetData(BenchmarkHistory.DecodeTrend(_benchmarkHistory, run?.Synthetic ?? false));
+    }
 
     private async void BenchmarkHistoryRefreshButton_Click(object sender, RoutedEventArgs args) =>
         await RefreshBenchmarkHistoryAsync();
@@ -389,6 +416,7 @@ public sealed partial class MainWindow
                 ApiKeyBox.Password, _closing.Token);
             if (_closing.IsCancellationRequested) return;
             _benchmarkHistoryLoaded = true;
+            _benchmarkHistory = history;
             _benchmarkPickerUpdating = true;
             try
             {
@@ -465,8 +493,10 @@ public sealed partial class MainWindow
                 TextWrapping = TextWrapping.Wrap,
             });
             BenchmarkComparisonSummary.Text = "Choose two compatible runs to compare measurements.";
+            RenderBenchmarkCharts(null);
             return;
         }
+        RenderBenchmarkCharts(run);
 
         BenchmarkDetailsRows.Children.Add(new TextBlock
         {
@@ -484,32 +514,38 @@ public sealed partial class MainWindow
 
         foreach (var row in run.Results)
         {
-            string speed = row.DecodeTokensPerSecond is not null
-                ? "Decode throughput: " + BenchmarkHistory.FormatMetric(row.DecodeTokensPerSecond, " tok/s")
-                : "Legacy overall throughput (includes TTFT): "
-                    + BenchmarkHistory.FormatMetric(row.LegacyTokensPerSecond, " tok/s");
-            var details = new TextBlock
+            bool decode = row.DecodeTokensPerSecond is not null;
+            var card = new StackPanel { Spacing = 8 };
+            var title = new WrapRow { Spacing = 8 };
+            title.Children.Add(Ui.Text(row.ModelId + (row.Precision.Length > 0 ? " · " + row.Precision : ""),
+                "BodyStrongTextBlockStyle"));
+            title.Children.Add(Ui.Pill("Requested " + row.RequestedDevice + " → actual "
+                + (row.ActualDevice.Length > 0 ? row.ActualDevice : "Not reported"),
+                row.ActualDevice.Length > 0 ? "accent" : "warning"));
+            if (row.Synthetic) title.Children.Add(Ui.Pill("Synthetic (mock)", "warning"));
+            if (!row.Success) title.Children.Add(Ui.Pill("Failed", "error"));
+            card.Children.Add(title);
+            if (row.Success)
             {
-                Text = row.ModelId
-                    + (row.Precision.Length > 0 ? " · " + row.Precision : "")
-                    + "\nRequested " + row.RequestedDevice
-                    + " → actual " + (row.ActualDevice.Length > 0 ? row.ActualDevice : "Not reported")
-                    + "\n" + (row.Success
-                        ? speed
-                            + "\nFirst token: " + BenchmarkHistory.FormatMetric(row.FirstTokenMilliseconds, " ms")
-                            + " · Total latency: " + BenchmarkHistory.FormatMetric(row.TotalMilliseconds, " ms")
-                            + "\nLoad: " + BenchmarkHistory.FormatMetric(row.LoadMilliseconds, " ms")
-                            + " · Peak process RSS: " + BenchmarkHistory.FormatMetric(row.ProcessRamMegabytes, " MB")
-                            + "\nPrompt tokens: " + (row.PromptTokens?.ToString() ?? "Not reported")
-                            + " · Completion tokens: " + (row.CompletionTokens?.ToString() ?? "Not reported")
-                            + "\nContext: " + (row.ContextTokens?.ToString() ?? "Legacy / unknown")
-                            + " · Reserved output: " + (row.ReservedOutputTokens?.ToString() ?? "Unknown")
-                        : "Benchmark failed; no valid performance measurement was reported.")
-                    + (row.Synthetic ? "\nSynthetic (mock)" : ""),
-                TextWrapping = TextWrapping.Wrap,
-                IsTextSelectionEnabled = true,
-            };
-            BenchmarkDetailsRows.Children.Add(details);
+                var tiles = new WrapRow { Spacing = 8 };
+                tiles.Children.Add(MetricTile(decode ? "Decode throughput" : "Legacy overall throughput (includes TTFT)",
+                    BenchmarkHistory.FormatMetric(decode ? row.DecodeTokensPerSecond : row.LegacyTokensPerSecond, " tok/s")));
+                tiles.Children.Add(MetricTile("First token", BenchmarkHistory.FormatMetric(row.FirstTokenMilliseconds, " ms")));
+                tiles.Children.Add(MetricTile("Total latency", BenchmarkHistory.FormatMetric(row.TotalMilliseconds, " ms")));
+                tiles.Children.Add(MetricTile("Load", BenchmarkHistory.FormatMetric(row.LoadMilliseconds, " ms")));
+                tiles.Children.Add(MetricTile("Peak process RSS", BenchmarkHistory.FormatMetric(row.ProcessRamMegabytes, " MB")));
+                tiles.Children.Add(MetricTile("Prompt / completion tokens",
+                    (row.PromptTokens?.ToString() ?? "Not reported") + " / "
+                    + (row.CompletionTokens?.ToString() ?? "Not reported")));
+                tiles.Children.Add(MetricTile("Context / reserved output",
+                    (row.ContextTokens?.ToString() ?? "Legacy / unknown") + " / "
+                    + (row.ReservedOutputTokens?.ToString() ?? "Unknown")));
+                card.Children.Add(tiles);
+            }
+            else
+                card.Children.Add(Ui.Text("Benchmark failed; no valid performance measurement was reported.",
+                    secondary: true));
+            BenchmarkDetailsRows.Children.Add(Ui.Card(card));
             // StackPanel spacing separates result rows without a web-style divider.
         }
         if (run.Results.Count == 0)

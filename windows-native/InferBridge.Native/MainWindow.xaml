@@ -90,37 +90,83 @@
             <Grid Padding="24,12,24,20">
                 <ScrollViewer x:Name="OverviewPanel" Visibility="Collapsed"
                               HorizontalScrollBarVisibility="Disabled">
-                    <StackPanel Spacing="16" MaxWidth="700" HorizontalAlignment="Left">
-                        <TextBlock Text="Your local AI engine" FontSize="28"
-                                   FontWeight="SemiBold" TextWrapping="Wrap" />
-                        <TextBlock Text="Inference and model files stay in the existing Python/OpenVINO engine."
-                                   TextWrapping="Wrap" Opacity="0.8" />
+                    <StackPanel MaxWidth="{StaticResource InferBridgeContentMaxWidth}" HorizontalAlignment="Stretch"
+                                Spacing="16" Padding="0,0,0,24">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Style="{StaticResource InferBridgeHeaderRuleStyle}" />
+                            <StackPanel Grid.Column="1" Spacing="2">
+                                <TextBlock Text="Engine &amp; devices" Style="{StaticResource InferBridgePageTitleStyle}" />
+                                <TextBlock Text="Inference and model files stay in the existing Python/OpenVINO engine. This page shows its connection, detected devices and memory."
+                                           Style="{StaticResource InferBridgeHelpTextStyle}" />
+                            </StackPanel>
+                        </Grid>
+                        <local:WrapRow Spacing="8">
+                            <Button x:Name="StartButton" Click="StartButton_Click"
+                                Style="{StaticResource AccentButtonStyle}">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE768;" FontSize="14" />
+                                    <TextBlock Text="Start local engine" />
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="RefreshButton" Click="RefreshButton_Click">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE72C;" FontSize="14" />
+                                    <TextBlock Text="Refresh status" />
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="ScanHardwareButton" Click="ScanHardwareButton_Click">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE950;" FontSize="14" />
+                                    <TextBlock Text="Scan inference devices" />
+                                </StackPanel>
+                            </Button>
+                            <ProgressRing x:Name="ConnectionProgress" Width="24" Height="24"
+                                          IsActive="False" VerticalAlignment="Center" />
+                        </local:WrapRow>
                         <InfoBar x:Name="ConnectionInfo" Title="Local engine"
                                  Severity="Informational" IsOpen="True"
                                  IsClosable="False" Message="Checking the local engine…" />
-                        <ProgressRing x:Name="ConnectionProgress" Width="30" Height="30"
-                                      IsActive="False" HorizontalAlignment="Left" />
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <Button x:Name="RefreshButton" Content="Refresh status"
-                                    Click="RefreshButton_Click" />
-                            <Button x:Name="StartButton" Content="Start local engine"
-                                    Click="StartButton_Click" />
-                        </StackPanel>
-                        <TextBlock x:Name="ConnectionDetails" TextWrapping="Wrap" Opacity="0.8" />
-                        <TextBlock Text="Hardware &amp; inference" FontWeight="SemiBold" FontSize="18" />
-                        <TextBlock x:Name="HardwareSummary" Text="Connect to inspect available inference devices."
-                                   TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
-                        <Button x:Name="ScanHardwareButton" Content="Scan inference devices"
-                                HorizontalAlignment="Left" Click="ScanHardwareButton_Click" />
-                        <TextBlock Text="API authentication" FontWeight="SemiBold" FontSize="18" />
-                        <TextBlock Text="If your engine uses an API key, enter it for this window only. InferBridge never saves it or sends it to tray-control endpoints."
-                                   TextWrapping="Wrap" Opacity="0.8" />
-                        <PasswordBox x:Name="ApiKeyBox" Header="Engine API key"
-                                     PlaceholderText="Optional bearer key"
-                                     MaxLength="512" Width="360"
-                                     HorizontalAlignment="Left" />
-                        <Button Content="Connect with key" HorizontalAlignment="Left"
-                                Click="RefreshButton_Click" />
+                        <local:CardGrid MaxColumns="3">
+                            <Border Style="{StaticResource InferBridgeCardStyle}">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="Inference devices" Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
+                                    <local:WrapRow x:Name="DevicePills" Spacing="6"
+                                                   AutomationProperties.Name="Detected OpenVINO devices" />
+                                    <TextBlock x:Name="HardwareSummary" Text="Connect to inspect available inference devices."
+                                               TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                                               AutomationProperties.LiveSetting="Polite" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource InferBridgeCardStyle}">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="Memory &amp; storage" Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
+                                    <local:RingMeter x:Name="HardwareRamMeter" Title="RAM in use"
+                                                     HorizontalAlignment="Center" />
+                                    <TextBlock x:Name="HardwareStorageText" TextWrapping="Wrap"
+                                               Style="{StaticResource InferBridgeHelpTextStyle}"
+                                               Text="Readings come from the engine's System Doctor status check." />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource InferBridgeCardStyle}">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="Connection" Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
+                                    <TextBlock x:Name="ConnectionDetails" TextWrapping="Wrap"
+                                               IsTextSelectionEnabled="True"
+                                               Style="{StaticResource InferBridgeHelpTextStyle}" />
+                                    <TextBlock Text="If your engine uses an API key, enter it for this window only. InferBridge never saves it or sends it to tray-control endpoints."
+                                               Style="{StaticResource InferBridgeHelpTextStyle}" />
+                                    <PasswordBox x:Name="ApiKeyBox" Header="Engine API key"
+                                                 PlaceholderText="Optional bearer key"
+                                                 MaxLength="512" HorizontalAlignment="Stretch" />
+                                    <Button Content="Connect with key" HorizontalAlignment="Left"
+                                            Click="RefreshButton_Click" />
+                                </StackPanel>
+                            </Border>
+                        </local:CardGrid>
                         <InfoBar Title="Native Windows"
                                  IsOpen="True" IsClosable="False"
                                  Severity="Informational"
@@ -230,57 +276,97 @@
                 </ScrollViewer>
                 <ScrollViewer x:Name="DoctorPanel" Visibility="Collapsed"
                               HorizontalScrollBarVisibility="Disabled">
-                    <StackPanel MaxWidth="800" HorizontalAlignment="Left" Spacing="14">
-                        <TextBlock Text="System Doctor" FontSize="28" FontWeight="SemiBold" />
-                        <TextBlock Text="Run read-only checks using the same engine and device endpoints as the web GUI. Results reflect this machine, not a separate native inference engine."
-                                   TextWrapping="Wrap" Opacity="0.8" />
+                    <StackPanel MaxWidth="{StaticResource InferBridgeContentMaxWidth}" HorizontalAlignment="Stretch"
+                                Spacing="16" Padding="0,0,0,24">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Style="{StaticResource InferBridgeHeaderRuleStyle}" />
+                            <StackPanel Grid.Column="1" Spacing="2">
+                                <TextBlock Text="System Doctor" Style="{StaticResource InferBridgePageTitleStyle}" />
+                                <TextBlock Text="Read-only checks using the same engine and device endpoints as the web GUI. Results reflect this machine, not a separate native inference engine."
+                                           Style="{StaticResource InferBridgeHelpTextStyle}" />
+                            </StackPanel>
+                        </Grid>
+                        <local:WrapRow Spacing="8">
+                            <Button x:Name="DoctorRefreshButton" Click="DoctorRefreshButton_Click"
+                                Style="{StaticResource AccentButtonStyle}">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE9D9;" FontSize="14" />
+                                    <TextBlock Text="Run checks again" />
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="DoctorCopyButton" IsEnabled="False" Click="DoctorCopyButton_Click">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE8C8;" FontSize="14" />
+                                    <TextBlock Text="Copy sanitized support report" />
+                                </StackPanel>
+                            </Button>
+                            <ProgressRing x:Name="DoctorProgress" Width="24" Height="24"
+                                          IsActive="False" VerticalAlignment="Center" />
+                        </local:WrapRow>
                         <InfoBar x:Name="DoctorInfo" Title="System Doctor"
                                  IsOpen="True" IsClosable="False"
                                  Severity="Informational"
                                  Message="Select Run checks to inspect the local runtime." />
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <Button x:Name="DoctorRefreshButton" Content="Run checks again"
-                                    Click="DoctorRefreshButton_Click" />
-                            <Button x:Name="DoctorCopyButton" Content="Copy sanitized support report"
-                                    IsEnabled="False" Click="DoctorCopyButton_Click" />
-                            <ProgressRing x:Name="DoctorProgress" Width="26" Height="26"
-                                          IsActive="False" />
-                        </StackPanel>
-                        <TextBlock x:Name="DoctorSummary" TextWrapping="Wrap"
-                                   AutomationProperties.LiveSetting="Polite"
-                                   IsTextSelectionEnabled="True"
-                                   Text="Open System Doctor to inspect hardware and runtime readiness." />
-                        <TextBlock Text="Detected OpenVINO devices" FontSize="18"
-                                   FontWeight="SemiBold" />
-                        <TextBlock x:Name="DoctorDevices" TextWrapping="Wrap"
-                                   IsTextSelectionEnabled="True" Text="Not checked" />
-                        <TextBlock Text="Model readiness" FontSize="18"
-                                   FontWeight="SemiBold" />
-                        <TextBlock x:Name="DoctorModels" TextWrapping="Wrap"
-                                   IsTextSelectionEnabled="True" Text="Not checked" />
-                        <TextBlock Text="Checks and recommended actions" FontSize="18"
-                                   FontWeight="SemiBold" />
+                        <local:CardGrid MaxColumns="3">
+                            <Border Style="{StaticResource InferBridgeCardStyle}">
+                                <StackPanel Spacing="10">
+                                    <TextBlock x:Name="DoctorSummary" TextWrapping="Wrap"
+                                               Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0"
+                                               AutomationProperties.LiveSetting="Polite"
+                                               IsTextSelectionEnabled="True"
+                                               Text="Open System Doctor to inspect hardware and runtime readiness." />
+                                    <local:BarChart x:Name="DoctorLevelChart" Title="Check results"
+                                                    EmptyText="Run checks to see the summary." Format="0" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource InferBridgeCardStyle}">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="Memory" Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
+                                    <local:RingMeter x:Name="DoctorRamMeter" Title="RAM in use"
+                                                     HorizontalAlignment="Center" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource InferBridgeCardStyle}">
+                                <StackPanel Spacing="8">
+                                    <TextBlock Text="Detected OpenVINO devices" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                    <TextBlock x:Name="DoctorDevices" TextWrapping="Wrap"
+                                               IsTextSelectionEnabled="True" Text="Not checked" />
+                                    <TextBlock Text="Model readiness" Style="{StaticResource BodyStrongTextBlockStyle}"
+                                               Margin="0,8,0,0" />
+                                    <TextBlock x:Name="DoctorModels" TextWrapping="Wrap"
+                                               IsTextSelectionEnabled="True" Text="Not checked" />
+                                </StackPanel>
+                            </Border>
+                        </local:CardGrid>
+                        <TextBlock Text="Checks and recommended actions" Style="{StaticResource InferBridgeSectionHeaderStyle}" />
                         <ItemsControl x:Name="DoctorChecks"
                                       AutomationProperties.Name="System Doctor health checks" />
-                        <TextBlock Text="Runtime upgrade and model health" FontSize="18"
-                                   FontWeight="SemiBold" />
-                        <TextBlock Text="Remediation from the Web UI model health center: the engine recommends revalidation, compiled-cache rebuild, reconversion or acknowledgement for each converted model after an OpenVINO change. Conversion provenance is never rewritten by validation. Each action asks for confirmation."
-                                   TextWrapping="Wrap" Opacity="0.8" />
-                        <Button x:Name="ModelHealthRefreshButton" Content="Check model health"
-                                Click="ModelHealthRefreshButton_Click" />
-                        <TextBlock x:Name="ModelHealthSummary" TextWrapping="Wrap"
-                                   IsTextSelectionEnabled="True" Text="Not checked"
-                                   AutomationProperties.LiveSetting="Polite" />
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <Button x:Name="ModelHealthRevalidateButton" Content="Revalidate eligible"
-                                    Tag="revalidate" IsEnabled="False" Click="ModelHealthBatch_Click" />
-                            <Button x:Name="ModelHealthCacheButton" Content="Rebuild affected caches"
-                                    Tag="rebuild_compiled_cache" IsEnabled="False" Click="ModelHealthBatch_Click" />
-                        </StackPanel>
-                        <StackPanel x:Name="ModelHealthRows" Spacing="8"
-                                    AutomationProperties.Name="Per-model runtime health and actions" />
+                        <Border Style="{StaticResource InferBridgeCardStyle}">
+                            <StackPanel Spacing="12">
+                                <TextBlock Text="Runtime upgrade and model health" Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
+                                <TextBlock Text="Remediation from the Web UI model health center: the engine recommends revalidation, compiled-cache rebuild, reconversion or acknowledgement for each converted model after an OpenVINO change. Conversion provenance is never rewritten by validation. Each action asks for confirmation."
+                                           Style="{StaticResource InferBridgeHelpTextStyle}" />
+                                <local:WrapRow Spacing="8">
+                                    <Button x:Name="ModelHealthRefreshButton" Content="Check model health"
+                                            Click="ModelHealthRefreshButton_Click" />
+                                    <Button x:Name="ModelHealthRevalidateButton" Content="Revalidate eligible"
+                                            Tag="revalidate" IsEnabled="False" Click="ModelHealthBatch_Click" />
+                                    <Button x:Name="ModelHealthCacheButton" Content="Rebuild affected caches"
+                                            Tag="rebuild_compiled_cache" IsEnabled="False" Click="ModelHealthBatch_Click" />
+                                </local:WrapRow>
+                                <TextBlock x:Name="ModelHealthSummary" TextWrapping="Wrap"
+                                           IsTextSelectionEnabled="True" Text="Not checked"
+                                           AutomationProperties.LiveSetting="Polite" />
+                                <StackPanel x:Name="ModelHealthRows" Spacing="8"
+                                            AutomationProperties.Name="Per-model runtime health and actions" />
+                            </StackPanel>
+                        </Border>
                         <TextBlock Text="The support report excludes credentials, prompts, chat content, model errors, and local file paths. Review copied text before sharing."
-                                   TextWrapping="Wrap" Opacity="0.8" />
+                                   Style="{StaticResource InferBridgeHelpTextStyle}" />
                     </StackPanel>
                 </ScrollViewer>
                 <ScrollViewer x:Name="OperationsPanel" Visibility="Collapsed"
@@ -334,90 +420,138 @@
                 </ScrollViewer>
                 <ScrollViewer x:Name="BenchmarkPanel" Visibility="Collapsed"
                               HorizontalScrollBarVisibility="Disabled">
-                    <StackPanel MaxWidth="840" HorizontalAlignment="Stretch" Spacing="14">
-                        <TextBlock Text="Benchmark Lab" FontSize="28" FontWeight="SemiBold" />
-                        <TextBlock Text="Review local benchmark runs and compare compatible measurements. The Python/OpenVINO engine owns every measurement and the saved history."
-                                   TextWrapping="Wrap" Opacity="0.8" />
-                        <TextBlock Text="Configure a benchmark" FontSize="18" FontWeight="SemiBold" />
-                        <TextBlock Text="Choose prepared generation models and devices reported by this engine. Selections do not load or download models."
-                                   TextWrapping="Wrap" Opacity="0.8" />
-                        <InfoBar x:Name="BenchmarkConfigurationInfo" Title="Benchmark configuration"
-                                 IsOpen="True" IsClosable="False" Severity="Informational"
-                                 Message="Refresh engine capabilities to configure a local benchmark." />
-                        <Button x:Name="BenchmarkConfigurationRefreshButton" Content="Refresh models and devices"
-                                HorizontalAlignment="Left"
-                                Click="BenchmarkConfigurationRefreshButton_Click" />
-                        <TextBlock Text="Generation models" FontWeight="SemiBold" />
-                        <ScrollViewer MaxHeight="224" VerticalScrollBarVisibility="Auto"
-                                      HorizontalScrollBarVisibility="Disabled">
-                            <StackPanel x:Name="BenchmarkModelChoices" Spacing="4">
-                                <TextBlock Text="No model inventory loaded." TextWrapping="Wrap" />
+                    <StackPanel MaxWidth="{StaticResource InferBridgeContentMaxWidth}" HorizontalAlignment="Stretch"
+                                Spacing="16" Padding="0,0,0,24">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Style="{StaticResource InferBridgeHeaderRuleStyle}" />
+                            <StackPanel Grid.Column="1" Spacing="2">
+                                <TextBlock Text="Benchmark Lab" Style="{StaticResource InferBridgePageTitleStyle}" />
+                                <TextBlock Text="Measure prepared models on detected devices and compare compatible runs. The Python/OpenVINO engine owns every measurement and the saved history."
+                                           Style="{StaticResource InferBridgeHelpTextStyle}" />
                             </StackPanel>
-                        </ScrollViewer>
-                        <TextBlock Text="Requested execution devices" FontWeight="SemiBold" />
-                        <StackPanel x:Name="BenchmarkDeviceChoices" Spacing="4">
-                            <TextBlock Text="No devices reported." TextWrapping="Wrap" />
-                        </StackPanel>
-                        <ComboBox x:Name="BenchmarkPresetPicker" Header="Benchmark thoroughness"
-                                  HorizontalAlignment="Stretch" MaxWidth="400"
-                                  AutomationProperties.Name="Benchmark workload preset"
-                                  SelectedIndex="1"
-                                  >
-                            <ComboBoxItem Content="Quick · 1 warm-up, 3 measured, 32 tokens" Tag="quick" />
-                            <ComboBoxItem Content="Standard · 1 warm-up, 5 measured, 64 tokens" Tag="standard" />
-                            <ComboBoxItem Content="Thorough · 2 warm-ups, 8 measured, 128 tokens" Tag="thorough" />
-                        </ComboBox>
-                        <TextBlock x:Name="BenchmarkWorkload" TextWrapping="Wrap"
-                                   AutomationProperties.LiveSetting="Polite"
-                                   Text="Select prepared models and detected devices to estimate the workload." />
-                        <Button x:Name="BenchmarkRunButton" Content="Start benchmark" IsEnabled="False"
-                                HorizontalAlignment="Left" Click="BenchmarkRunButton_Click" />
-                        <ProgressBar x:Name="BenchmarkActivityProgress" Minimum="0" Maximum="100"
-                                     IsIndeterminate="False" Value="0" Height="4"
-                                     AutomationProperties.Name="Engine-reported benchmark completion" />
-                        <StackPanel Spacing="6">
-                            <ProgressRing x:Name="BenchmarkActivityRing" Width="22" Height="22"
-                                          IsActive="False" />
-                            <TextBlock x:Name="BenchmarkActivityLabel" TextWrapping="Wrap"
-                                       AutomationProperties.LiveSetting="Polite"
-                                       Text="No benchmark running in this window." />
-                        </StackPanel>
-                        <TextBlock Text="No benchmark cancellation API is available. Stopping monitoring or closing the window is not a cancellation command. Requested AUTO and actual execution devices are reported separately."
-                                   TextWrapping="Wrap" Opacity="0.8" />
-                        <TextBlock Text="Benchmark history" FontSize="18" FontWeight="SemiBold" />
-                        <InfoBar x:Name="BenchmarkHistoryInfo" Title="Benchmark history"
-                                 IsOpen="True" IsClosable="False" Severity="Informational"
-                                 Message="Open Benchmark Lab to load measured results from the local engine." />
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <Button x:Name="BenchmarkHistoryRefreshButton" Content="Refresh history"
-                                    Click="BenchmarkHistoryRefreshButton_Click" />
+                        </Grid>
+                        <local:WrapRow Spacing="8">
+                            <Button x:Name="BenchmarkHistoryRefreshButton" Click="BenchmarkHistoryRefreshButton_Click">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE72C;" FontSize="14" />
+                                    <TextBlock Text="Refresh history" />
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="BenchmarkConfigurationRefreshButton" Click="BenchmarkConfigurationRefreshButton_Click">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE950;" FontSize="14" />
+                                    <TextBlock Text="Refresh models and devices" />
+                                </StackPanel>
+                            </Button>
+                            <Button Click="BenchmarkOpenQuickButton_Click">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE916;" FontSize="14" />
+                                    <TextBlock Text="Quick benchmark" />
+                                </StackPanel>
+                            </Button>
                             <ProgressRing x:Name="BenchmarkHistoryProgress" IsActive="False"
-                                          Width="26" Height="26" />
-                            <Button Content="Quick benchmark" Click="BenchmarkOpenQuickButton_Click" />
-                        </StackPanel>
-                        <TextBlock Text="Saved manual runs" FontSize="18" FontWeight="SemiBold" />
-                        <TextBlock Text="Up to 100 recent runs are read from the engine. Automatic advisor runs are omitted. No benchmark is started when selecting history."
-                                   TextWrapping="Wrap" Opacity="0.8" />
-                        <ComboBox x:Name="BenchmarkPrimaryPicker" Header="View a benchmark run"
-                                  AutomationProperties.Name="Select saved benchmark run"
-                                  HorizontalAlignment="Stretch" MaxWidth="700" MinWidth="260"
-                                  SelectionChanged="BenchmarkPicker_SelectionChanged" />
-                        <StackPanel x:Name="BenchmarkDetailsRows" Spacing="10">
-                            <TextBlock Text="No run selected." TextWrapping="Wrap" />
-                        </StackPanel>
-                        <TextBlock Text="Compare previous evidence" FontSize="18"
-                                   FontWeight="SemiBold" />
-                        <ComboBox x:Name="BenchmarkComparePicker" Header="Compare with another run"
-                                  PlaceholderText="No comparison selected"
-                                  AutomationProperties.Name="Select comparison benchmark run"
-                                  HorizontalAlignment="Stretch" MaxWidth="700" MinWidth="260"
-                                  SelectionChanged="BenchmarkPicker_SelectionChanged" />
-                        <TextBlock x:Name="BenchmarkComparisonSummary" TextWrapping="Wrap"
-                                   IsTextSelectionEnabled="True"
-                                   AutomationProperties.LiveSetting="Polite"
-                                   Text="Choose two compatible runs to see measured changes." />
-                        <TextBlock Text="A comparison requires matching hardware fingerprint, synthetic/real mode, methodology, output tokens, measured runs, warm-ups, model, source, precision, requested device and actual execution device. Unavailable measurements never become zero or invented deltas."
-                                   TextWrapping="Wrap" Opacity="0.8" />
+                                          Width="24" Height="24" VerticalAlignment="Center" />
+                        </local:WrapRow>
+                        <local:CardGrid MaxColumns="2">
+                            <Border Style="{StaticResource InferBridgeCardStyle}">
+                                <StackPanel Spacing="12">
+                                    <TextBlock Text="Configure a benchmark" Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
+                                    <TextBlock Text="Choose prepared generation models and devices reported by this engine. Selections do not load or download models."
+                                               Style="{StaticResource InferBridgeHelpTextStyle}" />
+                                    <InfoBar x:Name="BenchmarkConfigurationInfo" Title="Benchmark configuration"
+                                             IsOpen="True" IsClosable="False" Severity="Informational"
+                                             Message="Refresh engine capabilities to configure a local benchmark." />
+                                    <TextBlock Text="Generation models" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                    <ScrollViewer MaxHeight="224" VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled">
+                                        <StackPanel x:Name="BenchmarkModelChoices" Spacing="4">
+                                            <TextBlock Text="No model inventory loaded." TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </ScrollViewer>
+                                    <TextBlock Text="Requested execution devices" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                    <StackPanel x:Name="BenchmarkDeviceChoices" Spacing="4">
+                                        <TextBlock Text="No devices reported." TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <ComboBox x:Name="BenchmarkPresetPicker" Header="Benchmark thoroughness"
+                                              HorizontalAlignment="Stretch"
+                                              AutomationProperties.Name="Benchmark workload preset"
+                                              SelectedIndex="1">
+                                        <ComboBoxItem Content="Quick · 1 warm-up, 3 measured, 32 tokens" Tag="quick" />
+                                        <ComboBoxItem Content="Standard · 1 warm-up, 5 measured, 64 tokens" Tag="standard" />
+                                        <ComboBoxItem Content="Thorough · 2 warm-ups, 8 measured, 128 tokens" Tag="thorough" />
+                                    </ComboBox>
+                                    <TextBlock x:Name="BenchmarkWorkload" TextWrapping="Wrap"
+                                               AutomationProperties.LiveSetting="Polite"
+                                               Text="Select prepared models and detected devices to estimate the workload." />
+                                    <Button x:Name="BenchmarkRunButton" IsEnabled="False"
+                                            Style="{StaticResource AccentButtonStyle}"
+                                            Click="BenchmarkRunButton_Click">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <FontIcon Glyph="&#xE768;" FontSize="14" />
+                                            <TextBlock Text="Start benchmark" />
+                                        </StackPanel>
+                                    </Button>
+                                    <ProgressBar x:Name="BenchmarkActivityProgress" Minimum="0" Maximum="100"
+                                                 IsIndeterminate="False" Value="0"
+                                                 AutomationProperties.Name="Engine-reported benchmark completion" />
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <ProgressRing x:Name="BenchmarkActivityRing" Width="20" Height="20"
+                                                      IsActive="False" />
+                                        <TextBlock x:Name="BenchmarkActivityLabel" TextWrapping="Wrap"
+                                                   VerticalAlignment="Center"
+                                                   AutomationProperties.LiveSetting="Polite"
+                                                   Text="No benchmark running in this window." />
+                                    </StackPanel>
+                                    <TextBlock Text="No benchmark cancellation API is available. Stopping monitoring or closing the window is not a cancellation command. Requested AUTO and actual execution devices are reported separately."
+                                               Style="{StaticResource InferBridgeHelpTextStyle}" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource InferBridgeCardStyle}">
+                                <StackPanel Spacing="16">
+                                    <TextBlock Text="Selected run at a glance" Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
+                                    <local:BarChart x:Name="BenchmarkSpeedChart" Title="Decode throughput"
+                                                    Unit=" tok/s" EmptyText="Select a saved run with successful results." />
+                                    <local:BarChart x:Name="BenchmarkTtftChart" Title="First-token latency"
+                                                    Unit=" ms" Format="0" LowerIsBetter="True"
+                                                    EmptyText="Select a saved run with successful results." />
+                                    <local:Sparkline x:Name="BenchmarkTrend" Title="Best decode throughput per saved run"
+                                                     Unit=" tok/s" />
+                                </StackPanel>
+                            </Border>
+                        </local:CardGrid>
+                        <Border Style="{StaticResource InferBridgeCardStyle}">
+                            <StackPanel Spacing="12">
+                                <TextBlock Text="Saved manual runs" Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
+                                <InfoBar x:Name="BenchmarkHistoryInfo" Title="Benchmark history"
+                                         IsOpen="True" IsClosable="False" Severity="Informational"
+                                         Message="Open Benchmark Lab to load measured results from the local engine." />
+                                <TextBlock Text="Up to 100 recent runs are read from the engine. Automatic advisor runs are omitted. No benchmark is started when selecting history."
+                                           Style="{StaticResource InferBridgeHelpTextStyle}" />
+                                <ComboBox x:Name="BenchmarkPrimaryPicker" Header="View a benchmark run"
+                                          AutomationProperties.Name="Select saved benchmark run"
+                                          HorizontalAlignment="Stretch" MaxWidth="700" MinWidth="260"
+                                          SelectionChanged="BenchmarkPicker_SelectionChanged" />
+                                <StackPanel x:Name="BenchmarkDetailsRows" Spacing="10">
+                                    <TextBlock Text="No run selected." TextWrapping="Wrap" />
+                                </StackPanel>
+                                <TextBlock Text="Compare previous evidence" Style="{StaticResource InferBridgeSectionHeaderStyle}" />
+                                <ComboBox x:Name="BenchmarkComparePicker" Header="Compare with another run"
+                                          PlaceholderText="No comparison selected"
+                                          AutomationProperties.Name="Select comparison benchmark run"
+                                          HorizontalAlignment="Stretch" MaxWidth="700" MinWidth="260"
+                                          SelectionChanged="BenchmarkPicker_SelectionChanged" />
+                                <TextBlock x:Name="BenchmarkComparisonSummary" TextWrapping="Wrap"
+                                           IsTextSelectionEnabled="True"
+                                           AutomationProperties.LiveSetting="Polite"
+                                           Text="Choose two compatible runs to see measured changes." />
+                                <TextBlock Text="A comparison requires matching hardware fingerprint, synthetic/real mode, methodology, output tokens, measured runs, warm-ups, model, source, precision, requested device and actual execution device. Unavailable measurements never become zero or invented deltas."
+                                           Style="{StaticResource InferBridgeHelpTextStyle}" />
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </ScrollViewer>
                 <ScrollViewer x:Name="StoragePanel" Visibility="Collapsed"

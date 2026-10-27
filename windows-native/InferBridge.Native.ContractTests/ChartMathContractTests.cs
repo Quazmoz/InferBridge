@@ -85,6 +85,36 @@ internal static class ChartMathContractTests
         Check(counts.Select(item => item.Value).SequenceEqual(new double?[] { 2, 1, 1, 1 }), "doctor summary counts");
         Check(ChartMath.Format(1234.56, " MB") == "1234.6 MB" && ChartMath.Format(null, " MB") == "Not reported",
             "invariant number formatting");
+        // Benchmark chart series come only from engine measurements.
+        BenchmarkMeasurement Row(string model, string actual, bool success, double? decode, double? legacy,
+            double? ttft, bool synthetic = false) => new(model, "src", "INT4", "AUTO", actual, success, synthetic,
+            decode, legacy, ttft, 1000, 10, 100, 5, 32);
+        BenchmarkRun Run(string id, string at, bool synthetic, params BenchmarkMeasurement[] rows) =>
+            new(id, at, "quick", 2, 32, 3, 1, "hw", synthetic, rows);
+        var run = Run("r2", "2026-10-02T10:00:00Z", false,
+            Row("m", "GPU", true, 20, null, 300),
+            Row("m", "", true, null, 15, 400),
+            Row("m", "NPU", false, 99, 99, 99));
+        var speed = BenchmarkHistory.SpeedSeries(run);
+        Check(speed[0] == ("m INT4 · GPU", 20.0), "decode series label/value");
+        Check(speed[1].Label == "m INT4 · AUTO (actual not reported) (legacy overall)" && speed[1].Value == 15,
+            "legacy rate must be labelled and the requested device marked as such");
+        Check(speed[2].Value is null, "failed result plotted a value");
+        var ttft = BenchmarkHistory.FirstTokenSeries(run);
+        Check(ttft[0].Value == 300 && ttft[2].Value is null, "first-token series");
+        var history = new[]
+        {
+            run,
+            Run("r1", "2026-10-01T10:00:00Z", false, Row("m", "GPU", true, 10, null, 1)),
+            Run("r3", "not a date", false, Row("m", "GPU", true, 50, null, 1)),
+            Run("r0", "2026-09-30T10:00:00Z", true, Row("m", "CPU", true, 999, null, 1, synthetic: true)),
+            Run("r4", "2026-10-03T10:00:00Z", false, Row("m", "GPU", true, null, 12, 1)),
+        };
+        var trend = BenchmarkHistory.DecodeTrend(history, synthetic: false);
+        Check(trend.SequenceEqual(new double?[] { 10, 20, null }),
+            "trend must be oldest-first, real-only, skip unparseable times and never borrow legacy rates");
+        Check(BenchmarkHistory.DecodeTrend(history, synthetic: true).SequenceEqual(new double?[] { 999 }),
+            "synthetic trend must stay separate");
         Console.WriteLine("Native chart math contract: all cases passed.");
     }
 }
