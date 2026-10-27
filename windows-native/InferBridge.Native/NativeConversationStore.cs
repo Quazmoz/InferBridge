@@ -14,8 +14,14 @@ internal sealed class NativeConversationStore
     private const int MaximumConversations = 40;
     private readonly string _path;
 
+    // Pinned/Archived mirror the browser conversation flags. They default to
+    // false so history files written before these flags existed still load.
     internal sealed record SavedChat(string Id, string ModelId, string Title,
-        DateTimeOffset UpdatedUtc, List<ChatTurn> Turns);
+        DateTimeOffset UpdatedUtc, List<ChatTurn> Turns, bool Pinned = false, bool Archived = false);
+
+    /// <summary>Retention never removes a pinned chat, so a store of only pinned chats is full.</summary>
+    internal sealed class HistoryFullException() : InvalidOperationException(
+        "Every saved conversation slot is pinned. Unpin or delete one before saving another.");
 
     private sealed record Envelope(int Version, List<SavedChat> Conversations);
 
@@ -80,13 +86,15 @@ internal sealed class NativeConversationStore
     }
 
     // Local-only lookup: search stays on the user's PC, never the inference API.
-    internal IReadOnlyList<SavedChat> Find(string? query)
+    // Like the browser list: one view (active or archived), pinned first, newest next.
+    internal IReadOnlyList<SavedChat> Find(string? query, bool archived = false)
     {
         string search = query?.Trim() ?? string.Empty;
         if (search.Length > 120)
             throw new ArgumentException("Search query is too long.", nameof(query));
-        var chats = ReadAll();
-        if (search.Length == 0) return chats;
+        var chats = ReadAll().Where(chat => chat.Archived == archived)
+            .OrderByDescending(chat => chat.Pinned).ThenByDescending(chat => chat.UpdatedUtc);
+        if (search.Length == 0) return chats.ToList();
         return chats.Where(chat =>
             chat.Title.Contains(search, StringComparison.OrdinalIgnoreCase)
             || chat.ModelId.Contains(search, StringComparison.OrdinalIgnoreCase)
@@ -117,11 +125,62 @@ internal sealed class NativeConversationStore
     {
         var chats = ReadAll().ToList();
         var existing = chats.FirstOrDefault(row => row.Id == chat.Id);
-        // Continuing a chat must not erase its user-edited title.
-        if (existing is not null) chat = chat with { Title = existing.Title };
+        // Continuing a chat must not erase its user-edited title or its flags.
+        if (existing is not null)
+            chat = chat with { Title = existing.Title, Pinned = existing.Pinned, Archived = existing.Archived };
         chats.RemoveAll(row => row.Id == chat.Id);
         chats.Insert(0, chat);
-        Write(chats.Take(MaximumConversations).ToList());
+        Write(Retain(chats));
+    }
+
+    // Drop the oldest unpinned chats beyond the limit; the chat being written
+    // (index 0) and every pinned chat are kept, matching browser retention.
+    private static List<SavedChat> Retain(List<SavedChat> chats)
+    {
+        for (int i = chats.Count - 1; i >= 1 && chats.Count > MaximumConversations; i--)
+            if (!chats[i].Pinned) chats.RemoveAt(i);
+        if (chats.Count > MaximumConversations) throw new HistoryFullException();
+        return chats;
+    }
+
+    internal bool SetPinned(string id, bool pinned) =>
+        Update(id, chat => chat.Pinned == pinned ? null : chat with { Pinned = pinned });
+
+    internal bool SetArchived(string id, bool archived) =>
+        Update(id, chat => chat.Archived == archived ? null : chat with { Archived = archived });
+
+    /// <summary>Copy a saved chat under a new id, like the browser: "… copy", unpinned, active.</summary>
+    internal SavedChat? Duplicate(string id, string newId)
+    {
+        if (!Guid.TryParseExact(id, "N", out _) || !Guid.TryParseExact(newId, "N", out _))
+            return null;
+        var chats = ReadAll().ToList();
+        var source = chats.FirstOrDefault(row => row.Id == id);
+        if (source is null || chats.Any(row => row.Id == newId)) return null;
+        string title = source.Title.Length > 75 ? source.Title[..75] : source.Title;
+        var copy = source with
+        {
+            Id = newId, Title = title + " copy", UpdatedUtc = DateTimeOffset.UtcNow,
+            Turns = source.Turns.ToList(), Pinned = false, Archived = false,
+        };
+        chats.Insert(0, copy);
+        Write(Retain(chats));
+        return copy;
+    }
+
+    // Apply one flag change; a null result means "already in that state".
+    private bool Update(string id, Func<SavedChat, SavedChat?> change)
+    {
+        if (!Guid.TryParseExact(id, "N", out _)) return false;
+        var chats = ReadAll().ToList();
+        int index = chats.FindIndex(row => row.Id == id);
+        if (index < 0) return false;
+        SavedChat? updated = change(chats[index]);
+        if (updated is null) return true;
+        chats.RemoveAt(index);
+        chats.Insert(0, updated with { UpdatedUtc = DateTimeOffset.UtcNow });
+        Write(chats);
+        return true;
     }
 
     internal bool Rename(string id, string title)
@@ -160,7 +219,7 @@ internal sealed class NativeConversationStore
     internal const int MaximumImportBytes = 4 * 1024 * 1024; // Same as the web import.
 
     internal sealed record ImportedChat(string Title, string? ModelId, string? SystemPrompt,
-        List<ChatTurn> Turns, int SourceMessages);
+        List<ChatTurn> Turns, int SourceMessages, bool Pinned = false, bool Archived = false);
 
     internal static string ExportMarkdown(string title, IReadOnlyList<ChatTurn> turns,
         string? modelId, DateTimeOffset now)
@@ -180,7 +239,8 @@ internal sealed class NativeConversationStore
     }
 
     internal static string ExportJson(string title, IReadOnlyList<ChatTurn> turns,
-        string? modelId, string? systemPrompt, DateTimeOffset now)
+        string? modelId, string? systemPrompt, DateTimeOffset now,
+        bool pinned = false, bool archived = false)
     {
         long stamp = now.ToUnixTimeMilliseconds();
         return JsonSerializer.Serialize(new
@@ -195,8 +255,8 @@ internal sealed class NativeConversationStore
                 title = SafeTitle(title),
                 created = stamp,
                 updated = stamp,
-                pinned = false,
-                archived = false,
+                pinned,
+                archived,
                 model_id = string.IsNullOrWhiteSpace(modelId) ? null : modelId,
                 system_prompt = systemPrompt ?? "",
                 messages = turns.Select(turn => new { role = turn.Role, content = turn.Content }),
@@ -280,9 +340,13 @@ internal sealed class NativeConversationStore
             string? model = Text("model_id", 512)?.Trim();
             string? system = Text("system_prompt", ChatRequestContext.MaximumSystemPromptChars);
             string title = SafeTitle(Text("title", 120) ?? "Imported conversation");
+            // Same rule as the browser import: only a literal JSON true sets a flag.
+            bool Flag(string name) => source.TryGetProperty(name, out var value)
+                && value.ValueKind == JsonValueKind.True;
             return new ImportedChat(title[..Math.Min(title.Length, 80)],
                 string.IsNullOrWhiteSpace(model) ? null : model,
-                string.IsNullOrWhiteSpace(system) ? null : system, kept, turns.Count);
+                string.IsNullOrWhiteSpace(system) ? null : system, kept, turns.Count,
+                Flag("pinned"), Flag("archived"));
         }
     }
 

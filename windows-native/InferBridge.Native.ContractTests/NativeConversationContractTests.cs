@@ -162,6 +162,98 @@ internal static class NativeConversationContractTests
                 System.Text.Encoding.UTF8.GetBytes(bad)), "unsupported import was accepted: " + bad);
         Expect<InvalidDataException>(() => NativeConversationStore.ImportJson(
             new byte[NativeConversationStore.MaximumImportBytes + 1]), "oversized import was accepted");
+        RunPinArchiveDuplicate(root);
         Console.WriteLine("Native opt-in conversation history contract: all cases passed.");
+    }
+
+    // Pin, archive and duplicate follow the browser conversation manager and
+    // stay compatible with its "inferbridge-conversation" JSON flags.
+    private static void RunPinArchiveDuplicate(string root)
+    {
+        string folder = Path.Combine(root, "local-conversation-flags");
+        string filename = Path.Combine(folder, "native-conversations.json");
+        var store = new NativeConversationStore(filename);
+        ChatTurn[] Pair(string text) => new[]
+        {
+            new ChatTurn("user", text), new ChatTurn("assistant", "Reply to " + text),
+        };
+
+        // Files written before the flags existed still load, unpinned and active.
+        Directory.CreateDirectory(folder);
+        string legacyId = Guid.NewGuid().ToString("N");
+        File.WriteAllText(filename, JsonSerializer.Serialize(new
+        {
+            Version = 1,
+            Conversations = new[]
+            {
+                new { Id = legacyId, ModelId = "model-a", Title = "Legacy", UpdatedUtc = DateTimeOffset.UtcNow,
+                    Turns = Pair("legacy") },
+            },
+        }));
+        var legacy = store.ReadAll().Single();
+        Check(!legacy.Pinned && !legacy.Archived && store.Find(null).Count == 1
+            && store.Find(null, archived: true).Count == 0, "legacy history without flags did not load");
+
+        string a = Guid.NewGuid().ToString("N"), b = Guid.NewGuid().ToString("N");
+        store.Save(NativeConversationStore.Create(a, "model-a", Pair("alpha")));
+        store.Save(NativeConversationStore.Create(b, "model-a", Pair("beta")));
+        Check(store.Find(null)[0].Id == b, "newest chat was not listed first");
+        Check(store.SetPinned(a, true) && store.SetPinned(a, true), "pin failed or was not idempotent");
+        store.Save(NativeConversationStore.Create(b, "model-a", Pair("beta")));
+        var listed = store.Find(null);
+        Check(listed[0].Id == a && listed[0].Pinned && listed[1].Id == b,
+            "pinned chat is not listed before newer unpinned chats");
+        store.Save(NativeConversationStore.Create(a, "model-a", Pair("alpha")));
+        Check(store.ReadAll().Single(row => row.Id == a).Pinned, "continuing a chat dropped its pin");
+
+        Check(store.SetArchived(b, true), "archive failed");
+        Check(store.Find(null).All(row => row.Id != b) && store.Find(null, archived: true).Single().Id == b
+            && store.Find("beta", archived: true).Count == 1 && store.Find("beta").Count == 0,
+            "archived chat is not separated from the active list and search");
+        store.Save(NativeConversationStore.Create(b, "model-a", Pair("beta")));
+        Check(store.ReadAll().Single(row => row.Id == b).Archived, "continuing an archived chat restored it");
+        Check(store.SetArchived(b, false) && store.Find(null).Any(row => row.Id == b),
+            "restoring from archive failed");
+        Check(!store.SetPinned(Guid.NewGuid().ToString("N"), true) && !store.SetArchived("not-a-guid", true),
+            "flagging a missing or invalid conversation succeeded");
+
+        Check(store.Rename(a, new string('t', 80)), "rename for duplicate setup failed");
+        string copyId = Guid.NewGuid().ToString("N");
+        var copy = store.Duplicate(a, copyId);
+        Check(copy is not null && copy.Id == copyId && !copy.Pinned && !copy.Archived
+            && copy.Title == new string('t', 75) + " copy" && copy.Turns.SequenceEqual(Pair("alpha")),
+            "duplicate does not follow the browser copy rules");
+        var reopened = new NativeConversationStore(filename).ReadAll();
+        Check(reopened.Count(row => row.Turns.SequenceEqual(Pair("alpha"))) == 2
+            && reopened.Single(row => row.Id == a).Pinned, "duplicate changed or lost the original");
+        Check(store.Duplicate(a, copyId) is null && store.Duplicate(Guid.NewGuid().ToString("N"),
+            Guid.NewGuid().ToString("N")) is null, "duplicate reused an id or copied a missing chat");
+
+        // Retention removes the oldest unpinned chats only, never pinned ones.
+        for (int i = 0; i < 45; i++)
+            store.Save(NativeConversationStore.Create(Guid.NewGuid().ToString("N"), "model-a", Pair("fill " + i)));
+        var retained = store.ReadAll();
+        Check(retained.Count == 40 && retained.Any(row => row.Id == a && row.Pinned)
+            && retained.Any(row => row.Turns[0].Content == "fill 44"), "retention removed a pinned chat");
+        foreach (var row in retained) store.SetPinned(row.Id, true);
+        Expect<NativeConversationStore.HistoryFullException>(() => store.Save(NativeConversationStore.Create(
+            Guid.NewGuid().ToString("N"), "model-a", Pair("overflow"))), "a full pinned history dropped a chat");
+        Check(store.ReadAll().Count == 40 && store.ReadAll().All(row => row.Pinned),
+            "a refused save changed the pinned history");
+
+        // JSON exchange carries the flags both ways, like the browser export.
+        string exported = NativeConversationStore.ExportJson("Flags", Pair("flag"), "model-a", null,
+            DateTimeOffset.UtcNow, pinned: true, archived: true);
+        using (var document = JsonDocument.Parse(exported))
+        {
+            var conversation = document.RootElement.GetProperty("conversation");
+            Check(conversation.GetProperty("pinned").GetBoolean() && conversation.GetProperty("archived").GetBoolean(),
+                "JSON export dropped pin or archive flags");
+        }
+        var imported = NativeConversationStore.ImportJson(System.Text.Encoding.UTF8.GetBytes(exported));
+        Check(imported.Pinned && imported.Archived, "JSON import dropped pin or archive flags");
+        var plain = NativeConversationStore.ImportJson(System.Text.Encoding.UTF8.GetBytes(
+            exported.Replace("\"pinned\": true", "\"pinned\": \"yes\"").Replace("\"archived\": true", "\"archived\": 1")));
+        Check(!plain.Pinned && !plain.Archived, "a non-boolean flag was treated as true");
     }
 }

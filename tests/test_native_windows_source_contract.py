@@ -876,3 +876,30 @@ def test_native_huggingface_dialog_offers_web_conversion_options():
         assert field in client
     # Remote code stays disabled in native even though the web offers an opt-in.
     assert "trust_remote_code = false" in client
+
+
+def test_native_conversation_pin_archive_duplicate_match_browser_flags():
+    names = _native_names()
+    for name, kind in (
+        ("PinSavedChatButton", "Button"),
+        ("ArchiveSavedChatButton", "Button"),
+        ("DuplicateSavedChatButton", "Button"),
+        ("ShowArchivedChatsToggle", "CheckBox"),
+    ):
+        assert names[name] == XAML + kind
+    store = (PROJECT / "NativeConversationStore.cs").read_text(encoding="utf-8")
+    flags = (PROJECT / "MainWindow.ConversationFlags.cs").read_text(encoding="utf-8")
+    tools = (PROJECT / "MainWindow.ChatTools.cs").read_text(encoding="utf-8")
+    # Older history files without flags must still load.
+    assert "bool Pinned = false, bool Archived = false" in store
+    # Retention never drops pinned chats; a full pinned store refuses the save.
+    assert "if (!chats[i].Pinned) chats.RemoveAt(i);" in store
+    assert "HistoryFullException" in store
+    # The browser's JSON export flags round-trip, and only a literal true counts.
+    assert "value.ValueKind == JsonValueKind.True" in store
+    assert 'Flag("pinned"), Flag("archived")' in store
+    assert "flags?.Pinned == true, flags?.Archived == true" in tools
+    assert "ApplyImportedFlags(imported)" in tools
+    assert 'Title = title + " copy"' in store
+    # Local-only: these actions never call the engine.
+    assert "_backend." not in flags

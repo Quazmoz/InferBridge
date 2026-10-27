@@ -78,6 +78,10 @@ public sealed partial class MainWindow : Window
             SavedChatsSearch.IsEnabled = false;
             RenameSavedChatButton.IsEnabled = false;
             DeleteSavedChatButton.IsEnabled = false;
+            PinSavedChatButton.IsEnabled = false;
+            ArchiveSavedChatButton.IsEnabled = false;
+            DuplicateSavedChatButton.IsEnabled = false;
+            ShowArchivedChatsToggle.IsEnabled = false;
             ShowChatInfo("Saved history unavailable",
                 "Could not read this installation's history storage. Existing files were not modified.",
                 InfoBarSeverity.Warning);
@@ -747,7 +751,8 @@ public sealed partial class MainWindow : Window
     private void RefreshSavedChats(string? selectedId = null)
     {
         if (_conversationStore is null || !_historyAvailable) return;
-        var chats = _conversationStore.Find(SavedChatsSearch.Text);
+        var chats = _conversationStore.Find(SavedChatsSearch.Text,
+            archived: ShowArchivedChatsToggle.IsChecked == true);
         _updatingSavedChats = true;
         try
         {
@@ -756,7 +761,8 @@ public sealed partial class MainWindow : Window
             {
                 var item = new ComboBoxItem
                 {
-                    Content = chat.Title + " · " + chat.UpdatedUtc.ToLocalTime().ToString("g"),
+                    Content = (chat.Pinned ? "📌 " : "") + chat.Title + " · "
+                        + chat.UpdatedUtc.ToLocalTime().ToString("g"),
                     Tag = chat,
                 };
                 SavedChatsPicker.Items.Add(item);
@@ -765,7 +771,11 @@ public sealed partial class MainWindow : Window
             bool canEdit = !_chatBusy && !_quitting
                 && SavedChatsPicker.SelectedItem is ComboBoxItem;
             DeleteSavedChatButton.IsEnabled = canEdit;
+            PinSavedChatButton.IsEnabled = canEdit;
+            ArchiveSavedChatButton.IsEnabled = canEdit;
+            DuplicateSavedChatButton.IsEnabled = canEdit;
             RenameSavedChatButton.IsEnabled = canEdit;
+            UpdateSavedChatFlagLabels();
         }
         finally { _updatingSavedChats = false; }
     }
@@ -783,6 +793,10 @@ public sealed partial class MainWindow : Window
             SavedChatsPicker.IsEnabled = false;
             RenameSavedChatButton.IsEnabled = false;
             DeleteSavedChatButton.IsEnabled = false;
+            PinSavedChatButton.IsEnabled = false;
+            ArchiveSavedChatButton.IsEnabled = false;
+            DuplicateSavedChatButton.IsEnabled = false;
+            ShowArchivedChatsToggle.IsEnabled = false;
             SaveHistoryToggle.IsEnabled = false;
             SaveHistoryToggle.IsChecked = false;
             ShowChatInfo("Saved history unavailable",
@@ -819,6 +833,12 @@ public sealed partial class MainWindow : Window
             RefreshSavedChats(_currentConversationId);
             return true;
         }
+        catch (NativeConversationStore.HistoryFullException error)
+        {
+            // Nothing was written; history stays usable once a pin is removed.
+            ShowChatInfo("Chat generated, but not saved", error.Message, InfoBarSeverity.Warning);
+            return false;
+        }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException
             or InvalidDataException or ArgumentException or System.Text.Json.JsonException)
         {
@@ -829,6 +849,10 @@ public sealed partial class MainWindow : Window
             SavedChatsPicker.IsEnabled = false;
             RenameSavedChatButton.IsEnabled = false;
             DeleteSavedChatButton.IsEnabled = false;
+            PinSavedChatButton.IsEnabled = false;
+            ArchiveSavedChatButton.IsEnabled = false;
+            DuplicateSavedChatButton.IsEnabled = false;
+            ShowArchivedChatsToggle.IsEnabled = false;
             ShowChatInfo("Chat generated, but not saved",
                 "History storage could not be written. The current chat remains open; existing files were preserved.",
                 InfoBarSeverity.Warning);
@@ -840,6 +864,7 @@ public sealed partial class MainWindow : Window
         object sender, SelectionChangedEventArgs args)
     {
         if (_updatingSavedChats || _chatBusy || _closing.IsCancellationRequested) return;
+        UpdateSavedChatFlagLabels();
         if (SavedChatsPicker.SelectedItem is not ComboBoxItem { Tag: NativeConversationStore.SavedChat saved })
             return;
         _currentConversationId = saved.Id;
@@ -910,6 +935,10 @@ public sealed partial class MainWindow : Window
             SavedChatsPicker.IsEnabled = false;
             RenameSavedChatButton.IsEnabled = false;
             DeleteSavedChatButton.IsEnabled = false;
+            PinSavedChatButton.IsEnabled = false;
+            ArchiveSavedChatButton.IsEnabled = false;
+            DuplicateSavedChatButton.IsEnabled = false;
+            ShowArchivedChatsToggle.IsEnabled = false;
             ShowChatInfo("Could not delete saved conversation",
                 "Local history was not safely updated. The existing file was preserved.",
                 InfoBarSeverity.Error);
@@ -965,6 +994,10 @@ public sealed partial class MainWindow : Window
             SavedChatsPicker.IsEnabled = false;
             RenameSavedChatButton.IsEnabled = false;
             DeleteSavedChatButton.IsEnabled = false;
+            PinSavedChatButton.IsEnabled = false;
+            ArchiveSavedChatButton.IsEnabled = false;
+            DuplicateSavedChatButton.IsEnabled = false;
+            ShowArchivedChatsToggle.IsEnabled = false;
             ShowChatInfo("Could not rename saved conversation",
                 "History storage was not safely updated; existing files were preserved.",
                 InfoBarSeverity.Error);
@@ -1281,6 +1314,9 @@ public sealed partial class MainWindow : Window
         bool canEditSavedChat = !_chatBusy && !_quitting && _historyAvailable
             && SavedChatsPicker.SelectedItem is ComboBoxItem;
         DeleteSavedChatButton.IsEnabled = canEditSavedChat;
+        PinSavedChatButton.IsEnabled = canEditSavedChat;
+        ArchiveSavedChatButton.IsEnabled = canEditSavedChat;
+        DuplicateSavedChatButton.IsEnabled = canEditSavedChat;
         RenameSavedChatButton.IsEnabled = canEditSavedChat;
         ChatModelPicker.IsEnabled = !_chatBusy && !_isManaging && !_isRefreshing && !_quitting;
         ChatDevicePicker.IsEnabled = _devicesAvailable && !_chatBusy && !_isManaging

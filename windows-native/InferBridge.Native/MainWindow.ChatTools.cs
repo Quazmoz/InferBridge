@@ -134,9 +134,10 @@ public sealed partial class MainWindow
         try
         {
             string title = CurrentChatTitle();
+            var flags = SavedFlagsForCurrentChat();
             string content = json
                 ? NativeConversationStore.ExportJson(title, _turns, _conversationModelId, _systemPrompt,
-                    DateTimeOffset.UtcNow)
+                    DateTimeOffset.UtcNow, flags?.Pinned == true, flags?.Archived == true)
                 : NativeConversationStore.ExportMarkdown(title, _turns, _conversationModelId,
                     DateTimeOffset.UtcNow);
             string fileName = new string(title.Select(ch =>
@@ -195,6 +196,7 @@ public sealed partial class MainWindow
             try { ChatModelPicker.SelectedItem = option; }
             finally { _updatingModelPicker = false; }
             bool saved = TrySaveCurrentChat();
+            if (saved && SaveHistoryToggle.IsChecked == true) ApplyImportedFlags(imported);
             UpdateChatButtons();
             ShowChatInfo("Conversation imported",
                 "Opened " + imported.Turns.Count + " of " + imported.SourceMessages + " message(s)"

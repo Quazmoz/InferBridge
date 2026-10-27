@@ -678,6 +678,11 @@
                                                      TextChanged="SavedChatsSearch_TextChanged" MaxLength="120"
                                                      HorizontalAlignment="Stretch"
                                                      AutomationProperties.Name="Search local saved conversations" />
+                                            <CheckBox x:Name="ShowArchivedChatsToggle"
+                                                      Content="Show archived conversations"
+                                                      Checked="ShowArchivedChatsToggle_Changed"
+                                                      Unchecked="ShowArchivedChatsToggle_Changed"
+                                                      AutomationProperties.Name="Show archived saved conversations instead of active ones" />
                                             <ComboBox x:Name="SavedChatsPicker"
                                                       PlaceholderText="Select a saved conversation"
                                                       HorizontalAlignment="Stretch"
@@ -688,6 +693,17 @@
                                                         IsEnabled="False" Click="RenameSavedChatButton_Click" />
                                                 <Button x:Name="DeleteSavedChatButton" Content="Delete saved chat"
                                                         IsEnabled="False" Click="DeleteSavedChatButton_Click" />
+                                            </StackPanel>
+                                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                                <Button x:Name="PinSavedChatButton" Content="Pin"
+                                                        IsEnabled="False" Click="PinSavedChatButton_Click"
+                                                        AutomationProperties.Name="Pin or unpin the selected saved conversation" />
+                                                <Button x:Name="ArchiveSavedChatButton" Content="Archive"
+                                                        IsEnabled="False" Click="ArchiveSavedChatButton_Click"
+                                                        AutomationProperties.Name="Archive or restore the selected saved conversation" />
+                                                <Button x:Name="DuplicateSavedChatButton" Content="Duplicate"
+                                                        IsEnabled="False" Click="DuplicateSavedChatButton_Click"
+                                                        AutomationProperties.Name="Duplicate the selected saved conversation" />
                                             </StackPanel>
                                             <StackPanel Orientation="Horizontal" Spacing="10">
                                                 <Button x:Name="ExportChatMarkdownButton" Content="Export Markdown"
