@@ -14,11 +14,11 @@ namespace InferBridge.Native;
 public sealed partial class MainWindow
 {
     private bool ModelLibraryToolsReady => MaintenanceReady && !_isManaging && !_chatBusy
-        && !_isRefreshing;
+        && !RefreshLocksControls;
 
     private async Task RunModelLibraryOperationAsync(Func<Task> operation)
     {
-        if (!ModelLibraryToolsReady) return;
+        if (!ModelLibraryToolsReady || _isRefreshing) return;
         _isManaging = true;
         UpdateModelButtons();
         UpdateChatButtons();

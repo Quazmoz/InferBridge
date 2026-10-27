@@ -941,3 +941,69 @@ def test_native_model_library_exchange_uses_web_endpoints_without_overwrite():
         ROOT / "windows-native" / "InferBridge.Native.ContractTests" / "Program.cs"
     ).read_text(encoding="utf-8")
     assert "ModelLibraryContractTests.RunAsync(root)" in harness
+
+
+def _method_body(source: str, signature: str) -> str:
+    start = source.index(signature)
+    brace = source.index("{", start)
+    depth = 0
+    for index in range(brace, len(source)):
+        depth += {"{": 1, "}": -1}.get(source[index], 0)
+        if depth == 0:
+            return source[brace : index + 1]
+    raise AssertionError("unterminated method: " + signature)
+
+
+def test_native_status_poll_never_disables_or_rebuilds_open_selectors():
+    # WinUI closes an open ComboBox dropdown (and DropDownButton flyout) when it
+    # is disabled or its items are replaced; the 8 s poll did both every tick.
+    window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    xaml = (PROJECT / "MainWindow.xaml").read_text(encoding="utf-8")
+    helper = (PROJECT / "PickerRefresh.cs").read_text(encoding="utf-8")
+    assert "await RefreshAsync(background: true);" in window.split("_pollTimer.Start()", 1)[0]
+    refresh = _method_body(window, "private async Task RefreshAsync(bool background = false)")
+    head = refresh.split("try", 1)[0]
+    assert "if (!background)" in head
+    assert head.index("if (!background)") < head.index("UpdateChatButtons();")
+    # Rebuild only on a real change, and defer it under an open dropdown.
+    assert "PickerRefresh.Decide(" in refresh
+    assert "ChatModelPicker.IsDropDownOpen" in refresh
+    assert "case PickerUpdate.Defer: _pendingModels = status.Models;" in refresh
+    assert "Items.Clear()" not in refresh.split("catch (Exception) when (!_closing", 1)[0]
+    scan = _method_body(window, "private async Task ScanHardwareAsync()")
+    assert "PickerRefresh.Decide(_shownDevices, devices," in scan
+    assert "IsDropDownOpen" in scan
+    assert "Items.Clear()" not in scan.split("catch (Exception) when (!_closing", 1)[0]
+    assert 'DropDownClosed="ChatModelPicker_DropDownClosed"' in xaml
+    assert xaml.count('DropDownClosed="DevicePicker_DropDownClosed"') == 2
+    # Control enablement follows user-initiated refreshes only; action guards
+    # still refuse to run while any refresh is in flight.
+    for name in (
+        "ChatModelPicker.IsEnabled",
+        "ChatDevicePicker.IsEnabled",
+        "SendButton.IsEnabled",
+        "ApplyChatDeviceButton.IsEnabled",
+    ):
+        statement = window.split(name + " =", 1)[1].split(";", 1)[0]
+        assert "RefreshLocksControls" in statement
+        assert "_isRefreshing" not in statement
+    assert "bool idle = !_isManaging && !_chatBusy && !RefreshLocksControls" in window
+    assert "if (model is null || _isManaging || _chatBusy || _isRefreshing" in window
+    assert "if (_chatBusy || _isManaging || _isRefreshing || modelId is null" in window
+    library = (PROJECT / "MainWindow.ModelLibrary.cs").read_text(encoding="utf-8")
+    assert "&& !RefreshLocksControls;" in library
+    assert "if (!ModelLibraryToolsReady || _isRefreshing) return;" in library
+    assert "refreshing && !background" in helper
+    contracts = PROJECT.parent / "InferBridge.Native.ContractTests"
+    assert "PickerRefresh.cs" in (contracts / "InferBridge.Native.ContractTests.csproj").read_text(
+        encoding="utf-8"
+    )
+    assert "PickerRefreshContractTests.Run();" in (contracts / "Program.cs").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_native_polling_paths_do_not_reassign_items_source_unconditionally():
+    for path in PROJECT.glob("*.cs"):
+        source = path.read_text(encoding="utf-8")
+        assert "ItemsSource =" not in source, path.name

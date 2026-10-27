@@ -26,6 +26,13 @@ public sealed partial class MainWindow : Window
     private IReadOnlyList<ModelInfo> _shownModels = Array.Empty<ModelInfo>();
     private CancellationTokenSource? _sendCancellation;
     private bool _isRefreshing;
+    private bool _backgroundRefresh;
+    // Timer polls keep action guards (_isRefreshing) but never lock controls.
+    private bool RefreshLocksControls => PickerRefresh.LocksControls(_isRefreshing, _backgroundRefresh);
+    private IReadOnlyList<ModelInfo>? _pendingModels;
+    private bool _forceModelRebuild;
+    private IReadOnlyList<(string Label, string Target, string Note)>? _shownDevices;
+    private IReadOnlyList<(string Label, string Target, string Note)>? _pendingDevices;
     private bool _updatingModelPicker;
     private bool _isManaging;
     private bool _chatBusy;
@@ -110,7 +117,7 @@ public sealed partial class MainWindow : Window
             // Re-sending a rejected key every tick trips the engine's invalid-key
             // throttle (HTTP 429); wait for a new key or an explicit refresh.
             if (!_closing.IsCancellationRequested && _rejectedApiKey != ApiKeyBox.Password)
-                await RefreshAsync();
+                await RefreshAsync(background: true);
         };
         _pollTimer.Start();
         AppWindow.Closing += (_, args) =>
@@ -1180,7 +1187,7 @@ public sealed partial class MainWindow : Window
                 ? " · Experimental: multi-device support depends on the model and OpenVINO runtime."
                 : ". AUTO routes to one compatible device; it does not combine processors.");
         ApplyChatDeviceButton.IsEnabled = _devicesAvailable && _engineConnected
-            && !_scanningDevices && !_chatBusy && !_isManaging && !_isRefreshing
+            && !_scanningDevices && !_chatBusy && !_isManaging && !RefreshLocksControls
             && !_quitting && !_closing.IsCancellationRequested
             && model is { Status: "loaded" or "ready_to_load" };
     }
@@ -1207,40 +1214,31 @@ public sealed partial class MainWindow : Window
             DeviceInventory inventory = await _backend.GetDevicesAsync(
                 ApiKeyBox.Password, _closing.Token);
             if (_closing.IsCancellationRequested) return;
-            string? selectedLibrary = SelectedInferenceDevice;
-            string? selectedChat = SelectedChatDevice;
             var options = new[] { "NPU", "GPU", "CPU" };
             var supported = options.Where(device => inventory.Mock ||
                 inventory.Available.Any(found => found == device ||
                     found.StartsWith(device + ".", StringComparison.Ordinal))).ToArray();
-            LibraryDevicePicker.Items.Clear();
-            ChatDevicePicker.Items.Clear();
-            void AddDevice(string label, string target, string note)
+            var devices = new List<(string Label, string Target, string Note)>
             {
-                foreach (ComboBox picker in new[] { LibraryDevicePicker, ChatDevicePicker })
-                {
-                    var option = new ComboBoxItem { Content = label, Tag = target };
-                    ToolTipService.SetToolTip(option, note);
-                    picker.Items.Add(option);
-                }
-            }
-            AddDevice("Engine default", string.Empty, "Use the engine's configured default device.");
-            AddDevice("AUTO · automatic routing", "AUTO",
-                "OpenVINO chooses one compatible processor. It does not use all processors at once.");
+                ("Engine default", string.Empty, "Use the engine's configured default device."),
+                ("AUTO · automatic routing", "AUTO",
+                    "OpenVINO chooses one compatible processor. It does not use all processors at once."),
+            };
             foreach (string device in supported)
-                AddDevice(device, device, "Load on the detected " + device + " processor.");
+                devices.Add((device, device, "Load on the detected " + device + " processor."));
             foreach (DeviceSuggestion suggestion in inventory.Suggestions)
-                AddDevice(suggestion.Device + (suggestion.Experimental ? " · experimental" : ""),
+                devices.Add((suggestion.Device + (suggestion.Experimental ? " · experimental" : ""),
                     suggestion.Device,
-                    suggestion.Note.Length > 0 ? suggestion.Note : "OpenVINO advanced routing.");
-            LibraryDevicePicker.SelectedItem = LibraryDevicePicker.Items
-                .Cast<ComboBoxItem>().FirstOrDefault(item =>
-                    (string?)item.Tag == (selectedLibrary ?? string.Empty))
-                ?? (ComboBoxItem)LibraryDevicePicker.Items[0];
-            ChatDevicePicker.SelectedItem = ChatDevicePicker.Items
-                .Cast<ComboBoxItem>().FirstOrDefault(item =>
-                    (string?)item.Tag == (selectedChat ?? string.Empty))
-                ?? (ComboBoxItem)ChatDevicePicker.Items[0];
+                    suggestion.Note.Length > 0 ? suggestion.Note : "OpenVINO advanced routing."));
+            // Mirror the web UI: rebuild device selectors only when the detected
+            // inventory changes, and never under an open dropdown.
+            switch (PickerRefresh.Decide(_shownDevices, devices,
+                LibraryDevicePicker.IsDropDownOpen || ChatDevicePicker.IsDropDownOpen))
+            {
+                case PickerUpdate.Apply: ApplyDeviceOptions(devices); break;
+                case PickerUpdate.Defer: _pendingDevices = devices; break;
+                default: _pendingDevices = null; break;
+            }
             _devicesAvailable = true;
             _devicesScanned = true;
             string loadedSummary = await _backend.GetRuntimeSummaryAsync(
@@ -1259,6 +1257,8 @@ public sealed partial class MainWindow : Window
             _devicesAvailable = false;
             _devicesScanned = false;
             HardwareSummary.Text = "Hardware scan unavailable. Retry to select a verified target.";
+            _shownDevices = null;
+            _pendingDevices = null;
             LibraryDevicePicker.Items.Clear();
             ChatDevicePicker.Items.Clear();
             LibraryDevicePicker.Items.Add(new ComboBoxItem
@@ -1282,7 +1282,7 @@ public sealed partial class MainWindow : Window
     private void UpdateModelButtons()
     {
         var model = SelectedLibraryModel;
-        bool idle = !_isManaging && !_chatBusy && !_isRefreshing && !_quitting;
+        bool idle = !_isManaging && !_chatBusy && !RefreshLocksControls && !_quitting;
         LoadButton.IsEnabled = idle && model?.CanLoad == true;
         UnloadButton.IsEnabled = idle && model?.CanUnload == true;
         DeleteButton.IsEnabled = idle && model?.CanDelete == true;
@@ -1304,7 +1304,7 @@ public sealed partial class MainWindow : Window
 
     private void UpdateChatButtons()
     {
-        SendButton.IsEnabled = !_chatBusy && !_isManaging && !_isRefreshing && !_quitting
+        SendButton.IsEnabled = !_chatBusy && !_isManaging && !RefreshLocksControls && !_quitting
             && SelectedChatModel?.Status == "loaded"
             && (_turns.Count == 0 || SelectedModelId == _conversationModelId);
         CancelButton.IsEnabled = _chatBusy;
@@ -1319,9 +1319,9 @@ public sealed partial class MainWindow : Window
         ArchiveSavedChatButton.IsEnabled = canEditSavedChat;
         DuplicateSavedChatButton.IsEnabled = canEditSavedChat;
         RenameSavedChatButton.IsEnabled = canEditSavedChat;
-        ChatModelPicker.IsEnabled = !_chatBusy && !_isManaging && !_isRefreshing && !_quitting;
+        ChatModelPicker.IsEnabled = !_chatBusy && !_isManaging && !RefreshLocksControls && !_quitting;
         ChatDevicePicker.IsEnabled = _devicesAvailable && !_chatBusy && !_isManaging
-            && !_isRefreshing && !_quitting;
+            && !RefreshLocksControls && !_quitting;
         UpdateChatDeviceSummary();
         WebUiButton.IsEnabled = _engineConnected && !_quitting && !_openingWebUi;
         ScanHardwareButton.IsEnabled = _engineConnected && !_quitting && !_scanningDevices;
@@ -1334,14 +1334,123 @@ public sealed partial class MainWindow : Window
         UpdateHuggingFaceButtons();
     }
 
-    private async Task RefreshAsync()
+    private void ApplyModelInventory(IReadOnlyList<ModelInfo> models)
+    {
+        _pendingModels = null;
+        _forceModelRebuild = false;
+        // Rebuilding ComboBox items raises SelectionChanged. Suppress it so
+        // polling, reconnects and temporary model absence keep the transcript.
+        string? selected = SelectedModelId ?? _conversationModelId;
+        string? selectedLibraryId = SelectedLibraryModel?.Id;
+        _shownModels = models;
+        _updatingModelPicker = true;
+        try
+        {
+            ChatModelPicker.Items.Clear();
+            ModelsList.Items.Clear();
+            // The engine's recommendation leads the library and is preselected.
+            string? recommended = _recommendation?.Id;
+            foreach (ModelInfo model in models.OrderBy(m => m.Id != recommended))
+            {
+                var libraryItem = new ListViewItem
+                {
+                    Content = (model.Id == recommended ? "Recommended  ·  " : string.Empty)
+                        + model.Name + "  ·  " + model.StatusLabel
+                        + (model.Name.Contains(model.Id, StringComparison.Ordinal)
+                            ? string.Empty : "  (" + model.Id + ")"),
+                    Tag = model,
+                };
+                ModelsList.Items.Add(libraryItem);
+                if (model.Id == (selectedLibraryId ?? recommended))
+                    ModelsList.SelectedItem = libraryItem;
+                if (!model.AvailableInChat) continue;
+                var option = new ComboBoxItem
+                {
+                    Content = model.Name + "  ·  " + model.StatusLabel,
+                    Tag = model.Id,
+                    IsEnabled = model.CanLoad || model.CanUnload,
+                };
+                ChatModelPicker.Items.Add(option);
+                if (model.Id == selected)
+                    ChatModelPicker.SelectedItem = option;
+            }
+            // Never silently move an existing conversation to a different model.
+            // When its model returns after a restart, it is selected again.
+            if (ChatModelPicker.SelectedItem is null && _conversationModelId is null
+                && ChatModelPicker.Items.Count > 0)
+                ChatModelPicker.SelectedItem = ChatModelPicker.Items.Cast<ComboBoxItem>()
+                    .FirstOrDefault(option => models.Any(model => model.Id == (option.Tag as string) && model.CanUnload));
+        }
+        finally
+        {
+            _updatingModelPicker = false;
+        }
+    }
+
+    private void ChatModelPicker_DropDownClosed(object sender, object args)
+    {
+        // Apply an inventory change deferred while the dropdown was open. If an
+        // action started meanwhile, drop it: the next refresh re-reads status.
+        if (_pendingModels is not { } pending) return;
+        if (_isManaging || _chatBusy || _isRefreshing || _closing.IsCancellationRequested)
+        {
+            _pendingModels = null;
+            return;
+        }
+        ApplyModelInventory(pending);
+        UpdateChatButtons();
+    }
+
+    private void DevicePicker_DropDownClosed(object sender, object args)
+    {
+        if (_pendingDevices is not { } pending
+            || LibraryDevicePicker.IsDropDownOpen || ChatDevicePicker.IsDropDownOpen
+            || _closing.IsCancellationRequested) return;
+        ApplyDeviceOptions(pending);
+        UpdateChatButtons();
+    }
+
+    private void ApplyDeviceOptions(IReadOnlyList<(string Label, string Target, string Note)> devices)
+    {
+        _pendingDevices = null;
+        _shownDevices = devices;
+        string? selectedLibrary = SelectedInferenceDevice;
+        string? selectedChat = SelectedChatDevice;
+        LibraryDevicePicker.Items.Clear();
+        ChatDevicePicker.Items.Clear();
+        foreach (var (label, target, note) in devices)
+        {
+            foreach (ComboBox picker in new[] { LibraryDevicePicker, ChatDevicePicker })
+            {
+                var option = new ComboBoxItem { Content = label, Tag = target };
+                ToolTipService.SetToolTip(option, note);
+                picker.Items.Add(option);
+            }
+        }
+        LibraryDevicePicker.SelectedItem = LibraryDevicePicker.Items
+            .Cast<ComboBoxItem>().FirstOrDefault(item =>
+                (string?)item.Tag == (selectedLibrary ?? string.Empty))
+            ?? (ComboBoxItem)LibraryDevicePicker.Items[0];
+        ChatDevicePicker.SelectedItem = ChatDevicePicker.Items
+            .Cast<ComboBoxItem>().FirstOrDefault(item =>
+                (string?)item.Tag == (selectedChat ?? string.Empty))
+            ?? (ComboBoxItem)ChatDevicePicker.Items[0];
+    }
+
+    private async Task RefreshAsync(bool background = false)
     {
         if (_isRefreshing || _isManaging || _chatBusy || _quitting || _allowClose || _closing.IsCancellationRequested)
             return;
         _isRefreshing = true;
-        UpdateChatButtons();
-        RefreshButton.IsEnabled = false;
-        ConnectionProgress.IsActive = true;
+        _backgroundRefresh = background;
+        // A timer poll must not flip IsEnabled: disabling a ComboBox or
+        // DropDownButton closes its open dropdown/flyout every tick.
+        if (!background)
+        {
+            UpdateChatButtons();
+            RefreshButton.IsEnabled = false;
+            ConnectionProgress.IsActive = true;
+        }
         try
         {
             string apiKey = ApiKeyBox.Password;
@@ -1393,57 +1502,15 @@ public sealed partial class MainWindow : Window
             }
             StartButton.IsEnabled = !status.Connected && !_startRequested;
 
-            // Rebuilding ComboBox items raises SelectionChanged. Suppress it so
-            // polling, reconnects and temporary model absence keep the transcript.
-            string? selected = SelectedModelId ?? _conversationModelId;
-            string? selectedLibraryId = SelectedLibraryModel?.Id;
             // Rebuild only on a real inventory change: replacing items every poll
-            // steals keyboard and screen-reader focus from the lists.
-            if (!status.Models.SequenceEqual(_shownModels))
+            // steals keyboard and screen-reader focus from the lists and closes an
+            // open model dropdown. While it is open, apply the change on close.
+            switch (PickerRefresh.Decide(
+                _forceModelRebuild ? null : _shownModels, status.Models, ChatModelPicker.IsDropDownOpen))
             {
-                _shownModels = status.Models;
-                _updatingModelPicker = true;
-                try
-                {
-                    ChatModelPicker.Items.Clear();
-                    ModelsList.Items.Clear();
-                    // The engine's recommendation leads the library and is preselected.
-                    string? recommended = _recommendation?.Id;
-                    foreach (ModelInfo model in status.Models.OrderBy(m => m.Id != recommended))
-                    {
-                        var libraryItem = new ListViewItem
-                        {
-                            Content = (model.Id == recommended ? "Recommended  ·  " : string.Empty)
-                                + model.Name + "  ·  " + model.StatusLabel
-                                + (model.Name.Contains(model.Id, StringComparison.Ordinal)
-                                    ? string.Empty : "  (" + model.Id + ")"),
-                            Tag = model,
-                        };
-                        ModelsList.Items.Add(libraryItem);
-                        if (model.Id == (selectedLibraryId ?? recommended))
-                            ModelsList.SelectedItem = libraryItem;
-                        if (!model.AvailableInChat) continue;
-                        var option = new ComboBoxItem
-                        {
-                            Content = model.Name + "  ·  " + model.StatusLabel,
-                            Tag = model.Id,
-                            IsEnabled = model.CanLoad || model.CanUnload,
-                        };
-                        ChatModelPicker.Items.Add(option);
-                        if (model.Id == selected)
-                            ChatModelPicker.SelectedItem = option;
-                    }
-                    // Never silently move an existing conversation to a different model.
-                    // When its model returns after a restart, it is selected again.
-                    if (ChatModelPicker.SelectedItem is null && _conversationModelId is null
-                        && ChatModelPicker.Items.Count > 0)
-                        ChatModelPicker.SelectedItem = ChatModelPicker.Items.Cast<ComboBoxItem>()
-                            .FirstOrDefault(option => status.Models.Any(model => model.Id == (option.Tag as string) && model.CanUnload));
-                }
-                finally
-                {
-                    _updatingModelPicker = false;
-                }
+                case PickerUpdate.Apply: ApplyModelInventory(status.Models); break;
+                case PickerUpdate.Defer: _pendingModels = status.Models; break;
+                default: _pendingModels = null; break;
             }
 
             if (!status.Connected || status.RequiresAuthentication)
@@ -1503,6 +1570,7 @@ public sealed partial class MainWindow : Window
             ModelsSummary.Text = "Refresh after checking the engine.";
             ChatModelPicker.Items.Clear();
             _shownModels = Array.Empty<ModelInfo>();
+            _pendingModels = null;
             ShowChatInfo("Connection error", "Check the engine and refresh.",
                 InfoBarSeverity.Error);
         }
@@ -1511,6 +1579,7 @@ public sealed partial class MainWindow : Window
             if (!_closing.IsCancellationRequested)
             {
                 _isRefreshing = false;
+                _backgroundRefresh = false;
                 RefreshButton.IsEnabled = true;
                 ConnectionProgress.IsActive = false;
                 UpdateChatButtons();
@@ -1530,8 +1599,8 @@ public sealed partial class MainWindow : Window
             return;
         }
         if (_recommendation is null || _closing.IsCancellationRequested) return;
-        _shownModels = Array.Empty<ModelInfo>(); // rebuild the list with the recommendation
-        await RefreshAsync();
+        _forceModelRebuild = true; // rebuild the list with the recommendation
+        await RefreshAsync(background: true);
     }
 
     private async void LoadButton_Click(object sender, RoutedEventArgs args) =>

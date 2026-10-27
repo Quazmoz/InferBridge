@@ -93,6 +93,7 @@ try
     await ModelPreparationContractTests.RunAsync(root);
     NativeConversationContractTests.Run(root);
     ChatMarkdownContractTests.Run();
+    PickerRefreshContractTests.Run();
     await ChatRequestContractTests.RunAsync(root);
     await OperationsParityContractTests.RunAsync(root);
     await ModelLibraryContractTests.RunAsync(root);

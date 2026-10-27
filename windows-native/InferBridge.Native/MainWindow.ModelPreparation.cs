@@ -73,7 +73,7 @@ public sealed partial class MainWindow
             ModelPreparationPercent.Value = operation!.Percent!.Value;
         CancelPreparationButton.IsEnabled = hasProgress
             && operation!.CanCancel && !_modelPreparationRefreshing
-            && !_isManaging && !_isRefreshing && !_chatBusy && !_quitting
+            && !_isManaging && !RefreshLocksControls && !_chatBusy && !_quitting
             && !_closing.IsCancellationRequested && _engineConnected
             && _rejectedApiKey is null;
     }

@@ -465,6 +465,7 @@
                             <ComboBox x:Name="LibraryDevicePicker" Header="Inference device"
                                       SelectedIndex="0" MinWidth="215" MaxWidth="280"
                                       HorizontalAlignment="Left"
+                                      DropDownClosed="DevicePicker_DropDownClosed"
                                       AutomationProperties.Name="Inference device for model loading">
                                 <ComboBoxItem Content="Automatic (engine default)" Tag="" />
                                 <ComboBoxItem Content="NPU" Tag="NPU" />
@@ -660,6 +661,7 @@
                                   HorizontalAlignment="Stretch"
                                   VerticalAlignment="Center"
                                   SelectionChanged="ChatModelPicker_SelectionChanged"
+                                  DropDownClosed="ChatModelPicker_DropDownClosed"
                                   AutomationProperties.Name="Select a downloaded or loaded inference model"
                                   ToolTipService.ToolTip="Chat model" />
                         <Button x:Name="ChatStatusButton" Grid.Column="2"
@@ -782,6 +784,7 @@
                                   HorizontalAlignment="Stretch"
                                   AutomationProperties.Name="Device target for the selected chat model"
                                   SelectionChanged="ChatDevicePicker_SelectionChanged"
+                                  DropDownClosed="DevicePicker_DropDownClosed"
                                   ToolTipService.ToolTip="Choose engine default, a physical processor or supported OpenVINO combination">
                             <ComboBoxItem Content="Engine default" Tag="" />
                         </ComboBox>

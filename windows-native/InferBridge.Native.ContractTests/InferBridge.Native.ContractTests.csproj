@@ -20,5 +20,6 @@
     <Compile Include="../InferBridge.Native/RuntimeHealthClient.cs" Link="RuntimeHealthClient.cs" />
     <Compile Include="../InferBridge.Native/ReleaseUpdateClient.cs" Link="ReleaseUpdateClient.cs" />
     <Compile Include="../InferBridge.Native/ModelLibraryClient.cs" Link="ModelLibraryClient.cs" />
+    <Compile Include="../InferBridge.Native/PickerRefresh.cs" Link="PickerRefresh.cs" />
   </ItemGroup>
 </Project>
