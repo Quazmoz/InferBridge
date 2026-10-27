@@ -1234,3 +1234,31 @@ def test_native_benchmark_health_and_engine_pages_chart_real_engine_data():
     assert '"RAM not reported"' in shell
     client = (PROJECT / "BackendClient.cs").read_text(encoding="utf-8")
     assert "static double? Known(double value) => value > 0 ? value : null;" in client
+
+
+def test_native_pages_share_header_cards_and_theme_text_styles():
+    import re
+
+    xaml = (PROJECT / "MainWindow.xaml").read_text(encoding="utf-8")
+    root = ET.parse(PROJECT / "MainWindow.xaml").getroot()
+    named = "{http://schemas.microsoft.com/winfx/2006/xaml}Name"
+    for page in (
+        "OverviewPanel",
+        "ConnectionHubPanel",
+        "DoctorPanel",
+        "OperationsPanel",
+        "BenchmarkPanel",
+        "StoragePanel",
+        "HuggingFacePanel",
+        "SettingsPanel",
+        "ModelsPanel",
+    ):
+        panel = next(node for node in root.iter() if node.get(named) == page)
+        styles = [node.get("Style") or "" for node in panel.iter()]
+        assert any("InferBridgeHeaderRuleStyle" in style for style in styles), page
+        assert any("InferBridgePageTitleStyle" in style for style in styles), page
+    # Opacity text fails high contrast; secondary text uses theme brushes instead.
+    assert "Opacity=" not in xaml
+    assert not re.search(r'<TextBlock[^>]*FontSize="(18|24|28)"', xaml)
+    assert xaml.count("InferBridgeCardStyle") >= 20
+    assert xaml.count("<local:CardGrid") >= 8

@@ -328,6 +328,13 @@ public sealed partial class MainWindow : Window
                 + "\nCurrently reclaimable: " + FormatStorageBytes(snapshot.ReclaimableBytes)
                 + "\nProtected transaction backups: "
                 + FormatStorageBytes(snapshot.ProtectedBytes);
+            const double gib = 1024d * 1024 * 1024;
+            StorageChart.SetData(new (string, double?)[]
+            {
+                ("Managed storage", snapshot.ManagedBytes / gib),
+                ("Currently reclaimable", snapshot.ReclaimableBytes / gib),
+                ("Protected transaction backups", snapshot.ProtectedBytes / gib),
+            });
             StorageRows.Children.Clear();
             foreach (StorageCleanupOption option in snapshot.Options)
             {
@@ -337,6 +344,7 @@ public sealed partial class MainWindow : Window
                     Text = option.Name + " · " + FormatStorageBytes(option.SizeBytes),
                     TextWrapping = TextWrapping.Wrap,
                     IsTextSelectionEnabled = true,
+                    Style = Ui.ResStyle("BodyStrongTextBlockStyle"),
                 });
                 row.Children.Add(new TextBlock
                 {
@@ -363,7 +371,7 @@ public sealed partial class MainWindow : Window
                 };
                 button.Click += StorageCleanupButton_Click;
                 row.Children.Add(button);
-                StorageRows.Children.Add(row);
+                StorageRows.Children.Add(Ui.Card(row));
             }
             StorageInfo.Severity = snapshot.Truncated
                 ? InfoBarSeverity.Warning : InfoBarSeverity.Informational;
@@ -376,6 +384,7 @@ public sealed partial class MainWindow : Window
         {
             _storageLoaded = false;
             StorageRows.Children.Clear(); // stale cleanup options must not remain actionable.
+            StorageChart.SetData(Array.Empty<(string, double?)>());
             StorageSummary.Text = "Storage inventory unavailable.";
             StorageInfo.Severity = InfoBarSeverity.Warning;
             StorageInfo.Message = SafeError(error);
@@ -1548,7 +1557,7 @@ public sealed partial class MainWindow : Window
                 await RefreshModelPreparationsAsync();
 
             ModelsSummary.Text = status.RequiresAuthentication
-                ? "Authentication required. Enter your API key on the Engine screen."
+                ? "Authentication required. Enter your API key on the Engine & devices page."
                 : status.Connected
                     ? status.Models.Count + " models. Select one to download, load or unload it. Downloads continue if you close this window."
                         + (_recommendation is { Reason.Length: > 0 } advice
@@ -1963,7 +1972,7 @@ public sealed partial class MainWindow : Window
 
     private static string SafeError(Exception error) => error switch
     {
-        UnauthorizedAccessException => "API key rejected. Update it on the Engine screen.",
+        UnauthorizedAccessException => "API key rejected. Update it on the Engine & devices page.",
         EngineRequestException => error.Message,
         InvalidOperationException => "Model state changed or model is busy. Refresh and retry.",
         HttpRequestException { StatusCode: System.Net.HttpStatusCode.TooManyRequests } =>

@@ -183,95 +183,142 @@
                 </ScrollViewer>
                 <ScrollViewer x:Name="ConnectionHubPanel" Visibility="Collapsed"
                               HorizontalScrollBarVisibility="Disabled">
-                    <StackPanel MaxWidth="760" HorizontalAlignment="Left" Spacing="14">
-                        <TextBlock Text="Local Connection Hub" FontSize="28" FontWeight="SemiBold"
-                                   TextWrapping="Wrap" />
-                        <TextBlock Text="Connect Python, Windows curl.exe, and other OpenAI-compatible clients to this running InferBridge engine. All details come from its verified local session."
-                                   TextWrapping="Wrap" Opacity="0.8" />
+                    <StackPanel MaxWidth="{StaticResource InferBridgeContentMaxWidth}" HorizontalAlignment="Stretch"
+                                Spacing="16" Padding="0,0,0,24">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Style="{StaticResource InferBridgeHeaderRuleStyle}" />
+                            <StackPanel Grid.Column="1" Spacing="2">
+                                <TextBlock Text="Local API" Style="{StaticResource InferBridgePageTitleStyle}" />
+                                <TextBlock Text="Connect Python, Windows curl.exe and other OpenAI-compatible clients to this running InferBridge engine. All details come from its verified local session."
+                                           Style="{StaticResource InferBridgeHelpTextStyle}" />
+                            </StackPanel>
+                        </Grid>
+                        <local:WrapRow Spacing="8">
+                            <Button x:Name="HubRefreshButton" Click="HubRefreshButton_Click"
+                                Style="{StaticResource AccentButtonStyle}">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE72C;" FontSize="14" />
+                                    <TextBlock Text="Refresh connection" />
+                                </StackPanel>
+                            </Button>
+                            <ProgressRing x:Name="HubProgress" Width="24" Height="24"
+                                          IsActive="False" VerticalAlignment="Center" />
+                        </local:WrapRow>
                         <InfoBar x:Name="HubInfo" Title="Connection details" IsOpen="True"
                                  IsClosable="False" Severity="Informational"
                                  Message="Open this page to inspect the local API." />
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Button x:Name="HubRefreshButton" Content="Refresh connection"
-                                    Click="HubRefreshButton_Click" />
-                            <ProgressRing x:Name="HubProgress" Width="24" Height="24"
-                                          IsActive="False" />
-                        </StackPanel>
-                        <TextBlock Text="OpenAI-compatible Base URL" FontSize="18" FontWeight="SemiBold" />
-                        <TextBlock x:Name="HubBaseUrl" Text="Not connected" TextWrapping="Wrap"
-                                   FontFamily="Consolas" IsTextSelectionEnabled="True"
-                                   AutomationProperties.Name="Actual local OpenAI Base URL" />
-                        <Button x:Name="HubCopyBaseUrlButton" Content="Copy Base URL"
-                                HorizontalAlignment="Left" IsEnabled="False"
-                                Click="HubCopyBaseUrlButton_Click" />
-                        <TextBlock x:Name="HubListenerStatus" TextWrapping="Wrap"
-                                   IsTextSelectionEnabled="True" />
-                        <TextBlock x:Name="HubAuthenticationStatus" TextWrapping="Wrap" />
-                        <TextBlock x:Name="HubLanStatus" TextWrapping="Wrap" />
-                        <TextBlock Text="Generation model" FontSize="18" FontWeight="SemiBold" />
-                        <ComboBox x:Name="HubModelPicker" PlaceholderText="Choose loaded chat model"
-                                  HorizontalAlignment="Stretch" IsEnabled="False"
-                                  SelectionChanged="HubModelPicker_SelectionChanged"
-                                  AutomationProperties.Name="Model ID for API examples and self-test" />
-                        <TextBlock x:Name="HubModelHint" Text="A loaded generation model is required for generation checks."
-                                   TextWrapping="Wrap" Opacity="0.8" />
-                        <TextBlock Text="Python OpenAI SDK" FontSize="18" FontWeight="SemiBold" />
-                        <TextBox x:Name="HubPythonExample" IsReadOnly="True" AcceptsReturn="True"
-                                 TextWrapping="NoWrap" MinHeight="150" MaxHeight="230"
-                                 AutomationProperties.Name="Copyable Python SDK connection example" />
-                        <Button x:Name="HubCopyPythonButton" Content="Copy Python example"
-                                IsEnabled="False" HorizontalAlignment="Left"
-                                Click="HubCopyPythonButton_Click" />
-                        <TextBlock Text="Windows curl.exe" FontSize="18" FontWeight="SemiBold" />
-                        <TextBox x:Name="HubCurlExample" IsReadOnly="True" AcceptsReturn="True"
-                                 TextWrapping="Wrap" MinHeight="64"
-                                 AutomationProperties.Name="Copyable Windows curl.exe model list example" />
-                        <Button x:Name="HubCopyCurlButton" Content="Copy curl.exe example"
-                                IsEnabled="False" HorizontalAlignment="Left"
-                                Click="HubCopyCurlButton_Click" />
-                        <TextBlock Text="Connection self-test" FontSize="18" FontWeight="SemiBold" />
-                        <TextBlock Text="Checks model listing, non-streaming and streaming generation, cancellation recovery, and authentication separately using synthetic prompts. It does not change model files."
-                                   TextWrapping="Wrap" Opacity="0.8" />
-                        <Button x:Name="HubTestButton" Content="Run connection self-test"
-                                IsEnabled="False" HorizontalAlignment="Left"
-                                Click="HubTestButton_Click" />
-                        <TextBlock x:Name="HubTestSummary" Text="No self-test run yet."
-                                   TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
-                        <ListView x:Name="HubTestResults" SelectionMode="None"
-                                  AutomationProperties.Name="Individual local API self-test results" />
-                        <TextBlock Text="Credentials are never copied. For secured engines, replace the example placeholder with your own API key in your client."
-                                   TextWrapping="Wrap" Opacity="0.8" />
-                        <TextBlock Text="Network and API listener" FontSize="18" FontWeight="SemiBold" />
-                        <TextBlock Text="The same settings and safeguards as the Web UI network panel, saved by the engine. LAN access requires an API key; wildcard CORS requires a key and explicit confirmation. InferBridge never changes Windows Firewall rules. Listener changes apply after an engine restart."
-                                   TextWrapping="Wrap" Opacity="0.8" />
-                        <InfoBar x:Name="NetworkInfo" Title="Network settings" IsOpen="True"
-                                 IsClosable="False" Severity="Informational"
-                                 Message="Load network settings to review the listener." />
-                        <TextBlock x:Name="NetworkStatusText" TextWrapping="Wrap"
-                                   IsTextSelectionEnabled="True"
-                                   AutomationProperties.LiveSetting="Polite" />
-                        <ToggleSwitch x:Name="NetworkAllowLanToggle" IsEnabled="False"
-                                      Header="Allow access from other devices on this network (LAN)"
-                                      AutomationProperties.Name="Allow LAN access. Requires an API key." />
-                        <TextBox x:Name="NetworkCorsBox" IsEnabled="False" MaxLength="2048"
-                                 Header="Allowed browser origins (comma-separated, optional)"
-                                 PlaceholderText="https://app.example.com"
-                                 AutomationProperties.Name="Allowed browser origins for CORS" />
-                        <PasswordBox x:Name="NetworkApiKeyBox" IsEnabled="False" MaxLength="512"
-                                     Header="Set a new API key (optional)"
-                                     AutomationProperties.Name="New API key for the local engine" />
-                        <CheckBox x:Name="NetworkGenerateKeyCheck" IsEnabled="False"
-                                  Content="Generate a new random API key (shown once)"
-                                  Checked="NetworkKeyOption_Changed" Unchecked="NetworkKeyOption_Changed" />
-                        <CheckBox x:Name="NetworkRemoveKeyCheck" IsEnabled="False"
-                                  Content="Remove the stored API key"
-                                  Checked="NetworkKeyOption_Changed" Unchecked="NetworkKeyOption_Changed" />
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <Button x:Name="NetworkRefreshButton" Content="Load network settings"
-                                    Click="NetworkRefreshButton_Click" />
-                            <Button x:Name="NetworkApplyButton" Content="Save network settings"
-                                    IsEnabled="False" Click="NetworkApplyButton_Click" />
-                        </StackPanel>
+                        <local:CardGrid MaxColumns="2">
+                            <Border Style="{StaticResource InferBridgeCardStyle}">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="OpenAI-compatible Base URL" Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
+                                    <TextBlock x:Name="HubBaseUrl" Text="Not connected" TextWrapping="Wrap"
+                                               FontFamily="Cascadia Mono, Consolas" IsTextSelectionEnabled="True"
+                                               Style="{StaticResource BodyStrongTextBlockStyle}"
+                                               AutomationProperties.Name="Actual local OpenAI Base URL" />
+                                    <Button x:Name="HubCopyBaseUrlButton" Content="Copy Base URL"
+                                            HorizontalAlignment="Left" IsEnabled="False"
+                                            Click="HubCopyBaseUrlButton_Click" />
+                                    <TextBlock x:Name="HubListenerStatus" TextWrapping="Wrap"
+                                               IsTextSelectionEnabled="True" />
+                                    <TextBlock x:Name="HubAuthenticationStatus" TextWrapping="Wrap" />
+                                    <TextBlock x:Name="HubLanStatus" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource InferBridgeCardStyle}">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="Connection self-test" Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
+                                    <ComboBox x:Name="HubModelPicker" Header="Generation model"
+                                              PlaceholderText="Choose loaded chat model"
+                                              HorizontalAlignment="Stretch" IsEnabled="False"
+                                              SelectionChanged="HubModelPicker_SelectionChanged"
+                                              AutomationProperties.Name="Model ID for API examples and self-test" />
+                                    <TextBlock x:Name="HubModelHint" Text="A loaded generation model is required for generation checks."
+                                               Style="{StaticResource InferBridgeHelpTextStyle}" />
+                                    <TextBlock Text="Checks model listing, non-streaming and streaming generation, cancellation recovery, and authentication separately using synthetic prompts. It does not change model files."
+                                               Style="{StaticResource InferBridgeHelpTextStyle}" />
+                                    <Button x:Name="HubTestButton" Content="Run connection self-test"
+                                            IsEnabled="False" HorizontalAlignment="Left"
+                                            Style="{StaticResource AccentButtonStyle}"
+                                            Click="HubTestButton_Click" />
+                                    <TextBlock x:Name="HubTestSummary" Text="No self-test run yet."
+                                               TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+                                    <ListView x:Name="HubTestResults" SelectionMode="None"
+                                              AutomationProperties.Name="Individual local API self-test results" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource InferBridgeCardStyle}">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="Python OpenAI SDK" Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
+                                    <TextBox x:Name="HubPythonExample" IsReadOnly="True" AcceptsReturn="True"
+                                             TextWrapping="NoWrap" MinHeight="150" MaxHeight="230"
+                                             FontFamily="Cascadia Mono, Consolas"
+                                             AutomationProperties.Name="Copyable Python SDK connection example" />
+                                    <Button x:Name="HubCopyPythonButton" Content="Copy Python example"
+                                            IsEnabled="False" HorizontalAlignment="Left"
+                                            Click="HubCopyPythonButton_Click" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource InferBridgeCardStyle}">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="Windows curl.exe" Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
+                                    <TextBox x:Name="HubCurlExample" IsReadOnly="True" AcceptsReturn="True"
+                                             TextWrapping="Wrap" MinHeight="64"
+                                             FontFamily="Cascadia Mono, Consolas"
+                                             AutomationProperties.Name="Copyable Windows curl.exe model list example" />
+                                    <Button x:Name="HubCopyCurlButton" Content="Copy curl.exe example"
+                                            IsEnabled="False" HorizontalAlignment="Left"
+                                            Click="HubCopyCurlButton_Click" />
+                                    <TextBlock Text="Credentials are never copied. For secured engines, replace the example placeholder with your own API key in your client."
+                                               Style="{StaticResource InferBridgeHelpTextStyle}" />
+                                </StackPanel>
+                            </Border>
+                        </local:CardGrid>
+                        <Border Style="{StaticResource InferBridgeCardStyle}">
+                            <StackPanel Spacing="12">
+                                <TextBlock Text="Network and API listener" Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
+                                <TextBlock Text="The same settings and safeguards as the Web UI network panel, saved by the engine. LAN access requires an API key; wildcard CORS requires a key and explicit confirmation. InferBridge never changes Windows Firewall rules. Listener changes apply after an engine restart."
+                                           Style="{StaticResource InferBridgeHelpTextStyle}" />
+                                <InfoBar x:Name="NetworkInfo" Title="Network settings" IsOpen="True"
+                                         IsClosable="False" Severity="Informational"
+                                         Message="Load network settings to review the listener." />
+                                <TextBlock x:Name="NetworkStatusText" TextWrapping="Wrap"
+                                           IsTextSelectionEnabled="True"
+                                           AutomationProperties.LiveSetting="Polite" />
+                                <local:CardGrid MaxColumns="2">
+                                    <StackPanel Spacing="12">
+                                        <ToggleSwitch x:Name="NetworkAllowLanToggle" IsEnabled="False"
+                                                      Header="Allow access from other devices on this network (LAN)"
+                                                      AutomationProperties.Name="Allow LAN access. Requires an API key." />
+                                        <TextBox x:Name="NetworkCorsBox" IsEnabled="False" MaxLength="2048"
+                                                 Header="Allowed browser origins (comma-separated, optional)"
+                                                 PlaceholderText="https://app.example.com"
+                                                 AutomationProperties.Name="Allowed browser origins for CORS" />
+                                    </StackPanel>
+                                    <StackPanel Spacing="12">
+                                        <PasswordBox x:Name="NetworkApiKeyBox" IsEnabled="False" MaxLength="512"
+                                                     Header="Set a new API key (optional)"
+                                                     AutomationProperties.Name="New API key for the local engine" />
+                                        <CheckBox x:Name="NetworkGenerateKeyCheck" IsEnabled="False"
+                                                  Content="Generate a new random API key (shown once)"
+                                                  Checked="NetworkKeyOption_Changed" Unchecked="NetworkKeyOption_Changed" />
+                                        <CheckBox x:Name="NetworkRemoveKeyCheck" IsEnabled="False"
+                                                  Content="Remove the stored API key"
+                                                  Checked="NetworkKeyOption_Changed" Unchecked="NetworkKeyOption_Changed" />
+                                    </StackPanel>
+                                </local:CardGrid>
+                                <local:WrapRow Spacing="8">
+                                    <Button x:Name="NetworkApplyButton" Content="Save network settings"
+                                            IsEnabled="False" Style="{StaticResource AccentButtonStyle}"
+                                            Click="NetworkApplyButton_Click" />
+                                    <Button x:Name="NetworkRefreshButton" Content="Load network settings"
+                                            Click="NetworkRefreshButton_Click" />
+                                </local:WrapRow>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </ScrollViewer>
                 <ScrollViewer x:Name="DoctorPanel" Visibility="Collapsed"
@@ -371,51 +418,83 @@
                 </ScrollViewer>
                 <ScrollViewer x:Name="OperationsPanel" Visibility="Collapsed"
                               HorizontalScrollBarVisibility="Disabled">
-                    <StackPanel MaxWidth="760" HorizontalAlignment="Left" Spacing="16">
-                        <TextBlock Text="Operations &amp; diagnostics" FontSize="28"
-                                   FontWeight="SemiBold" TextWrapping="Wrap" />
-                        <TextBlock Text="Native controls for the same local engine operations available in the web GUI."
-                                   TextWrapping="Wrap" Opacity="0.8" />
+                    <StackPanel MaxWidth="{StaticResource InferBridgeContentMaxWidth}" HorizontalAlignment="Stretch"
+                                Spacing="16" Padding="0,0,0,24">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Style="{StaticResource InferBridgeHeaderRuleStyle}" />
+                            <StackPanel Grid.Column="1" Spacing="2">
+                                <TextBlock Text="Operations &amp; diagnostics" Style="{StaticResource InferBridgePageTitleStyle}" />
+                                <TextBlock Text="Native controls for the same local engine operations available in the web GUI."
+                                           Style="{StaticResource InferBridgeHelpTextStyle}" />
+                            </StackPanel>
+                        </Grid>
+                        <local:WrapRow Spacing="8">
+                            <Button x:Name="OperationsRefreshButton" Click="OperationsRefreshButton_Click">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE72C;" FontSize="14" />
+                                    <TextBlock Text="Refresh operations" />
+                                </StackPanel>
+                            </Button>
+                            <ProgressRing x:Name="OperationsProgress" IsActive="False"
+                                          Width="24" Height="24" VerticalAlignment="Center" />
+                        </local:WrapRow>
                         <InfoBar x:Name="OperationsInfo" Title="Engine operations"
                                  IsOpen="True" IsClosable="False"
                                  Message="Open this page to inspect the current engine state."
                                  Severity="Informational" />
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <Button x:Name="OperationsRefreshButton" Content="Refresh operations"
-                                    Click="OperationsRefreshButton_Click" />
-                            <ProgressRing x:Name="OperationsProgress" IsActive="False"
-                                          Width="28" Height="28" />
-                        </StackPanel>
-                        <TextBlock Text="Engine &amp; installation" FontSize="18" FontWeight="SemiBold" />
-                        <TextBlock x:Name="OperationsDetails" TextWrapping="Wrap"
-                                   IsTextSelectionEnabled="True"
-                                   AutomationProperties.LiveSetting="Polite"
-                                   Text="Connect to the local engine to view its status." />
-                        <TextBlock Text="Hardware benchmarks" FontSize="18" FontWeight="SemiBold" />
-                        <TextBlock x:Name="OperationsBenchmarks" TextWrapping="Wrap"
-                                   IsTextSelectionEnabled="True"
-                                   Text="The engine has not reported benchmark status." />
-                        <TextBlock Text="Quick benchmark runs one local measurement (32 generated tokens) on the currently loaded model and actual device. It may use significant CPU, GPU, NPU, memory and time. Mock results are synthetic." TextWrapping="Wrap" Opacity="0.8" />
-                        <Button x:Name="QuickBenchmarkButton" Content="Run quick benchmark" IsEnabled="False"
-                                HorizontalAlignment="Left" Click="QuickBenchmarkButton_Click" />
-                        <TextBlock x:Name="BenchmarkRunResult" TextWrapping="Wrap"
-                                   IsTextSelectionEnabled="True"
-                                   AutomationProperties.LiveSetting="Polite" />
-                        <TextBlock Text="Privacy-safe support diagnostics" FontSize="18"
-                                   FontWeight="SemiBold" TextWrapping="Wrap" />
-                        <TextBlock Text="Create a local ZIP containing sanitized configuration, hardware information, model state, benchmark summaries and operational logs. Prompts, chat history, API keys, tokens, model weights and source images are excluded. Review the ZIP before sharing it."
-                                   TextWrapping="Wrap" Opacity="0.8" />
-                        <Button x:Name="DiagnosticsExportButton" Content="Export diagnostics ZIP"
-                                IsEnabled="False" HorizontalAlignment="Left"
-                                Click="DiagnosticsExportButton_Click" />
-                        <TextBlock x:Name="DiagnosticsResult" TextWrapping="Wrap"
-                                   AutomationProperties.LiveSetting="Polite" />
-                        <TextBlock Text="Restart engine" FontSize="18" FontWeight="SemiBold" />
-                        <TextBlock Text="Ask the tray controller to restart the local engine, as the Web UI Operations panel does. Needed after saving network settings. Loaded models are unloaded and in-progress chats end."
-                                   TextWrapping="Wrap" Opacity="0.8" />
-                        <Button x:Name="RestartEngineButton" Content="Restart engine"
-                                IsEnabled="False" HorizontalAlignment="Left"
-                                Click="RestartEngineButton_Click" />
+                        <local:CardGrid MaxColumns="2">
+                            <Border Style="{StaticResource InferBridgeCardStyle}">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="Engine &amp; installation" Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
+                                    <TextBlock x:Name="OperationsDetails" TextWrapping="Wrap"
+                                               IsTextSelectionEnabled="True"
+                                               AutomationProperties.LiveSetting="Polite"
+                                               Text="Connect to the local engine to view its status." />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource InferBridgeCardStyle}">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="Hardware benchmarks" Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
+                                    <TextBlock x:Name="OperationsBenchmarks" TextWrapping="Wrap"
+                                               IsTextSelectionEnabled="True"
+                                               Text="The engine has not reported benchmark status." />
+                                    <TextBlock Text="Quick benchmark runs one local measurement (32 generated tokens) on the currently loaded model and actual device. It may use significant CPU, GPU, NPU, memory and time. Mock results are synthetic."
+                                               Style="{StaticResource InferBridgeHelpTextStyle}" />
+                                    <Button x:Name="QuickBenchmarkButton" Content="Run quick benchmark" IsEnabled="False"
+                                            HorizontalAlignment="Left" Style="{StaticResource AccentButtonStyle}"
+                                            Click="QuickBenchmarkButton_Click" />
+                                    <TextBlock x:Name="BenchmarkRunResult" TextWrapping="Wrap"
+                                               IsTextSelectionEnabled="True"
+                                               AutomationProperties.LiveSetting="Polite" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource InferBridgeCardStyle}">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="Privacy-safe support diagnostics" Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
+                                    <TextBlock Text="Create a local ZIP containing sanitized configuration, hardware information, model state, benchmark summaries and operational logs. Prompts, chat history, API keys, tokens, model weights and source images are excluded. Review the ZIP before sharing it."
+                                               Style="{StaticResource InferBridgeHelpTextStyle}" />
+                                    <Button x:Name="DiagnosticsExportButton" Content="Export diagnostics ZIP"
+                                            IsEnabled="False" HorizontalAlignment="Left"
+                                            Click="DiagnosticsExportButton_Click" />
+                                    <TextBlock x:Name="DiagnosticsResult" TextWrapping="Wrap"
+                                               AutomationProperties.LiveSetting="Polite" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource InferBridgeCardStyle}">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="Restart engine" Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
+                                    <TextBlock Text="Ask the tray controller to restart the local engine, as the Web UI Operations panel does. Needed after saving network settings. Loaded models are unloaded and in-progress chats end."
+                                               Style="{StaticResource InferBridgeHelpTextStyle}" />
+                                    <Button x:Name="RestartEngineButton" Content="Restart engine"
+                                            IsEnabled="False" HorizontalAlignment="Left"
+                                            Click="RestartEngineButton_Click" />
+                                </StackPanel>
+                            </Border>
+                        </local:CardGrid>
                     </StackPanel>
                 </ScrollViewer>
                 <ScrollViewer x:Name="BenchmarkPanel" Visibility="Collapsed"
@@ -556,80 +635,138 @@
                 </ScrollViewer>
                 <ScrollViewer x:Name="StoragePanel" Visibility="Collapsed"
                               HorizontalScrollBarVisibility="Disabled">
-                    <StackPanel MaxWidth="800" HorizontalAlignment="Left" Spacing="14">
-                        <TextBlock Text="Storage &amp; cache" FontSize="28"
-                                   FontWeight="SemiBold" TextWrapping="Wrap" />
-                        <TextBlock Text="Inspect managed model files, reusable Hugging Face downloads, interrupted preparation and compiled OpenVINO caches. All measurements and cleanup decisions come from the existing local engine."
-                                   TextWrapping="Wrap" Opacity="0.8" />
+                    <StackPanel MaxWidth="{StaticResource InferBridgeContentMaxWidth}" HorizontalAlignment="Stretch"
+                                Spacing="16" Padding="0,0,0,24">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Style="{StaticResource InferBridgeHeaderRuleStyle}" />
+                            <StackPanel Grid.Column="1" Spacing="2">
+                                <TextBlock Text="Storage &amp; cache" Style="{StaticResource InferBridgePageTitleStyle}" />
+                                <TextBlock Text="Managed model files, reusable Hugging Face downloads, interrupted preparation and compiled OpenVINO caches. All measurements and cleanup decisions come from the existing local engine."
+                                           Style="{StaticResource InferBridgeHelpTextStyle}" />
+                            </StackPanel>
+                        </Grid>
+                        <local:WrapRow Spacing="8">
+                            <Button x:Name="StorageRefreshButton" Click="StorageRefreshButton_Click">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE72C;" FontSize="14" />
+                                    <TextBlock Text="Refresh inventory" />
+                                </StackPanel>
+                            </Button>
+                            <ProgressRing x:Name="StorageProgress" IsActive="False"
+                                          Width="24" Height="24" VerticalAlignment="Center" />
+                        </local:WrapRow>
                         <InfoBar x:Name="StorageInfo" Title="Storage manager"
                                  IsOpen="True" IsClosable="False"
                                  Severity="Informational"
                                  Message="Open Storage to inspect managed files. No files are removed automatically." />
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <Button x:Name="StorageRefreshButton" Content="Refresh inventory"
-                                    Click="StorageRefreshButton_Click" />
-                            <ProgressRing x:Name="StorageProgress" IsActive="False"
-                                          Width="26" Height="26" />
-                        </StackPanel>
-                        <TextBlock x:Name="StorageSummary" IsTextSelectionEnabled="True"
-                                   TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
-                                   Text="Connect to the local engine to view managed storage." />
-                        <TextBlock Text="Managed files and cleanup options"
-                                   FontSize="18" FontWeight="SemiBold" />
+                        <local:CardGrid MaxColumns="2">
+                            <Border Style="{StaticResource InferBridgeCardStyle}">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="Summary" Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
+                                    <TextBlock x:Name="StorageSummary" IsTextSelectionEnabled="True"
+                                               TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
+                                               Text="Connect to the local engine to view managed storage." />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource InferBridgeCardStyle}">
+                                <local:BarChart x:Name="StorageChart" Title="Managed storage breakdown"
+                                                Unit=" GiB" Format="0.##" EmptyText="Refresh the inventory to chart storage." />
+                            </Border>
+                        </local:CardGrid>
+                        <TextBlock Text="Managed files and cleanup options" Style="{StaticResource InferBridgeSectionHeaderStyle}" />
                         <StackPanel x:Name="StorageRows" Spacing="12" />
                         <TextBlock Text="Cleanup is never automatic. Unavailable actions remain disabled. Protected transaction backups are not eligible for removal. Source cache cleanup requires a future download; clearing compiled cache can slow the next load."
-                                   TextWrapping="Wrap" Opacity="0.8" />
+                                   Style="{StaticResource InferBridgeHelpTextStyle}" />
                     </StackPanel>
                 </ScrollViewer>
                 <ScrollViewer x:Name="HuggingFacePanel" Visibility="Collapsed"
                               HorizontalScrollBarVisibility="Disabled">
-                    <StackPanel MaxWidth="800" HorizontalAlignment="Left" Spacing="14">
-                        <TextBlock Text="Hugging Face" FontSize="28" FontWeight="SemiBold" />
-                        <TextBlock Text="Connect your account and discover models through the existing InferBridge engine. Search results are not hardware compatibility or model-license approvals."
-                                   TextWrapping="Wrap" Opacity="0.8" />
-                        <InfoBar x:Name="HfInfo" IsOpen="True" IsClosable="False"
-                                 Severity="Informational" Title="Hugging Face access"
-                                 Message="Open this page to inspect the engine's account status." />
-                        <ProgressRing x:Name="HfProgress" Width="26" Height="26"
-                                      HorizontalAlignment="Left" IsActive="False" />
-                        <TextBlock x:Name="HfAccountText" TextWrapping="Wrap"
-                                   AutomationProperties.LiveSetting="Polite"
-                                   Text="Not checked" />
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Button x:Name="HfRefreshButton" Content="Refresh account"
-                                    Click="HfRefreshButton_Click" />
-                            <Button x:Name="HfConnectButton" Content="Add or replace token"
-                                    Click="HfConnectButton_Click" />
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Button x:Name="HfTestButton" Content="Test access"
-                                    Click="HfTestButton_Click" IsEnabled="False" />
-                            <Button x:Name="HfRemoveButton" Content="Remove stored token"
-                                    Click="HfRemoveButton_Click" IsEnabled="False" />
-                        </StackPanel>
-                        <TextBlock Text="Use a Hugging Face user access token with read permission. InferBridge owns the credential in its existing Windows DPAPI-backed backend store. Environment-managed HF_TOKEN credentials cannot be removed here. Gated models may also require accepting their license on huggingface.co."
-                                   TextWrapping="Wrap" Opacity="0.8" />
-                        <TextBlock Text="Discover models" FontSize="18" FontWeight="SemiBold" />
-                        <TextBox x:Name="HfSearchBox" Header="Model name or repository"
-                                 PlaceholderText="e.g. SmolLM"
-                                 MaxLength="200" HorizontalAlignment="Stretch"
-                                 AutomationProperties.Name="Search Hugging Face models" />
-                        <ComboBox x:Name="HfTaskPicker" Header="Model task"
-                                  SelectedIndex="0" MinWidth="220" HorizontalAlignment="Left">
-                            <ComboBoxItem Content="Text generation" Tag="text-generation" />
-                            <ComboBoxItem Content="Embeddings" Tag="embeddings" />
-                            <ComboBoxItem Content="Image and text" Tag="image-text-to-text" />
-                        </ComboBox>
-                        <Button x:Name="HfSearchButton" Content="Search Hugging Face"
-                                Click="HfSearchButton_Click" IsEnabled="False"
-                                HorizontalAlignment="Left"
-                                Style="{StaticResource AccentButtonStyle}" />
-                        <TextBlock x:Name="HfSearchSummary" TextWrapping="Wrap"
-                                   AutomationProperties.LiveSetting="Polite"
-                                   Text="Search is available when your local engine is connected." />
+                    <StackPanel MaxWidth="{StaticResource InferBridgeContentMaxWidth}" HorizontalAlignment="Stretch"
+                                Spacing="16" Padding="0,0,0,24">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Style="{StaticResource InferBridgeHeaderRuleStyle}" />
+                            <StackPanel Grid.Column="1" Spacing="2">
+                                <TextBlock Text="Hugging Face" Style="{StaticResource InferBridgePageTitleStyle}" />
+                                <TextBlock Text="Connect your account and discover models through the existing InferBridge engine. Search results are not hardware compatibility or model-license approvals."
+                                           Style="{StaticResource InferBridgeHelpTextStyle}" />
+                            </StackPanel>
+                        </Grid>
+                        <local:WrapRow Spacing="8">
+                            <Button x:Name="HfRefreshButton" Click="HfRefreshButton_Click">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE72C;" FontSize="14" />
+                                    <TextBlock Text="Refresh account" />
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="HfConnectButton" Click="HfConnectButton_Click">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE8D7;" FontSize="14" />
+                                    <TextBlock Text="Add or replace token" />
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="HfTestButton" IsEnabled="False" Click="HfTestButton_Click">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE9D9;" FontSize="14" />
+                                    <TextBlock Text="Test access" />
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="HfRemoveButton" IsEnabled="False" Click="HfRemoveButton_Click">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE74D;" FontSize="14" />
+                                    <TextBlock Text="Remove stored token" />
+                                </StackPanel>
+                            </Button>
+                            <ProgressRing x:Name="HfProgress" Width="24" Height="24"
+                                          VerticalAlignment="Center" IsActive="False" />
+                        </local:WrapRow>
+                        <local:CardGrid MaxColumns="2">
+                            <Border Style="{StaticResource InferBridgeCardStyle}">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="Account" Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
+                                    <InfoBar x:Name="HfInfo" IsOpen="True" IsClosable="False"
+                                             Severity="Informational" Title="Hugging Face access"
+                                             Message="Open this page to inspect the engine's account status." />
+                                    <TextBlock x:Name="HfAccountText" TextWrapping="Wrap"
+                                               AutomationProperties.LiveSetting="Polite"
+                                               Text="Not checked" />
+                                    <TextBlock Text="Use a Hugging Face user access token with read permission. InferBridge owns the credential in its existing Windows DPAPI-backed backend store. Environment-managed HF_TOKEN credentials cannot be removed here. Gated models may also require accepting their license on huggingface.co."
+                                               Style="{StaticResource InferBridgeHelpTextStyle}" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource InferBridgeCardStyle}">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="Discover models" Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
+                                    <TextBox x:Name="HfSearchBox" Header="Model name or repository"
+                                             PlaceholderText="e.g. SmolLM"
+                                             MaxLength="200" HorizontalAlignment="Stretch"
+                                             AutomationProperties.Name="Search Hugging Face models" />
+                                    <ComboBox x:Name="HfTaskPicker" Header="Model task"
+                                              SelectedIndex="0" MinWidth="220" HorizontalAlignment="Stretch">
+                                        <ComboBoxItem Content="Text generation" Tag="text-generation" />
+                                        <ComboBoxItem Content="Embeddings" Tag="embeddings" />
+                                        <ComboBoxItem Content="Image and text" Tag="image-text-to-text" />
+                                    </ComboBox>
+                                    <Button x:Name="HfSearchButton" Content="Search Hugging Face"
+                                            Click="HfSearchButton_Click" IsEnabled="False"
+                                            HorizontalAlignment="Left"
+                                            Style="{StaticResource AccentButtonStyle}" />
+                                    <TextBlock x:Name="HfSearchSummary" TextWrapping="Wrap"
+                                               AutomationProperties.LiveSetting="Polite"
+                                               Text="Search is available when your local engine is connected." />
+                                </StackPanel>
+                            </Border>
+                        </local:CardGrid>
                         <StackPanel x:Name="HfSearchResults" Spacing="12" />
                         <TextBlock Text="Review model size, access restrictions, remote-code requirements, and compatibility before using the Model library to download or load. Discovery results are remote models, not installed models."
-                                   TextWrapping="Wrap" Opacity="0.8" />
+                                   Style="{StaticResource InferBridgeHelpTextStyle}" />
                     </StackPanel>
                 </ScrollViewer>
                 <!-- Restrict chrome height so the model inventory stays usable in small windows. -->
@@ -761,8 +898,20 @@
                 </Grid>
                 <ScrollViewer x:Name="SettingsPanel" Visibility="Collapsed"
                               HorizontalScrollBarVisibility="Disabled">
-                    <StackPanel MaxWidth="760" HorizontalAlignment="Left" Spacing="14">
-                        <TextBlock Text="Settings" FontSize="28" FontWeight="SemiBold" />
+                    <StackPanel MaxWidth="{StaticResource InferBridgeContentMaxWidth}" HorizontalAlignment="Stretch"
+                                Spacing="16" Padding="0,0,0,24">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Style="{StaticResource InferBridgeHeaderRuleStyle}" />
+                            <StackPanel Grid.Column="1" Spacing="2">
+                                <TextBlock Text="Settings" Style="{StaticResource InferBridgePageTitleStyle}" />
+                                <TextBlock Text="Per-model context window and update preferences. Conversation settings live beside the chat."
+                                           Style="{StaticResource InferBridgeHelpTextStyle}" />
+                            </StackPanel>
+                        </Grid>
                         <InfoBar Title="Inference settings moved to Chat" IsOpen="True" IsClosable="False"
                                  Severity="Informational"
                                  Message="System prompt, temperature, top-p and maximum tokens for the current conversation are in the Inference settings pane beside the chat.">
@@ -770,51 +919,65 @@
                                 <Button Content="Open inference settings" Click="OpenChatSettingsFromSettings_Click" />
                             </InfoBar.ActionButton>
                         </InfoBar>
-                        <TextBlock Text="Per-model context window" FontSize="18" FontWeight="SemiBold" />
-                        <TextBlock Text="Model context persists across restarts. Applying to a loaded model rebuilds its OpenVINO engine; your chat history stays intact. Larger values are trials until verified on this hardware." TextWrapping="Wrap" Opacity="0.8" />
-                        <InfoBar x:Name="ContextConfigurationInfo" Title="Context configuration"
-                                 Message="Load a model to inspect available context settings."
-                                 IsOpen="True" IsClosable="False" Severity="Informational" />
-                        <ComboBox x:Name="ContextSizePicker" Header="Context window tokens"
-                                  MinWidth="240" AutomationProperties.Name="Model context window" />
-                        <TextBlock x:Name="ContextMemoryGuidance" TextWrapping="Wrap"
-                                   AutomationProperties.LiveSetting="Polite" />
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <Button x:Name="ContextApplyButton" Content="Apply model context"
-                                    IsEnabled="False" Click="ContextApplyButton_Click" />
-                            <Button x:Name="ContextResetButton" Content="Restore recommended"
-                                    IsEnabled="False" Click="ContextResetButton_Click" />
-                            <Button Content="Refresh" Click="ContextRefreshButton_Click" />
-                        </StackPanel>
-                        <TextBlock Text="Choose a device directly from Chat or Model library. Advanced AUTO/MULTI/HETERO targets depend on detected hardware; MULTI/HETERO are experimental. Top-k and repetition penalty are not exposed by the chat API." TextWrapping="Wrap" Opacity="0.8" />
-                        <TextBlock Text="About &amp; updates" FontSize="18" FontWeight="SemiBold" />
-                        <TextBlock Text="Update discovery is opt-in and happens only when you select Check now, through the same engine release routes as the Web UI. Microsoft Store installations are updated by the Store."
-                                   TextWrapping="Wrap" Opacity="0.8" />
-                        <TextBlock x:Name="ReleaseStatusText" TextWrapping="Wrap" IsTextSelectionEnabled="True"
-                                   Text="Load to see the version and update settings."
-                                   AutomationProperties.LiveSetting="Polite" />
-                        <ToggleSwitch x:Name="UpdateChecksToggle" IsEnabled="False"
-                                      Header="Allow update checks when I ask" />
-                        <ComboBox x:Name="UpdateChannelPicker" Header="Update channel" IsEnabled="False"
-                                  MinWidth="200" AutomationProperties.Name="Update channel">
-                            <ComboBoxItem Content="Stable" Tag="stable" />
-                            <ComboBoxItem Content="Beta" Tag="beta" />
-                        </ComboBox>
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <Button x:Name="ReleaseRefreshButton" Content="Load" Click="ReleaseRefreshButton_Click" />
-                            <Button x:Name="SaveUpdateSettingsButton" Content="Save update settings"
-                                    IsEnabled="False" Click="SaveUpdateSettingsButton_Click" />
-                            <Button x:Name="CheckUpdatesButton" Content="Check now"
-                                    IsEnabled="False" Click="CheckUpdatesButton_Click" />
-                        </StackPanel>
-                        <TextBlock x:Name="UpdateCheckResult" TextWrapping="Wrap" IsTextSelectionEnabled="True"
-                                   AutomationProperties.LiveSetting="Polite" />
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <HyperlinkButton x:Name="UpdateDownloadLink" Content="Open official download"
-                                             Visibility="Collapsed" />
-                            <Button x:Name="SkipUpdateButton" Content="Skip this version"
-                                    Visibility="Collapsed" Click="SkipUpdateButton_Click" />
-                        </StackPanel>
+                        <local:CardGrid MaxColumns="2">
+                            <Border Style="{StaticResource InferBridgeCardStyle}">
+                                <StackPanel Spacing="12">
+                                    <TextBlock Text="Per-model context window" Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
+                                    <TextBlock Text="Model context persists across restarts. Applying to a loaded model rebuilds its OpenVINO engine; your chat history stays intact. Larger values are trials until verified on this hardware."
+                                               Style="{StaticResource InferBridgeHelpTextStyle}" />
+                                    <InfoBar x:Name="ContextConfigurationInfo" Title="Context configuration"
+                                             Message="Load a model to inspect available context settings."
+                                             IsOpen="True" IsClosable="False" Severity="Informational" />
+                                    <ComboBox x:Name="ContextSizePicker" Header="Context window tokens"
+                                              MinWidth="240" HorizontalAlignment="Stretch"
+                                              AutomationProperties.Name="Model context window" />
+                                    <TextBlock x:Name="ContextMemoryGuidance" TextWrapping="Wrap"
+                                               AutomationProperties.LiveSetting="Polite" />
+                                    <local:WrapRow Spacing="8">
+                                        <Button x:Name="ContextApplyButton" Content="Apply model context"
+                                                IsEnabled="False" Style="{StaticResource AccentButtonStyle}"
+                                                Click="ContextApplyButton_Click" />
+                                        <Button x:Name="ContextResetButton" Content="Restore recommended"
+                                                IsEnabled="False" Click="ContextResetButton_Click" />
+                                        <Button Content="Refresh" Click="ContextRefreshButton_Click" />
+                                    </local:WrapRow>
+                                    <TextBlock Text="Choose a device directly from Chat or Model library. Advanced AUTO/MULTI/HETERO targets depend on detected hardware; MULTI/HETERO are experimental."
+                                               Style="{StaticResource InferBridgeHelpTextStyle}" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource InferBridgeCardStyle}">
+                                <StackPanel Spacing="12">
+                                    <TextBlock Text="About &amp; updates" Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
+                                    <TextBlock Text="Update discovery is opt-in and happens only when you select Check now, through the same engine release routes as the Web UI. Microsoft Store installations are updated by the Store."
+                                               Style="{StaticResource InferBridgeHelpTextStyle}" />
+                                    <TextBlock x:Name="ReleaseStatusText" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                                               Text="Load to see the version and update settings."
+                                               AutomationProperties.LiveSetting="Polite" />
+                                    <ToggleSwitch x:Name="UpdateChecksToggle" IsEnabled="False"
+                                                  Header="Allow update checks when I ask" />
+                                    <ComboBox x:Name="UpdateChannelPicker" Header="Update channel" IsEnabled="False"
+                                              MinWidth="200" AutomationProperties.Name="Update channel">
+                                        <ComboBoxItem Content="Stable" Tag="stable" />
+                                        <ComboBoxItem Content="Beta" Tag="beta" />
+                                    </ComboBox>
+                                    <local:WrapRow Spacing="8">
+                                        <Button x:Name="ReleaseRefreshButton" Content="Load" Click="ReleaseRefreshButton_Click" />
+                                        <Button x:Name="SaveUpdateSettingsButton" Content="Save update settings"
+                                                IsEnabled="False" Click="SaveUpdateSettingsButton_Click" />
+                                        <Button x:Name="CheckUpdatesButton" Content="Check now"
+                                                IsEnabled="False" Click="CheckUpdatesButton_Click" />
+                                    </local:WrapRow>
+                                    <TextBlock x:Name="UpdateCheckResult" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                                               AutomationProperties.LiveSetting="Polite" />
+                                    <local:WrapRow Spacing="8">
+                                        <HyperlinkButton x:Name="UpdateDownloadLink" Content="Open official download"
+                                                         Visibility="Collapsed" />
+                                        <Button x:Name="SkipUpdateButton" Content="Skip this version"
+                                                Visibility="Collapsed" Click="SkipUpdateButton_Click" />
+                                    </local:WrapRow>
+                                </StackPanel>
+                            </Border>
+                        </local:CardGrid>
                     </StackPanel>
                 </ScrollViewer>
                 <!-- One compact command bar; saved-chat and detailed status flyouts
@@ -845,7 +1008,7 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel x:Name="ChatToolbarTitle" Grid.Column="0"
                                     VerticalAlignment="Center">
-                            <TextBlock Text="Chat" FontSize="24" FontWeight="SemiBold" />
+                            <TextBlock Text="Chat" Style="{StaticResource SubtitleTextBlockStyle}" />
                         </StackPanel>
                         <ComboBox x:Name="ChatModelPicker" Grid.Column="1"
                                   PlaceholderText="Select model"
@@ -889,8 +1052,8 @@
                                                   VerticalScrollBarVisibility="Auto"
                                                   HorizontalScrollBarVisibility="Disabled">
                                         <StackPanel Width="340" Spacing="10">
-                                            <TextBlock Text="Saved conversations" FontSize="18"
-                                                       FontWeight="SemiBold" />
+                                            <TextBlock Text="Saved conversations"
+                                                       Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
                                             <TextBox x:Name="SavedChatsSearch"
                                                      Header="Search saved conversations"
                                                      PlaceholderText="Search titles, models, and messages on this PC"
@@ -936,13 +1099,13 @@
                                                     Click="ImportChatJsonButton_Click"
                                                     AutomationProperties.Name="Import an InferBridge conversation JSON export" />
                                             <TextBlock Text="JSON uses the same format as the Web UI's Export/Import JSON, so conversations can move between the browser and this app. There is no automatic sync."
-                                                       TextWrapping="Wrap" Opacity="0.8" />
+                                                       TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                             <CheckBox x:Name="SaveHistoryToggle"
                                                       Content="Save completed chats locally"
                                                       Checked="SaveHistoryToggle_Changed"
                                                       Unchecked="SaveHistoryToggle_Changed" />
                                             <TextBlock Text="Off by default. Saved chats are plain text on this PC, separate from browser history. Other apps with access to your account may read these files."
-                                                       TextWrapping="Wrap" Opacity="0.8" />
+                                                       TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                         </StackPanel>
                                     </ScrollViewer>
                                 </Flyout>
@@ -988,7 +1151,7 @@
                                 AutomationProperties.Name="Load or switch selected chat model to chosen device" />
                         <TextBlock x:Name="ChatDeviceSummary" Grid.Row="1" Grid.ColumnSpan="2"
                                    Text="Connect to inspect available devices."
-                                   TextWrapping="Wrap" FontSize="12" Opacity="0.8"
+                                   TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    AutomationProperties.LiveSetting="Polite" />
                         <TextBlock x:Name="ChatGenerationSummary" Grid.Row="2" Grid.ColumnSpan="2"
                                    TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
@@ -1006,11 +1169,10 @@
                                     HorizontalAlignment="Center" VerticalAlignment="Center"
                                     MaxWidth="360" IsHitTestVisible="False"
                                     AutomationProperties.AccessibilityView="Raw">
-                            <TextBlock Text="Start a conversation" FontSize="22"
-                                       FontWeight="SemiBold" HorizontalAlignment="Center" />
+                            <TextBlock Text="Start a conversation" Style="{StaticResource SubtitleTextBlockStyle}"
+                                       HorizontalAlignment="Center" />
                             <TextBlock Text="Select a local model above, then write a message below. Replies appear here."
-                                       TextAlignment="Center" TextWrapping="Wrap"
-                                       Opacity="0.7" />
+                                       TextAlignment="Center" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </StackPanel>
                     </Grid>
                     <Grid Grid.Row="2" RowSpacing="8">
@@ -1038,7 +1200,7 @@
                                     AutomationProperties.Name="Remove attached images" />
                             <TextBlock x:Name="ChatAttachmentSummary" Grid.Column="2"
                                        VerticalAlignment="Center" TextWrapping="Wrap"
-                                       FontSize="12" Opacity="0.75"
+                                       Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        AutomationProperties.LiveSetting="Polite" />
                         </Grid>
                         <!-- Keep actions on a separate row from progress for narrower windows and text scaling. -->

@@ -128,7 +128,7 @@ internal sealed partial class BackendClient
         if (fresh.SessionNonce != metadata.SessionNonce)
             throw new IOException("The engine session changed. Refresh before testing.");
         if (fresh.AuthenticationRequired && string.IsNullOrWhiteSpace(apiKey))
-            throw new UnauthorizedAccessException("Enter your API key on Engine before testing.");
+            throw new UnauthorizedAccessException("Enter your API key on Engine & devices before testing.");
         if (selectedModel is not null && !fresh.UsableModels.Any(m => m.Id == selectedModel))
             throw new InvalidOperationException("The selected model is no longer loaded. Refresh the Hub.");
         // This calls the existing backend-owned synthetic test coordinator once.
