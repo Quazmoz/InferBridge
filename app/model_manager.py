@@ -49,6 +49,17 @@ class ModelManager(_CoreModelManager):
         self.advisor = HardwareAdvisor(settings, self.catalog, force_mock=self.force_mock)
         self._install_advisor_load_hook()
 
+    def context_summaries(self) -> list[dict]:
+        """Context facts for every registered model, loaded or not."""
+        rows = []
+        for model_id, cfg in list(self.catalog.items()):
+            row = context_configuration.context_summary(cfg, BASE_DIR)
+            row["loaded"] = model_id in self.engines
+            row["changing"] = model_id in self._context_changes
+            row["applies"] = "now" if row["loaded"] else "next-load"
+            rows.append(row)
+        return rows
+
     def context_details(self, model_id: str) -> dict:
         cfg = self.catalog[model_id]
         engine = self.engines.get(model_id)
@@ -56,6 +67,7 @@ class ModelManager(_CoreModelManager):
             cfg, BASE_DIR, device="MOCK" if self.force_mock else getattr(engine, "device", None)
         )
         details["loaded"] = engine is not None
+        details["applies"] = "now" if engine is not None else "next-load"
         details["active_device"] = getattr(engine, "device", None)
         details["changing"] = model_id in self._context_changes
         estimate = self.advisor.estimate_model(cfg, device=details["active_device"])

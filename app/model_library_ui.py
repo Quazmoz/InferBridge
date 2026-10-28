@@ -10,7 +10,7 @@ _EXTENSION_ID = "ovllm-model-library-extension"
 # fmt: off
 MODEL_LIBRARY_CSS = r"""
 #model-library-btn{position:relative}.ml-modal .modal-card{width:min(1080px,calc(100vw - 24px));max-height:min(920px,calc(100dvh - 24px));overflow:hidden}.ml-head p{margin-top:3px;color:var(--text-3);font-size:10px}.ml-body{min-height:0;overflow:auto;padding:16px 18px 22px;overscroll-behavior:contain}.ml-toolbar{display:grid;grid-template-columns:minmax(180px,1fr) auto auto;gap:8px;align-items:center}.ml-search,.ml-path,.ml-field{width:100%;min-height:38px;border:1px solid var(--border);border-radius:9px;background:var(--surface-2);color:var(--text-1);padding:8px 10px;font:inherit;font-size:10px}.ml-btn,.ml-chip{min-height:36px;padding:7px 11px;border:1px solid var(--border);border-radius:9px;background:var(--surface-2);color:var(--text-1);font:inherit;font-size:10px;font-weight:700;cursor:pointer}.ml-btn:hover:not(:disabled),.ml-chip:hover{border-color:var(--primary);background:var(--surface-3)}.ml-btn.primary,.ml-chip.active{border-color:transparent;background:var(--primary);color:#fff}.ml-btn:disabled{opacity:.5;cursor:not-allowed}.ml-profiles{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}.ml-summary{display:flex;justify-content:space-between;gap:12px;margin:14px 0 10px;color:var(--text-3);font-size:9.5px}.ml-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.ml-card{display:flex;min-width:0;flex-direction:column;gap:11px;padding:14px;border:1px solid var(--border);border-radius:13px;background:color-mix(in srgb,var(--surface-2) 80%,transparent)}.ml-card-head{display:flex;justify-content:space-between;gap:10px}.ml-card h4{font-size:13px;color:var(--text-1)}.ml-id{margin-top:2px;color:var(--text-3);font-size:8.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ml-desc{color:var(--text-2);font-size:9.5px;line-height:1.45}.ml-badges{display:flex;flex-wrap:wrap;gap:5px}.ml-badge{display:inline-flex;padding:3px 7px;border:1px solid var(--border);border-radius:999px;color:var(--text-3);font-size:8.5px;font-weight:700}.ml-badge.verified{color:var(--green);border-color:color-mix(in srgb,var(--green) 38%,var(--border))}.ml-badge.local{color:var(--primary);border-color:color-mix(in srgb,var(--primary) 40%,var(--border))}.ml-badge.warn{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 38%,var(--border))}.ml-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.ml-stat{min-width:0;padding:8px;border-radius:9px;background:var(--surface-3)}.ml-stat span,.ml-stat strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ml-stat span{color:var(--text-3);font-size:8px;text-transform:uppercase;letter-spacing:.55px}.ml-stat strong{margin-top:4px;color:var(--text-1);font-size:10px}.ml-health{padding:8px 9px;border-left:3px solid var(--border);border-radius:6px;background:var(--surface-3);color:var(--text-2);font-size:9px;line-height:1.4}.ml-health.compatible{border-color:var(--green)}.ml-health.stale_runtime,.ml-health.incomplete,.ml-health.incompatible_definition,.ml-health.invalid_metadata{border-color:var(--amber)}.ml-quant{color:var(--text-2);font-size:9px;line-height:1.42}.ml-quant strong{color:var(--text-1)}.ml-actions{display:flex;gap:7px;margin-top:auto}.ml-actions .ml-btn{flex:1}.ml-empty,.ml-loading{display:grid;min-height:280px;place-items:center;color:var(--text-3);text-align:center;font-size:10px}.ml-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 18px calc(11px + env(safe-area-inset-bottom));border-top:1px solid var(--border);background:var(--surface-1)}.ml-footer-note{max-width:650px;color:var(--text-3);font-size:9px;line-height:1.4}.ml-footer-actions{display:flex;gap:7px}.ml-import-panel{display:none;margin-top:12px;padding:12px;border:1px solid var(--border);border-radius:11px;background:var(--surface-2)}.ml-import-panel.open{display:block}.ml-import-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.ml-import-grid .wide{grid-column:1/-1}.ml-import-panel h4{margin-bottom:8px;font-size:11px}.ml-discovered{display:none;margin-top:12px;padding:11px 12px;border:1px solid color-mix(in srgb,var(--amber,#e7a93b) 38%,var(--border));border-radius:11px;background:color-mix(in srgb,var(--amber,#e7a93b) 6%,var(--surface-2))}.ml-discovered.open{display:block}.ml-discovered-title{font-size:10.5px;font-weight:800}.ml-discovered-copy{margin-top:3px;color:var(--text-2);font-size:9.5px;line-height:1.45}.ml-discovered-list{display:flex;flex-direction:column;gap:7px;margin-top:9px}.ml-discovered-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 9px;border:1px solid var(--border);border-radius:9px;background:var(--surface-1)}.ml-discovered-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-1);font-size:10px;font-weight:700}.ml-quick-import{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:5px 9px;border:1px solid var(--border);border-radius:9px;background:var(--surface-2);color:var(--text-1);font:inherit;font-size:10px;font-weight:750;cursor:pointer;white-space:nowrap}.ml-quick-import:hover{border-color:var(--primary);background:var(--surface-3)}.ml-quick-import[data-count]:not([data-count="0"])::after{content:attr(data-count);display:grid;min-width:17px;height:17px;place-items:center;padding:0 4px;border-radius:999px;background:var(--amber,#e7a93b);color:#111;font-size:8px;font-weight:850}.ml-import-actions{display:flex;justify-content:flex-end;gap:7px;margin-top:9px}.ml-error{margin-top:10px;padding:9px;border:1px solid color-mix(in srgb,var(--red) 40%,var(--border));border-radius:8px;color:var(--red);font-size:9.5px}.ml-check{display:flex;align-items:center;gap:6px;color:var(--text-2);font-size:9.5px}.ml-check input{accent-color:var(--primary)}
-@media(max-width:950px){.ml-quick-import span{display:none}.ml-quick-import{width:32px;justify-content:center;padding:0}}@media(max-width:820px){.ml-grid{grid-template-columns:1fr}.ml-toolbar{grid-template-columns:1fr auto}.ml-toolbar .ml-check{grid-column:1/-1}.ml-import-grid{grid-template-columns:1fr}.ml-import-grid .wide{grid-column:auto}}@media(max-width:540px){.ml-modal .modal-card{width:calc(100vw - 12px);max-height:calc(100dvh - 12px)}.ml-body{padding:12px}.ml-toolbar{grid-template-columns:1fr}.ml-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.ml-footer{align-items:stretch;flex-direction:column;padding:10px 12px calc(10px + env(safe-area-inset-bottom))}.ml-footer-actions{display:grid;grid-template-columns:1fr 1fr}.ml-btn{min-height:42px}}
+@media(max-width:950px){.ml-quick-import span{display:none}.ml-quick-import{width:32px;justify-content:center;padding:0}}@media(max-width:820px){.ml-grid{grid-template-columns:1fr}.ml-toolbar{grid-template-columns:1fr auto}.ml-toolbar .ml-check{grid-column:1/-1}.ml-import-grid{grid-template-columns:1fr}.ml-import-grid .wide{grid-column:auto}}@media(max-width:540px){.ml-modal .modal-card{width:calc(100vw - 12px);max-height:calc(100dvh - 12px)}.ml-body{padding:12px}.ml-toolbar{grid-template-columns:1fr}.ml-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.ml-footer{align-items:stretch;flex-direction:column;padding:10px 12px calc(10px + env(safe-area-inset-bottom))}.ml-footer-actions{display:grid;grid-template-columns:1fr 1fr}.ml-btn{min-height:42px}}.ml-context{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 9px;border:1px solid var(--border);border-radius:9px;background:var(--surface-3);color:var(--text-2);font-size:9.5px}.ml-context strong{color:var(--text-1);font-variant-numeric:tabular-nums}.ml-context .ml-btn{flex:0 0 auto;min-height:30px}.ml-trial{margin-left:4px;padding:1px 6px;border:1px solid color-mix(in srgb,var(--amber) 45%,var(--border));border-radius:999px;color:var(--amber);font-size:8.5px;font-weight:800}.ml-ctx-editor{display:grid;gap:8px;padding:11px;border:1px solid color-mix(in srgb,var(--primary) 40%,var(--border));border-radius:11px;background:var(--surface-2)}.ml-ctx-editor[hidden]{display:none}.ml-ctx-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}.ml-ctx-editor label{display:grid;gap:4px;color:var(--text-2);font-size:9.5px;font-weight:700}.ml-ctx-facts,.ml-ctx-note{color:var(--text-2);font-size:9.5px;line-height:1.45}.ml-ctx-note.warn{color:var(--amber)}.ml-ctx-note.error{color:var(--red)}.ml-ctx-actions{display:flex;flex-wrap:wrap;gap:7px;justify-content:flex-end}
 """
 
 MODEL_LIBRARY_JS = r"""
@@ -75,6 +75,10 @@ let returnFocus = null;
 let controller = null;
 let data = null;
 let searchTimer = null;
+// Per-model context for every registered model (loaded or not), keyed by id.
+let contexts = new Map();
+const CONTEXT_MIN = 128;
+const CONTEXT_MAX = 262144;
 
 const escapeHtml = value => String(value ?? '')
   .replace(/&/g, '&amp;')
@@ -103,7 +107,7 @@ async function api(url, options = {}) {
   });
   let payload = {};
   try { payload = await response.json(); } catch {}
-  if (!response.ok) throw new Error(payload.detail || `Request failed (${response.status})`);
+  if (!response.ok) throw new Error(typeof payload.detail === 'string' ? payload.detail : `Request failed (${response.status})`);
   return payload;
 }
 
@@ -208,7 +212,10 @@ function action(item) {
     if (['stale_runtime', 'incompatible_definition', 'invalid_metadata'].includes(health.status)) {
       return `<button class="ml-btn primary" data-convert="${escapeHtml(item.id)}" data-device="${escapeHtml(device)}" data-format="${escapeHtml(format)}">Reconvert ${escapeHtml(format.toUpperCase())}</button>`;
     }
-    return `<button class="ml-btn primary" data-load="${escapeHtml(item.id)}" data-device="${escapeHtml(device)}">Load</button>`;
+    return `<button class="ml-btn primary" data-load="${escapeHtml(item.id)}" data-device="${escapeHtml(device)}">Load</button>` +
+      (contexts.get(item.id)?.configurable
+        ? `<button class="ml-btn" data-load-context="${escapeHtml(item.id)}" data-device="${escapeHtml(device)}" aria-label="Load ${escapeHtml(item.name)} with a chosen context window">Load with context…</button>`
+        : '');
   }
   if (!state.can_convert) {
     return '<button class="ml-btn" disabled>No conversion source</button>';
@@ -241,7 +248,7 @@ function render() {
     const measurement = metrics.measurement_device
       ? `${measurementSource} · ${metrics.measurement_device}`
       : measurementSource;
-    return `<article class="ml-card"><div class="ml-card-head"><div><h4>${escapeHtml(item.name)}</h4><div class="ml-id">${escapeHtml(item.id)} · ${escapeHtml(item.backend)}</div></div><span class="ml-badge">${escapeHtml(String(item.weight_format || '').toUpperCase())}</span></div><div class="ml-desc">${escapeHtml(item.description || item.maintainer_note)}</div><div class="ml-badges">${['CPU', 'GPU', 'NPU'].map(device => badge(item.verification?.[device])).join('')}</div><div class="ml-stats"><div class="ml-stat"><span>Minimum RAM</span><strong>${number(requirements.minimum_ram_gb)} GB</strong></div><div class="ml-stat"><span>Minimum disk</span><strong>${number(requirements.minimum_disk_gb)} GB</strong></div><div class="ml-stat"><span>First load</span><strong>${metrics.time_to_first_load_ms != null ? number(metrics.time_to_first_load_ms / 1000, 1) + ' s' : 'Unmeasured'}</strong></div><div class="ml-stat"><span>Throughput</span><strong>${metrics.tokens_sec != null ? number(metrics.tokens_sec, 1) + ' t/s' : 'Unmeasured'}</strong></div><div class="ml-stat"><span>First token</span><strong>${metrics.time_to_first_token_ms != null ? number(metrics.time_to_first_token_ms, 0) + ' ms' : 'Unmeasured'}</strong></div><div class="ml-stat"><span>Evidence</span><strong>${escapeHtml(measurement)}</strong></div><div class="ml-stat"><span>Tested context</span><strong>${metrics.maximum_tested_context || 'Unverified'}</strong></div><div class="ml-stat"><span>License</span><strong title="${escapeHtml(license)}">${escapeHtml(license)}</strong></div><div class="ml-stat"><span>Tested OpenVINO</span><strong>${escapeHtml(metrics.tested_openvino_version || 'Unverified')}</strong></div><div class="ml-stat"><span>Tested driver</span><strong title="${escapeHtml(metrics.tested_driver_version || 'Unverified')}">${escapeHtml(metrics.tested_driver_version || 'Unverified')}</strong></div><div class="ml-stat"><span>Last certified</span><strong>${escapeHtml(metrics.last_certification_date || 'Never')}</strong></div><div class="ml-stat"><span>Local status</span><strong>${escapeHtml(item.runtime?.status_label || 'Unknown')}</strong></div></div><div class="ml-health ${escapeHtml(health.status)}"><strong>${escapeHtml(health.label || 'Unknown conversion state')}</strong>${health.details ? `<br>${escapeHtml(health.details)}` : ''}</div><div class="ml-quant"><strong>Recommended:</strong> ${escapeHtml(String(recommendation.format || item.weight_format || '').toUpperCase())} on ${escapeHtml(recommendation.device || item.recommended_device)}. ${escapeHtml(recommendation.reason || '')}</div><div class="ml-actions">${action(item)}</div></article>`;
+    return `<article class="ml-card"><div class="ml-card-head"><div><h4>${escapeHtml(item.name)}</h4><div class="ml-id">${escapeHtml(item.id)} · ${escapeHtml(item.backend)}</div></div><span class="ml-badge">${escapeHtml(String(item.weight_format || '').toUpperCase())}</span></div><div class="ml-desc">${escapeHtml(item.description || item.maintainer_note)}</div><div class="ml-badges">${['CPU', 'GPU', 'NPU'].map(device => badge(item.verification?.[device])).join('')}</div><div class="ml-stats"><div class="ml-stat"><span>Minimum RAM</span><strong>${number(requirements.minimum_ram_gb)} GB</strong></div><div class="ml-stat"><span>Minimum disk</span><strong>${number(requirements.minimum_disk_gb)} GB</strong></div><div class="ml-stat"><span>First load</span><strong>${metrics.time_to_first_load_ms != null ? number(metrics.time_to_first_load_ms / 1000, 1) + ' s' : 'Unmeasured'}</strong></div><div class="ml-stat"><span>Throughput</span><strong>${metrics.tokens_sec != null ? number(metrics.tokens_sec, 1) + ' t/s' : 'Unmeasured'}</strong></div><div class="ml-stat"><span>First token</span><strong>${metrics.time_to_first_token_ms != null ? number(metrics.time_to_first_token_ms, 0) + ' ms' : 'Unmeasured'}</strong></div><div class="ml-stat"><span>Evidence</span><strong>${escapeHtml(measurement)}</strong></div><div class="ml-stat"><span>Tested context</span><strong>${metrics.maximum_tested_context || 'Unverified'}</strong></div><div class="ml-stat"><span>License</span><strong title="${escapeHtml(license)}">${escapeHtml(license)}</strong></div><div class="ml-stat"><span>Tested OpenVINO</span><strong>${escapeHtml(metrics.tested_openvino_version || 'Unverified')}</strong></div><div class="ml-stat"><span>Tested driver</span><strong title="${escapeHtml(metrics.tested_driver_version || 'Unverified')}">${escapeHtml(metrics.tested_driver_version || 'Unverified')}</strong></div><div class="ml-stat"><span>Last certified</span><strong>${escapeHtml(metrics.last_certification_date || 'Never')}</strong></div><div class="ml-stat"><span>Local status</span><strong>${escapeHtml(item.runtime?.status_label || 'Unknown')}</strong></div></div><div class="ml-health ${escapeHtml(health.status)}"><strong>${escapeHtml(health.label || 'Unknown conversion state')}</strong>${health.details ? `<br>${escapeHtml(health.details)}` : ''}</div><div class="ml-quant"><strong>Recommended:</strong> ${escapeHtml(String(recommendation.format || item.weight_format || '').toUpperCase())} on ${escapeHtml(recommendation.device || item.recommended_device)}. ${escapeHtml(recommendation.reason || '')}</div>${contextRow(item)}<div class="ml-actions">${action(item)}</div></article>`;
   }).join('') || '<div class="ml-empty">No models match this profile and search.</div>';
   grid.querySelectorAll('[data-load]').forEach(button => {
     button.onclick = () => prepare(button, 'load');
@@ -249,6 +256,132 @@ function render() {
   grid.querySelectorAll('[data-convert]').forEach(button => {
     button.onclick = () => prepare(button, 'convert');
   });
+  grid.querySelectorAll('[data-context-edit]').forEach(button => {
+    button.onclick = () => openContextEditor(button.dataset.contextEdit, 'edit', button);
+  });
+  grid.querySelectorAll('[data-load-context]').forEach(button => {
+    button.onclick = () => openContextEditor(button.dataset.loadContext, 'load', button);
+  });
+}
+
+const tokensText = value => Number.isFinite(Number(value)) ? Number(value).toLocaleString() : 'Unknown';
+const shortTokens = value => value >= 1024 && value % 1024 === 0 ? `${value / 1024}K` : tokensText(value);
+
+function contextRow(item) {
+  const row = contexts.get(item.id);
+  if (!row || !row.configurable) return '';
+  const trial = row.trial ? '<span class="ml-trial" title="Above the recommended value; unverified on this hardware">trial</span>' : '';
+  return `<div class="ml-context"><span>Context: <strong>${tokensText(row.configured_context_tokens)} tokens</strong>${trial}</span><button type="button" class="ml-btn" data-context-edit="${escapeHtml(item.id)}" aria-expanded="false" aria-label="Change context window for ${escapeHtml(item.name)}">Context…</button></div><div class="ml-ctx-editor" data-context-editor="${escapeHtml(item.id)}" hidden></div>`;
+}
+
+// Shared editor rules; they mirror app/context_configuration.validate_context.
+function contextChoice(details, raw) {
+  const tokens = Number(raw);
+  const lower = details.minimum_context_tokens;
+  const upper = details.maximum_context_tokens;
+  if (!Number.isInteger(tokens) || tokens < CONTEXT_MIN || tokens > CONTEXT_MAX) {
+    return {ok: false, message: `Enter a whole number between ${tokensText(lower)} and ${tokensText(upper)}.`};
+  }
+  if (tokens < lower) {
+    return {ok: false, message: `Leave room for the prompt: use at least ${tokensText(lower)} tokens (output reserve is ${tokensText(details.reserved_output_tokens)}).`};
+  }
+  if (tokens > upper) {
+    return {ok: false, message: details.model_architecture_limit_tokens
+      ? `This model supports at most ${tokensText(upper)} tokens.`
+      : `Without verified model metadata the maximum is the recommended ${tokensText(upper)} tokens.`};
+  }
+  const perToken = (details.options || []).concat(details.presets || [])
+    .filter(option => Number.isFinite(option.fp16_kv_cache_gib_estimate) && option.tokens > 0)
+    .map(option => option.fp16_kv_cache_gib_estimate / option.tokens)[0];
+  return {
+    ok: true,
+    tokens,
+    trial: tokens > details.recommended_context_tokens,
+    kv: perToken ? Math.round(perToken * tokens * 1000) / 1000 : null,
+  };
+}
+
+function closeContextEditors(except = null) {
+  grid.querySelectorAll('[data-context-editor]').forEach(editor => {
+    if (editor === except) return;
+    editor.hidden = true;
+    editor.replaceChildren();
+  });
+  grid.querySelectorAll('[data-context-edit]').forEach(button => button.setAttribute('aria-expanded', 'false'));
+}
+
+async function openContextEditor(modelId, mode, opener) {
+  const editor = [...grid.querySelectorAll('[data-context-editor]')]
+    .find(element => element.dataset.contextEditor === modelId);
+  if (!editor) return;
+  closeContextEditors(editor);
+  editor.hidden = false;
+  editor.textContent = 'Reading model context…';
+  grid.querySelector(`[data-context-edit="${CSS.escape(modelId)}"]`)?.setAttribute('aria-expanded', 'true');
+  let details;
+  try {
+    details = await api(`/v1/models/context?model=${encodeURIComponent(modelId)}`, {cache: 'no-store'});
+    if (details.model_id !== modelId) throw new Error('Context response did not match this model.');
+  } catch (err) {
+    editor.innerHTML = `<div class="ml-ctx-note error" role="alert">${escapeHtml(err.message)}</div>`;
+    return;
+  }
+  const presets = (details.presets || []).map(preset => preset.tokens);
+  const options = presets.map(value => {
+    const preset = details.presets.find(row => row.tokens === value);
+    const tags = [value === details.configured_context_tokens ? 'current' : '', preset.recommended ? 'recommended' : '', preset.trial ? 'trial' : ''].filter(Boolean);
+    return `<option value="${value}">${shortTokens(value)} · ${tokensText(value)}${tags.length ? ` (${tags.join(', ')})` : ''}</option>`;
+  }).join('');
+  const loaded = details.loaded === true;
+  const primary = mode === 'load' ? 'Load with this context' : loaded ? 'Apply now (reloads engine, chat kept)' : 'Save for next load';
+  editor.innerHTML = `<div class="ml-ctx-facts">Current <strong>${tokensText(details.configured_context_tokens)}</strong> · Recommended <strong>${tokensText(details.recommended_context_tokens)}</strong> · Model maximum <strong>${details.model_architecture_limit_tokens ? tokensText(details.model_architecture_limit_tokens) : 'not verified'}</strong></div>` +
+    `<div class="ml-ctx-row"><label>Preset<select class="ml-field" data-ctx-preset><option value="">Custom</option>${options}</select></label>` +
+    `<label>Tokens<input class="ml-field" data-ctx-tokens type="number" inputmode="numeric" step="1" min="${details.minimum_context_tokens}" max="${details.maximum_context_tokens}" value="${details.configured_context_tokens}"></label></div>` +
+    `<div class="ml-ctx-note" data-ctx-note aria-live="polite"></div>` +
+    `<div class="ml-ctx-note">${mode === 'load' ? 'The model loads with this context and keeps it for next time.' : loaded ? 'Apply now rebuilds the engine; your chat history is kept.' : 'Used next time this model loads.'}</div>` +
+    `<div class="ml-ctx-actions"><button type="button" class="ml-btn" data-ctx-cancel>Cancel</button><button type="button" class="ml-btn primary" data-ctx-save>${escapeHtml(primary)}</button></div>`;
+  const preset = editor.querySelector('[data-ctx-preset]');
+  const input = editor.querySelector('[data-ctx-tokens]');
+  const note = editor.querySelector('[data-ctx-note]');
+  const save = editor.querySelector('[data-ctx-save]');
+  const refresh = () => {
+    const choice = contextChoice(details, input.value);
+    preset.value = presets.includes(Number(input.value)) ? String(Number(input.value)) : '';
+    save.disabled = !choice.ok || (mode === 'edit' && choice.tokens === details.configured_context_tokens);
+    note.className = `ml-ctx-note${choice.ok ? (choice.trial ? ' warn' : '') : ' error'}`;
+    note.textContent = choice.ok
+      ? `${tokensText(choice.tokens - details.reserved_output_tokens)} prompt tokens + ${tokensText(details.reserved_output_tokens)} reserved output. ` +
+        (choice.kv == null ? 'KV-cache estimate unavailable. ' : `KV cache ~${choice.kv} GiB (FP16 estimate). `) +
+        (choice.trial ? 'Trial: above the recommended value and unverified on this hardware.' : '')
+      : choice.message;
+  };
+  preset.onchange = () => { if (preset.value) input.value = preset.value; refresh(); };
+  input.oninput = refresh;
+  editor.querySelector('[data-ctx-cancel]').onclick = () => { closeContextEditors(); opener?.focus(); };
+  save.onclick = async () => {
+    const choice = contextChoice(details, input.value);
+    if (!choice.ok) { refresh(); return; }
+    save.disabled = true;
+    note.className = 'ml-ctx-note';
+    note.textContent = mode === 'load' ? 'Saving context and starting the load…' : loaded ? 'Rebuilding the engine with the new context…' : 'Saving…';
+    try {
+      if (mode === 'load') {
+        await api('/v1/models/load', {method: 'POST', headers: jsonHeaders(),
+          body: JSON.stringify({model: modelId, device: opener?.dataset.device || undefined, context_tokens: choice.tokens})});
+      } else {
+        await api('/v1/models/context', {method: 'POST', headers: jsonHeaders(),
+          body: JSON.stringify({model: modelId, context_tokens: choice.tokens, expected_context_tokens: details.configured_context_tokens})});
+      }
+      await load();
+    } catch (err) {
+      note.className = 'ml-ctx-note error';
+      note.setAttribute('role', 'alert');
+      note.textContent = err.message || 'Context was not confirmed. Refresh before retrying.';
+      save.disabled = false;
+    }
+  };
+  refresh();
+  input.focus();
 }
 
 async function prepare(button, kind) {
@@ -293,10 +426,15 @@ async function load() {
     include_all: String(showAll.checked),
   });
   try {
-    const [libraryData] = await Promise.all([
+    const [libraryData, contextData] = await Promise.all([
       api(`/v1/model-library?${params}`, {signal: controller.signal}),
+      api('/v1/models/contexts', {signal: controller.signal, cache: 'no-store'}).catch(err => {
+        if (err.name === 'AbortError') throw err;
+        return {data: []};
+      }),
       refreshUnregisteredManaged(controller.signal),
     ]);
+    contexts = new Map((contextData?.data || []).map(row => [row.model_id, row]));
     data = libraryData;
     render();
   } catch (err) {

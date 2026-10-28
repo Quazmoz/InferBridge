@@ -13,6 +13,9 @@ from typing import Any
 from app.model_registry import ModelConfig
 
 MAX_CONTEXT = 262_144
+MIN_CONTEXT = 128
+# Common sizes offered as one-click presets in every editor (native and web).
+STANDARD_PRESETS = (2048, 4096, 8192, 16384, 32768, 65536, 131072)
 _METADATA_LIMIT = 4 * 1024 * 1024
 
 
@@ -140,12 +143,74 @@ def context_options(cfg: ModelConfig, metadata: dict[str, Any]) -> list[dict[str
     return options
 
 
+def is_configurable(cfg: ModelConfig) -> bool:
+    return cfg.backend != "openvino-embeddings"
+
+
+def context_bounds(cfg: ModelConfig, metadata: dict[str, Any]) -> tuple[int, int]:
+    """Inclusive custom-value bounds that :func:`validate_context` accepts."""
+    recommended = cfg.recommended_context_len or cfg.max_context_len
+    upper = min(model_limit(metadata) or recommended, MAX_CONTEXT)
+    lower = max(MIN_CONTEXT, cfg.max_output_tokens + 65)
+    return lower, upper
+
+
+def context_presets(cfg: ModelConfig, metadata: dict[str, Any]) -> list[dict[str, Any]]:
+    """Standard sizes capped at the model maximum; above-recommended sizes are trials."""
+    if not is_configurable(cfg):
+        return []
+    recommended = cfg.recommended_context_len or cfg.max_context_len
+    presets = []
+    for value in STANDARD_PRESETS:
+        try:
+            validate_context(cfg, value, metadata)
+        except ContextValidationError:
+            continue
+        presets.append(
+            {
+                "tokens": value,
+                "trial": value > recommended,
+                "recommended": value == recommended,
+                "fp16_kv_cache_gib_estimate": kv_cache_gib(metadata, value),
+            }
+        )
+    return presets
+
+
+def context_summary(cfg: ModelConfig, base_dir: Path) -> dict[str, Any]:
+    """Cheap per-model context facts for model lists; never touches an engine."""
+    metadata = model_metadata(cfg, base_dir)
+    configurable = is_configurable(cfg)
+    recommended = cfg.recommended_context_len or cfg.max_context_len
+    lower, upper = context_bounds(cfg, metadata)
+    return {
+        "model_id": cfg.id,
+        "name": cfg.name,
+        "backend": cfg.backend,
+        "configurable": configurable,
+        "configured_context_tokens": cfg.max_context_len if configurable else None,
+        "recommended_context_tokens": recommended if configurable else None,
+        "reserved_output_tokens": cfg.max_output_tokens if configurable else None,
+        "model_architecture_limit_tokens": model_limit(metadata) if configurable else None,
+        "minimum_context_tokens": lower if configurable else None,
+        "maximum_context_tokens": upper if configurable else None,
+        "trial": configurable and cfg.max_context_len > recommended,
+    }
+
+
 def describe_context(cfg: ModelConfig, base_dir: Path, *, device: str | None = None) -> dict:
     metadata = model_metadata(cfg, base_dir)
     recommended = cfg.recommended_context_len or cfg.max_context_len
     limit = model_limit(metadata)
+    lower, upper = context_bounds(cfg, metadata)
     return {
         "model_id": cfg.id,
+        "name": cfg.name,
+        "configurable": is_configurable(cfg),
+        "minimum_context_tokens": lower,
+        "maximum_context_tokens": upper,
+        "custom_values_allowed": is_configurable(cfg),
+        "presets": context_presets(cfg, metadata),
         "configured_context_tokens": cfg.max_context_len,
         "recommended_context_tokens": recommended,
         "prompt_budget_tokens": cfg.max_prompt_len,

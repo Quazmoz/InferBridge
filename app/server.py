@@ -637,6 +637,28 @@ def create_app(settings: Settings) -> FastAPI:
             "model": manager.catalog_entry(cfg.id),
         }
 
+    def _context_http_error(exc: Exception) -> HTTPException:
+        if isinstance(exc, context_configuration.ContextValidationError):
+            return HTTPException(status_code=400, detail=str(exc))
+        if isinstance(exc, model_manager.ContextBusyError):
+            return HTTPException(status_code=409, detail=str(exc))
+        if isinstance(exc, OSError):
+            return HTTPException(
+                status_code=409,
+                detail="Cannot persist model context. Check writable model settings storage.",
+            )
+        return HTTPException(
+            status_code=409,
+            detail="Context change was not confirmed. Refresh the authoritative context "
+            "before retrying; review local diagnostics if compilation failed.",
+        )
+
+    @app.get("/v1/models/contexts", dependencies=auth)
+    async def list_model_contexts():
+        # Every registered model, loaded or not: model lists show and edit context
+        # without loading anything. Editing uses POST /v1/models/context.
+        return {"object": "list", "data": manager.context_summaries()}
+
     @app.get("/v1/models/context", dependencies=auth)
     async def inspect_model_context(model: str = Query(min_length=1, max_length=128)):
         if model not in manager.catalog:
@@ -653,21 +675,8 @@ def create_app(settings: Settings) -> FastAPI:
                 req.context_tokens,
                 expected_context_tokens=req.expected_context_tokens,
             )
-        except context_configuration.ContextValidationError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        except model_manager.ContextBusyError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-        except OSError as exc:
-            raise HTTPException(
-                status_code=409,
-                detail="Cannot persist model context. Check writable model settings storage.",
-            ) from exc
         except Exception as exc:  # noqa: BLE001 - native OOM/library failures are untrusted
-            raise HTTPException(
-                status_code=409,
-                detail="Context change was not confirmed. Refresh the authoritative context "
-                "before retrying; review local diagnostics if compilation failed.",
-            ) from exc
+            raise _context_http_error(exc) from exc
         return {"status": "applied", "context": details}
 
     @app.post("/v1/models/load", dependencies=auth)
@@ -677,6 +686,22 @@ def create_app(settings: Settings) -> FastAPI:
         if req.model in manager._context_changes:
             raise HTTPException(status_code=409, detail="Context configuration is in progress.")
         device = _normalize_device_or_400(req.device)
+        if req.context_tokens is not None:
+            current = manager.catalog[req.model].max_context_len
+            if req.context_tokens != current:
+                if req.model in manager.engines:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="This model is already loaded. Use Apply now to change its "
+                        "context; the engine rebuilds and chat history is kept.",
+                    )
+                try:
+                    # Unloaded: validate and persist atomically, then load with it.
+                    await manager.configure_context(
+                        req.model, req.context_tokens, expected_context_tokens=current
+                    )
+                except Exception as exc:  # noqa: BLE001 - mapped to safe public errors
+                    raise _context_http_error(exc) from exc
 
         try:
             task = manager.schedule_load(req.model, device, draft_model=req.draft_model)

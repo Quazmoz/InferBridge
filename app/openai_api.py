@@ -368,6 +368,9 @@ class ModelLoadRequest(BaseModel):
     draft_model: str | None = (
         None  # catalog model id or path to draft model for speculative decoding
     )
+    # Optional per-model context chosen at load time. Validated and persisted
+    # exactly like POST /v1/models/context before the load is scheduled.
+    context_tokens: int | None = Field(default=None, strict=True, ge=128, le=262144)
 
 
 class ModelConvertRequest(BaseModel):
