@@ -933,7 +933,7 @@ def test_native_model_library_exchange_uses_web_endpoints_without_overwrite():
     ):
         assert endpoint in client
     # Every call proves the engine identity and sends the user's API key.
-    assert client.count("RequireVerifiedOriginAsync(apiKey, cancellationToken)") == 4
+    assert client.count("RequireVerifiedOriginAsync(apiKey, cancellationToken)") == 5
     # Never request replacement; never enable remote model code from native.
     assert "overwrite = true" not in client
     assert client.count("overwrite = false") == 2

@@ -24,5 +24,8 @@
     <Compile Include="../InferBridge.Native/PickerRefresh.cs" Link="PickerRefresh.cs" />
     <Compile Include="../InferBridge.Native/ChartMath.cs" Link="ChartMath.cs" />
     <Compile Include="../InferBridge.Native/ToolSetup.cs" Link="ToolSetup.cs" />
+    <Compile Include="../InferBridge.Native/ChatSession.cs" Link="ChatSession.cs" />
+    <Compile Include="../InferBridge.Native/NativePreferences.cs" Link="NativePreferences.cs" />
+    <Compile Include="../InferBridge.Native/HardwareAdvisorClient.cs" Link="HardwareAdvisorClient.cs" />
   </ItemGroup>
 </Project>

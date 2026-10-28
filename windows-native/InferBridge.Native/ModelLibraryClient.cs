@@ -96,6 +96,45 @@ internal sealed partial class BackendClient
         return JsonSerializer.Serialize(root, new JsonSerializerOptions { WriteIndented = true }) + "\n";
     }
 
+    /// <summary>
+    /// Web "Refresh" in Model Library: the engine downloads the official, signed-off
+    /// model-library manifest (trusted GitHub URL, 1 MB cap) and merges new verified
+    /// definitions. No model weights are downloaded; user definitions are never replaced.
+    /// </summary>
+    public async Task<ModelDefinitionImportResult> RefreshOfficialModelLibraryAsync(
+        string? apiKey, CancellationToken cancellationToken)
+    {
+        string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
+        JsonDocument document;
+        try
+        {
+            document = await PostJsonAsync(origin + "/v1/model-library/refresh", "{}", apiKey,
+                cancellationToken, TimeSpan.FromMinutes(2), 8 * 1024 * 1024);
+        }
+        catch (System.Net.Http.HttpRequestException error) when (error.StatusCode == System.Net.HttpStatusCode.BadGateway)
+        {
+            // The engine answers 502 when GitHub is unreachable or the manifest fails validation.
+            throw new EngineRequestException(
+                "The official verified model list could not be downloaded or failed validation. Your library was not changed.");
+        }
+        using var _ = document;
+        var root = document.RootElement;
+        if (ReadString(root, "status") != "refreshed"
+            || !root.TryGetProperty("result", out var result) || result.ValueKind != JsonValueKind.Object)
+            throw new JsonException("The engine did not confirm the model library refresh.");
+        IReadOnlyList<string> Ids(string key)
+        {
+            if (!result.TryGetProperty(key, out var list)) return Array.Empty<string>();
+            if (list.ValueKind != JsonValueKind.Array || list.GetArrayLength() > 1000)
+                throw new JsonException("The engine returned an invalid refresh summary.");
+            return list.EnumerateArray().Select(item => item.ValueKind == JsonValueKind.String
+                && IsValidModelId(item.GetString()) ? item.GetString()!
+                : throw new JsonException("The engine returned an invalid model id.")).ToList();
+        }
+        // "conflicts" are user definitions the official list did not replace.
+        return new ModelDefinitionImportResult(Ids("added"), Ids("updated"), Ids("conflicts"));
+    }
+
     public async Task<ModelDefinitionImportResult> ImportModelDefinitionsAsync(
         byte[] file, string? apiKey, CancellationToken cancellationToken)
     {

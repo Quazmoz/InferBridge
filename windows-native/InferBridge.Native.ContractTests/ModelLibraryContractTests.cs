@@ -35,6 +35,8 @@ internal static class ModelLibraryContractTests
         string scan = """{"models":[{"directory_name":"qwen3-int4-ov","suggested_model_id":"qwen3-int4-ov","suggested_name":"qwen3 int4 ov","size_bytes":2147483648}],"count":1}""";
         string adoptReply = """{"status":"imported","model_id":"qwen3-local","target_path":"C:\\m","size_bytes":10,"managed_in_place":true}""";
         string convertedReply = """{"status":"imported","model_id":"copy-a","target_path":"C:\\m","size_bytes":20}""";
+        string refreshReply = """{"status":"refreshed","result":{"source":"https://raw.githubusercontent.com/x","manifest":{},"added":["new-a"],"updated":["old-b"],"conflicts":["mine-c"]},"library":{}}""";
+        HttpStatusCode refreshStatus = HttpStatusCode.OK;
         HttpStatusCode importStatus = HttpStatusCode.OK;
         var engine = new FakeEngine
         {
@@ -47,6 +49,9 @@ internal static class ModelLibraryContractTests
                 "/v1/model-library/unregistered-managed" => FakeEngine.Json(scan),
                 "/v1/model-library/adopt-managed" => FakeEngine.Json(adoptReply),
                 "/v1/model-library/import-converted" => FakeEngine.Json(convertedReply),
+                "/v1/model-library/refresh" => refreshStatus == HttpStatusCode.OK
+                    ? FakeEngine.Json(refreshReply)
+                    : FakeEngine.Json("""{"detail":"The official model-library release manifest could not be downloaded."}""", refreshStatus),
                 _ => throw new InvalidOperationException("Unexpected route " + request.RequestUri.AbsolutePath),
             },
         };
@@ -189,6 +194,35 @@ internal static class ModelLibraryContractTests
             "an invalid registration reached the engine");
         Rejects<ArgumentException>(() => BackendClient.ValidateRegistration(copy with { SourcePath = "" }),
             "empty source path was accepted");
-        Console.WriteLine("Native Verified Model Library import/export/adopt contracts: all cases passed.");
+
+        // --- Check for newly verified models (web Refresh) -----------------------------
+        var refreshed = await client.RefreshOfficialModelLibraryAsync(key, CancellationToken.None);
+        Check(engine.Calls.Last().Method == "POST" && engine.Calls.Last().Path == "/v1/model-library/refresh"
+            && engine.Calls.Last().Body == "{}", "refresh differs from the web POST /v1/model-library/refresh");
+        Check(refreshed.Added.SequenceEqual(new[] { "new-a" }) && refreshed.Updated.SequenceEqual(new[] { "old-b" })
+            && refreshed.Unchanged.SequenceEqual(new[] { "mine-c" }),
+            "refresh summary did not map added/updated/conflicts");
+        refreshReply = """{"status":"refreshed","result":{"added":[],"updated":[],"conflicts":[]}}""";
+        refreshed = await client.RefreshOfficialModelLibraryAsync(key, CancellationToken.None);
+        Check(refreshed.Added.Count + refreshed.Updated.Count + refreshed.Unchanged.Count == 0,
+            "an up-to-date refresh was not reported as empty");
+        await RejectsAsync<UnauthorizedAccessException>(() => client.RefreshOfficialModelLibraryAsync(
+            null, CancellationToken.None));
+        foreach (string bad in new[]
+        {
+            """{"status":"queued","result":{"added":[]}}""",
+            """{"status":"refreshed"}""",
+            """{"status":"refreshed","result":[]}""",
+            """{"status":"refreshed","result":{"added":"new-a"}}""",
+            """{"status":"refreshed","result":{"added":["../escape"]}}""",
+            """{"status":"refreshed","result":{"updated":[7]}}""",
+        })
+        {
+            refreshReply = bad;
+            await RejectsAsync<JsonException>(() => client.RefreshOfficialModelLibraryAsync(key, CancellationToken.None));
+        }
+        refreshStatus = HttpStatusCode.BadGateway;
+        await RejectsAsync<EngineRequestException>(() => client.RefreshOfficialModelLibraryAsync(key, CancellationToken.None));
+        Console.WriteLine("Native Verified Model Library import/export/adopt/refresh contracts: all cases passed.");
     }
 }

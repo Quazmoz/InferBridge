@@ -100,6 +100,7 @@ try
     await OperationsParityContractTests.RunAsync(root);
     await ModelLibraryContractTests.RunAsync(root);
     await ContextEditorContractTests.RunAsync(root);
+    await ChatParityContractTests.RunAsync(root);
     return 0;
 }
 finally
