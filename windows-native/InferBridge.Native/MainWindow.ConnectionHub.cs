@@ -29,6 +29,7 @@ public sealed partial class MainWindow
         HubTestResults.Items.Clear();
         HubTestSummary.Text = "No self-test run for this engine session.";
         UpdateHubButtons();
+        RenderToolCards();
     }
 
     private void UpdateHubButtons()
@@ -44,6 +45,7 @@ public sealed partial class MainWindow
         HubTestButton.IsEnabled = ready
             && (!_hubMetadata!.AuthenticationRequired || !string.IsNullOrWhiteSpace(ApiKeyBox.Password))
             && (_hubMetadata.UsableModels.Count < 2 || SelectedHubModelId is not null);
+        UpdateToolButtons();
     }
 
     private async Task RefreshConnectionHubAsync()
@@ -115,6 +117,7 @@ public sealed partial class MainWindow
         HubPythonExample.Text = _hubMetadata is not null && SelectedHubModelId is string id
             ? _hubMetadata.PythonExample(id) : "Select a loaded chat model to get a working example.";
         UpdateHubButtons();
+        RenderToolCards();
     }
 
     private void HubModelPicker_SelectionChanged(object sender, SelectionChangedEventArgs args) =>
@@ -123,10 +126,17 @@ public sealed partial class MainWindow
     private async void HubRefreshButton_Click(object sender, RoutedEventArgs args) =>
         await RefreshConnectionHubAsync();
 
-    private async void HubTestButton_Click(object sender, RoutedEventArgs args)
+    private async void HubTestButton_Click(object sender, RoutedEventArgs args) =>
+        await RunHubSelfTestAsync();
+
+    /// <summary>
+    /// The one engine-owned self-test, shared by the self-test card and every
+    /// "Test connection" button. Returns the summary, or null if it did not run.
+    /// </summary>
+    private async Task<string?> RunHubSelfTestAsync()
     {
         if (_hubBusy || _hubMetadata is not { } metadata || _quitting
-            || _closing.IsCancellationRequested) return;
+            || _closing.IsCancellationRequested) return null;
         string? selected = SelectedHubModelId;
         _hubBusy = true;
         int generation = ++_hubGeneration;
@@ -139,7 +149,7 @@ public sealed partial class MainWindow
         {
             var report = await _backend.RunLocalApiSelfTestAsync(
                 metadata, selected, ApiKeyBox.Password, _closing.Token);
-            if (_closing.IsCancellationRequested || generation != _hubGeneration) return;
+            if (_closing.IsCancellationRequested || generation != _hubGeneration) return null;
             foreach (var result in report.Tests)
             {
                 string heading = result.Label + " · " + result.Status.ToUpperInvariant()
@@ -166,6 +176,7 @@ public sealed partial class MainWindow
             HubInfo.Severity = report.Tests.Any(t => t.Status == "failed")
                 ? InfoBarSeverity.Warning : InfoBarSeverity.Success;
             HubInfo.Message = "Self-test completed. Review every result independently.";
+            return HubTestSummary.Text;
         }
         catch (Exception error) when (!_closing.IsCancellationRequested)
         {
@@ -182,6 +193,7 @@ public sealed partial class MainWindow
             _hubBusy = false;
             if (!_closing.IsCancellationRequested) UpdateHubButtons();
         }
+        return null;
     }
 
     private void CopyHubText(string value, string description)

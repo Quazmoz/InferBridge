@@ -1350,3 +1350,46 @@ def test_native_status_pills_wrap_and_trim_instead_of_clipping():
     for name in ("MainWindow.ModelCards.cs", "MainWindow.Maintenance.cs"):
         content = (PROJECT / name).read_text(encoding="utf-8")
         assert "new WrapRow" in content
+
+
+def test_native_connect_a_tool_cards_are_engine_driven_confirmed_and_accessible():
+    root = ET.parse(PROJECT / "MainWindow.xaml").getroot()
+    named = "{http://schemas.microsoft.com/winfx/2006/xaml}Name"
+    controls = {node.get(named): node for node in root.iter() if node.get(named)}
+    hub = controls["ConnectionHubPanel"]
+    assert controls["ToolsHeading"].get("Text") == "Connect a tool"
+    assert controls["ToolsHeading"] in list(hub.iter())
+    assert controls["ToolsInfo"].tag == XAML + "InfoBar"
+    assert controls["ToolCards"].tag == "{using:InferBridge.Native}CardGrid"
+    window = (PROJECT / "MainWindow.ToolSetup.cs").read_text(encoding="utf-8")
+    hub_code = (PROJECT / "MainWindow.ConnectionHub.cs").read_text(encoding="utf-8")
+    setup = (PROJECT / "ToolSetup.cs").read_text(encoding="utf-8")
+    # Every card has a heading, a Test connection button reusing the one self-test,
+    # and Narrator names on interactive parts.
+    assert 'Ui.Text(client.Title, "InferBridgeSectionHeaderStyle")' in window
+    assert "AutomationProperties.SetHeadingLevel(heading" in window
+    assert '"Test connection"' in window
+    assert "await RunHubSelfTestAsync();" in window
+    assert "await RunHubSelfTestAsync();" in hub_code  # HubTestButton_Click keeps working.
+    for name in ("SetName(preview", "SetName(undo", "SetName(test", "SetName(copy", "SetName(card"):
+        assert "AutomationProperties." + name in window, name
+    # Values come from verified Hub metadata only.
+    assert "ToolConnectionValues.From(_hubMetadata, id)" in window
+    assert "uri.IsLoopback" in setup
+    # One-click writes need preview + explicit confirmation, offer Undo, never store a key.
+    assert window.count("ConfirmToolChangeAsync(") >= 5
+    assert "DefaultButton = ContentDialogButton.Close" in window
+    assert "file.Apply(plan)" in window and "file.Undo(undo)" in window
+    assert "CopilotCliEnvironment.Apply(_userEnvironment" in window
+    assert "CopilotCliEnvironment.Undo(_userEnvironment" in window
+    assert 'COPILOT_PROVIDER_API_KEY", ' not in setup  # never planned as a variable
+    assert "!NativeDataPaths.HasPackageIdentity()" in window  # Store HKCU is virtualized
+    assert "ApiKeyBox.Password" in window  # session key may be copied, never written
+    assert "InfoBarSeverity.Error" in window
+    contracts = PROJECT.parent / "InferBridge.Native.ContractTests"
+    assert "ToolSetup.cs" in (contracts / "InferBridge.Native.ContractTests.csproj").read_text(
+        encoding="utf-8"
+    )
+    assert "ToolSetupContractTests.Run(root);" in (contracts / "Program.cs").read_text(
+        encoding="utf-8"
+    )

@@ -275,6 +275,21 @@
                         </local:CardGrid>
                         <Border Style="{StaticResource InferBridgeCardStyle}">
                             <StackPanel Spacing="12">
+                                <TextBlock x:Name="ToolsHeading" Text="Connect a tool"
+                                           Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0"
+                                           AutomationProperties.HeadingLevel="Level2" />
+                                <TextBlock Text="Point coding assistants and other apps at this engine. Every value comes from the running engine and the model selected above. One-click setups show a preview and change nothing until you confirm."
+                                           Style="{StaticResource InferBridgeHelpTextStyle}" />
+                                <InfoBar x:Name="ToolsInfo" Title="Tool setup" IsOpen="True"
+                                         IsClosable="False" Severity="Informational"
+                                         Message="Refresh the connection and select a loaded chat model to get ready-to-use settings."
+                                         AutomationProperties.LiveSetting="Polite" />
+                                <local:CardGrid x:Name="ToolCards" MaxColumns="2"
+                                                AutomationProperties.Name="Tool setup cards" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource InferBridgeCardStyle}">
+                            <StackPanel Spacing="12">
                                 <TextBlock Text="Network and API listener" Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
                                 <TextBlock Text="By default only apps on this PC can connect. LAN access requires an API key; allowing every browser origin (wildcard CORS) requires a key and confirmation. InferBridge never changes Windows Firewall rules. Changes apply after the engine restarts."
                                            Style="{StaticResource InferBridgeHelpTextStyle}" />
