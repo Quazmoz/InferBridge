@@ -37,6 +37,7 @@ from app import (
     __version__,
     chat_format,
     context_configuration,
+    errors,
     model_manager,
     multimodal,
     responses_api,
@@ -640,6 +641,9 @@ def create_app(settings: Settings) -> FastAPI:
     def _context_http_error(exc: Exception) -> HTTPException:
         if isinstance(exc, context_configuration.ContextValidationError):
             return HTTPException(status_code=400, detail=str(exc))
+        kv_message = errors.format_kv_cache_precision_error(exc)
+        if kv_message is not None:
+            return HTTPException(status_code=409, detail=kv_message)
         if isinstance(exc, model_manager.ContextBusyError):
             return HTTPException(status_code=409, detail=str(exc))
         if isinstance(exc, OSError):
@@ -674,6 +678,7 @@ def create_app(settings: Settings) -> FastAPI:
                 req.model,
                 req.context_tokens,
                 expected_context_tokens=req.expected_context_tokens,
+                kv_cache_precision=req.kv_cache_precision,
             )
         except Exception as exc:  # noqa: BLE001 - native OOM/library failures are untrusted
             raise _context_http_error(exc) from exc
@@ -686,19 +691,32 @@ def create_app(settings: Settings) -> FastAPI:
         if req.model in manager._context_changes:
             raise HTTPException(status_code=409, detail="Context configuration is in progress.")
         device = _normalize_device_or_400(req.device)
-        if req.context_tokens is not None:
-            current = manager.catalog[req.model].max_context_len
-            if req.context_tokens != current:
+        if req.context_tokens is not None or req.kv_cache_precision is not None:
+            saved = manager.catalog[req.model]
+            current = saved.max_context_len
+            wanted_precision = (
+                None if req.kv_cache_precision in (None, "auto") else req.kv_cache_precision
+            )
+            precision_changes = (
+                req.kv_cache_precision is not None and wanted_precision != saved.kv_cache_precision
+            )
+            if (
+                req.context_tokens is not None and req.context_tokens != current
+            ) or precision_changes:
                 if req.model in manager.engines:
                     raise HTTPException(
                         status_code=409,
                         detail="This model is already loaded. Use Apply now to change its "
-                        "context; the engine rebuilds and chat history is kept.",
+                        "context or KV cache precision; the engine rebuilds and chat history "
+                        "is kept.",
                     )
                 try:
                     # Unloaded: validate and persist atomically, then load with it.
                     await manager.configure_context(
-                        req.model, req.context_tokens, expected_context_tokens=current
+                        req.model,
+                        req.context_tokens,
+                        expected_context_tokens=current,
+                        kv_cache_precision=req.kv_cache_precision,
                     )
                 except Exception as exc:  # noqa: BLE001 - mapped to safe public errors
                     raise _context_http_error(exc) from exc

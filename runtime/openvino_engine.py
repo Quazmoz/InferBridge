@@ -643,10 +643,33 @@ class OpenVINOEmbeddingEngine(BaseEngine):
 # --- Factory ---------------------------------------------------------------
 
 
+KV_CACHE_PRECISION_VALUES = frozenset({"f16", "u8", "u4"})
+
+
+def kv_cache_precision_property(device: str, kv_cache_precision: str | None) -> dict:
+    """Return ``{"KV_CACHE_PRECISION": value}`` for one physical CPU/GPU, else ``{}``.
+
+    Auto (None) leaves OpenVINO's automatic selection in place. The NPU, AUTO and
+    composite devices never receive the property; unknown values are refused.
+    """
+
+    if kv_cache_precision is None:
+        return {}
+    value = str(kv_cache_precision).strip().lower()
+    if value in ("", "auto"):
+        return {}
+    if value not in KV_CACHE_PRECISION_VALUES:
+        raise ValueError(f"Unsupported KV cache precision '{kv_cache_precision}'.")
+    base = normalize_device(device).split(".", 1)[0]
+    return {"KV_CACHE_PRECISION": value} if base in ("CPU", "GPU") else {}
+
+
 def build_plugin_config(
     device: str,
     max_prompt_len: int | None,
     cache_dir: str | Path | None = None,
+    *,
+    kv_cache_precision: str | None = None,
 ) -> dict:
     """Build device-specific OpenVINO plugin configuration."""
 
@@ -654,6 +677,7 @@ def build_plugin_config(
     config: dict = {}
     if device == "NPU" and max_prompt_len:
         config["MAX_PROMPT_LEN"] = int(max_prompt_len)
+    config.update(kv_cache_precision_property(device, kv_cache_precision))
 
     if cache_dir:
         try:
@@ -676,6 +700,7 @@ def create_engine(
     cache_dir: str | Path | None = None,
     backend: str = "openvino-genai",
     draft_model_path: str | None = None,
+    kv_cache_precision: str | None = None,
 ) -> BaseEngine:
     """Create the configured text, embedding, or vision engine."""
 
@@ -695,7 +720,12 @@ def create_engine(
         logger.info("Using MOCK engine for '%s' (%s)", model_id, reason)
         return MockEngine(model_id, model_path, device if force_mock else "MOCK")
 
-    plugin_config = build_plugin_config(device, max_prompt_len, cache_dir)
+    plugin_config = build_plugin_config(
+        device,
+        max_prompt_len,
+        cache_dir,
+        kv_cache_precision=None if is_embedding else kv_cache_precision,
+    )
     if is_embedding:
         return OpenVINOEmbeddingEngine(model_id, model_path, device, plugin_config)
     if is_vision:

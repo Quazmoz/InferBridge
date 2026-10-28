@@ -23,6 +23,7 @@ _MODEL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 _SUPPORTED_BACKENDS = frozenset({"openvino-genai", "openvino-embeddings", "openvino-vlm"})
 _SUPPORTED_WEIGHT_FORMATS = frozenset({"int4", "int8", "fp16"})
 _MAX_CONTEXT_LEN = 262_144
+_KV_PRECISIONS = frozenset({"f16", "u8", "u4"})
 _MAX_OUTPUT_TOKENS = 65_536
 
 _STATUS_LABELS = {
@@ -74,6 +75,9 @@ class ModelConfig:
     max_output_tokens: int
     trust_remote_code: bool = False
     recommended_context_len: int | None = None
+    # None means Auto: OpenVINO's own KV-cache precision. Otherwise f16, u8 or u4,
+    # sent as KV_CACHE_PRECISION to CPU/GPU pipelines only (never to the NPU).
+    kv_cache_precision: str | None = None
 
     @property
     def max_prompt_len(self) -> int:
@@ -193,6 +197,13 @@ def _coerce_entry(model_id: str, raw: dict) -> ModelConfig:
             # vanish from the catalog; the active validated context remains safe.
             recommended_context_len = None
 
+    kv_cache_precision = raw.get("kv_cache_precision")
+    if isinstance(kv_cache_precision, str) and kv_cache_precision.strip().lower() in _KV_PRECISIONS:
+        kv_cache_precision = kv_cache_precision.strip().lower()
+    else:
+        # Auto, absent, or a corrupt optional preference: never drop the model.
+        kv_cache_precision = None
+
     return ModelConfig(
         id=model_id,
         name=_string_field(raw, "name", model_id),
@@ -206,6 +217,7 @@ def _coerce_entry(model_id: str, raw: dict) -> ModelConfig:
         max_output_tokens=max_output_tokens,
         trust_remote_code=trust_remote_code,
         recommended_context_len=recommended_context_len,
+        kv_cache_precision=kv_cache_precision,
     )
 
 
@@ -401,6 +413,11 @@ def save_catalog(models_file: Path, catalog: dict[str, ModelConfig]) -> None:
             ),
             "max_output_tokens": cfg.max_output_tokens,
             "trust_remote_code": cfg.trust_remote_code,
+            **(
+                {"kv_cache_precision": cfg.kv_cache_precision}
+                if cfg.kv_cache_precision is not None
+                else {}
+            ),
         }
     models_file = Path(models_file)
     models_file.parent.mkdir(parents=True, exist_ok=True)

@@ -130,10 +130,34 @@ def is_tls_certificate_error(exc: BaseException) -> bool:
     return False
 
 
+def format_kv_cache_precision_error(exc: BaseException, *, loading: bool = False) -> str | None:
+    """Friendly message when OpenVINO rejects a KV_CACHE_PRECISION value, else None.
+
+    Older OpenVINO builds or devices may not accept every precision (GPU INT4 KV
+    arrived in OpenVINO 2026.2). The previous engine stays loaded in that case.
+    """
+    chain = _exception_chain_text(exc).lower()
+    if "kv_cache_precision" not in chain and "kv cache precision" not in chain:
+        return None
+    retry = (
+        "load again."
+        if loading
+        else "apply again; the previous engine and saved settings were kept."
+    )
+    return (
+        "This OpenVINO runtime or device rejected the selected KV cache precision. "
+        f"Set KV cache precision to Auto (or FP16) in the context editor, then {retry} "
+        "INT4 (u4) KV cache on GPU needs OpenVINO 2026.2 or later."
+    )
+
+
 def format_model_load_error(exc: BaseException, *, device: str | None = None) -> str:
     """Return a concise, actionable message for a failed model load."""
     if is_openvino_tokenizer_runtime_error(exc):
         return format_openvino_tokenizer_runtime_error()
+    kv_message = format_kv_cache_precision_error(exc, loading=True)
+    if kv_message is not None:
+        return kv_message
     # Level Zero's invalid-argument code identifies an NPU compilation rejection,
     # not which layer (IR, driver, firmware or runtime) caused the rejection.
     # Never return the native stack trace: it can contain local model paths.

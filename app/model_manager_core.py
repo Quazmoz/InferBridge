@@ -390,6 +390,7 @@ class ModelManager:
             cache_dir=self.settings.cache_dir,
             backend=cfg.backend,
             draft_model_path=draft_model_path,
+            kv_cache_precision=cfg.kv_cache_precision,
         )
 
     def _engine_build_timeout_seconds(self) -> float:

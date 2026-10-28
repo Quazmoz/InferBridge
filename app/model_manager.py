@@ -64,7 +64,7 @@ class ModelManager(_CoreModelManager):
         cfg = self.catalog[model_id]
         engine = self.engines.get(model_id)
         details = context_configuration.describe_context(
-            cfg, BASE_DIR, device="MOCK" if self.force_mock else getattr(engine, "device", None)
+            cfg, BASE_DIR, device=getattr(engine, "device", None), mock=self.force_mock
         )
         details["loaded"] = engine is not None
         details["applies"] = "now" if engine is not None else "next-load"
@@ -94,7 +94,7 @@ class ModelManager(_CoreModelManager):
         )
         details["other_loaded_models_ram_gib_lower_bound"] = round(other, 2)
         for option in details["options"]:
-            kv = option["fp16_kv_cache_gib_estimate"]
+            kv = option["kv_cache_gib_estimate"]
             if kv is None:
                 option["estimated_host_ram_gib"] = None
                 option["fit_guidance"] = "unverified-memory"
@@ -111,10 +111,19 @@ class ModelManager(_CoreModelManager):
         return details
 
     async def configure_context(
-        self, model_id: str, tokens: int, *, expected_context_tokens: int
+        self,
+        model_id: str,
+        tokens: int | None,
+        *,
+        expected_context_tokens: int,
+        kv_cache_precision: str | None = None,
     ) -> dict:
         """Stage, compile, persist, then atomically hand off a model's context.
 
+        ``tokens=None`` keeps the current context. ``kv_cache_precision=None``
+        keeps the saved precision; ``"auto"`` clears it. A loaded CPU/GPU engine
+        is rebuilt when either value changes; a loaded NPU engine is rebuilt only
+        for a context change because the NPU never receives KV_CACHE_PRECISION.
         No catalog or engine mutation occurs before a successful replacement build.
         The existing engine lease handles requests queued on the previous model lock.
         """
@@ -130,9 +139,16 @@ class ModelManager(_CoreModelManager):
         cfg = self.catalog[model_id]
         if cfg.max_context_len != expected_context_tokens:
             raise ContextBusyError("Context changed in another client. Refresh before applying.")
+        if tokens is None:
+            tokens = cfg.max_context_len
         metadata = context_configuration.model_metadata(cfg, BASE_DIR)
         context_configuration.validate_context(cfg, tokens, metadata)
-        if tokens == cfg.max_context_len:
+        precision = (
+            cfg.kv_cache_precision
+            if kv_cache_precision is None
+            else context_configuration.normalize_kv_cache_precision(kv_cache_precision)
+        )
+        if tokens == cfg.max_context_len and precision == cfg.kv_cache_precision:
             return self.context_details(model_id)
         if any(
             task is not None and not task.done()
@@ -160,9 +176,16 @@ class ModelManager(_CoreModelManager):
                     cfg,
                     max_context_len=tokens,
                     recommended_context_len=cfg.recommended_context_len or cfg.max_context_len,
+                    kv_cache_precision=precision,
                 )
                 old_engine = self.engines.get(model_id)
-                if old_engine is not None:
+                needs_rebuild = old_engine is not None and (
+                    tokens != cfg.max_context_len
+                    or context_configuration.kv_precision_device_supported(
+                        device_check.normalize_device(old_engine.device)
+                    )
+                )
+                if needs_rebuild:
                     device = device_check.normalize_device(old_engine.device)
                     if not self.force_mock:
                         safe_device = model_load_safety.safe_load_device(
@@ -187,6 +210,7 @@ class ModelManager(_CoreModelManager):
                         backend=updated.backend,
                         draft_model_path=draft,
                         max_response_len=updated.max_output_tokens,
+                        kv_cache_precision=updated.kv_cache_precision,
                     )
                     worker = asyncio.get_running_loop().run_in_executor(None, build)
                     replacement, cancelled = await self._await_resilient_future(worker)
@@ -217,7 +241,11 @@ class ModelManager(_CoreModelManager):
                         replacement = None
                         with contextlib.suppress(Exception):
                             old_engine.close()
-            self.emit_event("info", f"Updated context for {cfg.name} to {tokens} tokens")
+            self.emit_event(
+                "info",
+                f"Updated context for {cfg.name} to {tokens} tokens"
+                f" (KV cache precision: {precision or 'auto'})",
+            )
             self._context_changes.discard(model_id)
             return self.context_details(model_id)
         finally:
