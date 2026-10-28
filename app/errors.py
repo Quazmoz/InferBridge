@@ -130,19 +130,52 @@ def is_tls_certificate_error(exc: BaseException) -> bool:
     return False
 
 
-def format_model_load_error(exc: BaseException) -> str:
+def format_model_load_error(exc: BaseException, *, device: str | None = None) -> str:
     """Return a concise, actionable message for a failed model load."""
     if is_openvino_tokenizer_runtime_error(exc):
         return format_openvino_tokenizer_runtime_error()
+    # Level Zero's invalid-argument code identifies an NPU compilation rejection,
+    # not which layer (IR, driver, firmware or runtime) caused the rejection.
+    # Never return the native stack trace: it can contain local model paths.
+    chain = _exception_chain_text(exc).lower()
+    if str(device or "").upper() == "NPU" and (
+        "ze_result_error_invalid_argument" in chain
+        and any(
+            marker in chain
+            for marker in ("pfncreate2", "ze_graph_ext_wrappers", "compilation failed")
+        )
+    ):
+        return (
+            "Intel NPU compilation rejected this model (OpenVINO Level Zero: "
+            "ZE_RESULT_ERROR_INVALID_ARGUMENT). The NPU was selected, but the model was not "
+            "loaded. Verify the converted model and INT4 profile, check the Intel NPU driver "
+            "and OpenVINO GenAI versions, then retry. You can explicitly test a known-good "
+            "model or CPU to isolate the problem; InferBridge has not switched devices. "
+            "Share a reviewed diagnostics export if the failure persists."
+        )
     if is_tls_certificate_error(exc):
-        bundle = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("SSL_CERT_FILE")
-        hint = f" Active CA bundle: {bundle}." if bundle else ""
         return (
             "HTTPS download failed while contacting huggingface.co. Python could not verify the "
             "TLS certificate. On Windows, install python-certifi-win32, or set REQUESTS_CA_BUNDLE / "
-            "SSL_CERT_FILE to your organization's CA bundle, then retry." + hint
+            "SSL_CERT_FILE to your organization's CA bundle, then retry."
         )
-    return _redact_secrets(str(exc))
+    # Raw exception text comes from native libraries and model files and may
+    # contain absolute paths, prompts or arbitrary credentials. Fail closed.
+    if "no converted openvino model found" in chain:
+        return (
+            "No complete converted OpenVINO model files were found. Use the Model Library "
+            "to convert or repair this model before loading it."
+        )
+    if "not converted with a verified npu-compatible int4 profile" in chain:
+        return (
+            "This INT4 model has no verified NPU-compatible conversion profile. "
+            "Reconvert it with symmetric INT4, ratio 1.0 and group size 128, then retry NPU."
+        )
+    return (
+        "Model loading failed. Check that the requested device is available and the converted "
+        "model files are complete. Review System Doctor and export diagnostics locally if "
+        "the problem persists. No automatic device fallback occurred."
+    )
 
 
 def format_model_convert_error(exc: BaseException) -> str:

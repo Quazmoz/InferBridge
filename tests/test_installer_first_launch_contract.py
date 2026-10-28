@@ -2,6 +2,8 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from app import frozen_entrypoint
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -84,3 +86,81 @@ def test_installer_bootstrap_probe_is_noninteractive_and_never_restart_registere
     assert '"--native-smoke"' in restart_guard
     assert '"--bootstrap-smoke"' in restart_guard
     assert "arguments & helper_modes" in restart_guard
+
+
+def test_frozen_root_exe_opens_native_frontend_without_starting_browser(tmp_path, monkeypatch):
+    import subprocess
+
+    engine = tmp_path / "InferBridge.exe"
+    engine.write_bytes(b"engine")
+    native = tmp_path / "native" / "InferBridge.Native.exe"
+    native.parent.mkdir()
+    native.write_bytes(b"winui")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(engine))
+    launches = []
+    monkeypatch.setattr(
+        subprocess, "Popen", lambda arguments, **options: launches.append((arguments, options))
+    )
+
+    def fail_browser(_arguments):
+        raise AssertionError("browser launched")
+
+    monkeypatch.setitem(sys.modules, "app.desktop_launcher", SimpleNamespace(main=fail_browser))
+
+    assert frozen_entrypoint.run([]) == 0
+    assert launches == [([str(native)], {"cwd": str(native.parent)})]
+
+
+def test_frozen_engine_cli_mode_never_redirects_to_native(tmp_path, monkeypatch):
+    import subprocess
+
+    engine = tmp_path / "InferBridge.exe"
+    engine.write_bytes(b"engine")
+    native = tmp_path / "native" / "InferBridge.Native.exe"
+    native.parent.mkdir()
+    native.write_bytes(b"winui")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(engine))
+
+    def fail_native(*_args, **_kwargs):
+        raise AssertionError("CLI mode launched native")
+
+    monkeypatch.setattr(subprocess, "Popen", fail_native)
+    monkeypatch.setitem(
+        sys.modules,
+        "app.desktop_launcher",
+        SimpleNamespace(main=lambda args: 7 if args == ["--no-browser"] else 2),
+    )
+    assert frozen_entrypoint.run(["--no-browser"]) == 7
+
+
+def test_root_exe_refuses_to_open_browser_when_winui_is_missing(tmp_path, monkeypatch):
+    import subprocess
+
+    engine = tmp_path / "InferBridge.exe"
+    engine.write_bytes(b"engine")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(engine))
+    monkeypatch.setattr(
+        subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("native process unexpectedly started")
+        ),
+    )
+    called = {}
+
+    def show_dialog(title, message, *, error=False):
+        called["message"] = message
+        called["error"] = error
+
+    monkeypatch.setitem(sys.modules, "app.desktop_shell", SimpleNamespace(show_dialog=show_dialog))
+    monkeypatch.setitem(
+        sys.modules,
+        "app.desktop_launcher",
+        SimpleNamespace(main=lambda _args: pytest.fail("browser fallback invoked")),
+    )
+    assert frozen_entrypoint.run([]) == 2
+    assert called["error"] is True
+    assert "FileNotFoundError" in called["message"]

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.config import BASE_DIR, Settings
 from app.model_manager import ModelManager
 from app.server import create_app
+from runtime import benchmark_runner_core
 from runtime.benchmark_runner import certify_context_depth, score_benchmark_results
 from runtime.openvino_engine import MockEngine
 
@@ -78,6 +81,69 @@ def test_benchmark_run_persists_latest_and_clear(tmp_path, monkeypatch):
         assert cleared.status_code == 200
         assert cleared.json()["deleted_runs"] == 1
         assert client.get("/v1/benchmarks/latest").json()["run"] is None
+
+
+def test_benchmark_client_run_id_survives_history(tmp_path):
+    client_run_id = "c" * 32
+    with make_client(tmp_path) as client:
+        response = client.post(
+            "/v1/benchmarks/run",
+            json={
+                "model": MODEL_ID,
+                "devices": ["CPU"],
+                "runs": 3,
+                "max_tokens": 32,
+                "client_run_id": client_run_id,
+            },
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["client_run_id"] == client_run_id
+        history = client.get("/v1/benchmarks").json()["data"]
+        assert history[0]["client_run_id"] == client_run_id
+        events = client.get("/v1/system/status").json()["events"]
+        assert any(
+            f"Benchmark Lab · run {client_run_id} · combination" in event.get("message", "")
+            for event in events
+        )
+
+
+def test_busy_benchmark_returns_conflict(tmp_path, monkeypatch):
+    async def busy(*_args, **_kwargs):
+        raise benchmark_runner_core.BenchmarkBusyError("A benchmark is already running.")
+
+    monkeypatch.setattr("app.server.run_benchmark_suite", busy)
+    with make_client(tmp_path) as client:
+        response = client.post(
+            "/v1/benchmarks/run",
+            json={"model": MODEL_ID, "devices": ["CPU"]},
+        )
+    assert response.status_code == 409
+    assert "already running" in response.json()["detail"]
+
+
+def test_concurrent_api_benchmarks_reject_instead_of_queue(monkeypatch):
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def controlled_runner(*_args, **_kwargs):
+        entered.set()
+        await release.wait()
+        return {"ok": True}
+
+    monkeypatch.setattr(benchmark_runner_core, "_run_benchmark_suite_locked", controlled_runner)
+
+    async def scenario():
+        manager = SimpleNamespace()
+        args = dict(model_ids=["one"], devices=["CPU"], reject_when_busy=True)
+        first = asyncio.create_task(benchmark_runner_core.run_benchmark_suite(manager, **args))
+        await entered.wait()
+        with pytest.raises(benchmark_runner_core.BenchmarkBusyError):
+            await benchmark_runner_core.run_benchmark_suite(manager, **args)
+        release.set()
+        assert await first == {"ok": True}
+        assert await benchmark_runner_core.run_benchmark_suite(manager, **args) == {"ok": True}
+
+    asyncio.run(scenario())
 
 
 def test_benchmark_validation_errors(tmp_path):

@@ -86,6 +86,19 @@ try
     }
     Console.WriteLine("Native engine launch contract: all cases passed.");
     await BackendContractTests.RunAsync(root);
+    await ConnectionHubContractTests.RunAsync(root);
+    ToolSetupContractTests.Run(root);
+    await BenchmarkLabContractTests.RunAsync(root);
+    await HuggingFaceContractTests.RunAsync(root);
+    await HuggingFaceDownloadContractTests.RunAsync(root);
+    await ModelPreparationContractTests.RunAsync(root);
+    NativeConversationContractTests.Run(root);
+    ChatMarkdownContractTests.Run();
+    PickerRefreshContractTests.Run();
+    ChartMathContractTests.Run();
+    await ChatRequestContractTests.RunAsync(root);
+    await OperationsParityContractTests.RunAsync(root);
+    await ModelLibraryContractTests.RunAsync(root);
     return 0;
 }
 finally

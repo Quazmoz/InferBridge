@@ -111,3 +111,19 @@ def test_tray_shutdown_removes_all_session_markers(tmp_path):
     assert not tray.heartbeat_file.exists()
     assert not tray.command_file.exists()
     assert not tray.restart_request_file.exists()
+
+
+def test_headless_startup_failure_reason_is_written_to_stderr(capsys, tmp_path):
+    from app.tray_runtime import HEADLESS_STARTUP_FAILURE_PREFIX
+
+    stub = _FailingStartupStub(tmp_path)
+    assert stub.run() == 6
+    captured = capsys.readouterr()
+    assert f"{HEADLESS_STARTUP_FAILURE_PREFIX}Configured port 8123 is unavailable" in captured.err
+
+
+def test_headless_startup_failure_tolerates_missing_stderr(monkeypatch, tmp_path):
+    # Windowed PyInstaller launches without redirected stdio have sys.stderr = None.
+    monkeypatch.setattr("sys.stderr", None)
+    stub = _FailingStartupStub(tmp_path)
+    assert stub.run() == 6

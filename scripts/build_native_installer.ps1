@@ -35,9 +35,11 @@ $Dist = Join-Path $OutputDirectory "payload"
 if ($LASTEXITCODE -ne 0) { throw "Engine build or packaged smoke test failed." }
 $BuiltRoot = Join-Path $Dist "InferBridge"
 $NativeRoot = Join-Path $BuiltRoot "native"
-& dotnet publish windows-native/InferBridge.Native/InferBridge.Native.csproj -c Release `
-    -r win-x64 --self-contained true -p:Platform=x64 -o $NativeRoot
-if ($LASTEXITCODE -ne 0) { throw "Native client publish failed. Install the .NET 10 SDK." }
+foreach ($Required in @("InferBridge.Native.exe", "coreclr.dll", "InferBridge.Native.runtimeconfig.json")) {
+    if (-not (Test-Path -LiteralPath (Join-Path $NativeRoot $Required) -PathType Leaf)) {
+        throw "Native development payload is incomplete: $Required"
+    }
+}
 
 $Version = (& $Python scripts/release_tools.py canonical-version).Trim()
 if ($LASTEXITCODE -ne 0 -or -not $Version) { throw "Could not read application version." }
@@ -45,7 +47,7 @@ $NumericVersion = (($Version -split '[-+]')[0]) + ".0"
 $AppIcon = Join-Path $Root "build\dev-package\brand\InferBridge.ico"
 & $Python scripts/release_tools.py scan --path $BuiltRoot
 if ($LASTEXITCODE -ne 0) { throw "Combined payload safety scan failed." }
-& $IsccPath /DNativeFrontend "/DMyAppVersion=$Version" "/DMyAppVersionNumeric=$NumericVersion" `
+& $IsccPath /DNativeFrontend /DNativeEvaluation "/DMyAppVersion=$Version" "/DMyAppVersionNumeric=$NumericVersion" `
     "/DSourceRoot=$BuiltRoot" "/DArtifactDir=$OutputDirectory" "/DAppIconPath=$AppIcon" packaging/installer.iss
 if ($LASTEXITCODE -ne 0) { throw "Native installer compilation failed." }
 $Installer = Join-Path $OutputDirectory "InferBridge-$Version-native-windows-x64-installer.exe"

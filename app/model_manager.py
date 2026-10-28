@@ -9,13 +9,20 @@ after successful real-hardware loads.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import gc
 import threading
 import time
 from dataclasses import replace
+from functools import partial
 from typing import Any
 
-from app import model_load_safety, model_manager_core as _core, model_registry as registry
+from app import (
+    context_configuration,
+    model_load_safety,
+    model_manager_core as _core,
+    model_registry as registry,
+)
 from app.config import BASE_DIR, Settings
 from app.hardware_advisor import HardwareAdvisor, parse_auto_model
 from app.model_manager_core import *  # noqa: F401,F403 - preserve the public module contract
@@ -25,7 +32,11 @@ from app.model_manager_core import (
     UnknownModel,
 )
 from runtime import device_check
-from runtime.openvino_engine import BaseEngine, GenParams, StreamHandle
+from runtime.openvino_engine import BaseEngine, GenParams, StreamHandle, create_engine
+
+
+class ContextBusyError(RuntimeError):
+    """A predictable lifecycle conflict with a safe public message."""
 
 
 class ModelManager(_CoreModelManager):
@@ -34,8 +45,174 @@ class ModelManager(_CoreModelManager):
     def __init__(self, settings: Settings) -> None:
         super().__init__(settings)
         self._catalog_lock = threading.RLock()
+        self._context_changes: set[str] = set()
         self.advisor = HardwareAdvisor(settings, self.catalog, force_mock=self.force_mock)
         self._install_advisor_load_hook()
+
+    def context_details(self, model_id: str) -> dict:
+        cfg = self.catalog[model_id]
+        engine = self.engines.get(model_id)
+        details = context_configuration.describe_context(
+            cfg, BASE_DIR, device="MOCK" if self.force_mock else getattr(engine, "device", None)
+        )
+        details["loaded"] = engine is not None
+        details["active_device"] = getattr(engine, "device", None)
+        details["changing"] = model_id in self._context_changes
+        estimate = self.advisor.estimate_model(cfg, device=details["active_device"])
+        details["converted_weight_gib_estimate"] = estimate["converted_size_gb"]
+        details["converted_weight_source"] = estimate["converted_size_source"]
+        snapshot = self.advisor.hardware_snapshot()
+        memory = snapshot.get("memory") or {}
+        available = memory.get("available_gb")
+        # Keep device-allocated memory unknown. These are intentionally rough
+        # host-RAM planning figures, not NPU telemetry or an OOM prediction.
+        try:
+            available_gib = max(0.0, float(available)) if available is not None else None
+        except (TypeError, ValueError):
+            available_gib = None
+        details["available_system_ram_gib"] = available_gib
+        reserve = max(2.0, available_gib * 0.15) if available_gib is not None else None
+        details["reserved_system_ram_gib_estimate"] = reserve
+        other = sum(
+            self.advisor.estimate_model(other_cfg, device=self.devices.get(other_id))[
+                "runtime_memory_gb"
+            ]
+            for other_id, other_cfg in self.catalog.items()
+            if other_id != model_id and other_id in self.engines
+        )
+        details["other_loaded_models_ram_gib_lower_bound"] = round(other, 2)
+        for option in details["options"]:
+            kv = option["fp16_kv_cache_gib_estimate"]
+            if kv is None:
+                option["estimated_host_ram_gib"] = None
+                option["fit_guidance"] = "unverified-memory"
+                continue
+            needed = estimate["converted_size_gb"] * 1.22 + kv + 0.35 + other
+            option["estimated_host_ram_gib"] = round(needed, 2)
+            option["fit_guidance"] = (
+                "unverified-memory"
+                if available_gib is None
+                else "memory-constrained"
+                if needed + reserve > available_gib
+                else "estimated-headroom"
+            )
+        return details
+
+    async def configure_context(
+        self, model_id: str, tokens: int, *, expected_context_tokens: int
+    ) -> dict:
+        """Stage, compile, persist, then atomically hand off a model's context.
+
+        No catalog or engine mutation occurs before a successful replacement build.
+        The existing engine lease handles requests queued on the previous model lock.
+        """
+        if model_id not in self.catalog:
+            raise KeyError(model_id)
+        if model_id in self._context_changes:
+            raise ContextBusyError("A context change is already in progress for this model.")
+        suite_lock = getattr(self, "_benchmark_suite_lock", None)
+        if suite_lock is not None and suite_lock.locked():
+            raise ContextBusyError(
+                "Wait for the active benchmark to finish before changing context."
+            )
+        cfg = self.catalog[model_id]
+        if cfg.max_context_len != expected_context_tokens:
+            raise ContextBusyError("Context changed in another client. Refresh before applying.")
+        metadata = context_configuration.model_metadata(cfg, BASE_DIR)
+        context_configuration.validate_context(cfg, tokens, metadata)
+        if tokens == cfg.max_context_len:
+            return self.context_details(model_id)
+        if any(
+            task is not None and not task.done()
+            for task in (self.load_tasks.get(model_id), self.convert_tasks.get(model_id))
+        ):
+            raise ContextBusyError("Wait for model loading or conversion to finish.")
+
+        self._context_changes.add(model_id)
+        replacement = None
+        try:
+            async with self._load_lock:
+                suite_lock = getattr(self, "_benchmark_suite_lock", None)
+                if suite_lock is not None and suite_lock.locked():
+                    raise ContextBusyError(
+                        "Wait for the active benchmark to finish before changing context."
+                    )
+                if self.catalog.get(model_id) != cfg:
+                    raise ContextBusyError("Model metadata changed. Refresh before applying.")
+                if any(
+                    task is not None and not task.done()
+                    for task in (self.load_tasks.get(model_id), self.convert_tasks.get(model_id))
+                ):
+                    raise ContextBusyError("Model loading or conversion started. Try again later.")
+                updated = replace(
+                    cfg,
+                    max_context_len=tokens,
+                    recommended_context_len=cfg.recommended_context_len or cfg.max_context_len,
+                )
+                old_engine = self.engines.get(model_id)
+                if old_engine is not None:
+                    device = device_check.normalize_device(old_engine.device)
+                    if not self.force_mock:
+                        safe_device = model_load_safety.safe_load_device(
+                            updated,
+                            BASE_DIR,
+                            device,
+                            available=device_check.available_devices(),
+                        )
+                        if safe_device != device:
+                            raise ContextBusyError(
+                                "Current device is not eligible for this model profile."
+                            )
+                    draft = getattr(old_engine, "_ovllm_draft_model_path", None)
+                    build = partial(
+                        create_engine,
+                        model_id=model_id,
+                        model_path=str(updated.abs_path(BASE_DIR)),
+                        device=device,
+                        max_prompt_len=updated.max_prompt_len,
+                        force_mock=self.force_mock,
+                        cache_dir=self.settings.cache_dir,
+                        backend=updated.backend,
+                        draft_model_path=draft,
+                        max_response_len=updated.max_output_tokens,
+                    )
+                    worker = asyncio.get_running_loop().run_in_executor(None, build)
+                    replacement, cancelled = await self._await_resilient_future(worker)
+                    if cancelled is not None:
+                        raise cancelled
+                    replacement._ovllm_draft_model_path = draft
+
+                # A short per-model handoff lock allows active generations to finish
+                # against their original engine. Other loaded models stay operational.
+                lock = self.get_lock(model_id)
+                async with lock:
+                    if (
+                        self.engines.get(model_id) is not old_engine
+                        or self.catalog.get(model_id) != cfg
+                    ):
+                        raise ContextBusyError("Model lifecycle changed. Refresh and retry.")
+                    with self._catalog_lock:
+                        staged = dict(self.catalog)
+                        staged[model_id] = updated
+                        registry.save_catalog(self.settings.models_file, staged)
+                        self.catalog = staged
+                        self.advisor.catalog = staged
+                    if replacement is not None:
+                        self.engines[model_id] = replacement
+                        self.devices[model_id] = replacement.device
+                        # Queued engine leases recheck this identity after acquiring.
+                        self.locks[model_id] = asyncio.Lock()
+                        replacement = None
+                        with contextlib.suppress(Exception):
+                            old_engine.close()
+            self.emit_event("info", f"Updated context for {cfg.name} to {tokens} tokens")
+            self._context_changes.discard(model_id)
+            return self.context_details(model_id)
+        finally:
+            self._context_changes.discard(model_id)
+            if replacement is not None:
+                with contextlib.suppress(Exception):
+                    replacement.close()
 
     def _build_engine(
         self, model_id: str, device: str, draft_model_path: str | None = None

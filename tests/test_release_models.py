@@ -19,6 +19,7 @@ from app.release_models import (
     schema_compatibility,
     sha256_file,
 )
+from scripts.release_manifest import validate_version
 
 
 def artifact(version: str, kind: str, *, signed: bool = False, verified: bool = False):
@@ -159,3 +160,28 @@ def test_platform_compatibility_rejects_wrong_architecture_and_old_windows():
         True,
         None,
     )
+
+
+@pytest.mark.parametrize(
+    ("channel", "version", "valid"),
+    [
+        ("stable", "1.0.1", True),
+        ("stable", "1.0.1-dev.1", False),
+        ("beta", "1.0.1-beta.1", True),
+        ("beta", "1.0.1-rc.1", True),
+        ("beta", "1.0.1", False),
+        ("beta", "1.0.1-dev.1", False),
+        ("nightly", "1.0.1-dev.1", True),
+        ("nightly", "1.0.1-beta.1", True),
+        ("nightly", "1.0.0", False),
+    ],
+)
+def test_preflight_channel_validation_matches_release_manifest(channel, version, valid):
+    if valid:
+        assert str(validate_version(version, channel)) == version
+        assert manifest(version, channel).channel == channel
+    else:
+        with pytest.raises(ValueError):
+            validate_version(version, channel)
+        with pytest.raises(ValidationError):
+            manifest(version, channel)

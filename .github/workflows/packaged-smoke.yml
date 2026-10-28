@@ -1,0 +1,163 @@
+# Manual-only packaged qualification. Builds the unsigned PyInstaller distribution
+# through the same scripts/build_release.ps1 path the Azure DevOps release uses, and
+# runs both the installed-mode and portable-mode packaged mock smoke tests. It never
+# signs, publishes, tags or uploads release artifacts; Azure DevOps remains the release
+# path. Use it to qualify packaged startup changes before queueing Azure.
+name: Packaged Windows smoke (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip_source_tests:
+        description: "Skip pytest and the source mock contract (packaged smoke tests still run)"
+        type: boolean
+        default: false
+      extra_smoke_runs:
+        description: "Repeat the installed and portable packaged smoke tests this many extra times (flakiness check)"
+        type: string
+        default: '0'
+      cpu_affinity_mask:
+        description: "Optional CPU affinity mask for the build and smoke processes, e.g. 3 = two cores like Azure hosted agents"
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: packaged-smoke-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  packaged-smoke:
+    name: Unsigned build + installed and portable packaged smoke
+    # Matches the Azure DevOps release agent image (azure-pipelines.yml vmImage).
+    runs-on: windows-2022
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          architecture: 'x64'
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install Inno Setup
+        run: |
+          choco install innosetup --no-progress -y
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup installation failed: $LASTEXITCODE" }
+
+      - name: Prepare qualified release dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements/release.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Release dependency installation failed' }
+          python -m pip install --disable-pip-version-check --no-deps --no-build-isolation .
+          if ($LASTEXITCODE -ne 0) { throw 'Project installation failed' }
+
+      - name: Build unsigned release with installed and portable packaged smoke tests
+        env:
+          SKIP_SOURCE_TESTS: ${{ inputs.skip_source_tests }}
+          CPU_AFFINITY_MASK: ${{ inputs.cpu_affinity_mask }}
+        run: |
+          if ($env:CPU_AFFINITY_MASK) {
+            # Child processes (PyInstaller, the frozen tray and its server) inherit this.
+            (Get-Process -Id $PID).ProcessorAffinity = [IntPtr][int64]$env:CPU_AFFINITY_MASK
+            Write-Host "Processor affinity mask: $env:CPU_AFFINITY_MASK"
+          }
+          $arguments = @{
+            Channel = 'auto'
+            Unsigned = $true
+            Clean = $true
+            OutputDirectory = 'artifacts/packaged-smoke'
+            Python = 'python'
+          }
+          if ($env:SKIP_SOURCE_TESTS -eq 'true') {
+            # -MockSmokeTest keeps both packaged smoke tests enabled.
+            $arguments.SkipTests = $true
+            $arguments.MockSmokeTest = $true
+          }
+          & ./scripts/build_release.ps1 @arguments
+          if ($LASTEXITCODE -ne 0) { throw "Release build failed with exit code $LASTEXITCODE" }
+
+      - name: Verify packaged headless startup failure is reported, not hidden
+        # Occupy a pinned OV_LLM_PORT so the frozen tray must fail closed (exit 6) and
+        # say why on stderr and in its data-dir log instead of only exiting.
+        run: |
+          $exe = (Resolve-Path dist/InferBridge/InferBridge.exe).Path
+          $data = Join-Path ([IO.Path]::GetTempPath()) ("OV LLM Startup Failure " + [guid]::NewGuid().ToString("N"))
+          New-Item $data -ItemType Directory -Force | Out-Null
+          $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Any, 0)
+          $listener.Start()
+          $port = ([System.Net.IPEndPoint]$listener.LocalEndpoint).Port
+          $env:OV_LLM_PORT = [string]$port
+          try {
+            $process = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -PassThru -WindowStyle Hidden `
+              -ArgumentList @('--mock', '--headless', '--headless-seconds', '30', '--data-dir', ('"' + $data + '"'), '--no-browser') `
+              -RedirectStandardOutput "$data.out.log" -RedirectStandardError "$data.err.log"
+            if (-not $process.WaitForExit(120000)) { throw 'Tray did not exit while its pinned port was occupied.' }
+            $stderr = Get-Content -Raw -LiteralPath "$data.err.log" -ErrorAction SilentlyContinue
+            $trayLog = Get-Content -Raw -LiteralPath (Join-Path $data 'logs\tray.log') -ErrorAction SilentlyContinue
+            Write-Host "exit=$($process.ExitCode)"; Write-Host "stderr: $stderr"
+            if ($process.ExitCode -ne 6) { throw "Expected headless startup failure exit 6, got $($process.ExitCode)." }
+            if ($stderr -notmatch "InferBridge headless startup failed: Configured port $port is unavailable") {
+              throw 'The headless startup failure reason was not written to stderr.'
+            }
+            if ($trayLog -notmatch 'Initial server startup failed') { throw 'The tray log did not record the startup failure.' }
+          }
+          finally {
+            $listener.Stop()
+            Remove-Item Env:OV_LLM_PORT -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $data, "$data.out.log", "$data.err.log" -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Repeat packaged smoke tests
+        if: ${{ inputs.extra_smoke_runs != '0' && inputs.extra_smoke_runs != '' }}
+        env:
+          EXTRA_SMOKE_RUNS: ${{ inputs.extra_smoke_runs }}
+          CPU_AFFINITY_MASK: ${{ inputs.cpu_affinity_mask }}
+        run: |
+          if ($env:CPU_AFFINITY_MASK) {
+            (Get-Process -Id $PID).ProcessorAffinity = [IntPtr][int64]$env:CPU_AFFINITY_MASK
+          }
+          $runs = [int]$env:EXTRA_SMOKE_RUNS
+          $python = @(Get-ChildItem build/release-environments -Filter python.exe -Recurse |
+            Where-Object { $_.Directory.Name -eq 'Scripts' } | Select-Object -First 1)[0].FullName
+          $distribution = (Resolve-Path dist/InferBridge).Path
+          $marker = Join-Path $distribution 'portable.flag'
+          $failures = 0
+          for ($i = 1; $i -le $runs; $i++) {
+            foreach ($mode in @('installed', 'portable')) {
+              if ($mode -eq 'portable') { Set-Content -Path $marker -Value 'portable' -Encoding ascii }
+              try {
+                Write-Host "==> Extra packaged smoke $i/$runs ($mode)"
+                & ./scripts/smoke_test_packaged.ps1 -DistributionPath $distribution -Python $python -ExpectedMode $mode
+              }
+              catch {
+                $failures++
+                Write-Host "::error::Extra packaged smoke $i/$runs ($mode) failed: $($_.Exception.Message)"
+              }
+              finally {
+                Remove-Item -LiteralPath $marker -Force -ErrorAction SilentlyContinue
+              }
+            }
+          }
+          Write-Host "Extra packaged smoke failures: $failures of $($runs * 2)"
+          if ($failures) { throw "$failures extra packaged smoke run(s) failed." }
+
+      - name: Upload build timing and summary
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: packaged-smoke-summary
+          path: |
+            build/release/release-timings.json
+            artifacts/packaged-smoke/*-release-summary.json
+          if-no-files-found: ignore
+          retention-days: 7

@@ -1,0 +1,235 @@
+# Azure Pipelines evaluation builder for InferBridge.
+# Build the Azure-selected source revision; no cross-branch checkout is permitted.
+# After fixing a failed formatting gate, queue a NEW run on dev: rerunning the old
+# Azure run can reuse its original failing source revision.
+# To build main, first promote this configuration to main, then queue a main-branch run.
+# Artifacts are unsigned and must not be treated as a qualified release.
+# Queue-time selector; the default preserves the existing unsigned EXE + ZIP output.
+# Store identity fields are public Partner Center identifiers, not credentials.
+parameters:
+- name: artifactType
+  displayName: 'Artifact output type'
+  type: string
+  default: installer-portable
+  values:
+    - installer-portable
+    - installer
+    - portable
+    - msix
+    - all
+- name: releaseChannel
+  displayName: 'Release channel (auto = from app/version.py: no suffix -> stable, beta/rc -> beta, dev -> nightly)'
+  type: string
+  default: auto
+  values:
+    - auto
+    - stable
+    - beta
+    - nightly
+- name: msixIdentityName
+  displayName: 'MSIX identity name (Partner Center)'
+  type: string
+  default: 'QuinnFavo.InferBridge'
+- name: msixPublisher
+  displayName: 'MSIX publisher (Partner Center)'
+  type: string
+  default: 'CN=CAC9A06A-996E-4DC7-9079-45803515E811'
+- name: msixPublisherDisplayName
+  displayName: 'MSIX publisher display name'
+  type: string
+  default: 'Quinn Favo'
+
+trigger: none
+pr: none
+
+pool:
+  vmImage: 'windows-2022'
+
+jobs:
+- job: windows_release
+  displayName: 'Build selected unsigned InferBridge Windows artifact'
+  timeoutInMinutes: 60
+  steps:
+  - checkout: self
+    clean: true
+    fetchDepth: 0
+    persistCredentials: false
+
+  - pwsh: |
+      $ErrorActionPreference = 'Stop'
+      if ($env:BUILD_REASON -ne 'Manual') { throw 'Only manually queued builds are allowed.' }
+      if ($env:BUILD_REPOSITORY_URI -notmatch '^https://github\.com/Quazmoz/InferBridge(?:\.git)?/?$') {
+        throw 'Unexpected Azure source repository.'
+      }
+      if ($env:BUILD_SOURCEBRANCH -notin @('refs/heads/dev', 'refs/heads/main', 'refs/heads/beta')) {
+        throw 'Only the dev, main, or beta source branch can be built.'
+      }
+      if ($env:BUILD_SOURCEVERSION -notmatch '^[a-fA-F0-9]{40}$') {
+        throw 'The Azure source commit is missing or invalid.'
+      }
+      $sha = (git rev-parse --verify HEAD).Trim()
+      if ($LASTEXITCODE -ne 0 -or $sha -ne $env:BUILD_SOURCEVERSION) {
+        throw 'Checkout does not match the immutable Azure source commit.'
+      }
+      if (-not (Test-Path -LiteralPath 'azure-pipelines.yml' -PathType Leaf)) {
+        throw 'Pipeline YAML is not included in the selected commit.'
+      }
+      git diff --exit-code HEAD -- azure-pipelines.yml
+      if ($LASTEXITCODE -ne 0) { throw 'Pipeline YAML differs from the checked-out source.' }
+      $dirty = @(git status --porcelain --untracked-files=normal)
+      if ($LASTEXITCODE -ne 0 -or $dirty.Count -gt 0) {
+        throw 'Refusing to build a dirty source tree.'
+      }
+      $pipelineHash = (Get-FileHash -LiteralPath 'azure-pipelines.yml' -Algorithm SHA256).Hash.ToLowerInvariant()
+      Write-Host "Source $env:BUILD_SOURCEBRANCH at $sha; YAML SHA256 $pipelineHash"
+      Write-Host "##vso[task.setvariable variable=INFERBRIDGE_PIPELINE_SHA256]$pipelineHash"
+    displayName: 'Verify Azure source and pipeline configuration provenance'
+
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.12'
+      architecture: 'x64'
+    displayName: 'Use Python 3.12'
+
+  # Verify the candidate interpreter and cheap quality gates before installing
+  # the large pinned OpenVINO / PyTorch release environment or Inno Setup.
+  # Format the ENTIRE repo before committing: python -m ruff format .
+  # The release-pinned Ruff may normalize outer quotes in source-contract tests.
+  # Never autoformat in the release build: artifacts must match the immutable source commit.
+  # Ruff version must match requirements/release.txt.
+  - pwsh: |
+      $ErrorActionPreference = 'Stop'
+      python -c "import sys; assert sys.version_info[:2] == (3, 12) and sys.maxsize > 2**32, 'Expected 64-bit Python 3.12'; print(sys.version)"
+      if ($LASTEXITCODE -ne 0) { throw 'Azure release interpreter must be 64-bit Python 3.12.' }
+      python -m pip install --disable-pip-version-check --no-deps ruff==0.16.10
+      if ($LASTEXITCODE -ne 0) { throw 'Pinned Ruff installation failed.' }
+      python -m ruff check .
+      if ($LASTEXITCODE -ne 0) { throw 'Ruff lint failed before release dependency installation.' }
+      python -m ruff format --check .
+      if ($LASTEXITCODE -ne 0) { throw 'Ruff formatting failed: run python -m ruff format . with the release-pinned version, commit the result, and requeue.' }
+    displayName: 'Fast-fail Python 3.12 and Ruff checks'
+
+  # Native WinUI targets net10.0. Hosted images may change SDK inventories.
+  # Acquire the required SDK before installing the large release dependencies.
+  - task: UseDotNet@2
+    inputs:
+      packageType: 'sdk'
+      version: '10.0.x'
+    displayName: 'Use .NET 10 SDK for native WinUI'
+
+  - pwsh: |
+      $ErrorActionPreference = 'Stop'
+      $sdk = (dotnet --version).Trim()
+      if ($LASTEXITCODE -ne 0 -or $sdk -notmatch '^10\.0\.\d+$') {
+        throw "Native WinUI build requires .NET 10 SDK, got: $sdk"
+      }
+      Write-Host "Native WinUI SDK: $sdk"
+    displayName: 'Verify .NET 10 SDK before packaging'
+
+  - pwsh: |
+      $ErrorActionPreference = 'Stop'
+      choco install innosetup --no-progress -y
+      if ($LASTEXITCODE -ne 0) { throw "Inno Setup installation failed: $LASTEXITCODE" }
+      $iscc = @(
+        "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+        "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+      ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+      if (-not $iscc) { throw 'Inno Setup compiler not found after installation' }
+    displayName: 'Install Inno Setup'
+
+  - pwsh: |
+      $ErrorActionPreference = 'Stop'
+      python -m pip install --disable-pip-version-check -r requirements/release.txt
+      if ($LASTEXITCODE -ne 0) { throw 'Release dependency installation failed' }
+      python -m pip install --disable-pip-version-check --no-deps --no-build-isolation .
+      if ($LASTEXITCODE -ne 0) { throw 'Project installation failed' }
+    displayName: 'Prepare qualified release dependencies'
+
+  - pwsh: |
+      $ErrorActionPreference = 'Stop'
+      $version = (python scripts/release_tools.py canonical-version).Trim()
+      if ($LASTEXITCODE -ne 0 -or $version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.+-]+)?$') {
+        throw "Unexpected version: $version"
+      }
+      # Usual branch channel, for the log only; the version decides 'auto'.
+      $branchChannel = switch ($env:BUILD_SOURCEBRANCH) {
+        'refs/heads/main' { 'stable' }
+        'refs/heads/beta' { 'beta' }
+        'refs/heads/dev'  { 'nightly' }
+        default { throw 'Unsupported release channel source branch.' }
+      }
+      $requestedChannel = $env:INFERBRIDGE_REQUESTED_CHANNEL
+      if ($requestedChannel -notin @('auto', 'stable', 'beta', 'nightly')) {
+        throw "Unsupported release channel parameter: $requestedChannel"
+      }
+      $channel = (python scripts/release_tools.py resolve-channel --version $version --channel $requestedChannel --branch $env:BUILD_SOURCEBRANCH)
+      if ($LASTEXITCODE -ne 0 -or -not $channel) {
+        throw "Release channel '$requestedChannel' cannot build version $version from $env:BUILD_SOURCEBRANCH. Queue the run with releaseChannel=auto, or on the branch whose app/version.py matches the channel (main = stable, beta = beta, dev = nightly)."
+      }
+      $channel = "$channel".Trim()
+      Write-Host "Resolved release: version $version, channel $channel (requested $requestedChannel; $env:BUILD_SOURCEBRANCH usually builds $branchChannel), commit $env:BUILD_SOURCEVERSION"
+      $output = Join-Path $env:BUILD_ARTIFACTSTAGINGDIRECTORY 'release-internal'
+      & ./scripts/build_release.ps1 -Version $version -Channel $channel -Unsigned -Clean -OutputDirectory $output -Python python
+      if ($LASTEXITCODE -ne 0) { throw "Release build failed with exit code $LASTEXITCODE" }
+      $installer = Join-Path $output "InferBridge-$version-windows-x64-installer.exe"
+      $portable = Join-Path $output "InferBridge-$version-windows-x64-portable.zip"
+      $checksums = Join-Path $output "InferBridge-$version-checksums.txt"
+      foreach ($item in @($installer, $portable, $checksums)) {
+        if (-not (Test-Path -LiteralPath $item -PathType Leaf)) { throw "Missing release artifact: $item" }
+      }
+      python scripts/verify_release_provenance.py --artifact-directory $output --version $version --channel $channel --expected-commit $env:BUILD_SOURCEVERSION --source-model-manifest model_library_manifest.json
+      if ($LASTEXITCODE -ne 0) { throw 'Release provenance or checksums mismatch.' }
+      # Publish only after the complete release set passes its original source,
+      # manifest, checksum and native-first archive qualification.
+      Write-Host "##vso[task.setvariable variable=INFERBRIDGE_RELEASE_VERSION]$version"
+      Write-Host "##vso[task.setvariable variable=INFERBRIDGE_RELEASE_CHANNEL]$channel"
+      Write-Host "Qualified unsigned $version from $env:BUILD_SOURCEBRANCH at $env:BUILD_SOURCEVERSION"
+    displayName: 'Build and verify unsigned Windows release'
+    env:
+      INFERBRIDGE_REQUESTED_CHANNEL: ${{ parameters.releaseChannel }}
+      INFERBRIDGE_PIPELINE_SHA256: $(INFERBRIDGE_PIPELINE_SHA256)
+
+  - pwsh: |
+      $ErrorActionPreference = 'Stop'
+      $artifactType = $env:INFERBRIDGE_ARTIFACT_TYPE
+      if ($artifactType -notin @('installer-portable', 'installer', 'portable', 'msix', 'all')) {
+        throw "Unsupported artifact type: $artifactType"
+      }
+      $version = $env:INFERBRIDGE_RELEASE_VERSION
+      $channel = $env:INFERBRIDGE_RELEASE_CHANNEL
+      $msixDirectory = Join-Path $env:BUILD_ARTIFACTSTAGINGDIRECTORY 'msix-internal'
+      if ($artifactType -in @('msix', 'all')) {
+        & ./scripts/build_msix.ps1 -Version $version -DistributionPath 'dist\InferBridge' `
+          -OutputDirectory $msixDirectory -IdentityName $env:INFERBRIDGE_MSIX_IDENTITY_NAME `
+          -Publisher $env:INFERBRIDGE_MSIX_PUBLISHER `
+          -PublisherDisplayName $env:INFERBRIDGE_MSIX_PUBLISHER_DISPLAY_NAME -Python python
+        if ($LASTEXITCODE -ne 0) { throw 'MSIX build failed; no Azure artifact will be published.' }
+      }
+      $releaseDirectory = Join-Path $env:BUILD_ARTIFACTSTAGINGDIRECTORY 'release-internal'
+      $publishDirectory = Join-Path $env:BUILD_ARTIFACTSTAGINGDIRECTORY 'release'
+      & python scripts/select_azure_artifacts.py `
+        --release-dir $releaseDirectory --publish-dir $publishDirectory `
+        --msix-dir $msixDirectory --version $version --artifact-type $artifactType `
+        --identity-name $env:INFERBRIDGE_MSIX_IDENTITY_NAME `
+        --publisher $env:INFERBRIDGE_MSIX_PUBLISHER `
+        --source-ref $env:BUILD_SOURCEBRANCH --source-commit $env:BUILD_SOURCEVERSION `
+        --channel $channel --pipeline-hash $env:INFERBRIDGE_PIPELINE_SHA256 `
+        --run-id $env:BUILD_BUILDID
+      if ($LASTEXITCODE -ne 0) { throw 'Azure artifact selection or MSIX package validation failed.' }
+    displayName: 'Build optional Store MSIX and select requested artifact output'
+    env:
+      INFERBRIDGE_ARTIFACT_TYPE: ${{ parameters.artifactType }}
+      INFERBRIDGE_MSIX_IDENTITY_NAME: ${{ parameters.msixIdentityName }}
+      INFERBRIDGE_MSIX_PUBLISHER: ${{ parameters.msixPublisher }}
+      INFERBRIDGE_MSIX_PUBLISHER_DISPLAY_NAME: ${{ parameters.msixPublisherDisplayName }}
+      INFERBRIDGE_RELEASE_VERSION: $(INFERBRIDGE_RELEASE_VERSION)
+      INFERBRIDGE_RELEASE_CHANNEL: $(INFERBRIDGE_RELEASE_CHANNEL)
+      INFERBRIDGE_PIPELINE_SHA256: $(INFERBRIDGE_PIPELINE_SHA256)
+
+  - task: PublishPipelineArtifact@1
+    condition: succeeded()
+    inputs:
+      targetPath: '$(Build.ArtifactStagingDirectory)/release'
+      artifact: 'inferbridge-windows-x64-unsigned'
+      publishLocation: 'pipeline'
+    displayName: 'Publish selected unsigned Windows artifacts, checksums and provenance'

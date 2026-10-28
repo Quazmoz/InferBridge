@@ -4,6 +4,8 @@
   native\; it starts the bundled PyInstaller engine (InferBridge.exe) beside it.
   scripts/msix_package.py fills the double-brace tokens; Identity Name, Publisher, and
   PublisherDisplayName must match Partner Center > Product identity exactly.
+  Logos are written at every scale (plus unplated taskbar sizes) under Assets\ and
+  resolved through resources.pri; see scripts/msix_package.py.
 
   Store data is placed outside MSIX-virtualized AppData without restricted capabilities.
 -->
@@ -34,16 +36,27 @@
     <Application Id="InferBridge" Executable="native\InferBridge.Native.exe" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
         DisplayName="InferBridge"
-        Description="Local OpenAI-compatible AI server powered by OpenVINO for Intel CPU, GPU, and NPU."
+        Description="Chat with AI models that run privately on your PC with OpenVINO on Intel CPU, GPU, and NPU, plus an OpenAI-compatible local API."
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">
-        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
+        <uap:DefaultTile
+          ShortName="InferBridge"
+          Wide310x150Logo="Assets\Wide310x150Logo.png"
+          Square71x71Logo="Assets\Square71x71Logo.png"
+          Square310x310Logo="Assets\Square310x310Logo.png">
+          <uap:ShowNameOnTiles>
+            <uap:ShowOn Tile="square150x150Logo" />
+            <uap:ShowOn Tile="wide310x150Logo" />
+            <uap:ShowOn Tile="square310x310Logo" />
+          </uap:ShowNameOnTiles>
+        </uap:DefaultTile>
+        <uap:SplashScreen Image="Assets\SplashScreen.png" BackgroundColor="#050C18" />
       </uap:VisualElements>
       <Extensions>
-        <!-- Off by default; users turn it on in Settings > Apps > Startup. It starts the
-             engine and tray, which open the native window. -->
-        <desktop:Extension Category="windows.startupTask" Executable="InferBridge.exe" EntryPoint="Windows.FullTrustApplication">
+        <!-- Off by default. Startup activates WinUI, which starts the engine
+             without opening a browser. -->
+        <desktop:Extension Category="windows.startupTask" Executable="native\InferBridge.Native.exe" EntryPoint="Windows.FullTrustApplication">
           <desktop:StartupTask TaskId="InferBridgeStartup" Enabled="false" DisplayName="InferBridge" />
         </desktop:Extension>
       </Extensions>

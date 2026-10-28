@@ -1,0 +1,83 @@
+name: Linux source smoke
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - '**/*.py'
+      - 'pyproject.toml'
+      - 'requirements/release.txt'
+      - '.github/workflows/linux-smoke.yml'
+      - 'setup.sh'
+      - 'start_server.sh'
+      - 'setup/linux/**'
+      - 'scripts/validate_api_contract.py'
+      - 'app/**'
+      - 'runtime/**'
+      - 'models.json'
+      - 'requirements.txt'
+      - 'tests/test_linux_smoke_script.py'
+  pull_request:
+    branches: [dev]
+    paths:
+      - '**/*.py'
+      - 'pyproject.toml'
+      - 'requirements/release.txt'
+      - '.github/workflows/linux-smoke.yml'
+      - 'setup.sh'
+      - 'start_server.sh'
+      - 'setup/linux/**'
+      - 'scripts/validate_api_contract.py'
+      - 'app/**'
+      - 'runtime/**'
+      - 'models.json'
+      - 'requirements.txt'
+      - 'tests/test_linux_smoke_script.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-source-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ubuntu:
+    name: Linux launcher and API (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+        python-version: ['3.11', '3.12']
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Fast-fail pinned Ruff source-quality gates
+        run: |
+          python -c "import sys; assert '.'.join(map(str, sys.version_info[:2])) == '${{ matrix.python-version }}', sys.version"
+          python -m pip install --disable-pip-version-check --no-deps ruff==0.16.10
+          python -m ruff check .
+          python -m ruff format --check .
+      - name: Check shell syntax
+        run: bash -n setup.sh start_server.sh setup/linux/*.sh
+      - name: Set up Linux source environment without downloading model weights
+        run: |
+          bash ./setup.sh --minimal --skip-hardware-check --python python
+          .venv/bin/python -c "import sys; assert '.'.join(map(str, sys.version_info[:2])) == '${{ matrix.python-version }}', sys.version"
+      - name: Run Linux script regression checks
+        run: |
+          .venv/bin/python -m pip install 'pytest>=8,<10'
+          .venv/bin/python -m pytest -q tests/test_linux_smoke_script.py tests/test_linux_support_files.py tests/test_linux_polish.py
+      - name: Run Azure artifact and native source contract regressions
+        run: |
+          .venv/bin/python -m pytest -q \
+            tests/test_azure_artifact_selection.py \
+            tests/test_ci_dependency_contract.py \
+            tests/test_native_windows_source_contract.py
+      - name: Validate Linux launcher and mock OpenAI API end-to-end
+        run: bash ./setup/linux/smoke_test.sh

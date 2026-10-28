@@ -10,6 +10,7 @@ from collections.abc import Callable
 
 from app import __version__
 from app.desktop_shell import copy_to_clipboard, open_path, show_dialog
+from app.msix import is_packaged
 from app.support import GITHUB_ISSUES_URL, SUPPORT_URL, validate_support_url
 from app.tray_state import (
     TrayPhase,
@@ -29,9 +30,14 @@ class TrayMenuMixin:
         Item = pystray.MenuItem
         return Menu(
             Item(
-                "Open Chat",
+                "Open InferBridge",
                 self._action(self.open_chat),
                 default=True,
+                enabled=self._enabled("open_chat"),
+            ),
+            Item(
+                "Open web GUI",
+                self._action(self.open_web_ui),
                 enabled=self._enabled("open_chat"),
             ),
             Item(
@@ -141,7 +147,8 @@ class TrayMenuMixin:
                 checked=lambda _item: self._startup_enabled(),
                 enabled=self._enabled("start_with_windows"),
             ),
-            Item("Check for Updates", self._action(self.open_updates)),
+            # Microsoft Store installs update only through the Store (Store Policies 10.1.5 and 10.2).
+            Item("Check for Updates", self._action(self.open_updates), visible=not is_packaged()),
             Item(
                 "Help",
                 Menu(
@@ -234,10 +241,18 @@ class TrayMenuMixin:
 
     def open_chat(self) -> None:
         if not self.controller.running:
-            self._start_server(open_chat=True)
-            return
+            self._start_server(open_chat=False)
         if not self.controller.open_chat():
-            raise RuntimeError("The InferBridge interface could not be opened.")
+            raise RuntimeError(
+                "The native InferBridge window could not be opened. "
+                "Check that native\\InferBridge.Native.exe is installed."
+            )
+
+    def open_web_ui(self) -> None:
+        if not self.controller.running:
+            self._start_server(open_chat=False)
+        if not self.controller.open_web_ui():
+            raise RuntimeError("The secondary web GUI could not be opened.")
 
     def open_updates(self) -> None:
         if not self.controller.running:
@@ -318,7 +333,12 @@ class TrayMenuMixin:
             "A local-first OpenVINO GenAI server for Windows. The tray controls only the "
             "server process it started. Prompts and chat history are not included in diagnostics. "
             "Use Help > Send Feedback for the simple support form, or Help > GitHub Issues for "
-            "technical discussion. Use Check for Updates to review optional stable or beta releases.",
+            "technical discussion. "
+            + (
+                "Microsoft Store keeps this installation up to date."
+                if is_packaged()
+                else "Use Check for Updates to review optional stable or beta releases."
+            ),
         )
 
     def quit(self) -> None:

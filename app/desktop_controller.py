@@ -366,14 +366,19 @@ class DesktopServerController:
         return result
 
     def open_chat(self) -> bool:
-        origin = self.origin
-        if not origin:
+        """Open the native interface on Windows, never the browser by default."""
+        if not self.origin:
             return False
-        if is_packaged() or (sys.platform == "win32" and getattr(sys, "frozen", False)):
+        if sys.platform == "win32" or is_packaged():
             return bool(
                 self.metadata and open_store_window(self.metadata.port, self.metadata.nonce)
             )
-        return open_browser(f"{origin}/")
+        # No WinUI build exists on non-Windows source installations.
+        return self.open_web_ui()
+
+    def open_web_ui(self) -> bool:
+        """Browser interface is an explicit, secondary user action."""
+        return bool(self.origin and open_browser(f"{self.origin}/"))
 
     def stop(self) -> None:
         if not self.running:

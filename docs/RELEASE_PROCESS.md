@@ -1,6 +1,6 @@
 # Production release process
 
-Local Windows release generation remains supported. The manual **Release build** workflow (`.github/workflows/release.yml`) can also build the artifacts on a GitHub-hosted runner, sign them through SignPath Foundation (see [CODE_SIGNING.md](CODE_SIGNING.md)), and pack the Microsoft Store MSIX (see [MICROSOFT_STORE.md](MICROSOFT_STORE.md)). Nothing builds on push, and nothing is published automatically.
+Local Windows release generation remains supported. The **manually queued Azure DevOps pipeline** (`azure-pipelines.yml`) builds unsigned Windows artifacts from its selected Git commit. Queue-time options select installer, portable ZIP, Store MSIX, both traditional formats (default), or all three. The pipeline verifies the complete underlying native-first release before selecting publication outputs; it neither signs nor publishes a public release. GitHub-hosted native/release build workflows were retired; see [CODE_SIGNING.md](CODE_SIGNING.md) for signing and [MICROSOFT_STORE.md](MICROSOFT_STORE.md) for Store identity, Azure selection, and installed certification.
 
 ## Prerequisites
 

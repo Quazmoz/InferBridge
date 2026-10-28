@@ -1,10 +1,13 @@
 from types import SimpleNamespace
 
-from app import tray_app
+from app import desktop_controller, tray_app
 
 
 def test_tray_passes_resolved_custom_data_root_to_server_child(monkeypatch, tmp_path) -> None:
     monkeypatch.chdir(tmp_path)
+    # The path contract does not depend on /proc or PID namespace visibility.
+    # Keep real-process identity verification covered separately.
+    monkeypatch.setattr(desktop_controller, "_current_process_created_at", lambda: 1_700_000_000.0)
     monkeypatch.setattr(
         tray_app,
         "configure_logging",

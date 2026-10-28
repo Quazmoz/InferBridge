@@ -14,6 +14,7 @@ def _write_release(tmp_path: Path, *, installer: bool, launcher: bool) -> None:
     (tmp_path / installer_name).write_bytes(b"installer")
     with zipfile.ZipFile(tmp_path / portable_name, "w") as archive:
         archive.writestr(f"InferBridge-{version}/InferBridge.exe", b"launcher")
+        archive.writestr(f"InferBridge-{version}/native/InferBridge.Native.exe", b"native")
     manifest = {
         "artifacts": [
             {
@@ -69,7 +70,7 @@ def test_signed_claim_requires_signtool(tmp_path, monkeypatch):
         verify_release_signing(tmp_path, "9.9.9")
 
 
-def test_signed_claim_runs_exact_verification_for_both_artifacts(tmp_path, monkeypatch, capsys):
+def test_signed_claim_runs_exact_verification_for_all_executables(tmp_path, monkeypatch, capsys):
     _write_release(tmp_path, installer=True, launcher=True)
     tool = tmp_path / "signtool.exe"
     tool.write_bytes(b"tool")
@@ -86,7 +87,7 @@ def test_signed_claim_runs_exact_verification_for_both_artifacts(tmp_path, monke
     monkeypatch.setenv("OV_LLM_SIGNTOOL_PATH", str(tool))
     monkeypatch.setattr("scripts.verify_release_signing.subprocess.run", fake_run)
     assert verify_release_signing(tmp_path, "9.9.9") is True
-    assert len(calls) == 2
+    assert len(calls) == 3
     assert all(call[1:4] == ["verify", "/pa", "/all"] for call in calls)
     assert "Successfully verified" in capsys.readouterr().out
 
@@ -105,4 +106,24 @@ def test_failed_signtool_verification_blocks_signed_claim(tmp_path, monkeypatch)
         "scripts.verify_release_signing.subprocess.run", lambda *_args, **_kwargs: Result()
     )
     with pytest.raises(SigningVerificationError, match="exit code 1"):
+        verify_release_signing(tmp_path, "9.9.9")
+
+
+def test_signed_portable_missing_native_entrypoint_is_rejected(tmp_path, monkeypatch):
+    _write_release(tmp_path, installer=True, launcher=True)
+    portable = tmp_path / "InferBridge-9.9.9-windows-x64-portable.zip"
+    with zipfile.ZipFile(portable, "w") as archive:
+        archive.writestr("InferBridge-9.9.9/InferBridge.exe", b"launcher")
+    tool = tmp_path / "signtool.exe"
+    tool.write_bytes(b"tool")
+
+    class Result:
+        returncode = 0
+        stdout = "Successfully verified"
+
+    monkeypatch.setenv("OV_LLM_SIGNTOOL_PATH", str(tool))
+    monkeypatch.setattr(
+        "scripts.verify_release_signing.subprocess.run", lambda *_args, **_kwargs: Result()
+    )
+    with pytest.raises(SigningVerificationError, match="native WinUI entrypoint"):
         verify_release_signing(tmp_path, "9.9.9")

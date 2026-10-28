@@ -55,6 +55,7 @@ CONTEXT_BUDGET_JS = r"""
         .ovcb-notice{margin-top:11px;padding:10px 11px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);color:var(--text-2);font-size:11px;line-height:1.5}.ovcb-notice.warning{border-color:color-mix(in srgb,var(--amber) 48%,var(--border));color:var(--amber)}.ovcb-notice.danger{border-color:color-mix(in srgb,var(--red) 52%,var(--border));color:var(--red)}
         .ovcb-section{margin-top:14px}.ovcb-section-title{font-size:11px;font-weight:820}.ovcb-omissions{display:grid;gap:7px;margin-top:8px}.ovcb-omission{padding:9px 10px;border-left:3px solid var(--amber);border-radius:7px;background:var(--surface-2)}.ovcb-role{color:var(--text-3);font-size:9px;font-weight:850;letter-spacing:.08em;text-transform:uppercase}.ovcb-preview{margin-top:3px;color:var(--text-2);font-size:10.5px;line-height:1.45;overflow-wrap:anywhere}
         .ovcb-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.ovcb-button{min-height:32px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);color:var(--text-1);font:inherit;font-size:10.5px;font-weight:750;cursor:pointer}.ovcb-button:hover:not(:disabled){background:var(--surface-3)}.ovcb-button:focus-visible{outline:2px solid var(--primary);outline-offset:2px}.ovcb-button:disabled{opacity:.5;cursor:not-allowed}.ovcb-button.primary{border-color:color-mix(in srgb,var(--primary) 58%,var(--border));background:color-mix(in srgb,var(--primary) 13%,var(--surface-2))}
+        .ovcb-config{border-top:1px solid var(--border);padding:12px 17px 16px;display:grid;gap:9px}.ovcb-config label{font-size:11px;font-weight:700}.ovcb-config select{min-height:36px;width:100%;padding:6px 9px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-1);font:inherit;font-size:11px}.ovcb-config-note{color:var(--text-2);font-size:10.5px;line-height:1.5;overflow-wrap:anywhere}#ov-context-budget-panel{max-height:min(78dvh,800px);overflow-y:auto}
         @media(max-width:700px){#ov-context-budget-chip{max-width:52vw}#ov-context-budget-panel{right:12px;bottom:104px}.ovcb-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.ovcb-actions{display:grid;grid-template-columns:1fr}.ovcb-button{width:100%}}
         @media(max-width:430px){.ovcb-grid{grid-template-columns:1fr}}
         @media(prefers-reduced-motion:reduce){.ovcb-meter-fill{transition:none}}
@@ -100,7 +101,120 @@ CONTEXT_BUDGET_JS = r"""
     head.append(headCopy, closeButton);
     const body = createElement('div', 'ovcb-body');
     panel.append(head, body);
+    const configPanel = createElement('section', 'ovcb-config');
+    const configLabel = createElement('label', '', 'Per-model context configuration');
+    configLabel.htmlFor = 'ovcb-context-size';
+    const configSelect = createElement('select');
+    configSelect.id = 'ovcb-context-size';
+    configSelect.setAttribute('aria-label', 'Model context tokens');
+    const configNote = createElement('div', 'ovcb-config-note', 'Select a model to inspect context options.');
+    configNote.setAttribute('aria-live', 'polite');
+    const configActions = createElement('div', 'ovcb-actions');
+    const configApply = createElement('button', 'ovcb-button primary', 'Apply context');
+    const configReset = createElement('button', 'ovcb-button', 'Recommended default');
+    const configRefresh = createElement('button', 'ovcb-button', 'Refresh settings');
+    configApply.type = configReset.type = configRefresh.type = 'button';
+    configActions.append(configApply, configReset, configRefresh);
+    configPanel.append(configLabel, configSelect, configNote, configActions);
+    panel.appendChild(configPanel);
     inputArea.appendChild(panel);
+
+    let contextSettings = null;
+    let contextBusy = false;
+    let contextSequence = 0;
+    function updateContextControls() {
+        const chosen = Number(configSelect.value);
+        const current = contextSettings?.configured_context_tokens;
+        const option = contextSettings?.options?.find(item => item.tokens === chosen);
+        configSelect.disabled = contextBusy || !contextSettings;
+        configApply.disabled = contextBusy || !option || chosen === current ||
+            option.classification === 'existing-unverified';
+        configReset.disabled = contextBusy || !contextSettings ||
+            current === contextSettings.recommended_context_tokens ||
+            !contextSettings.options.some(item =>
+                item.tokens === contextSettings.recommended_context_tokens &&
+                item.classification !== 'existing-unverified');
+        if (option && !contextBusy) {
+            const memory = option.fp16_kv_cache_gib_estimate == null
+                ? 'KV-cache estimate unavailable (architecture metadata incomplete).'
+                : `Illustrative FP16 KV cache ~${option.fp16_kv_cache_gib_estimate} GiB; not measured device memory.`;
+            const footprint = option.estimated_host_ram_gib == null
+                ? 'Total memory estimate unavailable.'
+                : `Estimated host-RAM planning floor ~${option.estimated_host_ram_gib} GiB ` +
+                  `(${option.fit_guidance.replace(/-/g, ' ')}); not a device measurement.`;
+            configNote.textContent = `${option.classification.replace(/-/g, ' ')} · ` +
+                `${formatNumber(chosen - contextSettings.reserved_output_tokens)} prompt tokens · ` +
+                `${formatNumber(contextSettings.reserved_output_tokens)} reserved output. ${memory} ${footprint} ` +
+                'Larger options remain hardware-unverified until tested.';
+        }
+    }
+
+    async function refreshContextSettings() {
+        const model = modelSelect.value;
+        const sequence = ++contextSequence;
+        contextSettings = null;
+        configSelect.replaceChildren();
+        contextBusy = true;
+        updateContextControls();
+        configNote.textContent = model ? 'Inspecting model architecture and context options…' : 'Select a model first.';
+        if (!model) { contextBusy = false; updateContextControls(); return; }
+        try {
+            const response = await fetch(`/v1/models/context?model=${encodeURIComponent(model)}`, {
+                headers: requestHeaders(), cache: 'no-store',
+            });
+            const payload = await response.json();
+            if (sequence !== contextSequence || model !== modelSelect.value) return;
+            if (!response.ok) throw new Error('Context settings are unavailable. Check model state.');
+            if (!Array.isArray(payload.options) || payload.model_id !== model) throw new Error('Invalid context options.');
+            contextSettings = payload;
+            payload.options.forEach(option => {
+                const row = createElement('option', '', `${formatNumber(option.tokens)} · ${option.classification.replace(/-/g, ' ')}`);
+                row.value = String(option.tokens);
+                configSelect.appendChild(row);
+            });
+            configSelect.value = String(payload.configured_context_tokens);
+        } catch (error) {
+            if (sequence !== contextSequence) return;
+            configNote.textContent = error instanceof Error ? error.message : 'Unable to inspect model context.';
+        } finally {
+            if (sequence === contextSequence) { contextBusy = false; updateContextControls(); }
+        }
+    }
+
+    async function applyContext(tokens) {
+        const original = contextSettings;
+        if (contextBusy || !original || !original.options.some(item => item.tokens === tokens)) return;
+        contextBusy = true;
+        updateContextControls();
+        configNote.textContent = 'Compiling a replacement if needed. The current engine remains available until handoff…';
+        try {
+            const response = await fetch('/v1/models/context', {
+                method: 'POST', headers: requestHeaders(), cache: 'no-store',
+                body: JSON.stringify({model: original.model_id, context_tokens: tokens,
+                    expected_context_tokens: original.configured_context_tokens}),
+            });
+            const payload = await response.json();
+            if (!response.ok || payload?.status !== 'applied') {
+                throw new Error(typeof payload?.detail === 'string' ? payload.detail :
+                    'Context was not confirmed. Refresh before retrying.');
+            }
+            configNote.textContent = 'Context saved; conversation history was preserved.';
+            scheduleInspect(0);
+        } catch (error) {
+            configNote.textContent = error instanceof Error ? error.message : 'Context state uncertain. Refresh before retrying.';
+        } finally {
+            contextBusy = false;
+            await refreshContextSettings();
+        }
+    }
+    configSelect.addEventListener('change', updateContextControls);
+    configApply.addEventListener('click', () => void applyContext(Number(configSelect.value)));
+    configReset.addEventListener('click', () => void applyContext(contextSettings?.recommended_context_tokens));
+    configRefresh.addEventListener('click', () => void refreshContextSettings());
+    modelSelect.addEventListener('change', () => {
+        contextSettings = null;
+        if (panelOpen) void refreshContextSettings();
+    });
 
     function formatNumber(value) {
         return Number.isFinite(Number(value)) ? Number(value).toLocaleString() : '–';
@@ -372,6 +486,7 @@ CONTEXT_BUDGET_JS = r"""
         if (latestBudget) renderBudget(latestBudget);
         else clearBody('Calculating context usage…');
         scheduleInspect(0);
+        void refreshContextSettings();
         closeButton.focus();
     }
 

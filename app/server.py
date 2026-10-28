@@ -33,7 +33,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from starlette.background import BackgroundTask
 
-from app import __version__, chat_format, model_manager, multimodal, responses_api, tools
+from app import (
+    __version__,
+    chat_format,
+    context_configuration,
+    model_manager,
+    multimodal,
+    responses_api,
+    tools,
+)
 from app.body_limit import RequestBodyLimitMiddleware
 from app.brand import DISPLAY_NAME
 from app.config import BASE_DIR, Settings
@@ -50,6 +58,7 @@ from app.openai_api import (
     EmbeddingResponse,
     EmbeddingResponseData,
     EmbeddingResponseUsage,
+    ModelContextRequest,
     ModelConvertRequest,
     ModelDeleteRequest,
     ModelLoadRequest,
@@ -71,6 +80,7 @@ from app.ui_registry import (
 from runtime import device_check
 from runtime.benchmark_runner import (
     DEFAULT_BENCHMARK_PROMPT,
+    BenchmarkBusyError,
     BenchmarkStore,
     run_benchmark_suite,
 )
@@ -627,10 +637,45 @@ def create_app(settings: Settings) -> FastAPI:
             "model": manager.catalog_entry(cfg.id),
         }
 
+    @app.get("/v1/models/context", dependencies=auth)
+    async def inspect_model_context(model: str = Query(min_length=1, max_length=128)):
+        if model not in manager.catalog:
+            raise HTTPException(status_code=404, detail="Unknown model")
+        return manager.context_details(model)
+
+    @app.post("/v1/models/context", dependencies=auth)
+    async def apply_model_context(req: ModelContextRequest):
+        if req.model not in manager.catalog:
+            raise HTTPException(status_code=404, detail="Unknown model")
+        try:
+            details = await manager.configure_context(
+                req.model,
+                req.context_tokens,
+                expected_context_tokens=req.expected_context_tokens,
+            )
+        except context_configuration.ContextValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except model_manager.ContextBusyError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail="Cannot persist model context. Check writable model settings storage.",
+            ) from exc
+        except Exception as exc:  # noqa: BLE001 - native OOM/library failures are untrusted
+            raise HTTPException(
+                status_code=409,
+                detail="Context change was not confirmed. Refresh the authoritative context "
+                "before retrying; review local diagnostics if compilation failed.",
+            ) from exc
+        return {"status": "applied", "context": details}
+
     @app.post("/v1/models/load", dependencies=auth)
     async def load_model(req: ModelLoadRequest):
         if req.model not in manager.catalog:
             raise HTTPException(status_code=404, detail=f"Unknown model '{req.model}'")
+        if req.model in manager._context_changes:
+            raise HTTPException(status_code=409, detail="Context configuration is in progress.")
         device = _normalize_device_or_400(req.device)
 
         try:
@@ -654,6 +699,8 @@ def create_app(settings: Settings) -> FastAPI:
     async def convert_model(req: ModelConvertRequest):
         if req.model not in manager.catalog:
             raise HTTPException(status_code=404, detail=f"Unknown model '{req.model}'")
+        if req.model in manager._context_changes:
+            raise HTTPException(status_code=409, detail="Context configuration is in progress.")
         device = _normalize_device_or_400(req.device)
         cfg = manager.catalog[req.model]
         if not cfg.source_model:
@@ -691,6 +738,8 @@ def create_app(settings: Settings) -> FastAPI:
     async def unload_model(req: ModelUnloadRequest):
         if req.model not in manager.catalog:
             raise HTTPException(status_code=404, detail=f"Unknown model '{req.model}'")
+        if req.model in manager._context_changes:
+            raise HTTPException(status_code=409, detail="Context configuration is in progress.")
         if req.model not in manager.engines:
             raise HTTPException(status_code=409, detail=f"Model '{req.model}' is not loaded")
         lock = manager.locks.get(req.model)
@@ -705,6 +754,8 @@ def create_app(settings: Settings) -> FastAPI:
     async def delete_model(req: ModelDeleteRequest):
         if req.model not in manager.catalog:
             raise HTTPException(status_code=404, detail=f"Unknown model '{req.model}'")
+        if req.model in manager._context_changes:
+            raise HTTPException(status_code=409, detail="Context configuration is in progress.")
         if req.model in manager.engines:
             raise HTTPException(
                 status_code=409,
@@ -966,6 +1017,11 @@ def create_app(settings: Settings) -> FastAPI:
     @app.post("/v1/benchmarks/run", dependencies=auth)
     async def run_benchmarks(req: BenchmarkRunRequest):
         model_ids = _benchmark_models_or_400(req)
+        if any(model_id in manager._context_changes for model_id in model_ids):
+            raise HTTPException(
+                status_code=409,
+                detail="Wait for context configuration to finish before benchmarking this model.",
+            )
         devices = _benchmark_devices_or_400(req)
         prompt = (req.prompt or DEFAULT_BENCHMARK_PROMPT).strip() or DEFAULT_BENCHMARK_PROMPT
         try:
@@ -976,7 +1032,11 @@ def create_app(settings: Settings) -> FastAPI:
                 prompt=prompt,
                 max_tokens=req.max_tokens,
                 runs=req.runs,
+                client_run_id=req.client_run_id,
+                reject_when_busy=True,
             )
+        except BenchmarkBusyError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except device_check.DeviceValidationError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         await asyncio.to_thread(benchmark_store.append, run)

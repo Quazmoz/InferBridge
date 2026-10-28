@@ -164,6 +164,7 @@ def test_clipboard_failure_is_presented_as_a_guarded_tray_error(monkeypatch) -> 
     stub._guarded_action(stub.copy_diagnostics)
 
     assert dialogs
-    assert dialogs[-1][1] == "clipboard busy"
+    assert "clipboard is unavailable or busy" in dialogs[-1][1]
+    assert "Export Diagnostics" in dialogs[-1][1]
     assert dialogs[-1][2] is True
     assert stub.refreshes == 1

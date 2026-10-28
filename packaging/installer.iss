@@ -19,14 +19,13 @@
 #define MyAppPublisher "Quazmoz"
 #define MyAppExeName "InferBridge.exe"
 #define MyLegacyAppExeName "OpenVINOWindowsLLM.exe"
-#ifdef NativeFrontend
-  #if !FileExists(SourceRoot + "\native\InferBridge.Native.exe")
-    #error NativeFrontend requires the self-contained native payload under SourceRoot\native
-  #endif
-  #define MyLaunchExeName "native\InferBridge.Native.exe"
+#if !FileExists(SourceRoot + "\native\InferBridge.Native.exe")
+  #error InferBridge installers require the bundled native WinUI application
+#endif
+#define MyLaunchExeName "native\InferBridge.Native.exe"
+#ifdef NativeEvaluation
   #define MyInstallerPlatform "native-windows-x64"
 #else
-  #define MyLaunchExeName MyAppExeName
   #define MyInstallerPlatform "windows-x64"
 #endif
 
@@ -424,6 +423,9 @@ var
   Started: Boolean;
 begin
   Result := False;
+  if not FileExists(ExpandConstant('{app}\native\InferBridge.Native.exe')) or
+     not FileExists(ExpandConstant('{app}\native\coreclr.dll')) then
+    exit;
   for Attempt := 1 to RuntimeCheckAttempts do
   begin
     ResultCode := -1;

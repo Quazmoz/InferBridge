@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from zipfile import ZipFile
 
 import pytest
 
@@ -24,6 +25,16 @@ def _artifacts(tmp_path: Path, *, commit: str = COMMIT) -> tuple[Path, Path]:
         (tmp_path / name).write_bytes(
             source.read_bytes() if name == "model-library-manifest.json" else b"x"
         )
+    portable = tmp_path / artifact_filename(version, "portable")
+    with ZipFile(portable, "w") as archive:
+        for filename in (
+            "InferBridge.exe",
+            "portable.flag",
+            "native/InferBridge.Native.exe",
+            "native/InferBridge.Native.runtimeconfig.json",
+            "native/coreclr.dll",
+        ):
+            archive.writestr(f"InferBridge-{version}/{filename}", b"valid-test-payload")
     manifest = build_manifest(
         tmp_path,
         version=version,
@@ -112,6 +123,17 @@ def test_missing_expected_artifact_fails(tmp_path):
         _verify(tmp_path, source)
 
 
+def test_unsigned_browser_only_portable_is_rejected_even_with_fresh_checksums(tmp_path):
+    source, _ = _artifacts(tmp_path)
+    portable = tmp_path / artifact_filename("0.6.2", "portable")
+    with ZipFile(portable, "w") as archive:
+        archive.writestr("InferBridge-0.6.2/InferBridge.exe", b"engine")
+        archive.writestr("InferBridge-0.6.2/portable.flag", b"portable")
+    write_checksums(tmp_path, "0.6.2")
+    with pytest.raises(RuntimeError, match="portable archive is missing required files"):
+        _verify(tmp_path, source)
+
+
 def test_publisher_validates_before_tag_and_never_replaces_manifest():
     script = (Path(__file__).parents[1] / "scripts" / "publish_release.ps1").read_text()
     validation = script.index("verify_release_provenance.py")
@@ -119,3 +141,20 @@ def test_publisher_validates_before_tag_and_never_replaces_manifest():
     assert validation < tagging
     assert "Copy-Item $LibraryManifestSource" not in script
     assert "release_tools.py checksums" not in script
+
+
+def test_release_artifact_allowlist_matches_canonical_names():
+    version = "1.2.3"
+    approved = expected_release_filenames(version)
+    assert {
+        artifact_filename(version, kind)
+        for kind in (
+            "installer",
+            "portable",
+            "third_party_licenses",
+            "release_notes",
+            "checksums",
+            "manifest",
+        )
+    }.issubset(approved)
+    assert len(approved) == 11

@@ -1,47 +1,34 @@
-"""Regression coverage for the Microsoft Store native-window entrypoint."""
+"""Windows native entrypoint is shared by EXE, portable and Store packages."""
 
 from __future__ import annotations
 
-import sys
-from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
 
 from app.desktop_controller import DesktopServerController
 from app.desktop_launcher import InstanceMetadata, main
-from app.store_window import _validate_port, open_store_window, run_store_window
+from app.store_window import _validate_port, open_store_window
 
 
 @pytest.mark.parametrize("port", [0, -1, 65536, True, 8123.0, "8123"])
-def test_store_window_rejects_invalid_ports(port):
+def test_native_window_rejects_invalid_ports(port):
     with pytest.raises(ValueError, match="between 1 and 65535"):
         _validate_port(port)
 
 
-def test_store_window_refuses_nonpackaged_execution():
+def test_native_window_refuses_non_windows_execution():
     assert not open_store_window(8123, "nonce")
-    with pytest.raises(RuntimeError, match="installed MSIX"):
-        run_store_window(8123, "nonce")
 
 
-def test_packaged_chat_uses_window_instead_of_external_browser(monkeypatch):
-    controller = object.__new__(DesktopServerController)
-    controller.metadata = InstanceMetadata(
-        pid=123, port=8123, nonce="known-session", executable="InferBridge.exe", started_at=""
-    )
-    opened = Mock(return_value=True)
-    monkeypatch.setattr("app.desktop_controller.is_packaged", lambda: True)
-    monkeypatch.setattr("app.desktop_controller.open_store_window", opened)
-    monkeypatch.setattr(
-        "app.desktop_controller.open_browser",
-        lambda url: pytest.fail(f"Store app opened external browser: {url}"),
-    )
-    assert controller.open_chat() is True
-    opened.assert_called_once_with(8123, "known-session")
+@pytest.mark.parametrize("nonce", ["", "x" * 513, None, 1234])
+def test_native_window_rejects_invalid_session_identity(nonce, monkeypatch):
+    monkeypatch.setattr("app.store_window._store_runtime_available", lambda: True)
+    monkeypatch.setattr("app.store_window.subprocess.Popen", Mock(side_effect=AssertionError))
+    assert open_store_window(8123, nonce) is False
 
 
-def test_frozen_windows_build_uses_embedded_ui(monkeypatch):
+def test_windows_chat_opens_native_even_when_not_msix(monkeypatch):
     controller = object.__new__(DesktopServerController)
     controller.metadata = InstanceMetadata(
         pid=123, port=8123, nonce="known-session", executable="InferBridge.exe", started_at=""
@@ -49,84 +36,74 @@ def test_frozen_windows_build_uses_embedded_ui(monkeypatch):
     opened = Mock(return_value=True)
     monkeypatch.setattr("app.desktop_controller.is_packaged", lambda: False)
     monkeypatch.setattr("app.desktop_controller.sys.platform", "win32")
-    monkeypatch.setattr("app.desktop_controller.sys.frozen", True, raising=False)
     monkeypatch.setattr("app.desktop_controller.open_store_window", opened)
     monkeypatch.setattr(
         "app.desktop_controller.open_browser",
-        lambda url: pytest.fail(f"Packaged Windows app opened external browser: {url}"),
+        lambda url: pytest.fail(f"Windows app opened external browser: {url}"),
     )
     assert controller.open_chat() is True
     opened.assert_called_once_with(8123, "known-session")
 
 
-def test_frozen_windows_window_runtime_available(monkeypatch):
-    monkeypatch.setattr("app.store_window.sys.platform", "win32")
-    monkeypatch.setattr("app.store_window.sys.frozen", True, raising=False)
-    monkeypatch.setattr("app.store_window.is_packaged", lambda: False)
-    from app.store_window import _store_runtime_available
-
-    assert _store_runtime_available() is True
-
-
-def test_window_child_dispatch_does_not_start_tray(monkeypatch):
-    invoked = Mock(return_value=0)
-    monkeypatch.setattr("app.store_window.run_store_window", invoked)
-    assert main(["--window-child", "--port", "8123", "--instance-nonce", "known-session"]) == 0
-    invoked.assert_called_once_with(8123, "known-session")
-
-
-def test_window_child_requires_explicit_port():
+def test_webview_child_launcher_has_been_removed():
     with pytest.raises(SystemExit):
-        main(["--window-child", "--instance-nonce", "known-session"])
+        main(["--window-child", "--port", "8123", "--instance-nonce", "nonce"])
 
 
-def test_native_store_window_hosts_loopback_ui_with_edgechromium(tmp_path, monkeypatch):
-    monkeypatch.setattr("app.store_window._store_runtime_available", lambda: True)
-    validated = Mock(return_value=True)
-    monkeypatch.setattr("app.store_window.verify_instance", validated)
-    monkeypatch.setattr(
-        "app.store_window.resolve_runtime_paths",
-        lambda **kwargs: SimpleNamespace(data_root=tmp_path),
-    )
-    opened = Mock()
-    started = Mock()
-
-    class ClosedEvent:
-        def __iadd__(self, callback):
-            return self
-
-    window = SimpleNamespace(events=SimpleNamespace(closed=ClosedEvent()))
-    opened.return_value = window
-    monkeypatch.setitem(
-        sys.modules,
-        "webview",
-        SimpleNamespace(create_window=opened, start=started),
-    )
-    assert run_store_window(8123, "known-session") == 0
-    assert validated.call_args.args[0].nonce == "known-session"
-    assert opened.call_args.args == ("InferBridge", "http://127.0.0.1:8123/")
-    assert callable(started.call_args.args[0])
-    assert started.call_args.kwargs["gui"] == "edgechromium"
-    assert started.call_args.kwargs["private_mode"] is False
-    assert started.call_args.kwargs["storage_path"] == str(tmp_path / "webview")
-
-
-def test_packaged_window_prefers_bundled_native_client(tmp_path, monkeypatch):
+def test_windows_native_window_fails_closed_when_payload_missing(tmp_path, monkeypatch):
     executable = tmp_path / "InferBridge.exe"
     executable.write_bytes(b"MZ")
     monkeypatch.setattr("app.store_window._store_runtime_available", lambda: True)
     monkeypatch.setattr("app.store_window.sys.executable", str(executable))
-    started = Mock()
-    monkeypatch.setattr("app.store_window.subprocess.Popen", started)
-
-    # Without the native payload the WebView2 child remains the fallback.
-    assert open_store_window(8123, "known-session") is True
-    assert started.call_args.args[0][:2] == [str(executable), "--window-child"]
+    process = Mock()
+    monkeypatch.setattr("app.store_window.subprocess.Popen", process)
+    assert open_store_window(8123, "known-session") is False
+    process.assert_not_called()
 
     native = tmp_path / "native" / "InferBridge.Native.exe"
     native.parent.mkdir()
     native.write_bytes(b"MZ")
     assert open_store_window(8123, "known-session") is True
-    # The native client reads verified session metadata itself: no URL, port or nonce.
-    assert started.call_args.args[0] == [str(native.resolve())]
-    assert started.call_args.kwargs["cwd"] == str(native.parent.resolve())
+    assert process.call_args.args[0] == [str(native.resolve())]
+    assert process.call_args.kwargs["cwd"] == str(native.parent.resolve())
+
+
+def test_native_window_never_imports_webview():
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parents[1] / "app" / "store_window.py").read_text(
+        encoding="utf-8"
+    )
+    assert "import webview" not in source
+    assert "--window-child" not in source
+    assert "http://127.0.0.1:" not in source
+
+
+def test_tray_native_is_default_and_browser_is_explicit_secondary_action():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    menu = (root / "app" / "tray_menu.py").read_text(encoding="utf-8")
+    runtime = (root / "app" / "tray_runtime.py").read_text(encoding="utf-8")
+    controller = (root / "app" / "desktop_controller.py").read_text(encoding="utf-8")
+
+    assert '"Open InferBridge"' in menu
+    assert '"Open web GUI"' in menu
+    assert '"Open web GUI",\n                self._action(self.open_web_ui)' in menu
+    assert "def open_web_ui(self)" in menu
+    assert "open_store_window(metadata.port, metadata.nonce)" in runtime
+    assert "def open_web_ui(self)" in controller
+    # Ruff prefers single outer quotes here to avoid escaping "win32".
+    # Keep source-contract literals formatted with the release-pinned Ruff before CI.
+    assert 'sys.platform == "win32" or is_packaged()' in controller
+
+
+def test_windows_distributions_do_not_bundle_retired_webview_shell():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    requirements = (root / "requirements/release.txt").read_text(encoding="utf-8")
+    spec = (root / "packaging/openvino_windows_llm.spec").read_text(encoding="utf-8")
+    assert "pywebview" not in requirements
+    assert 'collect_all("webview")' not in spec
+    assert "hiddenimports += webview_hidden" not in spec

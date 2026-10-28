@@ -495,10 +495,12 @@ class ModelManager:
                 self.engines.pop(model_id, None)
                 self.locks.pop(model_id, None)
                 self.devices.pop(model_id, None)
-                message = errors.format_model_load_error(exc)
+                message = errors.format_model_load_error(exc, device=device)
                 self._set_status(model_id, "error", error=message)
                 self._set_progress(model_id, "error", f"Load failed: {message}")
-                logger.exception("Failed to load '%s': %s", model_id, message)
+                # The native exception chain may include private model paths or
+                # tokens; log the classified public message, never its traceback.
+                logger.error("Failed to load '%s' on %s: %s", model_id, device, message)
                 self.emit_event("error", f"Failed to load {cfg.name}: {message}")
         finally:
             self.load_tasks.pop(model_id, None)

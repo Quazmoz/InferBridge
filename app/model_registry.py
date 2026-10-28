@@ -73,6 +73,7 @@ class ModelConfig:
     max_context_len: int
     max_output_tokens: int
     trust_remote_code: bool = False
+    recommended_context_len: int | None = None
 
     @property
     def max_prompt_len(self) -> int:
@@ -175,6 +176,23 @@ def _coerce_entry(model_id: str, raw: dict) -> ModelConfig:
             "generation models require max_output_tokens between 1 and max_context_len - 1"
         )
 
+    recommended_context_len = None
+    if "recommended_context_len" in raw:
+        try:
+            recommended_context_len = _integer_field(
+                raw,
+                "recommended_context_len",
+                max_context_len,
+                minimum=128,
+                maximum=_MAX_CONTEXT_LEN,
+            )
+            if backend != "openvino-embeddings" and recommended_context_len <= max_output_tokens:
+                raise ValueError("recommended_context_len does not leave an output budget")
+        except ValueError:
+            # Optional legacy/new preference corruption must not make the model
+            # vanish from the catalog; the active validated context remains safe.
+            recommended_context_len = None
+
     return ModelConfig(
         id=model_id,
         name=_string_field(raw, "name", model_id),
@@ -187,6 +205,7 @@ def _coerce_entry(model_id: str, raw: dict) -> ModelConfig:
         max_context_len=max_context_len,
         max_output_tokens=max_output_tokens,
         trust_remote_code=trust_remote_code,
+        recommended_context_len=recommended_context_len,
     )
 
 
@@ -342,6 +361,7 @@ def make_catalog_entry(
         "weight_format": cfg.weight_format,
         "source_model": cfg.source_model,
         "max_context_len": cfg.max_context_len,
+        "recommended_context_len": cfg.recommended_context_len or cfg.max_context_len,
         "max_output_tokens": cfg.max_output_tokens,
         "trust_remote_code": cfg.trust_remote_code,
         "backend": cfg.backend,
@@ -374,6 +394,11 @@ def save_catalog(models_file: Path, catalog: dict[str, ModelConfig]) -> None:
             "weight_format": cfg.weight_format,
             "recommended_device": cfg.recommended_device,
             "max_context_len": cfg.max_context_len,
+            **(
+                {"recommended_context_len": cfg.recommended_context_len}
+                if cfg.recommended_context_len is not None
+                else {}
+            ),
             "max_output_tokens": cfg.max_output_tokens,
             "trust_remote_code": cfg.trust_remote_code,
         }

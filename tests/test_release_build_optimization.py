@@ -5,6 +5,8 @@ import json
 import zipfile
 from pathlib import Path
 
+import pytest
+
 from app.release_models import artifact_filename
 from scripts import release_scan
 from scripts.create_portable_archive import create_archive, verify_archive
@@ -57,6 +59,13 @@ def test_portable_archive_preserves_versioned_root_without_staging_copy(tmp_path
     internal.mkdir(parents=True)
     (source / "InferBridge.exe").write_bytes(b"launcher")
     (source / "portable.flag").write_text("portable", encoding="ascii")
+    native = source / "native"
+    native.mkdir()
+    (native / "InferBridge.Native.exe").write_bytes(b"native executable")
+    (native / "InferBridge.Native.runtimeconfig.json").write_text(
+        '{"runtimeOptions":{}}', encoding="utf-8"
+    )
+    (native / "coreclr.dll").write_bytes(b"native runtime")
     (internal / "server.py").write_text("print('ok')\n", encoding="utf-8")
     archive = tmp_path / "InferBridge-1.2.3-windows-x64-portable.zip"
 
@@ -68,8 +77,13 @@ def test_portable_archive_preserves_versioned_root_without_staging_copy(tmp_path
     assert "InferBridge-1.2.3/InferBridge.exe" in names
     assert "InferBridge-1.2.3/portable.flag" in names
     assert "InferBridge-1.2.3/_internal/app/server.py" in names
+    assert "InferBridge-1.2.3/native/InferBridge.Native.exe" in names
     assert source.is_dir()
     assert not (tmp_path / "portable-stage").exists()
+
+    (native / "InferBridge.Native.exe").unlink()
+    with pytest.raises(RuntimeError, match=r"native/InferBridge.Native.exe"):
+        create_archive(source, tmp_path / "invalid.zip", "InferBridge-1.2.3")
 
 
 def test_checksum_generation_defers_independent_verification(tmp_path: Path, monkeypatch) -> None:
