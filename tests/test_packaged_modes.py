@@ -51,3 +51,15 @@ def test_packaged_smoke_prints_redacted_tray_diagnostics_on_failure() -> None:
         assert secret_pattern in smoke
     assert 'Join-Path $DataRoot "logs"' in smoke
     assert '"desktop-instance.json"' in smoke
+
+
+def test_packaged_smoke_selects_a_port_the_launcher_itself_accepts() -> None:
+    # A pinned OV_LLM_PORT must be free on both 0.0.0.0 and 127.0.0.1 or the launcher
+    # fails closed with "Configured port ... is unavailable" (headless exit 6). The
+    # harness must not hand the launcher a port it only proved free on loopback.
+    smoke = (ROOT / "scripts" / "smoke_test_packaged.ps1").read_text(encoding="utf-8")
+    controller = (ROOT / "app" / "desktop_controller.py").read_text(encoding="utf-8")
+    assert 'for address in ("0.0.0.0", "127.0.0.1"):' in controller
+    assert "[System.Net.IPAddress]::Any, [System.Net.IPAddress]::Loopback" in smoke
+    assert "$Socket.Bind([System.Net.IPEndPoint]::new($Address, $Candidate))" in smoke
+    assert "if ($LauncherCompatible) { $RequestedPort = $Candidate }" in smoke

@@ -127,17 +127,39 @@ $PreviousPortEnvironment = [Environment]::GetEnvironmentVariable("OV_LLM_PORT", 
 try {
     # Exercise the packaged launcher setting, not merely the server's actual port.
     # Bind port zero temporarily to ask Windows for an unused, nondefault test port.
-    # The launcher must still fail closed if another process acquires it afterward.
+    # A pinned OV_LLM_PORT must be free on BOTH the wildcard and loopback addresses,
+    # exactly as app.desktop_controller.choose_available_port probes it, so select
+    # only a port that passes the same check. The launcher must still fail closed if
+    # another process acquires it afterward.
     $RequestedPort = 0
-    for ($Attempt = 0; $Attempt -lt 4 -and ($RequestedPort -eq 0 -or $RequestedPort -eq 8000); $Attempt++) {
+    for ($Attempt = 0; $Attempt -lt 8 -and $RequestedPort -eq 0; $Attempt++) {
         $Probe = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
         try {
             $Probe.Start()
-            $RequestedPort = ([System.Net.IPEndPoint]$Probe.LocalEndpoint).Port
+            $Candidate = ([System.Net.IPEndPoint]$Probe.LocalEndpoint).Port
         }
         finally {
             $Probe.Stop()
         }
+        if ($Candidate -eq 8000) { continue }
+        $LauncherCompatible = $true
+        foreach ($Address in @([System.Net.IPAddress]::Any, [System.Net.IPAddress]::Loopback)) {
+            $Socket = [System.Net.Sockets.Socket]::new(
+                [System.Net.Sockets.AddressFamily]::InterNetwork,
+                [System.Net.Sockets.SocketType]::Stream,
+                [System.Net.Sockets.ProtocolType]::Tcp)
+            try {
+                $Socket.Bind([System.Net.IPEndPoint]::new($Address, $Candidate))
+            }
+            catch {
+                $LauncherCompatible = $false
+            }
+            finally {
+                $Socket.Dispose()
+            }
+            if (-not $LauncherCompatible) { break }
+        }
+        if ($LauncherCompatible) { $RequestedPort = $Candidate }
     }
     if ($RequestedPort -eq 0 -or $RequestedPort -eq 8000) {
         throw "Could not select a nondefault port for the packaged OV_LLM_PORT smoke test."
