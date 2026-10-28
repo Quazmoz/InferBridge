@@ -69,7 +69,7 @@ Local example (run from a clean, reviewed checkout; substitute the correct
 version and registered Partner Center identity):
 
 ```powershell
-.\scripts\build_release.ps1 -Version <version> -Channel stable -Unsigned -SkipPortable -MockSmokeTest
+.\scripts\build_release.ps1 -Version <version> -Channel auto -Unsigned -SkipPortable -MockSmokeTest
 .\scripts\build_msix.ps1 -Version <version> -IdentityName <name> -Publisher "CN=..." -PublisherDisplayName "<name>"
 .\scripts\smoke_test_msix.ps1 -Package <path-to-candidate.msix> -EvidenceDirectory artifacts\msix-smoke -RunCertificationKit
 ```
@@ -99,6 +99,18 @@ approved promotion), and choose the **Artifact output type** parameter:
 | `portable` | Portable `.zip` |
 | `msix` | Unsigned native WinUI Microsoft Store `.msix` |
 | `all` | Installer `.exe`, portable `.zip`, and Store `.msix`, with complete release evidence |
+
+**Release channel** defaults to `auto`: the channel follows `app/version.py` on the
+selected commit (no suffix -> `stable`, `beta`/`rc` -> `beta`, `dev` or another
+suffix -> `nightly`), so `main` at `1.1.0` builds stable, `beta` at `1.1.0-beta.1`
+builds beta and `dev` at `1.1.1-dev.1` builds nightly. Choose `stable`, `beta` or
+`nightly` only to override it; an explicit channel that does not fit the version
+fails with the branch or channel to use instead. The run log prints the resolved
+version, channel and branch before the build starts.
+
+For the Store MSIX submission: source branch `main`, **Artifact output type**
+`msix`, **Release channel** `auto` (or `stable`), and the default MSIX identity
+fields after comparing them with Partner Center.
 
 The optional MSIX fields default to the identity currently recorded above.
 Compare them with **Partner Center > Product identity** before queuing.

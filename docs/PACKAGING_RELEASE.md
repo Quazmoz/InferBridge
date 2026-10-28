@@ -3,7 +3,7 @@
 Use the production release entry point with the canonical version from `app/version.py`:
 
 ```powershell
-.\scripts\build_release.ps1 -Version <version> -Channel stable -Clean -MockSmokeTest -GenerateChecksums
+.\scripts\build_release.ps1 -Version <version> -Channel auto -Clean -MockSmokeTest -GenerateChecksums
 ```
 
 `-Clean` removes per-build output under `build\release` and `dist`, but it intentionally preserves validated release environments under `build\release-environments`. Each environment is fingerprinted from the exact pinned requirements, Python runtime, Windows platform, architecture, and fingerprint schema. The build verifies the metadata, every applicable pinned distribution, and `pip check` before reuse. Any failed validation causes that environment to be deleted and rebuilt automatically.

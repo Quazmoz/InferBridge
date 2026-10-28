@@ -44,6 +44,11 @@ def parser() -> argparse.ArgumentParser:
     item.add_argument("--version", required=True)
     item.add_argument("--channel", choices=("stable", "beta", "nightly"), required=True)
 
+    item = commands.add_parser("resolve-channel")
+    item.add_argument("--version", required=True)
+    item.add_argument("--channel", choices=("auto", "stable", "beta", "nightly"), default="auto")
+    item.add_argument("--branch", default="")
+
     item = commands.add_parser("verify-version-consistency")
     item.add_argument("--root", type=Path, required=True)
     item.add_argument("--version", required=True)
@@ -96,6 +101,18 @@ def main(argv: list[str] | None = None) -> int:
             from scripts.release_manifest import validate_version
 
             print(validate_version(args.version, args.channel))
+        elif args.command == "resolve-channel":
+            from scripts.release_manifest import channel_for_branch, resolve_channel
+
+            channel = resolve_channel(args.version, args.channel, args.branch)
+            branch_channel = channel_for_branch(args.branch)
+            if args.channel == "auto" and branch_channel and branch_channel != channel:
+                print(
+                    f"warning: version {args.version} resolves to the {channel} channel, "
+                    f"but branch {args.branch} usually builds {branch_channel}.",
+                    file=sys.stderr,
+                )
+            print(channel)
         elif args.command == "verify-version-consistency":
             from scripts.release_manifest import verify_version_consistency
 
