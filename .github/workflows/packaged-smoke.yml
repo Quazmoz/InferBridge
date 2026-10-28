@@ -86,6 +86,37 @@ jobs:
           & ./scripts/build_release.ps1 @arguments
           if ($LASTEXITCODE -ne 0) { throw "Release build failed with exit code $LASTEXITCODE" }
 
+      - name: Verify packaged headless startup failure is reported, not hidden
+        # Occupy a pinned OV_LLM_PORT so the frozen tray must fail closed (exit 6) and
+        # say why on stderr and in its data-dir log instead of only exiting.
+        run: |
+          $exe = (Resolve-Path dist/InferBridge/InferBridge.exe).Path
+          $data = Join-Path ([IO.Path]::GetTempPath()) ("OV LLM Startup Failure " + [guid]::NewGuid().ToString("N"))
+          New-Item $data -ItemType Directory -Force | Out-Null
+          $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Any, 0)
+          $listener.Start()
+          $port = ([System.Net.IPEndPoint]$listener.LocalEndpoint).Port
+          $env:OV_LLM_PORT = [string]$port
+          try {
+            $process = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -PassThru -WindowStyle Hidden `
+              -ArgumentList @('--mock', '--headless', '--headless-seconds', '30', '--data-dir', ('"' + $data + '"'), '--no-browser') `
+              -RedirectStandardOutput "$data.out.log" -RedirectStandardError "$data.err.log"
+            if (-not $process.WaitForExit(120000)) { throw 'Tray did not exit while its pinned port was occupied.' }
+            $stderr = Get-Content -Raw -LiteralPath "$data.err.log" -ErrorAction SilentlyContinue
+            $trayLog = Get-Content -Raw -LiteralPath (Join-Path $data 'logs\tray.log') -ErrorAction SilentlyContinue
+            Write-Host "exit=$($process.ExitCode)"; Write-Host "stderr: $stderr"
+            if ($process.ExitCode -ne 6) { throw "Expected headless startup failure exit 6, got $($process.ExitCode)." }
+            if ($stderr -notmatch "InferBridge headless startup failed: Configured port $port is unavailable") {
+              throw 'The headless startup failure reason was not written to stderr.'
+            }
+            if ($trayLog -notmatch 'Initial server startup failed') { throw 'The tray log did not record the startup failure.' }
+          }
+          finally {
+            $listener.Stop()
+            Remove-Item Env:OV_LLM_PORT -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $data, "$data.out.log", "$data.err.log" -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
       - name: Repeat packaged smoke tests
         if: ${{ inputs.extra_smoke_runs != '0' && inputs.extra_smoke_runs != '' }}
         env:
