@@ -63,6 +63,28 @@ public sealed partial class MainWindow
         card.Children.Add(title);
         _modelRowDetails[model.Id] = (details, "");
 
+        // Per-model context, editable without loading the model (shared editor).
+        var contextRow = new Grid { ColumnSpacing = 8, Margin = new Thickness(52, 0, 0, 0) };
+        contextRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        contextRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var contextLine = Ui.Text(ContextLineText(ContextSummaryFor(model.Id)), "CaptionTextBlockStyle");
+        contextLine.VerticalAlignment = VerticalAlignment.Center;
+        AutomationProperties.SetName(contextLine, "Context window for " + model.Name);
+        contextRow.Children.Add(contextLine);
+        var contextEdit = new Button
+        {
+            Content = Ui.IconLabel("\uE70F", "Context…"), Tag = (model.Id, "context"), MinHeight = 32,
+        };
+        AutomationProperties.SetName(contextEdit, "Change context window for " + model.Name);
+        ToolTipService.SetToolTip(contextEdit, model.CanUnload
+            ? "Change the context window. Apply now reloads the engine and keeps your chat."
+            : "Change the context window. Used next time this model loads.");
+        contextEdit.Click += ModelRowAction_Click;
+        Grid.SetColumn(contextEdit, 1);
+        contextRow.Children.Add(contextEdit);
+        card.Children.Add(contextRow);
+        _modelContextLines[model.Id] = (contextLine, contextEdit);
+
         var actions = new WrapRow { Spacing = 8, Margin = new Thickness(52, 0, 0, 0) };
         void Add(string action, string glyph, string label, bool show, bool accent = false)
         {
@@ -79,6 +101,7 @@ public sealed partial class MainWindow
             _modelRowButtons.Add((button, model, action));
         }
         Add("load", "\uE768", "Load", model.CanLoad, accent: true);
+        Add("loadctx", "\uE768", "Load with context…", model.CanLoad);
         Add("download", "\uE896", "Download and load", model.CanDownload, accent: true);
         Add("unload", "\uE71A", "Unload", model.CanUnload);
         Add("revalidate", "\uE9D9", "Revalidate", true);
@@ -102,6 +125,11 @@ public sealed partial class MainWindow
                 button.IsEnabled = offered && MaintenanceReady && !_modelHealthBusy && idle;
                 continue;
             }
+            if (action == "loadctx")
+            {
+                button.IsEnabled = idle && model.CanLoad && !_contextOperationBusy;
+                continue;
+            }
             button.IsEnabled = idle && model.Permits(action switch
             {
                 "load" => ModelAction.Load,
@@ -119,9 +147,7 @@ public sealed partial class MainWindow
                 pills.Add((format.ToUpperInvariant(), "neutral"));
             if (info.Backend is { Length: > 0 } backend && backend != "Not reported")
                 pills.Add((backend, "neutral"));
-            if (info.ContextTokens is int context)
-                pills.Add((context.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
-                    + " ctx", "neutral"));
+            // Context is shown on its own editable line (Context: N tokens · Context…).
             if (info.SupportsVision is true) pills.Add(("Vision", "accent"));
             if (info.ConfiguredDevice is { Length: > 0 } preferred && preferred != "Not reported")
                 pills.Add(("Prefers " + preferred, "neutral"));
@@ -143,6 +169,12 @@ public sealed partial class MainWindow
         ModelsList.SelectedItem = item;
         switch (action)
         {
+            case "context":
+                _ = OpenContextEditorAsync(modelId, ContextEditorMode.Edit, ReportContextToModels);
+                break;
+            case "loadctx":
+                _ = OpenContextEditorAsync(modelId, ContextEditorMode.LoadWith, ReportContextToModels);
+                break;
             case "load": LoadButton_Click(sender, args); break;
             case "unload": UnloadButton_Click(sender, args); break;
             case "download": DownloadButton_Click(sender, args); break;

@@ -940,23 +940,18 @@
                             <Border Style="{StaticResource InferBridgeCardStyle}">
                                 <StackPanel Spacing="12">
                                     <TextBlock Text="Per-model context window" Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
-                                    <TextBlock Text="Model context persists across restarts. Applying to a loaded model rebuilds its OpenVINO engine; your chat history stays intact. Larger values are trials until verified on this hardware."
+                                    <TextBlock Text="Every model keeps its own context window. Change it here, on any card in Model library, or from Chat; the model does not need to be loaded. Applying to a loaded model rebuilds its engine and keeps your chat. Values above the recommendation are trials until verified on this hardware."
                                                Style="{StaticResource InferBridgeHelpTextStyle}" />
                                     <InfoBar x:Name="ContextConfigurationInfo" Title="Context configuration"
-                                             Message="Load a model to inspect available context settings."
-                                             IsOpen="True" IsClosable="False" Severity="Informational" />
-                                    <ComboBox x:Name="ContextSizePicker" Header="Context window tokens"
-                                              MinWidth="240" HorizontalAlignment="Stretch"
-                                              AutomationProperties.Name="Model context window" />
-                                    <TextBlock x:Name="ContextMemoryGuidance" TextWrapping="Wrap"
-                                               AutomationProperties.LiveSetting="Polite" />
+                                             Message="Connect the engine to list each model's context window."
+                                             IsOpen="True" IsClosable="False" Severity="Informational"
+                                             AutomationProperties.LiveSetting="Polite" />
+                                    <StackPanel x:Name="ContextModelsPanel" Spacing="8"
+                                                AutomationProperties.Name="Context window for each model" />
                                     <local:WrapRow Spacing="8">
-                                        <Button x:Name="ContextApplyButton" Content="Apply model context"
-                                                IsEnabled="False" Style="{StaticResource AccentButtonStyle}"
-                                                Click="ContextApplyButton_Click" />
-                                        <Button x:Name="ContextResetButton" Content="Restore recommended"
-                                                IsEnabled="False" Click="ContextResetButton_Click" />
-                                        <Button Content="Refresh" Click="ContextRefreshButton_Click" />
+                                        <Button x:Name="ContextRefreshButton" Content="Refresh"
+                                                Click="ContextRefreshButton_Click"
+                                                AutomationProperties.Name="Refresh model context windows" />
                                     </local:WrapRow>
                                     <TextBlock Text="Choose a device directly from Chat or Model library. Advanced AUTO/MULTI/HETERO targets depend on detected hardware; MULTI/HETERO are experimental."
                                                Style="{StaticResource InferBridgeHelpTextStyle}" />
@@ -1176,6 +1171,7 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -1202,6 +1198,17 @@
                                    TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    AutomationProperties.Name="Current inference settings" />
+                        <TextBlock x:Name="ChatContextSummary" Grid.Row="3" Grid.Column="0"
+                                   Text="Context: not reported" VerticalAlignment="Center"
+                                   TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   AutomationProperties.LiveSetting="Polite"
+                                   AutomationProperties.Name="Context window for the selected chat model" />
+                        <Button x:Name="ChatLoadWithContextButton" Grid.Row="3" Grid.Column="1"
+                                Content="Context…" IsEnabled="False"
+                                Click="ChatLoadWithContextButton_Click"
+                                AutomationProperties.Name="Choose the context window for the selected chat model"
+                                ToolTipService.ToolTip="Choose the context window. Unloaded models load with it; loaded models can apply it now." />
                     </Grid>
                     </Border>
                     </StackPanel>
@@ -1329,6 +1336,21 @@
                                                AutomationProperties.LiveSetting="Polite" />
                                     <local:RingMeter x:Name="ChatContextMeter" Title="Context used"
                                                      HorizontalAlignment="Center" />
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock x:Name="ChatPaneContextText" Text="Context: not reported"
+                                                   VerticalAlignment="Center" TextWrapping="Wrap"
+                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                   AutomationProperties.LiveSetting="Polite"
+                                                   AutomationProperties.Name="Context window for the current model" />
+                                        <Button x:Name="ChatPaneContextButton" Grid.Column="1"
+                                                Content="Change…" IsEnabled="False"
+                                                Click="ChatPaneContextButton_Click"
+                                                AutomationProperties.Name="Change the context window for the current model" />
+                                    </Grid>
                                     <TextBox x:Name="SystemPromptBox" Header="System prompt"
                                              PlaceholderText="Optional system instructions…"
                                              AcceptsReturn="True" TextWrapping="Wrap"

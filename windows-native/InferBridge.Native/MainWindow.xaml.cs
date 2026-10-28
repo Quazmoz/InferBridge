@@ -68,7 +68,6 @@ public sealed partial class MainWindow : Window
             MainNavigation.DisplayMode == NavigationViewDisplayMode.Expanded && MainNavigation.IsPaneOpen);
         ClearChatStats();
         InitializeAbout();
-        ContextSizePicker.SelectionChanged += ContextSizePicker_SelectionChanged;
         BenchmarkPresetPicker.SelectionChanged += BenchmarkPresetPicker_SelectionChanged;
         try
         {
@@ -273,7 +272,7 @@ public sealed partial class MainWindow : Window
         if (page == "chat" && _engineConnected && _rejectedApiKey is null)
             _ = RefreshModelPreparationsAsync();
         SettingsPanel.Visibility = page == "settings" ? Visibility.Visible : Visibility.Collapsed;
-        if (page == "settings" && _engineConnected && _rejectedApiKey is null)
+        if ((page is "settings" or "models" or "chat") && _engineConnected && _rejectedApiKey is null)
             _ = RefreshContextConfigurationAsync();
         if (page == "settings" && _engineConnected && _rejectedApiKey is null)
             _ = RefreshModelPreparationsAsync();
@@ -1381,6 +1380,7 @@ public sealed partial class MainWindow : Window
             ModelsList.Items.Clear();
             _modelRowButtons.Clear();
             _modelRowDetails.Clear();
+            _modelContextLines.Clear();
             // The engine's recommendation leads the library and is preselected.
             string? recommended = _recommendation?.Id;
             foreach (ModelInfo model in models.OrderBy(m => m.Id != recommended))
@@ -1420,6 +1420,8 @@ public sealed partial class MainWindow : Window
             _updatingModelPicker = false;
         }
         ModelsFilterBox_TextChanged(ModelsFilterBox, null!);
+        ApplyContextSummaries();
+        _ = RefreshContextSummariesAsync();
     }
 
     private void ChatModelPicker_DropDownClosed(object sender, object args)
@@ -1693,7 +1695,7 @@ public sealed partial class MainWindow : Window
         await ManageModelAsync(ModelAction.Download);
 
     private async Task ManageModelAsync(ModelAction action, ModelInfo? model = null,
-        bool fromChat = false)
+        bool fromChat = false, int? contextTokens = null)
     {
         model ??= SelectedLibraryModel;
         if (model is null || _isManaging || _chatBusy || _isRefreshing
@@ -1709,14 +1711,16 @@ public sealed partial class MainWindow : Window
             _chatLoadError = null;
             ShowChatInfo(action == ModelAction.SwitchDevice ? "Switching device" : "Loading model",
                 "Requesting " + (fromChat ? SelectedChatDevice ?? "engine default"
-                    : SelectedInferenceDevice ?? "engine default") + " from the local engine…",
+                    : SelectedInferenceDevice ?? "engine default") + " from the local engine…"
+                    + LoadContextNote(model.Id, action, contextTokens),
                 InfoBarSeverity.Informational);
         }
         try
         {
             ShowModelsInfo(await _backend.ChangeModelAsync(
                 model, action, ApiKeyBox.Password, _closing.Token,
-                fromChat ? SelectedChatDevice : SelectedInferenceDevice), InfoBarSeverity.Success);
+                fromChat ? SelectedChatDevice : SelectedInferenceDevice,
+                action == ModelAction.Load ? contextTokens : null), InfoBarSeverity.Success);
         }
         catch (Exception) when (_closing.IsCancellationRequested)
         {

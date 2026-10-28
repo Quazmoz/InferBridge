@@ -673,8 +673,12 @@ internal sealed partial class BackendClient : IDisposable
 
     public async Task<string> ChangeModelAsync(
         ModelInfo model, ModelAction action, string? apiKey, CancellationToken cancellationToken,
-        string? device = null)
+        string? device = null, int? contextTokens = null)
     {
+        if (contextTokens is int chosen && (action != ModelAction.Load
+            || chosen < ContextEditor.Minimum || chosen > ContextEditor.Maximum))
+            throw new ArgumentException("Context can only be chosen when loading an unloaded model.",
+                nameof(contextTokens));
         if (!IsSupportedInferenceDevice(device))
             throw new ArgumentException("Unsupported inference device.", nameof(device));
         string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
@@ -696,6 +700,10 @@ internal sealed partial class BackendClient : IDisposable
         // for a slow network; the download itself continues in the engine.
         (string path, string body, TimeSpan deadline) = action switch
         {
+            // A load-time context is persisted by the engine before it schedules the load.
+            ModelAction.Load when contextTokens is int context => ("/v1/models/load",
+                JsonSerializer.Serialize(new { model = model.Id, device, context_tokens = context }),
+                TimeSpan.FromSeconds(60)),
             ModelAction.Load or ModelAction.SwitchDevice => ("/v1/models/load",
                 JsonSerializer.Serialize(new { model = model.Id, device }), TimeSpan.FromSeconds(20)),
             ModelAction.Unload => ("/v1/models/unload",
@@ -711,6 +719,8 @@ internal sealed partial class BackendClient : IDisposable
             throw new JsonException("The engine did not confirm the model operation.");
         return action switch
         {
+            ModelAction.Load when contextTokens is int context => "Load requested with a "
+                + ContextEditor.Format(context) + "-token context. It is saved for this model.",
             ModelAction.Load => "Load requested. The library updates as the model loads.",
             ModelAction.SwitchDevice => "Device switch requested. The running model remains available while the engine prepares the replacement.",
             ModelAction.Unload => "Model unload accepted. The library updates shortly.",

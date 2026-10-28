@@ -10,6 +10,8 @@ public sealed partial class MainWindow
     private int? ChatContextWindow(string? modelId)
     {
         if (modelId is null) return null;
+        // The per-model saved value (shared context editor) is the authoritative window.
+        if (ContextSummaryFor(modelId)?.Current is int saved) return saved;
         if (_contextBaseline is { } context && context.ModelId == modelId) return context.Current;
         return _modelPreparationAvailable && _modelPreparations.TryGetValue(modelId, out var row)
             ? row.Details?.ContextTokens : null;

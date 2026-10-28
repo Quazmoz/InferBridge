@@ -10,6 +10,11 @@ internal sealed record ContextConfiguration(
     int? ArchitectureLimit, bool Loaded, string? Device,
     IReadOnlyList<ContextOption> Options);
 
+/// <summary>Context facts for one registered model, loaded or not (model lists).</summary>
+internal sealed record ContextSummary(
+    string ModelId, string Name, bool Configurable, int? Current, int? Recommended,
+    int? ArchitectureLimit, bool Loaded, bool Trial);
+
 internal sealed partial class BackendClient
 {
     private static ContextConfiguration ParseContext(JsonElement root, string modelId)
@@ -102,5 +107,70 @@ internal sealed partial class BackendClient
         if (applied.Current != requested)
             throw new JsonException("The engine reported a different applied context.");
         return applied;
+    }
+
+    /// <summary>
+    /// Saves any value the shared editor accepts (preset or custom). The engine
+    /// re-validates; for an unloaded model this only persists the value, for a
+    /// loaded one it rebuilds the engine and keeps chat history.
+    /// </summary>
+    public async Task<ContextConfiguration> SetContextAsync(
+        ContextConfiguration baseline, int requested, string? apiKey,
+        CancellationToken cancellationToken)
+    {
+        var choice = ContextEditor.Validate(baseline, requested);
+        if (!choice.Valid) throw new ArgumentException(choice.Message);
+        string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
+        using var document = await PostJsonAsync(origin + "/v1/models/context",
+            JsonSerializer.Serialize(new
+            {
+                model = baseline.ModelId, context_tokens = requested,
+                expected_context_tokens = baseline.Current,
+            }), apiKey, cancellationToken, TimeSpan.FromMinutes(20), MaximumJsonBytes);
+        if (ReadString(document.RootElement, "status") != "applied"
+            || !document.RootElement.TryGetProperty("context", out var context))
+            throw new JsonException("The engine did not confirm context persistence.");
+        var applied = ParseContext(context, baseline.ModelId);
+        if (applied.Current != requested)
+            throw new JsonException("The engine reported a different applied context.");
+        return applied;
+    }
+
+    /// <summary>Context for every registered model, without loading any of them.</summary>
+    public async Task<IReadOnlyList<ContextSummary>> GetContextSummariesAsync(
+        string? apiKey, CancellationToken cancellationToken)
+    {
+        string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
+        using var document = await GetJsonAsync(origin + "/v1/models/contexts",
+            apiKey, cancellationToken, TimeSpan.FromSeconds(12));
+        if (!document.RootElement.TryGetProperty("data", out var rows)
+            || rows.ValueKind != JsonValueKind.Array || rows.GetArrayLength() > 512)
+            throw new JsonException("Invalid model context list.");
+        static int? Tokens(JsonElement row, string key)
+        {
+            if (!row.TryGetProperty(key, out var value) || value.ValueKind == JsonValueKind.Null)
+                return null;
+            return value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out int size)
+                && size is >= 1 and <= 262144
+                ? size : throw new JsonException("Invalid context size.");
+        }
+        var result = new List<ContextSummary>();
+        foreach (var row in rows.EnumerateArray())
+        {
+            string id = ReadString(row, "model_id");
+            if (id.Length is 0 or > 128 || result.Any(item => item.ModelId == id)) continue;
+            bool configurable = row.TryGetProperty("configurable", out var flag)
+                && flag.ValueKind == JsonValueKind.True;
+            int? current = Tokens(row, "configured_context_tokens");
+            if (configurable && current is null)
+                throw new JsonException("A configurable model did not report its context.");
+            result.Add(new ContextSummary(id, ReadString(row, "name") is { Length: > 0 and <= 256 } name
+                    ? name : id,
+                configurable, current, Tokens(row, "recommended_context_tokens"),
+                Tokens(row, "model_architecture_limit_tokens"),
+                row.TryGetProperty("loaded", out var loaded) && loaded.ValueKind == JsonValueKind.True,
+                row.TryGetProperty("trial", out var trial) && trial.ValueKind == JsonValueKind.True));
+        }
+        return result;
     }
 }
