@@ -14,13 +14,13 @@ OpenVINO GenAI remains the inference runtime. InferBridge does not replace OpenV
 
 ## Project and release status
 
-**Current published stable release: `1.0.0` (5 October 2026).** See [1.0.0](docs/releases/1.0.0.md). That published installer and portable ZIP are browser-first; the newer native-first packaging changes are currently on `dev` and have not been release-qualified or published.
+**Current stable release: `1.1.0` (28 October 2026).** See [1.1.0](docs/releases/1.1.0.md). 1.1.0 is the first native-first release and is distributed through [Microsoft Store](#microsoft-store-recommended-from-110) once the listing passes certification. The latest installer and portable ZIP on GitHub Releases are still [1.0.0](docs/releases/1.0.0.md), which is browser-first:
 
 - [Windows installer](https://github.com/Quazmoz/InferBridge/releases/download/v1.0.0/InferBridge-1.0.0-windows-x64-installer.exe)
 - [Portable ZIP](https://github.com/Quazmoz/InferBridge/releases/download/v1.0.0/InferBridge-1.0.0-windows-x64-portable.zip)
 - [SHA-256 checksums](https://github.com/Quazmoz/InferBridge/releases/download/v1.0.0/InferBridge-1.0.0-checksums.txt)
 
-> **Important — native-first from the next release:** The published **1.0.0** installer and portable ZIP are **browser-first**, even if the source tree has the native WinUI app. They cannot launch native XAML screens because the native executable was not part of those artifacts. The `dev` release builder now stages the WinUI client into `native\InferBridge.Native.exe` and points installed shortcuts to it. This fix is **not** included in 1.0.0. The source version `1.1.0-beta.1` carries it, but it has not yet been Windows release-qualified or published.
+> **Important — native-first from the next release:** The published **1.0.0** installer and portable ZIP are **browser-first**, even if the source tree has the native WinUI app. They cannot launch native XAML screens because the native executable was not part of those artifacts. The `dev` release builder now stages the WinUI client into `native\InferBridge.Native.exe` and points installed shortcuts to it. This fix is **not** included in 1.0.0. Version `1.1.0` carries it.
 
 Native-first improvements currently live on `dev` and are not represented by the published 1.0.0 binary artifacts. Beta and nightly builds, if published, are marked as pre-releases on GitHub.
 

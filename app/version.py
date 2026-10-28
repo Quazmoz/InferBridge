@@ -1,6 +1,6 @@
 """Canonical application and persistent-data schema versions."""
 
-__version__ = "1.1.0-beta.1"
+__version__ = "1.1.0"
 DATA_SCHEMA_VERSION = 1
 MINIMUM_SUPPORTED_DATA_SCHEMA_VERSION = 1
 
