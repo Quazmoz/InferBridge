@@ -52,7 +52,8 @@ internal static class ConnectionHubContractTests
             models = new[]
             {
                 new { id = "model-a", name = "A", loaded = modelLoaded,
-                    generation_capable = true, busy = false },
+                    generation_capable = true, busy = false, context_tokens = 8192,
+                    max_output_tokens = 1024 },
             },
         });
 
@@ -142,6 +143,11 @@ internal static class ConnectionHubContractTests
             "dynamic port or API path was guessed");
         Check(hub.AuthenticationRequired && hub.UsableModels.Single().Id == "model-a",
             "metadata omitted required authentication or the usable model");
+        Check(hub.UsableModels.Single() is { ContextTokens: 8192, MaxOutputTokens: 1024 },
+            "engine-reported token limits were not carried to tool setup");
+        var tool = ToolConnectionValues.From(hub, "model-a");
+        Check(tool.BaseUrl == hub.BaseUrl && tool.MaxInputTokens == 7168
+            && tool.KeyPlaceholder == "YOUR_INFERBRIDGE_API_KEY", "tool values did not come from the engine");
         Check(!hub.PythonExample("model-a").Contains(Key, StringComparison.Ordinal)
             && !hub.WindowsCurlExample().Contains(Key, StringComparison.Ordinal)
             && hub.WindowsCurlExample().Contains("YOUR_INFERBRIDGE_API_KEY"),

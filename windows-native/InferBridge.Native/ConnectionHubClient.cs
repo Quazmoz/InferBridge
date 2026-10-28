@@ -3,7 +3,8 @@ using System.Text.Json;
 
 namespace InferBridge.Native;
 
-internal sealed record LocalApiModel(string Id, string Name, bool Busy);
+internal sealed record LocalApiModel(string Id, string Name, bool Busy,
+    int? ContextTokens = null, int? MaxOutputTokens = null);
 
 internal sealed record LocalApiMetadata(
     string BaseUrl, int Port, string ListenHost, bool AuthenticationRequired,
@@ -42,6 +43,16 @@ internal sealed partial class BackendClient
         if (value.Length > maximum || value.Any(char.IsControl))
             throw new JsonException("Invalid Connection Hub metadata.");
         return value;
+    }
+
+    // Older engines omit token limits; tool setup then reports them as unknown.
+    private static int? HubOptionalTokens(JsonElement element, string property)
+    {
+        if (!element.TryGetProperty(property, out var value) || value.ValueKind == JsonValueKind.Null)
+            return null;
+        if (!value.TryGetInt32(out int tokens) || tokens is < 1 or > 10_000_000)
+            throw new JsonException("Invalid Connection Hub token limit.");
+        return tokens;
     }
 
     private static bool HubBoolean(JsonElement element, string property)
@@ -104,8 +115,11 @@ internal sealed partial class BackendClient
             if (!usable.Contains(id)) continue;
             if (!HubBoolean(model, "loaded") || !HubBoolean(model, "generation_capable"))
                 throw new JsonException("Unloaded model reported as usable.");
+            int? context = HubOptionalTokens(model, "context_tokens");
+            int? output = HubOptionalTokens(model, "max_output_tokens");
+            if (output is int o && (context is not int c || o >= c)) output = null;
             available.Add(new LocalApiModel(id, HubString(model, "name", 256),
-                HubBoolean(model, "busy")));
+                HubBoolean(model, "busy"), context, output));
         }
         if (available.Count != usable.Count)
             throw new JsonException("Connection Hub model inventory is inconsistent.");
