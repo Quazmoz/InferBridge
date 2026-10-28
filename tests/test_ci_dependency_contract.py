@@ -236,3 +236,6 @@ def test_manual_packaged_smoke_runs_both_packaged_modes_through_release_builder(
     assert "Sign = $true" not in workflow
     assert "-ExpectedMode installed" in builder
     assert "-ExpectedMode portable" in builder
+    # The frozen tray must report a failed headless startup, not just exit 6.
+    assert "InferBridge headless startup failed: Configured port $port is unavailable" in workflow
+    assert "if ($process.ExitCode -ne 6)" in workflow
