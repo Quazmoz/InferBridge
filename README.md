@@ -34,7 +34,7 @@ The retained 0.6.1 hardware evidence comes from one Intel Core Ultra 9 185H lapt
 
 ## Download, install, choose a model, and chat
 
-1. Download a versioned installer or portable ZIP.
+1. Install from Microsoft Store (1.1.0 and later, once published), or download a versioned installer or portable ZIP.
 2. For a native-first build, open the **InferBridge Start Menu shortcut** or `native\InferBridge.Native.exe` in an extracted portable ZIP. For the currently published 1.0.0 release, `InferBridge.exe` launches the browser interface.
 3. Review the hardware and OpenVINO system scan.
 4. Confirm the available Intel CPU, GPU, or NPU target.
@@ -48,6 +48,10 @@ The Python engine/tray binds to `127.0.0.1` by default, selects an available por
 The first model setup can take significant time. NPU support depends on the actual Intel platform, driver, model, precision, and OpenVINO release. A requested target is not proof of execution. InferBridge reports the actual device from successful measured generation when the runtime exposes that evidence.
 
 ## Installation options
+
+### Microsoft Store (recommended, from 1.1.0)
+
+Starting with 1.1.0, InferBridge is submitted to Microsoft Store as Store ID `9PJ0NSD01070`: <https://apps.microsoft.com/detail/9PJ0NSD01070>. The link works once the listing passes certification and is published. The Store edition opens the native Windows app, installs per user without administrator rights and is signed by Microsoft. Microsoft Store delivers its updates (it never checks GitHub). It keeps models and settings in `%USERPROFILE%\InferBridgeStoreData`, which stays in place after uninstall until you delete it. See [Microsoft Store packaging](docs/MICROSOFT_STORE.md).
 
 ### Windows installer
 
