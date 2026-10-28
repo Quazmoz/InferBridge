@@ -96,13 +96,16 @@ def test_model_cards_show_editable_context_and_load_with_context() -> None:
 
 def test_one_shared_editor_and_rules_serve_every_surface() -> None:
     sources = _all_sources()
-    assert sources.count("private async Task<int?> ShowContextEditorDialogAsync(") == 1
+    assert (
+        sources.count("private async Task<(int Tokens, string Kv)?> ShowContextEditorDialogAsync(")
+        == 1
+    )
     assert sources.count("private async Task OpenContextEditorAsync(") == 1
     assert len(re.findall(r"OpenContextEditorAsync\(", sources)) >= 6
     editor = (PROJECT / "MainWindow.ContextEditor.cs").read_text(encoding="utf-8")
     for rule in (
         "ContextEditor.Presets(context)",
-        "ContextEditor.Validate(context, box.Value)",
+        "ContextEditor.Validate(context, box.Value, SelectedKv())",
         "ContextEditor.CanCommit(",
         "ContextEditor.PrimaryAction(mode, context.Loaded)",
         "ContextEditor.WhenItApplies(mode, context.Loaded)",
@@ -158,7 +161,39 @@ def test_web_model_library_has_the_same_per_model_editor() -> None:
         "expected_context_tokens: details.configured_context_tokens",
         "Apply now (reloads engine, chat kept)",
         "Used next time this model loads.",
-        "function contextChoice(details, raw)",
+        "function contextChoice(details, raw, precision = details.kv_cache_precision || 'auto')",
         "setAttribute('role', 'alert')",
+    ):
+        assert needle in web, needle
+
+
+def test_kv_cache_precision_is_in_both_editors() -> None:
+    """KV precision sits beside context in the native and web editors (CPU/GPU only)."""
+    editor = (PROJECT / "MainWindow.ContextEditor.cs").read_text(encoding="utf-8")
+    for needle in (
+        'Header = "KV cache precision"',
+        "ContextEditor.KvChoices(context)",
+        '" (unavailable on NPU)"',
+        "IsEnabled = option.Available",
+        "kvPicker.SelectionChanged += (_, _) => Refresh();",
+        "ContextEditor.Validate(context, box.Value, SelectedKv())",
+        "context.Guidance",
+        "await SaveContextAsync(context, tokens, report, kv);",
+    ):
+        assert needle in editor, needle
+    logic = (PROJECT / "ContextEditor.cs").read_text(encoding="utf-8")
+    assert 'new[] { "auto", "f16", "u8", "u4" }' in logic
+    assert '"u8" => 1.125' in logic and '"u4" => 0.625' in logic
+    assert 'if (ModelMax) tags.Add("max for this model");' in logic
+    client = (PROJECT / "ContextConfigurationClient.cs").read_text(encoding="utf-8")
+    assert '"kv_cache_precision_options"' in client
+    assert "kv_cache_precision = kvPrecision" in client
+    web = (ROOT / "app" / "model_library_ui.py").read_text(encoding="utf-8")
+    for needle in (
+        "data-ctx-kv",
+        "kv_cache_precision: precision",
+        "(unavailable on NPU)",
+        "details.context_guidance",
+        "max for this model",
     ):
         assert needle in web, needle

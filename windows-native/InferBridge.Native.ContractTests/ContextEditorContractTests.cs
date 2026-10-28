@@ -27,13 +27,14 @@ internal static class ContextEditorContractTests
     }
 
     private static ContextConfiguration Config(int current = 8192, int recommended = 8192,
-        int? limit = 32768, int output = 512, bool loaded = false, bool kv = true) =>
+        int? limit = 32768, int output = 512, bool loaded = false, bool kv = true,
+        string precision = "auto", bool kvApplies = true) =>
         new("model-a", current, recommended, current - output, output, limit, loaded,
             loaded ? "CPU" : null, new[]
             {
                 new ContextOption(current, "recommended", kv ? current * 0.000002 : null,
                     null, "unverified-memory"),
-            });
+            }, precision, kvApplies);
 
     private sealed class Handler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> respond)
         : HttpMessageHandler
@@ -58,12 +59,23 @@ internal static class ContextEditorContractTests
         Check(presets.Where(row => row.Tokens > 8192).All(row => row.Trial)
             && presets.Where(row => row.Tokens <= 8192).All(row => !row.Trial),
             "values above the recommendation were not marked trial");
-        Check(presets.Single(row => row.Tokens == 32768).Label == "32K · 32,768 tokens (trial)",
+        Check(presets.Single(row => row.Tokens == 32768).Label
+                == "32K · 32,768 tokens (max for this model, trial)",
             "preset label is not readable");
-        Check(ContextEditor.Presets(Config(limit: 262144)).Last().Tokens == 131072,
-            "presets exceeded the largest common size");
+        Check(presets.Count(row => row.ModelMax) == 1 && presets.Last().ModelMax,
+            "the model maximum was not offered as one preset");
+        var qwen3 = ContextEditor.Presets(Config(current: 4096, recommended: 4096, limit: 40960));
+        Check(qwen3.Last() is { Tokens: 40960, ModelMax: true, Trial: true }
+            && qwen3.Select(row => row.Tokens).SequenceEqual(new[] { 2048, 4096, 8192, 16384, 32768, 40960 }),
+            "a non-standard model maximum was not offered as max for this model");
+        var huge = ContextEditor.Presets(Config(limit: 262144));
+        Check(huge.Last() is { Tokens: 262144, ModelMax: true }
+            && huge.Where(row => !row.ModelMax).Last().Tokens == 131072,
+            "standard presets exceeded the largest common size or omitted the model maximum");
         Check(ContextEditor.Presets(Config(current: 4096, recommended: 4096, limit: null))
-                .Select(row => row.Tokens).SequenceEqual(new[] { 2048, 4096 }),
+                .Select(row => row.Tokens).SequenceEqual(new[] { 2048, 4096 })
+            && !ContextEditor.Presets(Config(current: 4096, recommended: 4096, limit: null))
+                .Any(row => row.ModelMax),
             "without verified metadata the presets exceeded the recommendation");
         Check(ContextEditor.Presets(Config(current: 8192, output: 4096)).First().Tokens == 8192,
             "presets ignored the output reserve");
@@ -95,6 +107,35 @@ internal static class ContextEditorContractTests
             && ContextEditor.Validate(Config(kv: false), 4096).Message.Contains("unavailable",
                 StringComparison.Ordinal), "missing KV metadata invented an estimate");
 
+        // --- KV-cache precision (CPU/GPU only) -----------------------------------------
+        Check(ContextEditor.KvPrecisions.SequenceEqual(new[] { "auto", "f16", "u8", "u4" }),
+            "KV precision choices changed");
+        var choices = ContextEditor.KvChoices(unloaded);
+        Check(choices.Count == 4 && choices.All(row => row.Available)
+            && choices.Single(row => row.Value == "u4").Label.Contains("INT4", StringComparison.Ordinal),
+            "KV precision choices were not all offered for CPU/GPU");
+        var npu = Config(loaded: true, kvApplies: false);
+        Check(ContextEditor.KvChoices(npu).Where(row => row.Value != "auto").All(row => !row.Available)
+            && ContextEditor.KvChoices(npu).Single(row => row.Value == "auto").Available,
+            "explicit KV precision was offered on the NPU");
+        double fp16 = ContextEditor.EstimateKvGib(unloaded, 32768, "f16")!.Value;
+        Check(Math.Abs(fp16 - 0.066) < 0.001
+            && Math.Abs(ContextEditor.EstimateKvGib(unloaded, 32768, "u8")!.Value - fp16 * 1.125 / 2) < 0.001
+            && Math.Abs(ContextEditor.EstimateKvGib(unloaded, 32768, "u4")!.Value - fp16 * 0.625 / 2) < 0.001
+            && ContextEditor.EstimateKvGib(unloaded, 32768, "auto") == fp16,
+            "KV estimate did not scale with precision");
+        Check(ContextEditor.EstimateKvGib(npu, 32768, "u4") == fp16,
+            "an NPU estimate used a KV precision the NPU never receives");
+        Check(ContextEditor.Validate(unloaded, 16384, "u4").Message.Contains("INT4 estimate", StringComparison.Ordinal)
+            && ContextEditor.Validate(unloaded, 16384).Message.Contains("Auto, FP16 upper bound estimate",
+                StringComparison.Ordinal),
+            "KV estimate label does not name the precision");
+        Check(ContextEditor.CanCommit(unloaded, ContextEditor.Validate(unloaded, 8192, "u8"),
+                ContextEditorMode.Edit, "u8")
+            && !ContextEditor.CanCommit(unloaded, ContextEditor.Validate(unloaded, 8192, "auto"),
+                ContextEditorMode.Edit, "auto"),
+            "a precision-only change could not be committed");
+
         // --- Apply-now vs next-load messaging ---------------------------------------
         Check(ContextEditor.PrimaryAction(ContextEditorMode.Edit, loaded: true)
                 == "Apply now (reloads engine, chat kept)"
@@ -123,12 +164,17 @@ internal static class ContextEditorContractTests
         string metadata = Path.Combine(directory, "desktop-instance.json");
         File.WriteAllText(metadata, JsonSerializer.Serialize(new { nonce = Owner, port = Port }));
         var calls = new List<(string Method, string Path, string Body)>();
+        string appliedKv = "auto";
         string ContextBody(int current) =>
             "{\"model_id\":\"model-a\",\"configured_context_tokens\":" + current
             + ",\"recommended_context_tokens\":8192,\"prompt_budget_tokens\":" + (current - 512)
             + ",\"reserved_output_tokens\":512,\"model_architecture_limit_tokens\":32768,\"loaded\":false,"
             + "\"options\":[{\"tokens\":" + current + ",\"classification\":\"recommended\","
-            + "\"fp16_kv_cache_gib_estimate\":0.016,\"fit_guidance\":\"unverified-memory\"}]}";
+            + "\"fp16_kv_cache_gib_estimate\":0.016,\"fit_guidance\":\"unverified-memory\"}],"
+            + "\"kv_cache_precision\":\"" + appliedKv + "\",\"kv_cache_precision_applies\":true,"
+            + "\"kv_cache_precision_options\":[{\"value\":\"auto\",\"label\":\"Auto (OpenVINO default)\",\"available\":true},"
+            + "{\"value\":\"u4\",\"label\":\"INT4 (u4)\",\"available\":true}],"
+            + "\"context_guidance\":\"NPU-safe default\",\"kv_cache_precision_note\":\"CPU and GPU\"}";
         using var client = new BackendClient(new Handler(async (request, token) =>
         {
             string path = request.RequestUri!.AbsolutePath;
@@ -163,7 +209,27 @@ internal static class ContextEditorContractTests
             Check(sent.RootElement.GetProperty("context_tokens").GetInt32() == 20000
                 && sent.RootElement.GetProperty("expected_context_tokens").GetInt32() == 8192,
                 "custom set omitted the expected-current guard");
+        Check(applied.KvPrecision == "auto" && applied.Guidance == "NPU-safe default"
+            && applied.KvOptions is { Count: 2 },
+            "KV precision facts were not parsed from the engine");
+        using (var sent = JsonDocument.Parse(calls.Last(call => call.Path == "/v1/models/context").Body))
+            Check(!sent.RootElement.TryGetProperty("kv_cache_precision", out _),
+                "a context-only change started sending a KV precision");
+        appliedKv = "u4";
+        var withKv = await client.SetContextAsync(unloaded, 20000, Key, CancellationToken.None, "u4");
+        Check(withKv.KvPrecision == "u4", "KV precision was not confirmed by the engine");
+        using (var sent = JsonDocument.Parse(calls.Last(call => call.Path == "/v1/models/context").Body))
+            Check(sent.RootElement.GetProperty("kv_cache_precision").GetString() == "u4",
+                "the chosen KV precision was not sent");
+        appliedKv = "auto";
+        await RejectsAsync<System.Text.Json.JsonException>(
+            () => client.SetContextAsync(unloaded, 20000, Key, CancellationToken.None, "u8"),
+            "a different engine-reported KV precision was accepted");
         int before = calls.Count;
+        await RejectsAsync<ArgumentException>(
+            () => client.SetContextAsync(unloaded, 20000, Key, CancellationToken.None, "int4"),
+            "an unknown KV precision reached the engine");
+        Check(calls.Count == before, "an invalid KV precision was sent to the engine");
         await RejectsAsync<ArgumentException>(
             () => client.SetContextAsync(unloaded, 65536, Key, CancellationToken.None),
             "an over-limit value reached the engine");

@@ -227,8 +227,9 @@ public sealed partial class MainWindow
         // A model loaded since the button was shown is edited (apply now), not loaded.
         if (mode == ContextEditorMode.LoadWith && context.Loaded) mode = ContextEditorMode.Edit;
         string name = _shownModels.FirstOrDefault(model => model.Id == modelId)?.Name ?? modelId;
-        int? chosen = await ShowContextEditorDialogAsync(context, mode, name);
-        if (chosen is not int tokens || _closing.IsCancellationRequested) return;
+        var chosen = await ShowContextEditorDialogAsync(context, mode, name);
+        if (chosen is not { } picked || _closing.IsCancellationRequested) return;
+        var (tokens, kv) = picked;
         if (mode == ContextEditorMode.LoadWith)
         {
             ModelInfo? model = _shownModels.FirstOrDefault(row => row.Id == modelId);
@@ -237,14 +238,23 @@ public sealed partial class MainWindow
                 report("Model state changed", "Refresh the library, then try again.", InfoBarSeverity.Warning);
                 return;
             }
+            if (kv != context.KvPrecision)
+            {
+                // Persist the KV precision (and context) first; the load then uses both.
+                await SaveContextAsync(context, tokens, report, kv);
+                if (_contextBaseline is not { } saved || saved.KvPrecision != kv
+                    || saved.Current != tokens) return;
+                await ManageModelAsync(ModelAction.Load, model, fromChat, null);
+                return;
+            }
             await ManageModelAsync(ModelAction.Load, model, fromChat,
                 tokens == context.Current ? null : tokens);
             return;
         }
-        await SaveContextAsync(context, tokens, report);
+        await SaveContextAsync(context, tokens, report, kv);
     }
 
-    private async Task<int?> ShowContextEditorDialogAsync(ContextConfiguration context,
+    private async Task<(int Tokens, string Kv)?> ShowContextEditorDialogAsync(ContextConfiguration context,
         ContextEditorMode mode, string modelName)
     {
         var presets = ContextEditor.Presets(context);
@@ -272,6 +282,24 @@ public sealed partial class MainWindow
         };
         AutomationProperties.SetName(box, "Custom context window in tokens for " + modelName);
         panel.Children.Add(box);
+        // KV-cache precision: Auto keeps OpenVINO's choice; explicit values reach CPU/GPU only.
+        var kvPicker = new ComboBox { Header = "KV cache precision", HorizontalAlignment = HorizontalAlignment.Stretch };
+        AutomationProperties.SetName(kvPicker, "KV cache precision for " + modelName);
+        foreach (var option in ContextEditor.KvChoices(context))
+            kvPicker.Items.Add(new ComboBoxItem
+            {
+                Content = option.Available ? option.Label : option.Label + " (unavailable on NPU)",
+                Tag = option.Value, IsEnabled = option.Available,
+            });
+        kvPicker.SelectedItem = kvPicker.Items.OfType<ComboBoxItem>()
+            .FirstOrDefault(item => item.Tag is string value && value == context.KvPrecision);
+        panel.Children.Add(kvPicker);
+        if (context.KvNote.Length > 0)
+            panel.Children.Add(Ui.Text(context.KvNote, "CaptionTextBlockStyle", secondary: true));
+        if (context.Guidance.Length > 0)
+            panel.Children.Add(Ui.Text(context.Guidance, "CaptionTextBlockStyle", secondary: true));
+        string SelectedKv() => kvPicker.SelectedItem is ComboBoxItem { Tag: string value }
+            ? value : context.KvPrecision;
         var status = new InfoBar { IsOpen = true, IsClosable = false };
         AutomationProperties.SetLiveSetting(status, Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite);
         panel.Children.Add(status);
@@ -296,13 +324,13 @@ public sealed partial class MainWindow
         bool syncing = false;
         void Refresh()
         {
-            var choice = ContextEditor.Validate(context, box.Value);
+            var choice = ContextEditor.Validate(context, box.Value, SelectedKv());
             status.Title = !choice.Valid ? "Check the value"
                 : choice.Trial ? "Trial value" : "Ready";
             status.Message = choice.Message;
             status.Severity = !choice.Valid ? InfoBarSeverity.Error
                 : choice.Trial ? InfoBarSeverity.Warning : InfoBarSeverity.Informational;
-            dialog.IsPrimaryButtonEnabled = ContextEditor.CanCommit(context, choice, mode);
+            dialog.IsPrimaryButtonEnabled = ContextEditor.CanCommit(context, choice, mode, SelectedKv());
             if (syncing) return;
             syncing = true;
             try
@@ -321,20 +349,22 @@ public sealed partial class MainWindow
             Refresh();
         };
         box.ValueChanged += (_, _) => Refresh();
+        kvPicker.SelectionChanged += (_, _) => Refresh();
         dialog.PrimaryButtonClick += (_, args) =>
         {
-            if (!ContextEditor.CanCommit(context, ContextEditor.Validate(context, box.Value), mode))
+            if (!ContextEditor.CanCommit(context, ContextEditor.Validate(context, box.Value, SelectedKv()),
+                    mode, SelectedKv()))
                 args.Cancel = true;
         };
         Refresh();
 
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return null;
-        var final = ContextEditor.Validate(context, box.Value);
-        return final.Valid ? final.Tokens : null;
+        var final = ContextEditor.Validate(context, box.Value, SelectedKv());
+        return final.Valid ? (final.Tokens, SelectedKv()) : null;
     }
 
     private async Task SaveContextAsync(ContextConfiguration baseline, int tokens,
-        Action<string, string, InfoBarSeverity> report)
+        Action<string, string, InfoBarSeverity> report, string? kv = null)
     {
         if (_contextOperationBusy || _closing.IsCancellationRequested) return;
         if (baseline.Loaded && _chatBusy)
@@ -352,7 +382,8 @@ public sealed partial class MainWindow
             InfoBarSeverity.Informational);
         try
         {
-            var applied = await _backend.SetContextAsync(baseline, tokens, ApiKeyBox.Password, _closing.Token);
+            var applied = await _backend.SetContextAsync(baseline, tokens, ApiKeyBox.Password,
+                _closing.Token, kv == baseline.KvPrecision ? null : kv);
             _contextBaseline = applied;
             report("Context saved", ContextEditor.SavedMessage(tokens, applied.Loaded), InfoBarSeverity.Success);
         }

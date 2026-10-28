@@ -5,10 +5,21 @@ namespace InferBridge.Native;
 internal sealed record ContextOption(int Tokens, string Classification, double? KvEstimateGib,
     double? EstimatedHostRamGib, string FitGuidance);
 
+/// <summary>One KV-cache precision choice; explicit values are unavailable on NPU loads.</summary>
+internal sealed record KvPrecisionOption(string Value, string Label, bool Available);
+
+/// <summary>
+/// Per-model context facts. KvPrecision is "auto" (OpenVINO's own choice) or
+/// f16/u8/u4, sent as KV_CACHE_PRECISION to CPU/GPU only. KvApplies is false
+/// when the model is loaded on the NPU, which manages its own KV cache.
+/// </summary>
 internal sealed record ContextConfiguration(
     string ModelId, int Current, int Recommended, int PromptBudget, int OutputReserve,
     int? ArchitectureLimit, bool Loaded, string? Device,
-    IReadOnlyList<ContextOption> Options);
+    IReadOnlyList<ContextOption> Options,
+    string KvPrecision = "auto", bool KvApplies = true,
+    IReadOnlyList<KvPrecisionOption>? KvOptions = null,
+    string Guidance = "", string KvNote = "");
 
 /// <summary>Context facts for one registered model, loaded or not (model lists).</summary>
 internal sealed record ContextSummary(
@@ -73,8 +84,38 @@ internal sealed partial class BackendClient
         bool loaded = root.TryGetProperty("loaded", out var flag)
             && flag.ValueKind == JsonValueKind.True;
         string device = ReadString(root, "active_device");
+        // KV precision is optional so older engines (no field) still parse as Auto.
+        string kvPrecision = ReadString(root, "kv_cache_precision");
+        if (kvPrecision.Length == 0) kvPrecision = "auto";
+        if (!ContextEditor.KvPrecisions.Contains(kvPrecision))
+            throw new JsonException("Unknown KV cache precision.");
+        bool kvApplies = !(root.TryGetProperty("kv_cache_precision_applies", out var applies)
+            && applies.ValueKind == JsonValueKind.False);
+        List<KvPrecisionOption>? kvOptions = null;
+        if (root.TryGetProperty("kv_cache_precision_options", out var kvRows)
+            && kvRows.ValueKind == JsonValueKind.Array && kvRows.GetArrayLength() <= 8)
+        {
+            kvOptions = new List<KvPrecisionOption>();
+            foreach (var row in kvRows.EnumerateArray())
+            {
+                string value = ReadString(row, "value");
+                if (!ContextEditor.KvPrecisions.Contains(value)
+                    || kvOptions.Any(item => item.Value == value)) continue;
+                string label = ReadString(row, "label");
+                kvOptions.Add(new KvPrecisionOption(value,
+                    label.Length is > 0 and <= 80 ? label : ContextEditor.KvLabel(value),
+                    row.TryGetProperty("available", out var ok) && ok.ValueKind == JsonValueKind.True));
+            }
+        }
+        static string Text(JsonElement element, string key)
+        {
+            string value = ReadString(element, key);
+            return value.Length <= 1024 ? value : "";
+        }
         return new ContextConfiguration(modelId, current, recommended, prompt, output,
-            architecture, loaded, device.Length <= 64 ? device : null, choices);
+            architecture, loaded, device.Length <= 64 ? device : null, choices,
+            kvPrecision, kvApplies, kvOptions, Text(root, "context_guidance"),
+            Text(root, "kv_cache_precision_note"));
     }
 
     public async Task<ContextConfiguration> GetContextAsync(
@@ -116,23 +157,34 @@ internal sealed partial class BackendClient
     /// </summary>
     public async Task<ContextConfiguration> SetContextAsync(
         ContextConfiguration baseline, int requested, string? apiKey,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, string? kvPrecision = null)
     {
-        var choice = ContextEditor.Validate(baseline, requested);
+        var choice = ContextEditor.Validate(baseline, requested, kvPrecision);
         if (!choice.Valid) throw new ArgumentException(choice.Message);
+        if (kvPrecision is not null && !ContextEditor.KvPrecisions.Contains(kvPrecision))
+            throw new ArgumentException("Choose Auto, FP16, INT8 or INT4 KV cache precision.");
         string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
-        using var document = await PostJsonAsync(origin + "/v1/models/context",
-            JsonSerializer.Serialize(new
+        string body = kvPrecision is null
+            ? JsonSerializer.Serialize(new
             {
                 model = baseline.ModelId, context_tokens = requested,
                 expected_context_tokens = baseline.Current,
-            }), apiKey, cancellationToken, TimeSpan.FromMinutes(20), MaximumJsonBytes);
+            })
+            : JsonSerializer.Serialize(new
+            {
+                model = baseline.ModelId, context_tokens = requested,
+                expected_context_tokens = baseline.Current, kv_cache_precision = kvPrecision,
+            });
+        using var document = await PostJsonAsync(origin + "/v1/models/context",
+            body, apiKey, cancellationToken, TimeSpan.FromMinutes(20), MaximumJsonBytes);
         if (ReadString(document.RootElement, "status") != "applied"
             || !document.RootElement.TryGetProperty("context", out var context))
             throw new JsonException("The engine did not confirm context persistence.");
         var applied = ParseContext(context, baseline.ModelId);
         if (applied.Current != requested)
             throw new JsonException("The engine reported a different applied context.");
+        if (kvPrecision is not null && applied.KvPrecision != kvPrecision)
+            throw new JsonException("The engine reported a different KV cache precision.");
         return applied;
     }
 

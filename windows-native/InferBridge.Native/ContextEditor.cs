@@ -3,7 +3,8 @@ using System.Globalization;
 namespace InferBridge.Native;
 
 /// <summary>One preset row in the shared context editor.</summary>
-internal sealed record ContextPreset(int Tokens, bool Trial, bool Recommended, bool Current)
+internal sealed record ContextPreset(int Tokens, bool Trial, bool Recommended, bool Current,
+    bool ModelMax = false)
 {
     public string Label
     {
@@ -12,6 +13,7 @@ internal sealed record ContextPreset(int Tokens, bool Trial, bool Recommended, b
             var tags = new List<string>();
             if (Current) tags.Add("current");
             if (Recommended) tags.Add("recommended");
+            if (ModelMax) tags.Add("max for this model");
             if (Trial) tags.Add("trial");
             return ContextEditor.ShortLabel(Tokens) + " · " + ContextEditor.Format(Tokens) + " tokens"
                 + (tags.Count == 0 ? "" : " (" + string.Join(", ", tags) + ")");
@@ -63,31 +65,77 @@ internal static class ContextEditor
 
     public static bool IsTrial(ContextConfiguration context, int tokens) => tokens > context.Recommended;
 
-    /// <summary>Common sizes inside the model's bounds, in ascending order.</summary>
+    /// <summary>
+    /// Common sizes inside the model's bounds plus "max for this model" (the
+    /// verified config.json limit), in ascending order. CPU/GPU can use any of
+    /// them; the small catalog defaults exist for the NPU's static shapes.
+    /// </summary>
     public static IReadOnlyList<ContextPreset> Presets(ContextConfiguration context)
     {
         int lower = LowerBound(context), upper = UpperBound(context);
-        return StandardPresets
-            .Where(value => value >= lower && value <= upper)
+        var values = StandardPresets.Where(value => value >= lower && value <= upper).ToList();
+        bool verifiedMax = context.ArchitectureLimit is not null && upper >= lower;
+        if (verifiedMax && !values.Contains(upper)) values.Add(upper);
+        return values.OrderBy(value => value)
             .Select(value => new ContextPreset(value, IsTrial(context, value),
-                value == context.Recommended, value == context.Current))
+                value == context.Recommended, value == context.Current,
+                verifiedMax && value == upper))
             .ToArray();
     }
 
+    // --- KV-cache precision (KV_CACHE_PRECISION; CPU/GPU only) -------------------
+
+    /// <summary>Auto keeps OpenVINO's choice; the rest are sent to CPU/GPU only.</summary>
+    public static readonly IReadOnlyList<string> KvPrecisions = new[] { "auto", "f16", "u8", "u4" };
+
+    /// <summary>Estimated stored bytes per K/V value, scale overhead included.</summary>
+    public static double KvBytes(string? precision) => precision switch
+    {
+        "u8" => 1.125,
+        "u4" => 0.625,
+        _ => 2.0, // f16, and Auto shown at the FP16 upper bound
+    };
+
+    public static string KvLabel(string value) => value switch
+    {
+        "f16" => "FP16 (no KV compression)",
+        "u8" => "INT8 (u8, ~half of FP16)",
+        "u4" => "INT4 (u4, ~a third of FP16)",
+        _ => "Auto (OpenVINO default)",
+    };
+
+    private static string KvShort(string value) => value switch
+    {
+        "f16" => "FP16",
+        "u8" => "INT8",
+        "u4" => "INT4",
+        _ => "Auto, FP16 upper bound",
+    };
+
+    /// <summary>The choices to show; explicit values are unavailable on an NPU load.</summary>
+    public static IReadOnlyList<KvPrecisionOption> KvChoices(ContextConfiguration context) =>
+        context.KvOptions is { Count: > 0 } rows
+            ? rows
+            : KvPrecisions.Select(value => new KvPrecisionOption(value, KvLabel(value),
+                value == "auto" || context.KvApplies)).ToArray();
+
     /// <summary>
-    /// Linear FP16 KV-cache estimate for any value, scaled from the engine's own
-    /// per-option estimates. Null when the model metadata cannot support one.
+    /// Linear KV-cache estimate for any value at the chosen precision, scaled from
+    /// the engine's own FP16 per-option estimates. Null when metadata is incomplete.
     /// </summary>
-    public static double? EstimateKvGib(ContextConfiguration context, int tokens)
+    public static double? EstimateKvGib(ContextConfiguration context, int tokens,
+        string? precision = null)
     {
         var sample = context.Options.FirstOrDefault(option =>
             option.KvEstimateGib is double kv && kv > 0 && option.Tokens > 0);
         if (sample?.KvEstimateGib is not double estimate) return null;
-        return Math.Round(estimate / sample.Tokens * tokens, 3);
+        double bytes = context.KvApplies ? KvBytes(precision ?? context.KvPrecision) : 2.0;
+        return Math.Round(estimate / sample.Tokens * tokens * bytes / 2.0, 3);
     }
 
     /// <summary>Checks a preset or custom value with friendly, actionable messages.</summary>
-    public static ContextChoice Validate(ContextConfiguration context, double? requested)
+    public static ContextChoice Validate(ContextConfiguration context, double? requested,
+        string? precision = null)
     {
         int lower = LowerBound(context), upper = UpperBound(context);
         if (requested is not double raw || !double.IsFinite(raw) || raw != Math.Floor(raw)
@@ -105,12 +153,13 @@ internal static class ContextEditor
                     + Format(upper) + " tokens."
                 : "This model supports at most " + Format(upper) + " tokens.", null);
         bool trial = IsTrial(context, tokens);
-        double? kv = EstimateKvGib(context, tokens);
+        string kvPrecision = context.KvApplies ? precision ?? context.KvPrecision : "auto";
+        double? kv = EstimateKvGib(context, tokens, kvPrecision);
         string message = Format(tokens - context.OutputReserve) + " prompt tokens + "
             + Format(context.OutputReserve) + " reserved output. "
             + (kv is double gib
                 ? "KV cache ~" + gib.ToString("0.###", CultureInfo.InvariantCulture)
-                    + " GiB (FP16 estimate, not measured device memory)."
+                    + " GiB (" + KvShort(kvPrecision) + " estimate, not measured device memory)."
                 : "KV-cache estimate unavailable: model metadata is incomplete.")
             + (trial ? " Trial: above the recommended " + Format(context.Recommended)
                 + " tokens and unverified on this hardware." : "");
@@ -144,6 +193,8 @@ internal static class ContextEditor
         : "Saved " + Format(tokens) + " tokens. Used next time this model loads.";
 
     /// <summary>The primary button is enabled only for a valid value that changes something.</summary>
-    public static bool CanCommit(ContextConfiguration context, ContextChoice choice, ContextEditorMode mode) =>
-        choice.Valid && (mode == ContextEditorMode.LoadWith || choice.Tokens != context.Current);
+    public static bool CanCommit(ContextConfiguration context, ContextChoice choice, ContextEditorMode mode,
+        string? precision = null) =>
+        choice.Valid && (mode == ContextEditorMode.LoadWith || choice.Tokens != context.Current
+            || (precision is not null && precision != context.KvPrecision));
 }

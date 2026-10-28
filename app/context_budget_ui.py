@@ -135,9 +135,12 @@ CONTEXT_BUDGET_JS = r"""
                 item.tokens === contextSettings.recommended_context_tokens &&
                 item.classification !== 'existing-unverified');
         if (option && !contextBusy) {
-            const memory = option.fp16_kv_cache_gib_estimate == null
+            const kvGib = option.kv_cache_gib_estimate ?? option.fp16_kv_cache_gib_estimate;
+            const kvPrecision = contextSettings.kv_cache_precision_applies === false
+                ? 'auto' : (contextSettings.kv_cache_precision || 'auto');
+            const memory = kvGib == null
                 ? 'KV-cache estimate unavailable (architecture metadata incomplete).'
-                : `Illustrative FP16 KV cache ~${option.fp16_kv_cache_gib_estimate} GiB; not measured device memory.`;
+                : `Estimated KV cache ~${kvGib} GiB at ${kvPrecision === 'auto' ? 'the FP16 upper bound (KV precision Auto)' : kvPrecision.toUpperCase() + ' KV precision'}; not measured device memory.`;
             const footprint = option.estimated_host_ram_gib == null
                 ? 'Total memory estimate unavailable.'
                 : `Estimated host-RAM planning floor ~${option.estimated_host_ram_gib} GiB ` +

@@ -275,7 +275,7 @@ function contextRow(item) {
 }
 
 // Shared editor rules; they mirror app/context_configuration.validate_context.
-function contextChoice(details, raw) {
+function contextChoice(details, raw, precision = details.kv_cache_precision || 'auto') {
   const tokens = Number(raw);
   const lower = details.minimum_context_tokens;
   const upper = details.maximum_context_tokens;
@@ -293,13 +293,20 @@ function contextChoice(details, raw) {
   const perToken = (details.options || []).concat(details.presets || [])
     .filter(option => Number.isFinite(option.fp16_kv_cache_gib_estimate) && option.tokens > 0)
     .map(option => option.fp16_kv_cache_gib_estimate / option.tokens)[0];
+  // KV estimate at the chosen precision: FP16 2 bytes, u8 ~1.125, u4 ~0.625 per value.
+  // Auto and NPU loads are shown at the FP16 upper bound.
+  const row = (details.kv_cache_precision_options || []).find(item => item.value === precision);
+  const bytes = details.kv_cache_precision_applies !== false && Number.isFinite(row?.bytes_per_element_estimate)
+    ? row.bytes_per_element_estimate : 2;
   return {
     ok: true,
     tokens,
     trial: tokens > details.recommended_context_tokens,
-    kv: perToken ? Math.round(perToken * tokens * 1000) / 1000 : null,
+    kv: perToken ? Math.round(perToken * tokens * bytes / 2 * 1000) / 1000 : null,
   };
 }
+
+const kvLabel = value => ({auto: 'Auto (FP16 upper bound)', f16: 'FP16', u8: 'INT8', u4: 'INT4'})[value] || value;
 
 function closeContextEditors(except = null) {
   grid.querySelectorAll('[data-context-editor]').forEach(editor => {
@@ -329,14 +336,17 @@ async function openContextEditor(modelId, mode, opener) {
   const presets = (details.presets || []).map(preset => preset.tokens);
   const options = presets.map(value => {
     const preset = details.presets.find(row => row.tokens === value);
-    const tags = [value === details.configured_context_tokens ? 'current' : '', preset.recommended ? 'recommended' : '', preset.trial ? 'trial' : ''].filter(Boolean);
+    const tags = [value === details.configured_context_tokens ? 'current' : '', preset.recommended ? 'recommended' : '', preset.model_max ? 'max for this model' : '', preset.trial ? 'trial' : ''].filter(Boolean);
     return `<option value="${value}">${shortTokens(value)} · ${tokensText(value)}${tags.length ? ` (${tags.join(', ')})` : ''}</option>`;
   }).join('');
   const loaded = details.loaded === true;
   const primary = mode === 'load' ? 'Load with this context' : loaded ? 'Apply now (reloads engine, chat kept)' : 'Save for next load';
   editor.innerHTML = `<div class="ml-ctx-facts">Current <strong>${tokensText(details.configured_context_tokens)}</strong> · Recommended <strong>${tokensText(details.recommended_context_tokens)}</strong> · Model maximum <strong>${details.model_architecture_limit_tokens ? tokensText(details.model_architecture_limit_tokens) : 'not verified'}</strong></div>` +
     `<div class="ml-ctx-row"><label>Preset<select class="ml-field" data-ctx-preset><option value="">Custom</option>${options}</select></label>` +
-    `<label>Tokens<input class="ml-field" data-ctx-tokens type="number" inputmode="numeric" step="1" min="${details.minimum_context_tokens}" max="${details.maximum_context_tokens}" value="${details.configured_context_tokens}"></label></div>` +
+    `<label>Tokens<input class="ml-field" data-ctx-tokens type="number" inputmode="numeric" step="1" min="${details.minimum_context_tokens}" max="${details.maximum_context_tokens}" value="${details.configured_context_tokens}"></label>` +
+    `<label>KV cache precision<select class="ml-field" data-ctx-kv aria-describedby="ml-ctx-kv-note-${escapeHtml(modelId)}">${(details.kv_cache_precision_options || []).map(row => `<option value="${escapeHtml(row.value)}"${row.available ? '' : ' disabled'}>${escapeHtml(row.label)}${row.available ? '' : ' (unavailable on NPU)'}</option>`).join('')}</select></label></div>` +
+    `<div class="ml-ctx-note" id="ml-ctx-kv-note-${escapeHtml(modelId)}">${escapeHtml(details.kv_cache_precision_note || '')}</div>` +
+    `<div class="ml-ctx-note">${escapeHtml(details.context_guidance || '')}</div>` +
     `<div class="ml-ctx-note" data-ctx-note aria-live="polite"></div>` +
     `<div class="ml-ctx-note">${mode === 'load' ? 'The model loads with this context and keeps it for next time.' : loaded ? 'Apply now rebuilds the engine; your chat history is kept.' : 'Used next time this model loads.'}</div>` +
     `<div class="ml-ctx-actions"><button type="button" class="ml-btn" data-ctx-cancel>Cancel</button><button type="button" class="ml-btn primary" data-ctx-save>${escapeHtml(primary)}</button></div>`;
@@ -344,22 +354,28 @@ async function openContextEditor(modelId, mode, opener) {
   const input = editor.querySelector('[data-ctx-tokens]');
   const note = editor.querySelector('[data-ctx-note]');
   const save = editor.querySelector('[data-ctx-save]');
+  const kvSelect = editor.querySelector('[data-ctx-kv]');
+  const savedKv = details.kv_cache_precision || 'auto';
+  kvSelect.value = savedKv;
   const refresh = () => {
-    const choice = contextChoice(details, input.value);
+    const precision = kvSelect.value || 'auto';
+    const choice = contextChoice(details, input.value, precision);
     preset.value = presets.includes(Number(input.value)) ? String(Number(input.value)) : '';
-    save.disabled = !choice.ok || (mode === 'edit' && choice.tokens === details.configured_context_tokens);
+    save.disabled = !choice.ok || (mode === 'edit' && choice.tokens === details.configured_context_tokens && precision === savedKv);
     note.className = `ml-ctx-note${choice.ok ? (choice.trial ? ' warn' : '') : ' error'}`;
     note.textContent = choice.ok
       ? `${tokensText(choice.tokens - details.reserved_output_tokens)} prompt tokens + ${tokensText(details.reserved_output_tokens)} reserved output. ` +
-        (choice.kv == null ? 'KV-cache estimate unavailable. ' : `KV cache ~${choice.kv} GiB (FP16 estimate). `) +
+        (choice.kv == null ? 'KV-cache estimate unavailable. ' : `KV cache ~${choice.kv} GiB (${kvLabel(details.kv_cache_precision_applies === false ? 'auto' : precision)} estimate, not measured). `) +
         (choice.trial ? 'Trial: above the recommended value and unverified on this hardware.' : '')
       : choice.message;
   };
   preset.onchange = () => { if (preset.value) input.value = preset.value; refresh(); };
+  kvSelect.onchange = refresh;
   input.oninput = refresh;
   editor.querySelector('[data-ctx-cancel]').onclick = () => { closeContextEditors(); opener?.focus(); };
   save.onclick = async () => {
-    const choice = contextChoice(details, input.value);
+    const precision = kvSelect.value || 'auto';
+    const choice = contextChoice(details, input.value, precision);
     if (!choice.ok) { refresh(); return; }
     save.disabled = true;
     note.className = 'ml-ctx-note';
@@ -367,10 +383,10 @@ async function openContextEditor(modelId, mode, opener) {
     try {
       if (mode === 'load') {
         await api('/v1/models/load', {method: 'POST', headers: jsonHeaders(),
-          body: JSON.stringify({model: modelId, device: opener?.dataset.device || undefined, context_tokens: choice.tokens})});
+          body: JSON.stringify({model: modelId, device: opener?.dataset.device || undefined, context_tokens: choice.tokens, kv_cache_precision: precision})});
       } else {
         await api('/v1/models/context', {method: 'POST', headers: jsonHeaders(),
-          body: JSON.stringify({model: modelId, context_tokens: choice.tokens, expected_context_tokens: details.configured_context_tokens})});
+          body: JSON.stringify({model: modelId, context_tokens: choice.tokens, expected_context_tokens: details.configured_context_tokens, kv_cache_precision: precision})});
       }
       await load();
     } catch (err) {
