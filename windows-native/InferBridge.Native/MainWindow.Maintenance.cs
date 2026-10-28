@@ -387,6 +387,16 @@ public sealed partial class MainWindow
 
     // --- About & updates ------------------------------------------------------
 
+    /// <summary>Version and edition, known before the engine answers.</summary>
+    private void InitializeAbout()
+    {
+        bool packaged = AppRelease.IsPackaged;
+        AboutVersionText.Text = "InferBridge " + AppRelease.Version
+            + (packaged ? " · Microsoft Store edition. Updates arrive through Microsoft Store." : "");
+        UpdateControlsPanel.Visibility = AppRelease.ShowsUpdateControls(packaged, null)
+            ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     private void UpdateReleaseControls()
     {
         bool editable = MaintenanceReady && !_releaseBusy && _releaseStatus is { StoreManaged: false };
@@ -401,8 +411,15 @@ public sealed partial class MainWindow
     private void RenderReleaseStatus(ReleaseStatusInfo status)
     {
         _releaseStatus = status;
-        ReleaseStatusText.Text = "InferBridge " + status.Version + " · " + status.Channel + " build · "
-            + status.InstallationMode + " installation"
+        bool updatable = AppRelease.ShowsUpdateControls(AppRelease.IsPackaged, status.InstallationMode);
+        UpdateControlsPanel.Visibility = updatable ? Visibility.Visible : Visibility.Collapsed;
+        if (!updatable)
+        {
+            UpdateDownloadLink.Visibility = Visibility.Collapsed;
+            SkipUpdateButton.Visibility = Visibility.Collapsed;
+        }
+        ReleaseStatusText.Text = "Engine " + status.Version + " · "
+            + (status.StoreManaged ? "Microsoft Store installation" : status.Channel + " build · " + status.InstallationMode + " installation")
             + (status.StoreManaged ? "\nMicrosoft Store delivers updates for this installation."
                 : "\nUpdate checks: " + (status.Settings.Enabled ? "enabled (" + status.Settings.Channel + ")" : "disabled")
                     + (status.LatestCheckedVersion is { } latest ? " · last seen version " + latest : ""));
@@ -454,7 +471,9 @@ public sealed partial class MainWindow
     private async void CheckUpdatesButton_Click(object sender, RoutedEventArgs args) =>
         await RunReleaseOperationAsync(async () =>
         {
-            UpdateCheckResult.Text = "Checking the official release feed through the engine…";
+            // Store installs never look for or link to outside updates.
+            if (!AppRelease.ShowsUpdateControls(AppRelease.IsPackaged, _releaseStatus?.InstallationMode)) return;
+            UpdateCheckResult.Text = "Checking the official release feed…";
             UpdateDownloadLink.Visibility = Visibility.Collapsed;
             SkipUpdateButton.Visibility = Visibility.Collapsed;
             var check = await _backend.CheckForUpdateAsync(ApiKeyBox.Password, _closing.Token);

@@ -10,6 +10,7 @@ from collections.abc import Callable
 
 from app import __version__
 from app.desktop_shell import copy_to_clipboard, open_path, show_dialog
+from app.msix import is_packaged
 from app.support import GITHUB_ISSUES_URL, SUPPORT_URL, validate_support_url
 from app.tray_state import (
     TrayPhase,
@@ -146,7 +147,8 @@ class TrayMenuMixin:
                 checked=lambda _item: self._startup_enabled(),
                 enabled=self._enabled("start_with_windows"),
             ),
-            Item("Check for Updates", self._action(self.open_updates)),
+            # Microsoft Store installs update only through the Store (Store Policies 10.1.5 and 10.2).
+            Item("Check for Updates", self._action(self.open_updates), visible=not is_packaged()),
             Item(
                 "Help",
                 Menu(
@@ -331,7 +333,12 @@ class TrayMenuMixin:
             "A local-first OpenVINO GenAI server for Windows. The tray controls only the "
             "server process it started. Prompts and chat history are not included in diagnostics. "
             "Use Help > Send Feedback for the simple support form, or Help > GitHub Issues for "
-            "technical discussion. Use Check for Updates to review optional stable or beta releases.",
+            "technical discussion. "
+            + (
+                "Microsoft Store keeps this installation up to date."
+                if is_packaged()
+                else "Use Check for Updates to review optional stable or beta releases."
+            ),
         )
 
     def quit(self) -> None:

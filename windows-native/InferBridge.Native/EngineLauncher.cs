@@ -16,8 +16,7 @@ internal static class EngineLauncher
     {
         if (!IsBundled)
             return (false,
-                "The packaged InferBridge engine was not found beside this native app. " +
-                "For development, start the Python desktop engine separately.");
+                "The InferBridge engine was not found beside this app. Reinstall InferBridge to restore it.");
 
         try
         {

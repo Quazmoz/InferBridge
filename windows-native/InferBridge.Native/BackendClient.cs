@@ -362,7 +362,7 @@ internal sealed partial class BackendClient : IDisposable
             or ArgumentException)
         {
             return BackendSnapshot.Offline(
-                "Could not verify the local engine. Check the tray and refresh.");
+                "Could not reach the local engine. Select Start local engine on the Engine & devices page, then refresh.");
         }
     }
 
@@ -1528,13 +1528,13 @@ internal sealed partial class BackendClient : IDisposable
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
-                throw new TimeoutException("Engine startup is still pending. Check the tray and retry.");
+                throw new TimeoutException("The engine is still starting. Wait a moment, then try again.");
             }
         }
         if (!TrayIsRunning(lockFile))
         {
             if ((await InspectAsync(cancellationToken)).Connected)
-                throw new InvalidOperationException("This engine has no tray controller. Quit it where it was started.");
+                throw new InvalidOperationException("This engine was started outside InferBridge. Stop it where it was started.");
             return;
         }
 
@@ -1562,7 +1562,7 @@ internal sealed partial class BackendClient : IDisposable
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new TimeoutException("InferBridge is still shutting down. Check the tray and retry.");
+            throw new TimeoutException("InferBridge is still shutting down. Wait a moment, then try again.");
         }
     }
 

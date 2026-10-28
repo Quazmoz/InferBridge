@@ -441,8 +441,8 @@ public sealed partial class MainWindow
             }
             BenchmarkHistoryInfo.Severity = InfoBarSeverity.Informational;
             BenchmarkHistoryInfo.Message = history.Count == 0
-                ? "No saved manual runs. Configure and run a native benchmark above."
-                : history.Count + " saved manual runs loaded from the engine. Select a run to inspect its measurements.";
+                ? "No benchmark runs yet. Choose a downloaded model and a device above, then select Start benchmark."
+                : history.Count + " saved runs. Select one to see its measurements.";
             RenderBenchmarkHistory();
             if (_benchmarkGate.OutcomeUnknown
                 && _uncertainBenchmarkClientRunId is { } uncertain

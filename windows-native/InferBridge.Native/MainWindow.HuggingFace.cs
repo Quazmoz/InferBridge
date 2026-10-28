@@ -182,7 +182,7 @@ public sealed partial class MainWindow
             {
                 XamlRoot = ((FrameworkElement)Content).XamlRoot,
                 Title = "Remove Hugging Face token?",
-                Content = "Remove the locally stored account token from the Python engine? Environment-managed tokens cannot be removed here. Downloads already in progress may continue.",
+                Content = "Remove the Hugging Face token stored on this PC? A token set through the HF_TOKEN environment variable cannot be removed here. Downloads already in progress may continue.",
                 PrimaryButtonText = "Remove token",
                 CloseButtonText = "Cancel",
                 DefaultButton = ContentDialogButton.Close,
@@ -461,7 +461,7 @@ public sealed partial class MainWindow
             if (_closing.IsCancellationRequested) return;
             HfSearchSummary.Text = result;
             HfInfo.Severity = InfoBarSeverity.Success;
-            HfInfo.Message = "Registration accepted. The Python engine owns all download and conversion progress.";
+            HfInfo.Message = "Model added. Follow download and conversion progress in Model library.";
             // The model library is the authoritative place to monitor progress.
             await RefreshAsync();
             if (_closing.IsCancellationRequested) return;

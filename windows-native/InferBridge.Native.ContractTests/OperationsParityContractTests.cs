@@ -167,6 +167,19 @@ internal static class OperationsParityContractTests
             "reconvert", key, CancellationToken.None));
 
         // --- About & Updates ------------------------------------------------------
+        // Store Policies 10.1.5 and 10.2: a packaged install never shows update checks or
+        // outside download links, whatever the engine reports.
+        Check(!AppRelease.ShowsUpdateControls(packaged: true, installationMode: null),
+            "a packaged install offered update checks before the engine answered");
+        Check(!AppRelease.ShowsUpdateControls(packaged: true, installationMode: "installed"),
+            "a packaged install offered update checks");
+        Check(!AppRelease.ShowsUpdateControls(packaged: false, installationMode: "store"),
+            "a Store-managed engine was offered update checks");
+        Check(AppRelease.ShowsUpdateControls(packaged: false, installationMode: "installed"),
+            "the standalone installer lost its opt-in update checks");
+        Check(AppRelease.DisplayVersion("1.1.0+3f2a9c1") == "1.1.0"
+            && AppRelease.DisplayVersion(" ") == "unknown" && AppRelease.Version.Length > 0,
+            "About shows build metadata or an empty version");
         var release = await client.GetReleaseStatusAsync(key, CancellationToken.None);
         Check(release.Version == "1.0.1" && !release.Settings.Enabled && !release.StoreManaged,
             "release status differs from the web About panel");

@@ -153,7 +153,7 @@ public sealed partial class MainWindow
             if (file is null) return;
             await FileIO.WriteTextAsync(file, content);
             ShowChatInfo(json ? "JSON export created" : "Markdown export created",
-                "Saved " + file.Name + ". The browser Web UI can import the JSON format.",
+                "Saved " + file.Name + ". You can import JSON exports again in Saved conversations.",
                 InfoBarSeverity.Success);
         }
         catch (Exception error) when (!_closing.IsCancellationRequested)

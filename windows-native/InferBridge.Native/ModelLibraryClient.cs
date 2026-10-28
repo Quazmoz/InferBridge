@@ -67,7 +67,7 @@ internal sealed partial class BackendClient
             if (entry.Value.TryGetProperty("trust_remote_code", out var remote)
                 && remote.ValueKind is not (JsonValueKind.False or JsonValueKind.Null))
                 throw new InvalidDataException("Definition '" + Bounded(entry.Name)
-                    + "' enables trust_remote_code. Review and import it in the browser Web UI instead.");
+                    + "' enables trust_remote_code, which runs code from the model repository. Review and import it in the browser interface instead.");
             count++;
         }
         if (count is < 1 or > MaximumDefinitionsPerImport)

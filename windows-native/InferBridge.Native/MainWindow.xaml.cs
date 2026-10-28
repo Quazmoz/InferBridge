@@ -67,6 +67,7 @@ public sealed partial class MainWindow : Window
         MainNavigation.Loaded += (_, _) => UpdateShellStatusVisibility(
             MainNavigation.DisplayMode == NavigationViewDisplayMode.Expanded && MainNavigation.IsPaneOpen);
         ClearChatStats();
+        InitializeAbout();
         ContextSizePicker.SelectionChanged += ContextSizePicker_SelectionChanged;
         BenchmarkPresetPicker.SelectionChanged += BenchmarkPresetPicker_SelectionChanged;
         try
@@ -213,7 +214,7 @@ public sealed partial class MainWindow : Window
             // Only the verified literal loopback origin; keys never enter the URL.
             using var browser = Process.Start(new ProcessStartInfo(status.Origin + "/") { UseShellExecute = true });
             WebUiInfo.Severity = InfoBarSeverity.Informational;
-            WebUiInfo.Message = "Web UI opened in your browser. Advanced settings, benchmarks, and more are available there.";
+            WebUiInfo.Message = "The browser interface opened in your default browser.";
         }
         catch (Exception) when (!_closing.IsCancellationRequested)
         {
@@ -339,25 +340,20 @@ public sealed partial class MainWindow : Window
                 ("Protected transaction backups", snapshot.ProtectedBytes / gib),
             });
             StorageRows.Children.Clear();
+            if (snapshot.Options.Count == 0)
+                StorageRows.Children.Add(Ui.Text("Nothing to clean up right now.", secondary: true));
             foreach (StorageCleanupOption option in snapshot.Options)
             {
                 var row = new StackPanel { Spacing = 4 };
-                row.Children.Add(new TextBlock
-                {
-                    Text = option.Name + " · " + FormatStorageBytes(option.SizeBytes),
-                    TextWrapping = TextWrapping.Wrap,
-                    IsTextSelectionEnabled = true,
-                    Style = Ui.ResStyle("BodyStrongTextBlockStyle"),
-                });
-                row.Children.Add(new TextBlock
-                {
-                    Text = option.Detail + " · "
-                        + (option.Available
-                            ? FormatStorageBytes(option.ReclaimableBytes) + " reclaimable"
-                            : option.Reason.Length > 0 ? option.Reason : "Not currently reclaimable"),
-                    TextWrapping = TextWrapping.Wrap,
-                    Foreground = Ui.ResBrush("TextFillColorSecondaryBrush"),
-                });
+                // Ui.Text never assigns a null style or brush (the invisible-text bug).
+                var title = Ui.Text(option.Name + " · " + FormatStorageBytes(option.SizeBytes), "BodyStrongTextBlockStyle");
+                title.IsTextSelectionEnabled = true;
+                row.Children.Add(title);
+                row.Children.Add(Ui.Text(option.Detail + " · "
+                    + (option.Available
+                        ? FormatStorageBytes(option.ReclaimableBytes) + " reclaimable"
+                        : option.Reason.Length > 0 ? option.Reason : "Not currently reclaimable"),
+                    secondary: true));
                 var button = new Button
                 {
                     Content = option.Action switch
@@ -597,15 +593,15 @@ public sealed partial class MainWindow : Window
             OperationsInfo.Severity = state.ControllerAvailable
                 ? InfoBarSeverity.Success : InfoBarSeverity.Warning;
             OperationsInfo.Message = state.ControllerAvailable
-                ? "Verified local desktop controller and engine."
-                : "Local engine is available, but the tray controller is unavailable.";
+                ? "The local engine and its controls are ready."
+                : "The local engine is running, but engine restart and quit controls are unavailable because it was started outside InferBridge.";
             OperationsDetails.Text =
                 "InferBridge " + state.Version +
                 "\nInstallation: " + state.InstallationMode +
                 "\nServer: " + state.ServerStatus + " · port " + state.ServerPort +
-                "\nTray controller: " + (state.ControllerAvailable ? "Available" : "Unavailable") +
+                "\nEngine controls: " + (state.ControllerAvailable ? "Available" : "Unavailable") +
                 "\nStart with Windows: " + (state.StartWithWindows ? "Enabled" : "Disabled") +
-                "\nInference mode: " + (state.Mock ? "Mock (no hardware inference)" : "Hardware backend");
+                "\nInference mode: " + (state.Mock ? "Mock (no hardware inference)" : "OpenVINO on this PC");
             OperationsBenchmarks.Text = state.BenchmarkRunning
                 ? "A benchmark is currently running. Refresh to check its result."
                 : state.LatestBenchmark;
@@ -1523,8 +1519,8 @@ public sealed partial class MainWindow : Window
                 ? InfoBarSeverity.Success : InfoBarSeverity.Warning;
             ConnectionInfo.Message = status.Message;
             ConnectionDetails.Text = status.Connected
-                ? "Verified loopback endpoint: " + status.Origin
-                : "The client will not attach to an unverified engine process.";
+                ? "Connected on this PC at " + status.Origin
+                : "Not connected. InferBridge only connects to an engine it can verify on this PC.";
             if (status.Connected)
             {
                 _startRequested = false;
@@ -1534,7 +1530,7 @@ public sealed partial class MainWindow : Window
             {
                 _startRequested = false;
                 ConnectionInfo.Message =
-                    "Engine startup could not be verified. Check the Python tray and retry.";
+                    "The engine did not finish starting. Select Start local engine to try again; if it keeps failing, open System Doctor.";
             }
             else if (_startRequested)
             {
@@ -1562,10 +1558,13 @@ public sealed partial class MainWindow : Window
             ModelsSummary.Text = status.RequiresAuthentication
                 ? "Authentication required. Enter your API key on the Engine & devices page."
                 : status.Connected
-                    ? status.Models.Count + " models. Select one to download, load or unload it. Downloads continue if you close this window."
+                    ? (status.Models.Count == 0
+                        ? "No models yet. Find one on the Hugging Face page, or select Refresh after the engine finishes starting."
+                        : status.Models.Count + (status.Models.Count == 1 ? " model" : " models")
+                            + ". Select one to download, load or unload it. Downloads continue if you close this window.")
                         + (_recommendation is { Reason.Length: > 0 } advice
                             ? "\nRecommended for this PC: " + advice.Reason : string.Empty)
-                    : "Start or reconnect to the local engine.";
+                    : "The local engine is not connected. Select Start local engine on the Engine & devices page.";
             if (status.Connected && !status.RequiresAuthentication && !_devicesScanned)
             {
                 _devicesScanned = true;
@@ -1595,6 +1594,7 @@ public sealed partial class MainWindow : Window
             else
                 ShowChatInfo("Choose a model", "Select a downloaded model above to load it and start chatting.",
                     InfoBarSeverity.Informational);
+            UpdateChatEmptyState();
         }
         catch (Exception) when (_closing.IsCancellationRequested)
         {
@@ -1606,12 +1606,12 @@ public sealed partial class MainWindow : Window
             ConnectionInfo.Severity = InfoBarSeverity.Error;
             _engineConnected = false;
             ResetModelPreparations();
-            ConnectionInfo.Message = "Could not display local engine status.";
-            ModelsSummary.Text = "Refresh after checking the engine.";
+            ConnectionInfo.Message = "Could not read the local engine status. Select Refresh status to try again.";
+            ModelsSummary.Text = "Could not read models from the engine. Select Refresh to try again.";
             ChatModelPicker.Items.Clear();
             _shownModels = Array.Empty<ModelInfo>();
             _pendingModels = null;
-            ShowChatInfo("Connection error", "Check the engine and refresh.",
+            ShowChatInfo("Connection error", "Could not reach the local engine. Open Engine & devices and select Refresh status.",
                 InfoBarSeverity.Error);
         }
         finally
@@ -1898,9 +1898,21 @@ public sealed partial class MainWindow : Window
             InfoBarSeverity.Informational);
     }
 
-    private void UpdateChatEmptyState() =>
+    private void UpdateChatEmptyState()
+    {
         ChatEmptyState.Visibility = ChatHistory.Items.Count == 0
             ? Visibility.Visible : Visibility.Collapsed;
+        bool needsModel = _engineConnected && _rejectedApiKey is null && ChatModelPicker.Items.Count == 0;
+        (ChatEmptyTitle.Text, ChatEmptyMessage.Text) = !_engineConnected
+            ? ("Waiting for the local engine", "InferBridge starts its engine automatically; the first start can take a minute. If this does not change, open Engine & devices.")
+            : needsModel
+                ? ("Download your first model", "Open Model library, pick a model marked Recommended for this PC, and choose Download and load.")
+                : ("Start a conversation", "Select a local model above, then write a message below. Replies appear here.");
+        ChatEmptyActionButton.Visibility = needsModel ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void ChatEmptyActionButton_Click(object sender, RoutedEventArgs args) =>
+        NavigateTo("models");
 
     private ListViewItem AppendChat(string speaker, string message, bool preview = false)
     {
@@ -1984,6 +1996,6 @@ public sealed partial class MainWindow : Window
         JsonException => "The engine returned an unexpected response. Refresh and retry.",
         IOException => "Engine connection or response failed. Refresh status.",
         OperationCanceledException => "The engine request timed out.",
-        _ => "Unexpected native request failure. Check the engine and refresh.",
+        _ => "Something went wrong talking to the local engine. Refresh and try again.",
     };
 }

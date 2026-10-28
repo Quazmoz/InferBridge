@@ -14,7 +14,7 @@ internal static class NativeDataPaths
     private static extern int GetCurrentPackageFullName(
         ref uint packageFullNameLength, char[]? packageFullName);
 
-    private static bool HasPackageIdentity()
+    internal static bool HasPackageIdentity()
     {
         uint length = 0;
         return OperatingSystem.IsWindows()

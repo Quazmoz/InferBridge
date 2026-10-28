@@ -160,12 +160,12 @@ public sealed partial class MainWindow
         else if (_modelPreparationAvailable
             && _modelPreparations.TryGetValue(modelId, out var row))
             SettingsCurrentModel.Text = "Selected model: " + modelId
-                + " · Backend: " + (row.Details?.Backend ?? "Not reported")
+                + " · Runtime: " + (row.Details?.Backend ?? "Not reported")
                 + " · Context: " + (row.Details?.ContextTokens?.ToString() ?? "Not reported")
                 + " · Output limit: " + (row.Details?.OutputTokens?.ToString() ?? "Not reported");
         else
             SettingsCurrentModel.Text = "Selected model: " + modelId
-                + ". Engine limits not reported; the backend validates each request.";
+                + ". The engine checks limits for each request.";
         bool editable = !_chatBusy && !_quitting && !_closing.IsCancellationRequested;
         bool generationModel = modelId is not null
             && SelectedChatModel?.Status == "loaded"

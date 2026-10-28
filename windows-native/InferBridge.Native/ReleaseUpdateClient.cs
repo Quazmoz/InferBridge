@@ -3,6 +3,30 @@ using System.Text.Json;
 
 namespace InferBridge.Native;
 
+/// <summary>
+/// What the About card shows before the engine answers. A Microsoft Store
+/// install is updated only by the Store (Store Policies 10.1.5 and 10.2): it never shows
+/// update checks, channels or download links, even while the engine is offline.
+/// </summary>
+internal static class AppRelease
+{
+    public static bool IsPackaged => NativeDataPaths.HasPackageIdentity();
+
+    /// <summary>The release build stamps -p:Version; drop the +commit build metadata.</summary>
+    public static string Version => DisplayVersion(typeof(AppRelease).Assembly
+        .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+        .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion);
+
+    internal static string DisplayVersion(string? informational)
+    {
+        string version = (informational ?? "").Split('+')[0].Trim();
+        return version.Length == 0 ? "unknown" : version;
+    }
+
+    internal static bool ShowsUpdateControls(bool packaged, string? installationMode) =>
+        !packaged && installationMode != "store";
+}
+
 internal sealed record ReleaseUpdateSettings(bool Enabled, string Channel, IReadOnlyList<string> SkippedVersions)
 {
     public static readonly string[] Channels = ["stable", "beta", "nightly"];
