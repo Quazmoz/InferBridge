@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from app import model_registry as registry
+from app.quantization_policy import npu_int4_group_size
 from runtime import device_check
 
 LOAD_PROFILE_SCHEMA_VERSION = 1
@@ -43,25 +44,47 @@ def resolve_conversion_profile(
     group_size: int | None,
     ratio: float | None,
     sym: bool | None,
+    device: str | None = None,
+    npu_architecture: str | None = None,
 ) -> tuple[str, int | None, float | None, bool | None]:
     """Return effective conversion settings with portable INT4 defaults.
 
     Intel's NPU guidance requires symmetric INT4/NF4 weights, a full 4-bit
     ratio, and either group-wise 128 or channel-wise -1 quantization. Those
     settings are also valid on CPU and GPU, so new INT4 artifacts default to a
-    profile that remains eligible for later NPU use.
+    profile that remains eligible for later NPU use. When the conversion targets
+    the NPU, the group size follows :func:`npu_int4_group_size` (channel-wise for
+    Phi-4-mini, models above ~4B, and 3B+ models on NPU 3720). An explicit
+    group size always wins.
     """
 
     effective_format = str(weight_format or cfg.weight_format).lower()
     if effective_format != "int4":
         return effective_format, group_size, ratio, sym
 
+    if group_size is None:
+        group_size = (
+            npu_int4_group_size(cfg.source_model, npu_architecture=npu_architecture)
+            if _targets_npu(device)
+            else 128
+        )
     return (
         effective_format,
-        128 if group_size is None else int(group_size),
+        int(group_size),
         1.0 if ratio is None else float(ratio),
         True if sym is None else bool(sym),
     )
+
+
+def _targets_npu(device: str | None) -> bool:
+    try:
+        parsed = device_check.parse_device_expression(device) if device else None
+    except device_check.DeviceValidationError:
+        return False
+    if parsed is None:
+        return False
+    tokens = parsed.devices or (parsed.kind,)
+    return any(_base_device(token) == "NPU" for token in tokens)
 
 
 def is_npu_compatible_int4_profile(

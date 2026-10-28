@@ -63,6 +63,8 @@ def _fake_clipboard(monkeypatch, *, opens=(1,), lock=True, empty=True, set_data=
         ),
     )
     monkeypatch.setattr(desktop_shell, "os", SimpleNamespace(name="nt"))
+    # Exercise the Win32 path alone; Windows runners would otherwise reach clip.exe.
+    monkeypatch.setattr(desktop_shell, "_copy_with_clip_exe", lambda _text: False)
     monkeypatch.setattr(
         desktop_shell, "time", SimpleNamespace(sleep=lambda delay: state["sleeps"].append(delay))
     )

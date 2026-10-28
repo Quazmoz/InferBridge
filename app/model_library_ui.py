@@ -192,7 +192,7 @@ function badge(info = {}) {
     : info.status === 'locally_verified'
       ? 'local'
       : 'warn';
-  const title = info.driver_version || 'No retained certification record';
+  const title = info.note || info.driver_version || 'No retained certification record';
   return `<span class="ml-badge ${kind}" title="${escapeHtml(title)}">${escapeHtml(info.label || 'Unverified')}</span>`;
 }
 

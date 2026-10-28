@@ -622,6 +622,21 @@ def create_app(settings: Settings) -> FastAPI:
                     "name": entry["name"],
                     "description": entry["description"],
                     "status": entry["status"],
+                    # Only failed rows carry the classified error and its one-click
+                    # recoveries (load on GPU, reconvert for NPU); see errors.py.
+                    **(
+                        {
+                            "error": entry.get("error"),
+                            "error_code": entry.get("error_code"),
+                            "recovery_actions": [
+                                action["id"]
+                                for action in entry.get("recovery_actions") or []
+                                if action.get("id") in {"load_gpu", "reconvert_npu"}
+                            ],
+                        }
+                        if entry["status"] == "error"
+                        else {}
+                    ),
                 }
             )
         return {"object": "list", "data": data}

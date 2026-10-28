@@ -130,6 +130,75 @@ def is_tls_certificate_error(exc: BaseException) -> bool:
     return False
 
 
+NPU_DRIVER_DOWNLOAD_URL = (
+    "https://www.intel.com/content/www/us/en/download/794734/intel-npu-driver-windows.html"
+)
+NPU_COMPILE_REJECTED = "npu_compile_rejected"
+KV_CACHE_PRECISION_REJECTED = "kv_cache_precision_rejected"
+
+
+def is_npu_compile_rejection(exc: BaseException, *, device: str | None) -> bool:
+    """True for an Intel NPU graph-compilation rejection on a direct NPU load.
+
+    Level Zero's invalid-argument code identifies the rejection, not which layer
+    (IR, driver, firmware or runtime) caused it. NPUW's "Failed to compile. No more
+    devices are left" is the same class of failure seen with older drivers.
+    """
+    if str(device or "").strip().upper().split(".", 1)[0] != "NPU":
+        return False
+    chain = _exception_chain_text(exc).lower()
+    level_zero = "ze_result_error_invalid_argument" in chain and any(
+        marker in chain for marker in ("pfncreate2", "ze_graph_ext_wrappers", "compilation failed")
+    )
+    npuw = "failed to compile" in chain and "no more devices are left" in chain
+    return level_zero or npuw
+
+
+def model_load_error_code(exc: BaseException, *, device: str | None) -> str | None:
+    """A stable code for load failures that have one-click recovery actions."""
+    if is_npu_compile_rejection(exc, device=device):
+        return NPU_COMPILE_REJECTED
+    if format_kv_cache_precision_error(exc) is not None:
+        return KV_CACHE_PRECISION_REJECTED
+    return None
+
+
+def load_recovery_actions(
+    code: str | None,
+    *,
+    weight_format: str,
+    has_source_model: bool,
+    available_devices: list[str] | tuple[str, ...],
+) -> list[dict[str, object]]:
+    """One-click next steps the UI can offer for a classified load failure."""
+    if code != NPU_COMPILE_REJECTED:
+        return []
+    actions: list[dict[str, object]] = [
+        {
+            "id": "update_npu_driver",
+            "label": "Update Intel NPU driver",
+            "url": NPU_DRIVER_DOWNLOAD_URL,
+        }
+    ]
+    if any(str(item).upper().split(".", 1)[0] == "GPU" for item in available_devices):
+        actions.append({"id": "load_gpu", "label": "Load on GPU instead", "device": "GPU"})
+    if str(weight_format).lower() == "int4" and has_source_model:
+        actions.append(
+            {
+                "id": "reconvert_npu",
+                "label": "Reconvert for NPU (channel-wise INT4)",
+                "convert": {
+                    "device": "NPU",
+                    "weight_format": "int4",
+                    "group_size": -1,
+                    "ratio": 1.0,
+                    "sym": True,
+                },
+            }
+        )
+    return actions
+
+
 def format_kv_cache_precision_error(exc: BaseException, *, loading: bool = False) -> str | None:
     """Friendly message when OpenVINO rejects a KV_CACHE_PRECISION value, else None.
 
@@ -158,24 +227,18 @@ def format_model_load_error(exc: BaseException, *, device: str | None = None) ->
     kv_message = format_kv_cache_precision_error(exc, loading=True)
     if kv_message is not None:
         return kv_message
-    # Level Zero's invalid-argument code identifies an NPU compilation rejection,
-    # not which layer (IR, driver, firmware or runtime) caused the rejection.
     # Never return the native stack trace: it can contain local model paths.
     chain = _exception_chain_text(exc).lower()
-    if str(device or "").upper() == "NPU" and (
-        "ze_result_error_invalid_argument" in chain
-        and any(
-            marker in chain
-            for marker in ("pfncreate2", "ze_graph_ext_wrappers", "compilation failed")
-        )
-    ):
+    if is_npu_compile_rejection(exc, device=device):
         return (
             "Intel NPU compilation rejected this model (OpenVINO Level Zero: "
             "ZE_RESULT_ERROR_INVALID_ARGUMENT). The NPU was selected, but the model was not "
-            "loaded. Verify the converted model and INT4 profile, check the Intel NPU driver "
-            "and OpenVINO GenAI versions, then retry. You can explicitly test a known-good "
-            "model or CPU to isolate the problem; InferBridge has not switched devices. "
-            "Share a reviewed diagnostics export if the failure persists."
+            "loaded. This usually means the Intel NPU driver is too old for this model or "
+            "the model's INT4 layout does not suit this NPU. Try, in order: update the "
+            f"Intel NPU driver ({NPU_DRIVER_DOWNLOAD_URL}) and retry; load the model on "
+            "GPU instead; or reconvert it for NPU with channel-wise INT4 (group size -1). "
+            "InferBridge has not switched devices. Share a reviewed diagnostics export "
+            "(it includes the NPU driver version) if the failure persists."
         )
     if is_tls_certificate_error(exc):
         return (

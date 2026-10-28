@@ -104,6 +104,24 @@ class DiagnosticsCollector(DiagnosticsSectionsMixin):
             for item in devices
             if str(item.get("device") or "").upper().startswith("NPU")
         ]
+        # NPU driver and architecture (e.g. 3720 = Meteor Lake/Arrow Lake) decide
+        # which NPU compilation failures are expected; include them when readable.
+        npu_drivers = sorted(
+            {
+                str(item.get("npu_driver_version") or item.get("driver_version"))
+                for item in devices
+                if str(item.get("device") or "").upper().startswith("NPU")
+                and (item.get("npu_driver_version") or item.get("driver_version"))
+            }
+        )
+        npu_architectures = sorted(
+            {
+                str(item.get("architecture"))
+                for item in devices
+                if str(item.get("device") or "").upper().startswith("NPU")
+                and item.get("architecture")
+            }
+        )
 
         device_state = runtime.get("device")
         if isinstance(device_state, Mapping):
@@ -177,6 +195,8 @@ class DiagnosticsCollector(DiagnosticsSectionsMixin):
             f"RAM: {ram_label}",
             f"GPU: {', '.join(gpu_names) if gpu_names else 'not detected'}",
             f"NPU: {', '.join(npu_names) if npu_names else 'not detected'}",
+            f"NPU driver: {', '.join(npu_drivers) if npu_drivers else 'unavailable'}",
+            f"NPU architecture: {', '.join(npu_architectures) if npu_architectures else 'unavailable'}",
             f"OpenVINO: {runtime_versions.get('openvino') or 'unavailable'}",
             f"OpenVINO GenAI: {runtime_versions.get('openvino_genai') or 'unavailable'}",
             f"Available devices: {', '.join(available_devices) if available_devices else 'none detected'}",
@@ -189,6 +209,24 @@ class DiagnosticsCollector(DiagnosticsSectionsMixin):
             "Paste this into the InferBridge feedback form or a GitHub issue.",
         ]
         return sanitize_text("\n".join(lines), redactions=self.redactions_applied, limit=16 * 1024)
+
+    def write_support_summary(self, summary: str) -> Path:
+        """Save an already-sanitized support summary as a local text file.
+
+        Used when the clipboard is unavailable so the user can still attach the
+        same privacy-safe text. Nothing is uploaded.
+        """
+        self.paths.diagnostics_dir.mkdir(parents=True, exist_ok=True)
+        self._assert_safe_output_root(self.paths.diagnostics_dir)
+        created = self.now().astimezone(UTC)
+        output = self.paths.diagnostics_dir / (
+            f"inferbridge-diagnostics-summary-{created.strftime('%Y%m%d-%H%M%S')}-"
+            f"{secrets.token_hex(4)}.txt"
+        )
+        temp = output.with_suffix(".txt.tmp")
+        temp.write_text(str(summary), encoding="utf-8")
+        temp.replace(output)
+        return output
 
     def export(self) -> DiagnosticsResult:
         self.paths.diagnostics_dir.mkdir(parents=True, exist_ok=True)

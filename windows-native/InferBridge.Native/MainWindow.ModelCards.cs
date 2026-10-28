@@ -85,6 +85,17 @@ public sealed partial class MainWindow
         card.Children.Add(contextRow);
         _modelContextLines[model.Id] = (contextLine, contextEdit);
 
+        // A classified load failure explains itself and offers one-click recoveries.
+        if (model.Status == "error" && model.Error is { Length: > 0 } failure)
+        {
+            var reason = Ui.Text(failure, "CaptionTextBlockStyle", secondary: true);
+            reason.Margin = new Thickness(52, 0, 0, 0);
+            reason.TextWrapping = TextWrapping.Wrap;
+            reason.IsTextSelectionEnabled = true;
+            AutomationProperties.SetName(reason, "Load failure for " + model.Name + ": " + failure);
+            card.Children.Add(reason);
+        }
+
         var actions = new WrapRow { Spacing = 8, Margin = new Thickness(52, 0, 0, 0) };
         void Add(string action, string glyph, string label, bool show, bool accent = false)
         {
@@ -106,6 +117,9 @@ public sealed partial class MainWindow
         Add("unload", "\uE71A", "Unload", model.CanUnload);
         Add("revalidate", "\uE9D9", "Revalidate", true);
         Add("delete", "\uE74D", "Delete files", model.CanDelete);
+        Add("load_gpu", "\uE7F4", "Load on GPU instead", model.RecoveryActions.Contains("load_gpu"));
+        Add("reconvert_npu", "\uE895", "Reconvert for NPU (channel-wise INT4)",
+            model.RecoveryActions.Contains("reconvert_npu"));
         card.Children.Add(actions);
         return card;
     }
@@ -123,6 +137,11 @@ public sealed partial class MainWindow
                 bool offered = health is { Action: "revalidate", ActionAvailable: true };
                 button.Visibility = offered ? Visibility.Visible : Visibility.Collapsed;
                 button.IsEnabled = offered && MaintenanceReady && !_modelHealthBusy && idle;
+                continue;
+            }
+            if (action is "load_gpu" or "reconvert_npu")
+            {
+                button.IsEnabled = idle && model.RecoveryActions.Contains(action);
                 continue;
             }
             if (action == "loadctx")
@@ -180,6 +199,37 @@ public sealed partial class MainWindow
             case "download": DownloadButton_Click(sender, args); break;
             case "delete": DeleteButton_Click(sender, args); break;
             case "revalidate": ModelHealthAction_Click(sender, args); break;
+            case "load_gpu" or "reconvert_npu":
+                if (item.Tag is ModelInfo failed) _ = RecoverModelAsync(failed, action);
+                break;
+        }
+    }
+
+    /// <summary>One-click recovery for a classified load failure (NPU compile rejection).</summary>
+    private async Task RecoverModelAsync(ModelInfo model, string action)
+    {
+        if (_isManaging || _chatBusy || _quitting || _closing.IsCancellationRequested) return;
+        _isManaging = true;
+        UpdateChatButtons();
+        try
+        {
+            ShowModelsInfo(await _backend.RecoverModelAsync(model, action, ApiKeyBox.Password,
+                _closing.Token), InfoBarSeverity.Success);
+            if (model.Id == SelectedModelId) _chatLoadError = null;
+        }
+        catch (Exception) when (_closing.IsCancellationRequested) { }
+        catch (Exception error) when (!_closing.IsCancellationRequested)
+        {
+            ShowModelsInfo(SafeError(error), InfoBarSeverity.Error);
+        }
+        finally
+        {
+            _isManaging = false;
+            if (!_closing.IsCancellationRequested)
+            {
+                UpdateChatButtons();
+                await RefreshAsync();
+            }
         }
     }
 

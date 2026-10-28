@@ -35,6 +35,19 @@ from runtime import device_check
 from runtime.openvino_engine import BaseEngine, GenParams, StreamHandle, create_engine
 
 
+def _npu_architecture() -> str | None:
+    """DEVICE_ARCHITECTURE of the first NPU (for example "3720"), if readable."""
+    try:
+        from app.hardware_advisor.hardware import device_details
+
+        for item in device_details():
+            if str(item.get("base") or "").upper() == "NPU" and item.get("architecture"):
+                return str(item["architecture"])[:64]
+    except Exception:  # noqa: BLE001 - optional evidence; never block a conversion
+        return None
+    return None
+
+
 class ContextBusyError(RuntimeError):
     """A predictable lifecycle conflict with a safe public message."""
 
@@ -437,12 +450,20 @@ class ModelManager(_CoreModelManager):
     ) -> None:
         initial_cfg = self.catalog[model_id]
         was_downloaded = registry.is_downloaded(initial_cfg, BASE_DIR)
+        target_device = device or getattr(getattr(self, "settings", None), "device", None)
+        npu_architecture = (
+            None
+            if getattr(self, "force_mock", True)
+            else await asyncio.to_thread(_npu_architecture)
+        )
         effective_format, group_size, ratio, sym = model_load_safety.resolve_conversion_profile(
             initial_cfg,
             weight_format=weight_format,
             group_size=group_size,
             ratio=ratio,
             sym=sym,
+            device=target_device,
+            npu_architecture=npu_architecture,
         )
         if not was_downloaded or weight_format is not None:
             try:

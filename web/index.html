@@ -3403,13 +3403,23 @@
                 `;
             } else if (model.status === 'error') {
                 const actionLabel = model.can_convert ? 'Conversion failed' : 'Load failed';
+                // Classified failures (NPU compile rejection) offer one-click recoveries.
+                const recovery = (Array.isArray(model.recovery_actions) ? model.recovery_actions : [])
+                    .map(action => action && action.url
+                        ? `<a class="action-btn" href="${escapeAttr(action.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(action.label || 'Open')}</a>`
+                        : `<button class="action-btn" data-recovery-action="${escapeAttr(action?.id || '')}">${escapeHtml(action?.label || 'Retry')}</button>`)
+                    .join('');
                 card.innerHTML = `
                     <div class="action-card-title" style="color:var(--red)">${actionLabel}</div>
                     <p class="action-card-text">${escapeHtml(model.error || 'An error occurred during preparation.')}</p>
                     <button class="action-btn" data-model-action>
                         Retry Preparation
                     </button>
+                    ${recovery}
                 `;
+                card.querySelectorAll('[data-recovery-action]').forEach(button => {
+                    button.addEventListener('click', () => runModelRecovery(model.id, button.dataset.recoveryAction));
+                });
             } else if (model.status === 'ready_to_load') {
                 card.innerHTML = `
                     <div class="action-card-title">Model Converted: <span>${safeName}</span></div>
@@ -3816,6 +3826,36 @@
 
             if (!emptyState.classList.contains('hidden')) {
                 updateEmptyStateActionCard(model);
+            }
+        }
+
+        // One-click recovery for a classified load failure: load on GPU instead, or
+        // reconvert for NPU with channel-wise INT4 (symmetric, ratio 1.0, group size -1).
+        async function runModelRecovery(modelId, actionId) {
+            const model = availableModels.get(modelId);
+            const action = (model?.recovery_actions || []).find(item => item && item.id === actionId);
+            if (!model || !action || action.url) return;
+            const convert = action.convert && typeof action.convert === 'object' ? action.convert : null;
+            const body = convert
+                ? { model: modelId, load_after: true, device: convert.device, weight_format: convert.weight_format,
+                    group_size: convert.group_size, ratio: convert.ratio, sym: convert.sym }
+                : { model: modelId, device: action.device };
+            waitingForModelId = modelId;
+            updateModelUi();
+            try {
+                const res = await fetch(convert ? '/v1/models/convert' : '/v1/models/load', {
+                    method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }),
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+                showToast(data.message || action.label);
+                setStatusPolling(1000);
+                await updateStatus();
+            } catch (err) {
+                waitingForModelId = null;
+                setModelStatus(`${model.name}: ${action.label} failed`, 'error', `${model.name}: ${err.message}`);
+                showToast(`${action.label} failed`);
             }
         }
 

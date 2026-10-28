@@ -28,6 +28,7 @@ class PreflightMixin:
             backend=str(getattr(cfg, "backend", "openvino-genai")),
             device=target,
             profile=profile,
+            source_model=str(getattr(cfg, "source_model", "") or ""),
         )
         estimates = self.estimate_model(cfg, device=target)
         memory = snapshot.get("memory", {})

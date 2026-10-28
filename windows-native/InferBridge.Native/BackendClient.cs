@@ -12,6 +12,11 @@ internal sealed record ModelInfo(string Id, string Name, string Status)
 {
     public bool CanLoad => Status == "ready_to_load";
     public string? Device { get; init; } // Actual engine-reported device, never a selection preference.
+    // Classified load failure (for example an NPU compile rejection) and the
+    // one-click recoveries the engine offers: "load_gpu", "reconvert_npu".
+    public string? Error { get; init; }
+    public string? ErrorCode { get; init; }
+    public IReadOnlyList<string> RecoveryActions { get; init; } = Array.Empty<string>();
     public bool CanUnload => Status == "loaded";
     public bool CanDelete => Status == "ready_to_load";
     public bool AvailableInChat => CanLoad || CanUnload || Status is "queued" or "loading";
@@ -327,6 +332,9 @@ internal sealed partial class BackendClient : IDisposable
                         Device = actualDevice.Length is > 0 and <= 64
                             && actualDevice.All(ch => char.IsLetterOrDigit(ch) || ch is ':' or '.' or ',')
                             ? actualDevice : null,
+                        Error = ReadString(item, "error") is { Length: > 0 and <= 2000 } error ? error : null,
+                        ErrorCode = ReadString(item, "error_code") is { Length: > 0 and <= 64 } code ? code : null,
+                        RecoveryActions = ReadRecoveryActions(item),
                     });
                 }
 
@@ -726,6 +734,55 @@ internal sealed partial class BackendClient : IDisposable
             ModelAction.Unload => "Model unload accepted. The library updates shortly.",
             _ => "Download started. Progress appears in the library, and the model loads when it is ready.",
         };
+    }
+
+    private static readonly string[] KnownRecoveryActions = { "load_gpu", "reconvert_npu" };
+
+    private static IReadOnlyList<string> ReadRecoveryActions(JsonElement item)
+    {
+        if (!item.TryGetProperty("recovery_actions", out var rows) || rows.ValueKind != JsonValueKind.Array)
+            return Array.Empty<string>();
+        return rows.EnumerateArray()
+            .Select(row => row.ValueKind == JsonValueKind.String ? row.GetString() ?? "" : "")
+            .Where(KnownRecoveryActions.Contains).Distinct().ToArray();
+    }
+
+    /// <summary>
+    /// Runs a one-click recovery the engine offered for a failed load: load the
+    /// model on GPU instead, or reconvert it for the NPU with channel-wise INT4
+    /// (symmetric, ratio 1.0, group size -1). Re-reads the inventory first so a
+    /// stale card never acts on a model whose state changed.
+    /// </summary>
+    public async Task<string> RecoverModelAsync(ModelInfo model, string action, string? apiKey,
+        CancellationToken cancellationToken)
+    {
+        if (!KnownRecoveryActions.Contains(action))
+            throw new ArgumentException("Unknown recovery action.", nameof(action));
+        string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
+        using var modelsPayload = await GetJsonAsync(
+            origin + "/v1/models", apiKey, cancellationToken, TimeSpan.FromSeconds(4));
+        if (!modelsPayload.RootElement.TryGetProperty("data", out var items)
+            || items.ValueKind != JsonValueKind.Array)
+            throw new JsonException("Invalid current model inventory.");
+        bool offered = items.EnumerateArray().Any(item => ReadString(item, "id") == model.Id
+            && ReadRecoveryActions(item).Contains(action));
+        if (!offered)
+            throw new InvalidOperationException(
+                "The model state changed. Refresh the library before trying again.");
+        (string path, string body) = action == "load_gpu"
+            ? ("/v1/models/load", JsonSerializer.Serialize(new { model = model.Id, device = "GPU" }))
+            : ("/v1/models/convert", JsonSerializer.Serialize(new
+            {
+                model = model.Id, device = "NPU", load_after = true, weight_format = "int4",
+                group_size = -1, ratio = 1.0, sym = true,
+            }));
+        using var document = await PostJsonAsync(origin + path, body, apiKey, cancellationToken,
+            TimeSpan.FromSeconds(60), MaximumJsonBytes);
+        if (ReadString(document.RootElement, "status").Length == 0)
+            throw new JsonException("The engine did not confirm the model operation.");
+        return action == "load_gpu"
+            ? "Loading on GPU instead. The library updates as the model loads."
+            : "Reconverting for NPU with channel-wise INT4. The model loads on NPU when it is ready.";
     }
 
     /// <summary>The engine's hardware-aware first model, or null when it has none to offer.</summary>
