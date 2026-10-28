@@ -67,6 +67,9 @@ public sealed partial class MainWindow : Window
         MainNavigation.Loaded += (_, _) => UpdateShellStatusVisibility(
             MainNavigation.DisplayMode == NavigationViewDisplayMode.Expanded && MainNavigation.IsPaneOpen);
         ClearChatStats();
+        LoadPreferences();
+        ResetGenerationSettings(); // Start from the saved chat defaults, like the browser.
+        _contextBudgetTimer.Tick += ContextBudgetTimer_Tick;
         InitializeAbout();
         BenchmarkPresetPicker.SelectionChanged += BenchmarkPresetPicker_SelectionChanged;
         try
@@ -137,6 +140,7 @@ public sealed partial class MainWindow : Window
         Closed += (_, _) =>
         {
             _pollTimer.Stop();
+            _contextBudgetTimer.Stop();
             _benchmarkActivityTimer.Stop();
             _benchmarkActivityTimer.Tick -= BenchmarkActivityTimer_Tick;
             _closing.Cancel();
@@ -252,6 +256,11 @@ public sealed partial class MainWindow : Window
         OverviewPanel.Visibility = page == "overview" ? Visibility.Visible : Visibility.Collapsed;
         if (page == "overview" && !_doctorLoaded && _engineConnected && _rejectedApiKey is null)
             _ = RefreshDoctorAsync(); // Read-only status for the memory gauge.
+        if (page == "overview")
+        {
+            _ = RefreshEngineActivityAsync();
+            if (_advisor is null) _ = RefreshHardwareAdvisorAsync();
+        }
         ConnectionHubPanel.Visibility = page == "connection" ? Visibility.Visible : Visibility.Collapsed;
         if (page == "connection")
             _ = RefreshConnectionHubAsync();
@@ -898,6 +907,7 @@ public sealed partial class MainWindow : Window
             return;
         _currentConversationId = saved.Id;
         _conversationModelId = saved.ModelId;
+        _ejectedModelId = null; // Opening a chat is an explicit model choice.
         _turns.Clear();
         _turns.AddRange(saved.Turns);
         ResetGenerationSettings();
@@ -1039,6 +1049,8 @@ public sealed partial class MainWindow : Window
         // Inventory polling is not an intentional conversation/model change.
         if (_updatingModelPicker) return;
         _chatLoadError = null;
+        // Any pick is explicit, including the model that was just ejected.
+        _ejectedModelId = null;
         string? modelId = SelectedModelId;
         if (modelId is not null && _conversationModelId != modelId)
         {
@@ -1051,6 +1063,7 @@ public sealed partial class MainWindow : Window
             RefreshSavedChats();
         }
         UpdateChatButtons();
+        ResetContextBudget();
         if (SelectedChatModel is { CanLoad: true } model)
             await ManageModelAsync(ModelAction.Load, model, fromChat: true);
     }
@@ -1329,6 +1342,8 @@ public sealed partial class MainWindow : Window
         bool compact = args.NewSize.Width < 560;
         ChatToolbarTitle.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         ChatStatusText.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        // Eject keeps its icon, tooltip and Narrator name when compact.
+        ChatEjectText.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void UpdateChatButtons()
@@ -1339,6 +1354,10 @@ public sealed partial class MainWindow : Window
         CancelButton.IsEnabled = _chatBusy;
         CopyLastReplyButton.IsEnabled = !_chatBusy && !_quitting
             && _turns.LastOrDefault() is { Role: "assistant" };
+        RegenerateButton.IsEnabled = !_chatBusy && !_isManaging && !RefreshLocksControls && !_quitting
+            && ChatTranscript.CanRegenerate(_turns)
+            && SelectedChatModel?.Status == "loaded" && SelectedModelId == _conversationModelId;
+        UpdateChatEjectButton();
         SavedChatsPicker.IsEnabled = !_chatBusy && !_quitting && _historyAvailable;
         SavedChatsSearch.IsEnabled = !_chatBusy && !_quitting && _historyAvailable;
         bool canEditSavedChat = !_chatBusy && !_quitting && _historyAvailable
@@ -1361,6 +1380,7 @@ public sealed partial class MainWindow : Window
         UpdateGenerationSettingsInfo();
         UpdateModelButtons();
         UpdateHuggingFaceButtons();
+        if (_advisor is not null) UpdateAdvisorActions(CurrentAdvisorRecommendation);
         UpdateShellStatus();
     }
 
@@ -1370,7 +1390,8 @@ public sealed partial class MainWindow : Window
         _forceModelRebuild = false;
         // Rebuilding ComboBox items raises SelectionChanged. Suppress it so
         // polling, reconnects and temporary model absence keep the transcript.
-        string? selected = SelectedModelId ?? _conversationModelId;
+        // After Eject nothing is reselected until the user picks a model.
+        string? selected = SelectedModelId ?? (_ejectedModelId is null ? _conversationModelId : null);
         string? selectedLibraryId = SelectedLibraryModel?.Id;
         _shownModels = models;
         _updatingModelPicker = true;
@@ -1419,6 +1440,7 @@ public sealed partial class MainWindow : Window
         {
             _updatingModelPicker = false;
         }
+        ChatModelPicker.PlaceholderText = ModelLifecycle.PickerPlaceholder(models);
         ModelsFilterBox_TextChanged(ModelsFilterBox, null!);
         ApplyContextSummaries();
         _ = RefreshContextSummariesAsync();
@@ -1705,6 +1727,26 @@ public sealed partial class MainWindow : Window
 
         _isManaging = true;
         UpdateChatButtons();
+        try
+        {
+            // Same choice as the browser's "Load another model?" dialog.
+            if (!await ResolveLoadedPeersAsync(model, action))
+            {
+                _isManaging = false;
+                if (!_closing.IsCancellationRequested) UpdateChatButtons();
+                return;
+            }
+        }
+        catch (Exception) when (_closing.IsCancellationRequested) { return; }
+        catch (Exception error) when (!_closing.IsCancellationRequested)
+        {
+            _isManaging = false;
+            ShowModelsInfo(SafeError(error), InfoBarSeverity.Error);
+            if (model.Id == SelectedModelId) _chatLoadError = SafeError(error);
+            UpdateChatButtons();
+            await RefreshAsync();
+            return;
+        }
         if (model.Id == SelectedModelId
             && action is ModelAction.Load or ModelAction.SwitchDevice)
         {
@@ -1741,23 +1783,30 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private async void SendButton_Click(object sender, RoutedEventArgs args)
+    private async void SendButton_Click(object sender, RoutedEventArgs args) =>
+        await GenerateReplyAsync(regenerate: false);
+
+    /// <summary>
+    /// Send the prompt, or regenerate the newest reply (web parity). Regenerate
+    /// re-asks with the same history minus that reply; the old reply is hidden
+    /// and only replaced when the new one completes, otherwise it is restored.
+    /// </summary>
+    private async Task GenerateReplyAsync(bool regenerate)
     {
         string? modelId = SelectedModelId;
-        string prompt = PromptBox.Text.Trim();
+        string prompt = regenerate ? _turns.ElementAtOrDefault(_turns.Count - 2)?.Content ?? ""
+            : PromptBox.Text.Trim();
         if (_chatBusy || _isManaging || _isRefreshing || modelId is null
             || _quitting || SelectedChatModel?.Status != "loaded"
             || (_turns.Count > 0 && modelId != _conversationModelId)
+            || (regenerate && !ChatTranscript.CanRegenerate(_turns))
             || prompt.Length == 0 || _closing.IsCancellationRequested)
             return;
 
-        var pending = new List<ChatTurn>(_turns) { new("user", prompt) };
-        // Keep complete user/assistant pairs and stay below backend/UI limits.
-        while (pending.Count > 1
-            && (pending.Count > 19 || pending.Sum(turn => turn.Content.Length) > 30000))
-        {
-            pending.RemoveRange(0, Math.Min(2, pending.Count - 1));
-        }
+        List<ChatTurn> pending = regenerate ? ChatTranscript.ForRegenerate(_turns)
+            : ChatTranscript.ForRequest(_turns, new ChatTurn("user", prompt));
+        ListViewItem? replacedItem = regenerate
+            ? ChatHistory.Items.OfType<ListViewItem>().LastOrDefault() : null;
 
         if (!CanUseGenerationOptions(modelId, _generationOptions, out string reason))
         {
@@ -1765,7 +1814,9 @@ public sealed partial class MainWindow : Window
             return;
         }
         GenerationOptions generation = _generationOptions;
-        ChatRequestContext context = CurrentChatContext();
+        // Regenerate re-sends text only: attachments are not kept after a reply.
+        ChatRequestContext context = regenerate
+            ? new ChatRequestContext(_systemPrompt, Array.Empty<ChatImage>()) : CurrentChatContext();
         _chatBusy = true;
         _sendCancellation = CancellationTokenSource.CreateLinkedTokenSource(_closing.Token);
         CancellationTokenSource send = _sendCancellation;
@@ -1779,8 +1830,10 @@ public sealed partial class MainWindow : Window
         {
             // Display preview only. Until [DONE], neither the context nor the
             // prompt is committed, and cancelled/error output is discarded.
-            userItem = AppendChat("You", context.Images.Count == 0 ? prompt
-                : prompt + "\n\n(" + context.Images.Count + " image(s) attached)");
+            if (replacedItem is not null) replacedItem.Visibility = Visibility.Collapsed;
+            else
+                userItem = AppendChat("You", context.Images.Count == 0 ? prompt
+                    : prompt + "\n\n(" + context.Images.Count + " image(s) attached)");
             assistantItem = AppendChat("InferBridge", "Generating…", preview: true);
             long lastPreviewTick = 0;
             // Client-side timing for the stats strip (includes loopback HTTP).
@@ -1821,13 +1874,15 @@ public sealed partial class MainWindow : Window
                     ? answer[..8000] + "\n… Response truncated for the native conversation."
                     : answer);
             committed = true;
+            if (replacedItem is not null) ChatHistory.Items.Remove(replacedItem);
             long firstTicks = Interlocked.Read(ref firstTokenTicks);
             UpdateChatStats(modelId,
                 firstTicks < 0 ? -1 : firstTicks * 1000.0 / Stopwatch.Frequency,
                 timer.Elapsed.TotalMilliseconds, usage);
-            PromptBox.Text = string.Empty;
+            if (!regenerate) PromptBox.Text = string.Empty;
             // Like the web client, attachments are kept until a reply completes.
             if (context.Images.Count > 0) ClearPendingImages();
+            ScheduleContextBudget();
             if (TrySaveCurrentChat())
                 ShowChatInfo("Response complete",
                     SaveHistoryToggle.IsChecked == true
@@ -1854,6 +1909,7 @@ public sealed partial class MainWindow : Window
             {
                 if (assistantItem is not null) ChatHistory.Items.Remove(assistantItem);
                 if (userItem is not null) ChatHistory.Items.Remove(userItem);
+                if (replacedItem is not null) replacedItem.Visibility = Visibility.Visible;
                 UpdateChatEmptyState();
             }
             send.Dispose();
@@ -1897,6 +1953,7 @@ public sealed partial class MainWindow : Window
         _currentConversationId = Guid.NewGuid().ToString("N");
         _conversationModelId = SelectedModelId;
         ResetGenerationSettings();
+        ResetContextBudget();
         RefreshSavedChats();
         ShowChatInfo("New chat", "A fresh conversation is ready. Previously saved chats remain in the picker.",
             InfoBarSeverity.Informational);
@@ -1913,6 +1970,7 @@ public sealed partial class MainWindow : Window
                 ? ("Download your first model", "Open Model library, pick a model marked Recommended for this PC, and choose Download and load.")
                 : ("Start a conversation", "Select a local model above, then write a message below. Replies appear here.");
         ChatEmptyActionButton.Visibility = needsModel ? Visibility.Visible : Visibility.Collapsed;
+        ChatSuggestions.Visibility = _engineConnected && !needsModel ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void ChatEmptyActionButton_Click(object sender, RoutedEventArgs args) =>

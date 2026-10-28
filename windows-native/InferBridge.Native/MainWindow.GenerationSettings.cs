@@ -95,18 +95,24 @@ public sealed partial class MainWindow
 
     private void ResetGenerationSettings()
     {
-        _generationOptions = GenerationOptions.Default;
+        // Saved defaults (Save as my defaults) or the engine defaults, like the
+        // browser's persisted chat settings.
+        _generationOptions = _preferences.DefaultGeneration;
         MaxTokensBox.Value = _generationOptions.MaxTokens;
         TemperatureBox.Value = _generationOptions.Temperature;
         TopPBox.Value = _generationOptions.TopP;
         // Every caller is a conversation boundary (new chat, model switch,
         // restore/import), so request-only additions reset with it.
-        _systemPrompt = null;
-        SystemPromptBox.Text = string.Empty;
+        _systemPrompt = _preferences.DefaultSystemPrompt;
+        SystemPromptBox.Text = _systemPrompt ?? string.Empty;
         ClearPendingImages();
         ClearChatStats();
-        GenerationSettingsInfo.Title = "Engine defaults";
-        GenerationSettingsInfo.Message = "Defaults restored for this chat. Nothing was persisted.";
+        bool custom = _preferences.DefaultGeneration != GenerationOptions.Default
+            || _preferences.DefaultSystemPrompt is not null;
+        GenerationSettingsInfo.Title = custom ? "Your defaults" : "Engine defaults";
+        GenerationSettingsInfo.Message = custom
+            ? "Your saved defaults are restored for this chat."
+            : "Engine defaults restored for this chat. Use Save as my defaults to keep your own.";
         GenerationSettingsInfo.Severity = InfoBarSeverity.Informational;
         UpdateGenerationSettingsInfo();
     }
@@ -186,6 +192,8 @@ public sealed partial class MainWindow
         SystemPromptBox.IsEnabled = editable;
         ApplyGenerationSettingsButton.IsEnabled = editable && generationModel;
         ResetGenerationSettingsButton.IsEnabled = editable;
+        SaveGenerationDefaultsButton.IsEnabled = editable && _preferencesPath is not null;
+        ClearGenerationDefaultsButton.IsEnabled = editable && _preferencesPath is not null;
         UpdateContextControls();
     }
 

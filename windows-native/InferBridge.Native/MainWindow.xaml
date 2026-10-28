@@ -167,6 +167,76 @@
                                 </StackPanel>
                             </Border>
                         </local:CardGrid>
+                        <!-- Best model for this PC: the engine's hardware advisor (browser advisor parity). -->
+                        <Border Style="{StaticResource InferBridgeCardStyle}">
+                            <StackPanel Spacing="10">
+                                <Grid ColumnSpacing="8" RowSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="AdvisorHeading" Text="Best model for this PC" VerticalAlignment="Center"
+                                               Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
+                                    <ComboBox x:Name="AdvisorProfilePicker" Grid.Column="1" MinWidth="150"
+                                              PlaceholderText="Profile" IsEnabled="False"
+                                              SelectionChanged="AdvisorProfilePicker_SelectionChanged"
+                                              AutomationProperties.Name="Advisor profile, for example Balanced or Lowest memory" />
+                                    <Button x:Name="AdvisorRefreshButton" Grid.Column="2" Content="Refresh"
+                                            Click="AdvisorRefreshButton_Click"
+                                            AutomationProperties.Name="Refresh the hardware advisor" />
+                                </Grid>
+                                <TextBlock x:Name="AdvisorModelName" Text="Not checked yet"
+                                           Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap"
+                                           AutomationProperties.LiveSetting="Polite" />
+                                <TextBlock x:Name="AdvisorReason" TextWrapping="Wrap"
+                                           Text="Select Refresh to ask the engine which model suits this PC."
+                                           Style="{StaticResource InferBridgeHelpTextStyle}" />
+                                <local:WrapRow x:Name="AdvisorPills" Spacing="6"
+                                               AutomationProperties.Name="Recommendation details" />
+                                <TextBlock x:Name="AdvisorMeasured" TextWrapping="Wrap"
+                                           Style="{StaticResource CaptionTextBlockStyle}" />
+                                <StackPanel x:Name="AdvisorWarnings" Spacing="2"
+                                            AutomationProperties.Name="Recommendation warnings" />
+                                <local:WrapRow Spacing="8">
+                                    <Button x:Name="AdvisorPrepareButton" Content="Download and load" IsEnabled="False"
+                                            Style="{StaticResource AccentButtonStyle}"
+                                            Click="AdvisorPrepareButton_Click"
+                                            AutomationProperties.Name="Download or load the recommended model" />
+                                    <Button x:Name="AdvisorShowModelButton" Content="Show in Model library" IsEnabled="False"
+                                            Click="AdvisorShowModelButton_Click"
+                                            AutomationProperties.Name="Show the recommended model in Model library" />
+                                </local:WrapRow>
+                                <Expander Header="Model compatibility" HorizontalAlignment="Stretch"
+                                          HorizontalContentAlignment="Stretch"
+                                          AutomationProperties.Name="Compatibility of every registered generation model with this PC">
+                                    <StackPanel x:Name="AdvisorModelsList" Spacing="8" />
+                                </Expander>
+                                <TextBlock x:Name="AdvisorNotice" TextWrapping="Wrap"
+                                           Text="Estimates are conservative until a benchmark on this PC is available."
+                                           Style="{StaticResource InferBridgeHelpTextStyle}" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource InferBridgeCardStyle}">
+                            <StackPanel Spacing="10">
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="EngineActivityHeading" Text="Recent engine activity" VerticalAlignment="Center"
+                                               Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
+                                    <Button x:Name="EngineActivityRefreshButton" Grid.Column="1" Content="Refresh"
+                                            Click="EngineActivityRefreshButton_Click"
+                                            AutomationProperties.Name="Refresh recent engine activity" />
+                                </Grid>
+                                <TextBlock x:Name="EngineActivitySummary" Text="Model loads, unloads, downloads and errors reported by the engine appear here."
+                                           Style="{StaticResource InferBridgeHelpTextStyle}"
+                                           AutomationProperties.LiveSetting="Polite" />
+                                <StackPanel x:Name="EngineActivityList" Spacing="6"
+                                            AutomationProperties.Name="Recent engine activity, newest first" />
+                            </StackPanel>
+                        </Border>
                         <InfoBar x:Name="WebUiInfo" Title="Browser interface (optional)"
                                  Message="The same local engine also has a browser interface on this PC. You never need it to use InferBridge."
                                  IsOpen="True" IsClosable="False" Severity="Informational">
@@ -878,6 +948,9 @@
                                             <MenuFlyoutItem x:Name="ImportConvertedMenuItem"
                                                             Text="Import local / converted model…"
                                                             Click="ImportConvertedMenuItem_Click" />
+                                            <MenuFlyoutItem x:Name="RefreshVerifiedLibraryMenuItem"
+                                                            Text="Check for newly verified models…"
+                                                            Click="RefreshVerifiedLibraryMenuItem_Click" />
                                             <MenuFlyoutSeparator />
                                             <MenuFlyoutItem x:Name="ImportDefinitionsMenuItem"
                                                             Text="Import definitions…"
@@ -925,7 +998,7 @@
                             <Border Style="{StaticResource InferBridgeHeaderRuleStyle}" />
                             <StackPanel Grid.Column="1" Spacing="2">
                                 <TextBlock Text="Settings" Style="{StaticResource InferBridgePageTitleStyle}" />
-                                <TextBlock Text="Per-model context window, version information, privacy policy and support links."
+                                <TextBlock Text="Appearance, per-model context window, version information, privacy policy and support links."
                                            Style="{StaticResource InferBridgeHelpTextStyle}" />
                             </StackPanel>
                         </Grid>
@@ -937,6 +1010,20 @@
                             </InfoBar.ActionButton>
                         </InfoBar>
                         <local:CardGrid MaxColumns="2">
+                            <Border Style="{StaticResource InferBridgeCardStyle}">
+                                <StackPanel Spacing="12">
+                                    <TextBlock Text="Appearance" Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
+                                    <ComboBox x:Name="AppThemePicker" Header="App theme" MinWidth="200"
+                                              SelectionChanged="AppThemePicker_SelectionChanged"
+                                              AutomationProperties.Name="App theme: use Windows setting, light or dark">
+                                        <ComboBoxItem Content="Use Windows setting" Tag="system" />
+                                        <ComboBoxItem Content="Light" Tag="light" />
+                                        <ComboBoxItem Content="Dark" Tag="dark" />
+                                    </ComboBox>
+                                    <TextBlock Text="Saved on this PC. High contrast themes from Windows always take priority."
+                                               Style="{StaticResource InferBridgeHelpTextStyle}" />
+                                </StackPanel>
+                            </Border>
                             <Border Style="{StaticResource InferBridgeCardStyle}">
                                 <StackPanel Spacing="12">
                                     <TextBlock Text="Per-model context window" Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
@@ -1045,13 +1132,14 @@
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel x:Name="ChatToolbarTitle" Grid.Column="0"
                                     VerticalAlignment="Center">
                             <TextBlock Text="Chat" Style="{StaticResource SubtitleTextBlockStyle}" />
                         </StackPanel>
                         <ComboBox x:Name="ChatModelPicker" Grid.Column="1"
-                                  PlaceholderText="Select model"
+                                  PlaceholderText="No model loaded"
                                   MinWidth="140"
                                   HorizontalAlignment="Stretch"
                                   VerticalAlignment="Center"
@@ -1059,7 +1147,21 @@
                                   DropDownClosed="ChatModelPicker_DropDownClosed"
                                   AutomationProperties.Name="Select a downloaded or loaded inference model"
                                   ToolTipService.ToolTip="Chat model" />
-                        <Button x:Name="ChatStatusButton" Grid.Column="2"
+                        <!-- Eject: unload the chat model from memory; the conversation stays. -->
+                        <Button x:Name="ChatEjectButton" Grid.Column="2"
+                                VerticalAlignment="Center" IsEnabled="False"
+                                Click="ChatEjectButton_Click"
+                                AutomationProperties.Name="Eject the loaded chat model from memory"
+                                ToolTipService.ToolTip="Eject (unload) this model from memory. Your conversation is kept.">
+                            <Button.KeyboardAccelerators>
+                                <KeyboardAccelerator Key="E" Modifiers="Control,Shift" />
+                            </Button.KeyboardAccelerators>
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon FontFamily="{StaticResource SymbolThemeFontFamily}" Glyph="&#xE71A;" FontSize="14" />
+                                <TextBlock x:Name="ChatEjectText" Text="Eject" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="ChatStatusButton" Grid.Column="3"
                                 VerticalAlignment="Center"
                                 AutomationProperties.Name="Chat status details"
                                 ToolTipService.ToolTip="Show complete chat status">
@@ -1080,7 +1182,7 @@
                                 </Flyout>
                             </Button.Flyout>
                         </Button>
-                        <Button Grid.Column="3" VerticalAlignment="Center"
+                        <Button Grid.Column="4" VerticalAlignment="Center"
                                 AutomationProperties.Name="Manage saved conversations"
                                 ToolTipService.ToolTip="Saved conversations">
                             <Button.Content>
@@ -1151,16 +1253,19 @@
                                 </Flyout>
                             </Button.Flyout>
                         </Button>
-                        <Button x:Name="ChatSettingsPaneButton" Grid.Column="4" VerticalAlignment="Center"
+                        <Button x:Name="ChatSettingsPaneButton" Grid.Column="5" VerticalAlignment="Center"
                                 Click="OpenGenerationSettingsButton_Click"
                                 AutomationProperties.Name="Show or hide inference settings"
                                 ToolTipService.ToolTip="Inference settings (system prompt, sampling, context)">
                             <FontIcon Glyph="&#xE9E9;" />
                         </Button>
-                        <Button x:Name="NewChatButton" Grid.Column="5" VerticalAlignment="Center"
+                        <Button x:Name="NewChatButton" Grid.Column="6" VerticalAlignment="Center"
                                 Click="NewChatButton_Click"
                                 AutomationProperties.Name="New conversation"
-                                ToolTipService.ToolTip="New chat">
+                                ToolTipService.ToolTip="New chat (Ctrl+L)">
+                            <Button.KeyboardAccelerators>
+                                <KeyboardAccelerator Key="L" Modifiers="Control" />
+                            </Button.KeyboardAccelerators>
                             <SymbolIcon Symbol="Add" />
                         </Button>
                     </Grid>
@@ -1233,6 +1338,14 @@
                                     HorizontalAlignment="Center" Visibility="Collapsed"
                                     Style="{StaticResource AccentButtonStyle}"
                                     Click="ChatEmptyActionButton_Click" />
+                            <!-- Starter prompts, as in the browser chat: a click fills the prompt, never sends. -->
+                            <local:WrapRow x:Name="ChatSuggestions" Spacing="6" HorizontalAlignment="Center"
+                                           AutomationProperties.Name="Suggested prompts">
+                                <Button Content="Explain what OpenVINO is in one sentence" Click="ChatSuggestion_Click" />
+                                <Button Content="Write a Python hello world script" Click="ChatSuggestion_Click" />
+                                <Button Content="What are you capable of?" Click="ChatSuggestion_Click" />
+                                <Button Content="Summarize the benefits of local inference" Click="ChatSuggestion_Click" />
+                            </local:WrapRow>
                         </StackPanel>
                     </Grid>
                     <Grid Grid.Row="2" RowSpacing="8">
@@ -1245,6 +1358,7 @@
                                  PlaceholderText="Message your local model…"
                                  AcceptsReturn="True" TextWrapping="Wrap"
                                  MinHeight="64" MaxHeight="112" MaxLength="8000"
+                                 TextChanged="PromptBox_TextChanged"
                                  AutomationProperties.Name="Chat prompt" />
                         <Grid Grid.Row="1" ColumnSpacing="8">
                             <Grid.ColumnDefinitions>
@@ -1278,7 +1392,16 @@
                                     </Button.KeyboardAccelerators>
                                 </Button>
                                 <Button x:Name="CancelButton" Content="Stop response"
-                                        IsEnabled="False" Click="CancelButton_Click" />
+                                        IsEnabled="False" Click="CancelButton_Click"
+                                        ToolTipService.ToolTip="Stop the reply (Esc)">
+                                    <Button.KeyboardAccelerators>
+                                        <KeyboardAccelerator Key="Escape" />
+                                    </Button.KeyboardAccelerators>
+                                </Button>
+                                <Button x:Name="RegenerateButton" Content="Regenerate"
+                                        IsEnabled="False" Click="RegenerateButton_Click"
+                                        AutomationProperties.Name="Regenerate the last reply"
+                                        ToolTipService.ToolTip="Ask the model again for the last reply. The previous reply is replaced only when the new one completes; images are not re-sent." />
                                 <Button x:Name="CopyLastReplyButton" Content="Copy reply"
                                         IsEnabled="False" Click="CopyLastReplyButton_Click"
                                         AutomationProperties.Name="Copy last completed assistant reply" />
@@ -1294,9 +1417,43 @@
                             <local:WrapRow Grid.Row="1" Spacing="8">
                                 <ProgressRing x:Name="ChatProgress" IsActive="False"
                                               Width="20" Height="20" VerticalAlignment="Center" />
-                                <TextBlock Text="Ctrl+Enter to send" VerticalAlignment="Center"
+                                <TextBlock Text="Ctrl+Enter send · Esc stop · Ctrl+L new chat" VerticalAlignment="Center"
                                            Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <!-- Exact tokenizer preflight (same endpoint as the browser context chip). -->
+                                <Button x:Name="ContextBudgetButton" Padding="8,2,8,2"
+                                        AutomationProperties.Name="Context budget for the next message"
+                                        ToolTipService.ToolTip="Exact token count for the next message, from the loaded model's tokenizer">
+                                    <TextBlock x:Name="ContextBudgetText" Text="Context after model load"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               MaxWidth="320" TextTrimming="CharacterEllipsis" />
+                                    <Button.Flyout>
+                                        <Flyout Opening="ContextBudgetFlyout_Opening">
+                                            <StackPanel Width="340" Spacing="8">
+                                                <TextBlock Text="Context budget"
+                                                           Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
+                                                <TextBlock Text="Exact tokenizer check for the next message with the loaded model, using the same rules as the engine."
+                                                           Style="{StaticResource InferBridgeHelpTextStyle}" />
+                                                <TextBlock x:Name="ContextBudgetDetails" TextWrapping="Wrap"
+                                                           IsTextSelectionEnabled="True"
+                                                           AutomationProperties.LiveSetting="Polite" />
+                                                <TextBlock x:Name="ContextBudgetNotice" TextWrapping="Wrap"
+                                                           Style="{StaticResource BodyStrongTextBlockStyle}"
+                                                           AutomationProperties.LiveSetting="Polite" />
+                                                <StackPanel x:Name="ContextBudgetOmissions" Spacing="4"
+                                                            AutomationProperties.Name="Messages that will be omitted" />
+                                                <local:WrapRow Spacing="8">
+                                                    <Button x:Name="ContextBudgetFitButton" Content="Reduce reply to fit"
+                                                            IsEnabled="False" Click="ContextBudgetFitButton_Click"
+                                                            AutomationProperties.Name="Reduce maximum reply tokens so the reply fits the context" />
+                                                    <Button x:Name="ContextBudgetRefreshButton" Content="Check again"
+                                                            Click="ContextBudgetRefreshButton_Click"
+                                                            AutomationProperties.Name="Check the context budget again" />
+                                                </local:WrapRow>
+                                            </StackPanel>
+                                        </Flyout>
+                                    </Button.Flyout>
+                                </Button>
                                 <local:WrapRow x:Name="ChatStatsStrip" Spacing="6"
                                                AutomationProperties.Name="Last reply performance"
                                                AutomationProperties.LiveSetting="Polite" />
@@ -1398,10 +1555,18 @@
                                         <Button x:Name="ApplyGenerationSettingsButton" Content="Apply to this chat"
                                                 Style="{StaticResource AccentButtonStyle}"
                                                 Click="ApplyGenerationSettingsButton_Click" />
-                                        <Button x:Name="ResetGenerationSettingsButton" Content="Reset to engine defaults"
+                                        <Button x:Name="ResetGenerationSettingsButton" Content="Reset to my defaults"
                                                 Click="ResetGenerationSettingsButton_Click" />
                                     </local:WrapRow>
-                                    <TextBlock Text="Applies to future messages in this chat only. Values reset when you switch models, start a new chat or open a saved chat."
+                                    <local:WrapRow Spacing="8">
+                                        <Button x:Name="SaveGenerationDefaultsButton" Content="Save as my defaults"
+                                                Click="SaveGenerationDefaultsButton_Click"
+                                                AutomationProperties.Name="Save the system prompt and sampling values as defaults for new chats" />
+                                        <Button x:Name="ClearGenerationDefaultsButton" Content="Use engine defaults"
+                                                Click="ClearGenerationDefaultsButton_Click"
+                                                AutomationProperties.Name="Forget saved defaults and use the engine defaults for new chats" />
+                                    </local:WrapRow>
+                                    <TextBlock Text="Apply affects future messages in this chat. New chats, model switches and opened saved chats start from your saved defaults (engine defaults until you save some), like the browser chat settings. Defaults are stored on this PC only."
                                                Style="{StaticResource InferBridgeHelpTextStyle}" />
                                 </StackPanel>
                             </ScrollViewer>

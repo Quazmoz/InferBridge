@@ -46,6 +46,25 @@ public sealed partial class MainWindow
         }
     }
 
+    private async void RefreshVerifiedLibraryMenuItem_Click(object sender, RoutedEventArgs args)
+    {
+        await RunModelLibraryOperationAsync(async () =>
+        {
+            if (!await ConfirmAsync("Check for newly verified models?",
+                    "The engine downloads the official InferBridge model list from GitHub and adds models verified since this "
+                    + "version shipped. No model files are downloaded, and your own definitions are never replaced.",
+                    "Check now")) return;
+            ModelDefinitionImportResult result = await _backend.RefreshOfficialModelLibraryAsync(
+                ApiKeyBox.Password, _closing.Token);
+            ShowModelsInfo(result.Added.Count + result.Updated.Count == 0
+                ? "The verified model list is up to date."
+                    + (result.Unchanged.Count > 0 ? " " + result.Unchanged.Count + " of your own definition(s) were kept." : "")
+                : "Verified model list updated: " + result.Added.Count + " added, " + result.Updated.Count + " updated"
+                    + (result.Unchanged.Count > 0 ? ", " + result.Unchanged.Count + " of your own definition(s) kept." : "."),
+                InfoBarSeverity.Success);
+        });
+    }
+
     private async void ExportDefinitionsMenuItem_Click(object sender, RoutedEventArgs args)
     {
         bool includeAll = ReferenceEquals(sender, ExportAllDefinitionsMenuItem);

@@ -130,14 +130,17 @@ def test_native_chat_toolbar_preserves_a_real_transcript_viewport():
         "Auto",
         "Auto",
         "Auto",
+        "Auto",
     ]
     model = next(node for node in toolbar.iter() if node.get(named) == "ChatModelPicker")
     assert model.get("Grid.Column") == "1"
     assert model.get("Header") is None
     assert model.get("MinWidth") == "140"
+    eject = next(node for node in toolbar.iter() if node.get(named) == "ChatEjectButton")
+    assert eject.get("Grid.Column") == "2"  # Directly beside the model picker.
 
     status = next(node for node in toolbar.iter() if node.get(named) == "ChatStatusButton")
-    assert status.get("Grid.Column") == "2"
+    assert status.get("Grid.Column") == "3"
     status_icons = [node for node in status.iter() if node.tag == XAML + "FontIcon"]
     assert len(status_icons) == 1
     assert status_icons[0].get("Glyph") == chr(0xE946)
@@ -331,7 +334,10 @@ def test_native_frontend_is_single_instance_per_installation_and_preserves_engin
 def test_native_status_polling_never_reinterprets_inventory_as_user_model_change():
     window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
     assert "if (_updatingModelPicker) return;" in window
-    assert "string? selected = SelectedModelId ?? _conversationModelId;" in window
+    assert (
+        "string? selected = SelectedModelId ?? (_ejectedModelId is null ? _conversationModelId : null);"
+        in window
+    )
     assert "_updatingModelPicker = true;" in window
     assert "_updatingModelPicker = false;" in window
     assert "ChatModelPicker.SelectedItem is null && _conversationModelId is null" in window
@@ -415,7 +421,7 @@ def test_native_window_is_production_safe_on_close_auth_throttle_and_high_dpi():
     for method in (
         "private async Task RefreshAsync",
         "private async Task ManageModelAsync",
-        "private async void SendButton_Click",
+        "private async Task GenerateReplyAsync",
         "private async Task ConfirmCloseAsync",
         "private async void WebUiButton_Click",
     ):
@@ -1160,9 +1166,7 @@ def test_native_chat_has_inference_pane_and_live_stats_from_real_data():
     assert "ChartMath.DecodeTokensPerSecond(usage?.CompletionTokens" in stats
     assert "Tokens not reported" in stats and "Decode speed not reported" in stats
     window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
-    send = _method_body(
-        window, "private async void SendButton_Click(object sender, RoutedEventArgs args)"
-    )
+    send = _method_body(window, "private async Task GenerateReplyAsync(bool regenerate)")
     assert "Stopwatch.StartNew()" in send
     # Stats are shown only after a reply is committed.
     assert send.index("committed = true;") < send.index("UpdateChatStats(")
