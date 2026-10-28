@@ -45,6 +45,59 @@ if (-not $PsutilWindowsPath.StartsWith($InternalPrefix, [StringComparison]::Ordi
     throw "The psutil Windows extension must be contained under _internal."
 }
 
+# Diagnostics for a packaged tray that exits early or never becomes ready. The tray
+# only logs its startup exception into the data directory, which this script deletes,
+# so print bounded, redacted tails before cleanup. Secrets never leave the runner.
+function Get-RedactedText([string]$Text) {
+    if ([string]::IsNullOrEmpty($Text)) { return $Text }
+    $Redacted = $Text
+    $Redacted = [regex]::Replace($Redacted, '(?i)("?(?:[a-z_-]*(?:token|nonce|secret|password|passwd|api[_-]?key|authorization|cookie|credential)[a-z_-]*)"?\s*[:=]\s*)("[^"]*"|[^\s,;}]+)', '$1"[redacted]"')
+    $Redacted = [regex]::Replace($Redacted, '(?i)(--(?:instance-nonce|control-token)[ =])("[^"]*"|\S+)', '$1[redacted]')
+    $Redacted = [regex]::Replace($Redacted, '(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+', 'Bearer [redacted]')
+    $Redacted = [regex]::Replace($Redacted, '\bhf_[A-Za-z0-9]{8,}', 'hf_[redacted]')
+    $Redacted = [regex]::Replace($Redacted, '\bsk-[A-Za-z0-9_-]{8,}', 'sk-[redacted]')
+    return $Redacted
+}
+
+function Write-PackagedStartupDiagnostics([string]$DataRoot, [string]$Reason, [int]$TailLines = 120) {
+    Write-Host "::group::Packaged tray startup diagnostics"
+    Write-Host "Smoke failure: $(Get-RedactedText $Reason)"
+    try {
+        if (-not $DataRoot -or -not (Test-Path -LiteralPath $DataRoot)) {
+            Write-Host "Data directory was not created: $DataRoot"
+            return
+        }
+        $Candidates = @()
+        foreach ($Name in @("desktop-instance.json", "tray-heartbeat.json", "tray-command.json")) {
+            $Path = Join-Path $DataRoot $Name
+            if (Test-Path -LiteralPath $Path -PathType Leaf) { $Candidates += Get-Item -LiteralPath $Path }
+        }
+        $LogsRoot = Join-Path $DataRoot "logs"
+        if (Test-Path -LiteralPath $LogsRoot -PathType Container) {
+            $Candidates += @(Get-ChildItem -LiteralPath $LogsRoot -File -Recurse -ErrorAction SilentlyContinue |
+                Where-Object { $_.Extension -in @(".log", ".txt", ".json") -or $_.Name -match '\.log\.\d+$' } |
+                Sort-Object FullName)
+        }
+        if (-not $Candidates.Count) {
+            Write-Host "No tray logs or state files were written under $DataRoot."
+        }
+        foreach ($Item in $Candidates) {
+            $Relative = $Item.FullName.Substring($DataRoot.Length).TrimStart('\', '/')
+            Write-Host "----- $Relative (last $TailLines lines) -----"
+            try {
+                $Lines = @(Get-Content -LiteralPath $Item.FullName -Tail $TailLines -ErrorAction Stop)
+                foreach ($Line in $Lines) { Write-Host (Get-RedactedText ([string]$Line)) }
+            }
+            catch {
+                Write-Host "(unreadable: $($_.Exception.Message))"
+            }
+        }
+    }
+    finally {
+        Write-Host "::endgroup::"
+    }
+}
+
 $NativeSmoke = Start-Process -FilePath $Exe -ArgumentList "--native-smoke" -WorkingDirectory $Root -PassThru -Wait -WindowStyle Hidden
 if ($NativeSmoke.ExitCode -ne 0) {
     throw "Packaged OpenVINO native runtime smoke test failed with exit code $($NativeSmoke.ExitCode)."
@@ -151,6 +204,16 @@ try {
     if (-not $Process.WaitForExit(20000)) { throw "Packaged tray did not shut down after the owned quit command." }
     if ($Process.ExitCode -ne 0) { throw "Packaged tray exited with code $($Process.ExitCode)." }
     Write-Host "Packaged $ExpectedMode-mode tray-owned mock smoke test passed."
+}
+catch {
+    $FailureReason = $_.Exception.Message
+    if ($Process -and -not $Process.HasExited) {
+        # Stop the tray first so its log handles are flushed and readable.
+        Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
+        $Process.WaitForExit(10000) | Out-Null
+    }
+    Write-PackagedStartupDiagnostics -DataRoot $Data -Reason $FailureReason
+    throw
 }
 finally {
     if ($null -eq $PreviousPortEnvironment) {

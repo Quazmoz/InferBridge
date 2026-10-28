@@ -49,6 +49,7 @@ def test_github_hosted_build_workflows_are_retired() -> None:
     for path in (
         ".github/workflows/ci.yml",
         ".github/workflows/model-lifecycle-windows.yml",
+        ".github/workflows/packaged-smoke.yml",
     ):
         workflow = _read(path)
         assert "  workflow_dispatch:" in workflow
@@ -220,3 +221,18 @@ def test_windows_312_ci_compiles_native_frontend_without_releasing() -> None:
     assert "'coreclr.dll'" in workflow
     assert "PublishPipelineArtifact@" not in workflow
     assert "actions/upload-artifact@" not in workflow
+
+
+def test_manual_packaged_smoke_runs_both_packaged_modes_through_release_builder() -> None:
+    # GitHub source CI never freezes the app, so packaged startup regressions used to
+    # reach main untested. This manual workflow runs the real release builder, whose
+    # installed and portable smoke tests launch the frozen tray headless.
+    workflow = _read(".github/workflows/packaged-smoke.yml")
+    builder = _read("scripts/build_release.ps1")
+    assert "./scripts/build_release.ps1 @arguments" in workflow
+    assert "Unsigned = $true" in workflow
+    assert "MockSmokeTest = $true" in workflow
+    assert "secrets." not in workflow
+    assert "Sign = $true" not in workflow
+    assert "-ExpectedMode installed" in builder
+    assert "-ExpectedMode portable" in builder
