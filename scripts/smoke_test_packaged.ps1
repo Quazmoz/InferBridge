@@ -59,10 +59,22 @@ function Get-RedactedText([string]$Text) {
     return $Redacted
 }
 
-function Write-PackagedStartupDiagnostics([string]$DataRoot, [string]$Reason, [int]$TailLines = 120) {
+function Write-PackagedStartupDiagnostics([string]$DataRoot, [string]$Reason, [string[]]$StdioFiles = @(), [int]$TailLines = 120) {
     Write-Host "::group::Packaged tray startup diagnostics"
     Write-Host "Smoke failure: $(Get-RedactedText $Reason)"
     try {
+        foreach ($StdioFile in $StdioFiles) {
+            if (-not $StdioFile -or -not (Test-Path -LiteralPath $StdioFile -PathType Leaf)) { continue }
+            Write-Host "----- $(([IO.Path]::GetFileName($StdioFile) -split '\.', 2)[1]) (last $TailLines lines) -----"
+            try {
+                foreach ($Line in @(Get-Content -LiteralPath $StdioFile -Tail $TailLines -ErrorAction Stop)) {
+                    Write-Host (Get-RedactedText ([string]$Line))
+                }
+            }
+            catch {
+                Write-Host "(unreadable: $($_.Exception.Message))"
+            }
+        }
         if (-not $DataRoot -or -not (Test-Path -LiteralPath $DataRoot)) {
             Write-Host "Data directory was not created: $DataRoot"
             return
@@ -105,6 +117,10 @@ if ($NativeSmoke.ExitCode -ne 0) {
 
 $Data = Join-Path ([IO.Path]::GetTempPath()) ("OV LLM Packaged Smoke " + [guid]::NewGuid().ToString("N"))
 New-Item $Data -ItemType Directory -Force | Out-Null
+# Tray stdio is captured outside the data directory so the application owns its data
+# root exactly as in a user launch; the headless startup failure reason lands on stderr.
+$TrayStdout = "$Data.tray-stdout.log"
+$TrayStderr = "$Data.tray-stderr.log"
 $Process = $null
 $PreviousPortEnvironment = [Environment]::GetEnvironmentVariable("OV_LLM_PORT", "Process")
 
@@ -133,7 +149,8 @@ try {
         "--data-dir", ('"' + $Data + '"'), "--no-browser"
     )
     if ($IsPortable) { $Arguments += "--portable" }
-    $Process = Start-Process -FilePath $Exe -ArgumentList $Arguments -WorkingDirectory $Root -PassThru -WindowStyle Hidden
+    $Process = Start-Process -FilePath $Exe -ArgumentList $Arguments -WorkingDirectory $Root -PassThru -WindowStyle Hidden `
+        -RedirectStandardOutput $TrayStdout -RedirectStandardError $TrayStderr
 
     $MetadataPath = Join-Path $Data "desktop-instance.json"
     $Deadline = [DateTime]::UtcNow.AddSeconds(90)
@@ -212,7 +229,7 @@ catch {
         Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
         $Process.WaitForExit(10000) | Out-Null
     }
-    Write-PackagedStartupDiagnostics -DataRoot $Data -Reason $FailureReason
+    Write-PackagedStartupDiagnostics -DataRoot $Data -Reason $FailureReason -StdioFiles @($TrayStderr, $TrayStdout)
     throw
 }
 finally {
@@ -227,4 +244,5 @@ finally {
         $Process.WaitForExit(10000) | Out-Null
     }
     Remove-Item $Data -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $TrayStdout, $TrayStderr -Force -ErrorAction SilentlyContinue
 }
