@@ -1,5 +1,8 @@
 # Context budget visibility
 
+> Looking for how to use a **larger context window**, KV cache precision, or why
+> the defaults are small? See [Context and memory](CONTEXT_AND_MEMORY.md).
+
 InferBridge can inspect a chat request before generation and show how the selected loaded model will use its context window.
 
 The WebGUI displays a compact context indicator beside the existing token counter. Open it to review:
@@ -121,8 +124,11 @@ Direct NPU LLMs use the installed compatibility layer's `MAX_PROMPT_LEN` and
 `MIN_RESPONSE_LEN`; their sum is the configured total. CPU/GPU context budgets
 are enforced in the existing chat prompt builder, but acceptance does **not**
 prove memory availability or the ability to generate at that depth. An option
-above the recommendation is labeled *eligible–unverified*. No KV precision
-toggle is exposed.
+above the recommendation is labeled *eligible–unverified*. A per-model **KV
+cache precision** (Auto, f16, u8, u4) is offered in every editor and applies to
+CPU and GPU loads only; see [Context and memory](CONTEXT_AND_MEMORY.md) for
+how to use larger context, KV precision trade-offs and why the defaults are
+small.
 
 Where architecture and hardware metadata permit, the options also show a
 **host-RAM planning floor** (converted weights plus illustrative FP16 KV cache,

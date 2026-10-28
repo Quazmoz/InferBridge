@@ -1,0 +1,104 @@
+name: 📊 Benchmark results
+description: Share InferBridge performance numbers from your hardware (context, KV precision, speed, memory)
+title: '[BENCHMARK] '
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for measuring InferBridge on real hardware. Results are recorded as user reports, not certification.
+
+        > Prefer a simpler form? Use **Send feedback** on the [InferBridge support page](https://consultant.quinnfavo.com/apps/inferbridge#feedback) and paste the same details. No GitHub issue formatting is required.
+
+        Most of the environment details below are in **Copy diagnostics** (tray) or **Copy support report** (System Doctor). Remove anything private (paths, user names) before posting. See [Context and memory](https://github.com/Quazmoz/InferBridge/blob/dev/docs/CONTEXT_AND_MEMORY.md#contributing-benchmarks).
+  - type: input
+    id: version
+    attributes:
+      label: InferBridge version
+      placeholder: e.g. 1.1.1-dev.1
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Hardware
+      description: CPU, GPU, NPU and RAM
+      placeholder: e.g. Core Ultra 7 155H, Arc iGPU, NPU 3720, 32 GB RAM
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: e.g. Windows 11 24H2
+  - type: input
+    id: driver
+    attributes:
+      label: Driver(s)
+      description: GPU driver and NPU driver (NPU_DRIVER_VERSION in diagnostics)
+      placeholder: e.g. GPU 32.0.101.6913, NPU 32.0.100.4297
+  - type: input
+    id: openvino
+    attributes:
+      label: OpenVINO version
+      placeholder: e.g. OpenVINO 2026.2.1 / GenAI 2026.2.1.0
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      description: Model id or Hugging Face repo, plus weight format and group size
+      placeholder: e.g. qwen2.5-7b-int4 (INT4 sym, group size 128)
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device (requested → actual)
+      placeholder: e.g. GPU → GPU
+    validations:
+      required: true
+  - type: input
+    id: context
+    attributes:
+      label: Context window
+      description: Configured context tokens, and the prompt length actually used
+      placeholder: e.g. 32768 configured, 28000-token prompt
+    validations:
+      required: true
+  - type: dropdown
+    id: kv
+    attributes:
+      label: KV cache precision
+      options:
+        - Auto
+        - f16
+        - u8
+        - u4
+        - n/a (NPU)
+    validations:
+      required: true
+  - type: input
+    id: ttft
+    attributes:
+      label: TTFT (ms)
+      placeholder: e.g. 2100
+  - type: input
+    id: tps
+    attributes:
+      label: Tokens/s
+      placeholder: e.g. 18.4
+  - type: input
+    id: ram
+    attributes:
+      label: Peak RAM (GB)
+  - type: input
+    id: gpu_mem
+    attributes:
+      label: Peak GPU memory (GB)
+      placeholder: or n/a
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Load/compile time, errors, quality observations, Benchmark Lab or manual measurement

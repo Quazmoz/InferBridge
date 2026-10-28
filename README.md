@@ -154,6 +154,7 @@ See [QUICKSTART.md](QUICKSTART.md) for the complete setup flow.
 - [Model preparation cancellation](docs/model-cancellation.md)
 - [Model preparation recovery](docs/MODEL_RECOVERY.md)
 - [Context budget visibility](docs/CONTEXT_BUDGET.md)
+- [Context and memory: larger context, KV cache precision, NPU limits, contributing benchmarks](docs/CONTEXT_AND_MEMORY.md)
 
 ### Data, diagnostics, and support
 
