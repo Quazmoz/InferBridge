@@ -1,0 +1,84 @@
+# Manual-only packaged qualification. Builds the unsigned PyInstaller distribution
+# through the same scripts/build_release.ps1 path the Azure DevOps release uses, and
+# runs both the installed-mode and portable-mode packaged mock smoke tests. It never
+# signs, publishes, tags or uploads release artifacts; Azure DevOps remains the release
+# path. Use it to qualify packaged startup changes before queueing Azure.
+name: Packaged Windows smoke (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip_source_tests:
+        description: "Skip pytest and the source mock contract (packaged smoke tests still run)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: packaged-smoke-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  packaged-smoke:
+    name: Unsigned build + installed and portable packaged smoke
+    # Matches the Azure DevOps release agent image (azure-pipelines.yml vmImage).
+    runs-on: windows-2022
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          architecture: 'x64'
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install Inno Setup
+        run: |
+          choco install innosetup --no-progress -y
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup installation failed: $LASTEXITCODE" }
+
+      - name: Prepare qualified release dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements/release.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Release dependency installation failed' }
+          python -m pip install --disable-pip-version-check --no-deps --no-build-isolation .
+          if ($LASTEXITCODE -ne 0) { throw 'Project installation failed' }
+
+      - name: Build unsigned release with installed and portable packaged smoke tests
+        env:
+          SKIP_SOURCE_TESTS: ${{ inputs.skip_source_tests }}
+        run: |
+          $arguments = @{
+            Channel = 'auto'
+            Unsigned = $true
+            Clean = $true
+            OutputDirectory = 'artifacts/packaged-smoke'
+            Python = 'python'
+          }
+          if ($env:SKIP_SOURCE_TESTS -eq 'true') {
+            # -MockSmokeTest keeps both packaged smoke tests enabled.
+            $arguments.SkipTests = $true
+            $arguments.MockSmokeTest = $true
+          }
+          & ./scripts/build_release.ps1 @arguments
+          if ($LASTEXITCODE -ne 0) { throw "Release build failed with exit code $LASTEXITCODE" }
+
+      - name: Upload build timing and summary
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: packaged-smoke-summary
+          path: |
+            build/release/release-timings.json
+            artifacts/packaged-smoke/*-release-summary.json
+          if-no-files-found: ignore
+          retention-days: 7
