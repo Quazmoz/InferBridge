@@ -51,9 +51,9 @@ if (-not $PsutilWindowsPath.StartsWith($InternalPrefix, [StringComparison]::Ordi
 function Get-RedactedText([string]$Text) {
     if ([string]::IsNullOrEmpty($Text)) { return $Text }
     $Redacted = $Text
+    $Redacted = [regex]::Replace($Redacted, '(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+', 'Bearer [redacted]')
     $Redacted = [regex]::Replace($Redacted, '(?i)("?(?:[a-z_-]*(?:token|nonce|secret|password|passwd|api[_-]?key|authorization|cookie|credential)[a-z_-]*)"?\s*[:=]\s*)("[^"]*"|[^\s,;}]+)', '$1"[redacted]"')
     $Redacted = [regex]::Replace($Redacted, '(?i)(--(?:instance-nonce|control-token)[ =])("[^"]*"|\S+)', '$1[redacted]')
-    $Redacted = [regex]::Replace($Redacted, '(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+', 'Bearer [redacted]')
     $Redacted = [regex]::Replace($Redacted, '\bhf_[A-Za-z0-9]{8,}', 'hf_[redacted]')
     $Redacted = [regex]::Replace($Redacted, '\bsk-[A-Za-z0-9_-]{8,}', 'sk-[redacted]')
     return $Redacted
