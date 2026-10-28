@@ -13,6 +13,23 @@ API access**. See [Local Connection Hub](CONNECTION_HUB.md) and [LAN and home-la
 access](LAN_ACCESS.md). The examples below remain reference configuration; packaged
 desktop launches may use a different active port.
 
+## Coding assistants and Copilot
+
+**Connect a tool** on the native **Local API** page (and in the browser Connection Hub)
+gives ready-to-use settings, built from the running engine, for Continue, GitHub
+Copilot CLI, VS Code GitHub Copilot Chat (Custom Endpoint), the GitHub Copilot app,
+Cline, Roo Code/Zoo Code and generic OpenAI-compatible apps. Continue and Copilot CLI
+have a confirmed one-click setup with Undo in the Windows app. See
+[Connect a tool](CONNECTION_HUB.md#connect-a-tool) for the verified mechanism of each
+client and the safety rules.
+
+Agentic coding tools (Copilot CLI, VS Code agent mode, Cline, Zoo Code, Continue
+Agent) send tool definitions and long prompts. They work only when the selected model
+handles tool calling and its context window is large; GitHub recommends at least 128k
+tokens for Copilot CLI. InferBridge's bundled catalog uses much smaller practical
+budgets, so expect chat and short edits to work better than long agent tasks. The
+cards flag small or unknown context windows.
+
 ## Packaged desktop LAN setup
 
 For the packaged application, prefer the built-in UI instead of Windows environment

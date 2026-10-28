@@ -7,7 +7,7 @@ assignees: ''
 
 ---
 
-> Prefer a simpler feedback form? You can report bugs, request features, or send beta feedback at the [InferBridge support page](https://consultant.quinnfavo.com/apps/inferbridge#feedback). No GitHub issue formatting is required.
+> Prefer a simpler form? Use **Send feedback** on the [InferBridge support page](https://consultant.quinnfavo.com/apps/inferbridge#feedback) to report a bug or request a feature. No GitHub issue formatting is required.
 
 **Is your feature request related to a problem? Please describe.**
 A clear and concise description of what the problem is. Ex. "I'm frustrated when I try to..."

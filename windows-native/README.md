@@ -73,6 +73,13 @@ with an accent primary action), responsive card grids (1/2/3 columns below
   `curl.exe` examples, or run the existing five-check synthetic self-test.
   Each result stays distinct. The native UI cannot enable LAN access or
   recover a stored API key; enter a session key on Engine & devices when required.
+  **Connect a tool** adds cards for Continue, GitHub Copilot CLI, VS Code
+  Copilot Chat, the GitHub Copilot app, Cline, Roo Code/Zoo Code and generic
+  apps, each with copyable values, steps, a context-window note and **Test
+  connection**. Continue (`~/.continue/config.yaml` merge with backup) and
+  Copilot CLI (user environment variables; PowerShell commands in the Store
+  edition) are one-click after a preview and confirmation, with Undo. No real
+  API key is ever written. See [Connect a tool](../docs/CONNECTION_HUB.md#connect-a-tool).
 - **Web GUI (secondary)**: an optional link under **Engine & devices** opens the browser interface only on explicit user action. The button re-verifies the engine and uses its loopback URL without credentials. Chat, Model library and other native pages have no persistent browser promotion.
 
 ## Feature parity tracking
@@ -218,6 +225,11 @@ local engine. Check both the default and smallest permitted window sizes, at
    selection, Python/curl placeholder copies, and all five self-test statuses.
    Restart the engine while the page is open and confirm stale values/results
    are invalidated. Confirm the page never enables LAN or firewall changes.
+   Under **Connect a tool**, confirm cards say Not ready until a chat model is
+   selected, Continue preview/confirm/Undo round-trips `config.yaml` (with and
+   without an existing file), Copilot CLI sets and restores variables in a new
+   terminal (installer edition) or shows PowerShell commands (Store edition),
+   and every Test connection button runs the self-test.
 4. **Navigation and other screens:** collapse and expand the window; the
    navigation pane should adapt automatically (status pills hide with the
    pane). Engine & devices, Hugging Face, Benchmark Lab, System Doctor,
