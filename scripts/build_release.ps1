@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param(
     [string]$Version = "",
-    [ValidateSet("stable", "beta", "nightly")][string]$Channel = "stable",
+    # auto derives the channel from the version: no suffix -> stable, beta/rc -> beta,
+    # dev or other suffix -> nightly. An explicit channel is validated against the version.
+    [ValidateSet("auto", "stable", "beta", "nightly")][string]$Channel = "auto",
     [switch]$Clean,
     [switch]$Unsigned,
     [switch]$SkipInstaller,
@@ -184,6 +186,13 @@ $PackagePhase = $Phase -in @("All", "Package")
 $CanonicalVersion = (& $Python scripts/release_tools.py canonical-version).Trim()
 if ($LASTEXITCODE -ne 0) { throw "Could not read the canonical application version." }
 if (-not $Version) { $Version = $CanonicalVersion }
+$SourceBranch = (& git branch --show-current 2>$null)
+if ($LASTEXITCODE -ne 0 -or -not $SourceBranch) { $SourceBranch = "$env:BUILD_SOURCEBRANCH" }
+$RequestedChannel = $Channel
+$ResolvedChannel = (& $Python scripts/release_tools.py resolve-channel --version $Version --channel $RequestedChannel --branch "$SourceBranch")
+if ($LASTEXITCODE -ne 0 -or -not $ResolvedChannel) { throw "Release channel '$RequestedChannel' is not valid for version $Version (see the release validation message above)." }
+$Channel = "$ResolvedChannel".Trim()
+Write-Host "Release build: version $Version, channel $Channel (requested $RequestedChannel), branch $(if ($SourceBranch) { $SourceBranch } else { 'detached' })"
 Invoke-Checked "Validate semantic version and channel" { & $Python scripts/release_tools.py validate-version --version $Version --channel $Channel }
 Invoke-Checked "Verify canonical version consistency" { & $Python scripts/release_tools.py verify-version-consistency --root $Root --version $Version }
 Invoke-Checked "Verify pinned release requirements" { & $Python scripts/release_tools.py verify-requirements --path requirements/release.txt }

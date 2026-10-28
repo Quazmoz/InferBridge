@@ -39,17 +39,75 @@ def release_repository(environment: dict[str, str] | None = None) -> str:
     return selected
 
 
+RELEASE_CHANNELS = ("stable", "beta", "nightly")
+CHANNEL_SOURCE_BRANCHES = {"stable": "main", "beta": "beta", "nightly": "dev"}
+
+
+def channel_for_version(version: str) -> str:
+    """Derive the only release channel a version can use.
+
+    No pre-release suffix -> stable; beta/rc -> beta; dev or any other suffix -> nightly.
+    """
+    parsed = SemanticVersion.parse(version)
+    if not parsed.prerelease:
+        return "stable"
+    if parsed.prerelease[0].lower().startswith(("beta", "rc")):
+        return "beta"
+    return "nightly"
+
+
+def channel_for_branch(branch: str | None) -> str | None:
+    """Map a source branch (``main`` or ``refs/heads/main``) to its usual channel."""
+    name = str(branch or "").strip().removeprefix("refs/heads/")
+    for channel, source in CHANNEL_SOURCE_BRANCHES.items():
+        if name == source:
+            return channel
+    return None
+
+
+def _channel_hint(version: str, channel: str) -> str:
+    fitting = channel_for_version(version)
+    return (
+        f"version is {version}; run on {CHANNEL_SOURCE_BRANCHES[channel]} "
+        f"(where app/version.py has a {channel} version) or choose channel "
+        f"{fitting} (or auto)."
+    )
+
+
 def validate_version(version: str, channel: str) -> SemanticVersion:
     parsed = SemanticVersion.parse(version)
     if channel == "stable" and parsed.prerelease:
-        raise ValueError("Stable releases cannot use a pre-release version.")
+        raise ValueError(
+            "Stable releases cannot use a pre-release version: " + _channel_hint(version, channel)
+        )
     if channel == "beta" and (
         not parsed.prerelease or not parsed.prerelease[0].lower().startswith(("beta", "rc"))
     ):
-        raise ValueError("Beta releases must use a beta or rc pre-release identifier.")
+        raise ValueError(
+            "Beta releases must use a beta or rc pre-release identifier: "
+            + _channel_hint(version, channel)
+        )
     if channel == "nightly" and not parsed.prerelease:
-        raise ValueError("Nightly releases must use a pre-release version.")
+        raise ValueError(
+            "Nightly releases must use a pre-release version: " + _channel_hint(version, channel)
+        )
     return parsed
+
+
+def resolve_channel(version: str, requested: str = "auto", branch: str | None = None) -> str:
+    """Resolve ``auto`` from the version; validate an explicit channel override.
+
+    The version decides ``auto`` because it is what the safety check validates; the
+    branch is informational, so a branch/version mismatch never blocks an auto build.
+    """
+    requested = str(requested or "auto").strip().lower()
+    if requested not in ("auto", *RELEASE_CHANNELS):
+        raise ValueError(
+            f"Unknown release channel {requested!r}; use auto, stable, beta or nightly."
+        )
+    channel = channel_for_version(version) if requested == "auto" else requested
+    validate_version(version, channel)
+    return channel
 
 
 def verify_version_consistency(root: Path, requested: str) -> None:
