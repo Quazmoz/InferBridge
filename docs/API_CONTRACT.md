@@ -16,7 +16,13 @@ A mock contract result is not evidence that a driver or hardware target works.
 
 ## Local model context configuration (not OpenAI routes)
 
-- `GET /v1/models/context?model=<id>`: current total, prompt/output budgets,
+- `GET /v1/models/contexts`: every registered model, loaded or not, with
+  `configured_context_tokens`, `recommended_context_tokens`,
+  `model_architecture_limit_tokens`, custom-value bounds, `trial`, `loaded`,
+  `applies` (`now`/`next-load`) and `configurable` (false for embedding models).
+- `GET /v1/models/context?model=<id>`: works for any registered model (loaded or
+  not); adds `presets`, `minimum_context_tokens`, `maximum_context_tokens` and
+  `applies` to the current total, prompt/output budgets,
   recommended baseline, optional converted-model architecture bound, candidate
   choices, and explicitly unverified memory guidance.
 - `POST /v1/models/context`: `{ "model": "<id>", "context_tokens": 4096,
@@ -25,6 +31,11 @@ A mock contract result is not evidence that a driver or hardware target works.
   succeeds only after engine replacement (if loaded) and durable catalog save.
   Compilation or persistence failure retains the prior engine/config and
   returns a sanitized 409 response. No inference is started by this route.
+  For an unloaded model the value is only persisted and used on its next load.
+- `POST /v1/models/load` accepts optional strict `context_tokens`. For an unloaded
+  model it is validated and persisted as above before the load is scheduled
+  (400/409 leave the catalog and load state unchanged); a different value for an
+  already loaded model returns 409 (use the context route to apply now).
 
 Hardware eligibility beyond the original recommendation must be certified on
 the requested OpenVINO runtime/device. See [Context budget](CONTEXT_BUDGET.md).

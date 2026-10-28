@@ -29,7 +29,7 @@ of a page was not obvious.
 | Benchmark Lab | Configuration checkboxes, preset, run, progress, history picker, run details as prose, comparison prose | Throughput/TTFT numbers only as text; no way to see which device or model is faster at a glance; no trend. |
 | System Doctor | Summary sentence, devices, model readiness, `[LEVEL] title` check list, model-health rows | Counts and RAM/disk readings existed but were only text; level was a bracketed word, not a visual state. |
 | Storage & cache | Summary sentence and cleanup rows | Acceptable; single column. |
-| Settings | Generation settings, per-model context window, about & updates | Generation settings belong next to the conversation they affect. |
+| Settings | Generation settings, per-model context window (all models), about & updates | Generation settings belong next to the conversation they affect. Context is also edited on each model card and in Chat through one shared editor dialog. |
 
 ## 2. Information architecture
 

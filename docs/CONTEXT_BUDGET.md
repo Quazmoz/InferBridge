@@ -54,13 +54,43 @@ The preflight does not change generation behavior. It reports what the existing 
 
 ## Adaptive model context configuration
 
-The browser's **Context budget** panel and native WinUI **Settings → Per-model
-context window** use the same authoritative Python model catalog and OpenVINO
-engine lifecycle. They display the current total context, prompt budget, output
-reserve, recommended baseline, model-architecture limit when available, and
-eligible size choices. Settings survive a restart; chat history is not altered.
+Every registered model has its own saved context window, and it can be read
+and changed **without loading the model**. One shared editor serves every
+surface:
 
-`GET /v1/models/context?model=<id>` returns options and advisory estimates.
+- **Native Model library:** each model card shows `Context: 8,192 tokens` with a
+  **Context…** button. Downloaded (unloaded) models also offer **Load with
+  context…**, which opens the same editor and loads with the chosen value.
+- **Native Chat:** the model/device bar shows the selected model's context with
+  **Context…** (or **Load with context…** for an unloaded model), and the
+  Inference settings pane shows it next to the *Context used* ring with
+  **Change…**. An ordinary load states which saved context it uses.
+- **Native Settings → Per-model context window:** a list of every model and its
+  context, each with **Edit…**.
+- **Browser Model Library:** the same per-model line, editor and **Load with
+  context…** on each registered model's card.
+
+The editor shows the current value, the recommended value and the model's
+architecture maximum (from the converted `config.json`), offers presets (2K, 4K,
+8K, 16K, 32K, 64K, 128K, capped at the model maximum) plus a custom whole number,
+estimates the FP16 KV cache for any value, and marks values above the
+recommendation as **trial**. Invalid values get a friendly message before
+anything is sent. For a loaded model the primary action is **Apply now (reloads
+engine, chat kept)**; otherwise **Save for next load** ("Used next time this
+model loads"). Connect a tool and Connection Hub token limits follow the saved
+value immediately.
+
+`GET /v1/models/contexts` lists every registered model (loaded or not) with its
+configured, recommended and architecture-limit values, custom-value bounds, a
+`trial` flag, `loaded`, and `applies` (`now` or `next-load`); embedding models
+are listed with `configurable: false`. `POST /v1/models/load` accepts an optional
+strict `context_tokens`: for an unloaded model it is validated and persisted
+exactly like the route below before the load is scheduled; for an already
+loaded model a different value is refused with 409 and a pointer to Apply now.
+
+`GET /v1/models/context?model=<id>` returns options, presets, custom-value bounds
+(`minimum_context_tokens`, `maximum_context_tokens`), `applies`, and advisory
+estimates for any registered model, loaded or not.
 `POST /v1/models/context` accepts a strict JSON body:
 
 ```json
