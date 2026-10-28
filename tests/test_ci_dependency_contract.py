@@ -37,7 +37,8 @@ def test_dependabot_targets_dev_with_conservative_dependency_domains() -> None:
 
 
 def test_github_hosted_build_workflows_are_retired() -> None:
-    # Manual Azure DevOps is the sole packaged Windows/release build path.
+    # Manual Azure DevOps and the tag-driven github-release.yml (both through
+    # scripts/build_release.ps1) are the only packaged Windows/release build paths.
     for path in (
         ".github/workflows/native-windows.yml",
         ".github/workflows/release.yml",
@@ -239,3 +240,32 @@ def test_manual_packaged_smoke_runs_both_packaged_modes_through_release_builder(
     # The frozen tray must report a failed headless startup, not just exit 6.
     assert "InferBridge headless startup failed: Configured port $port is unavailable" in workflow
     assert "if ($process.ExitCode -ne 6)" in workflow
+
+
+def test_tag_release_workflow_builds_verifies_and_publishes_through_release_builder() -> None:
+    # Pushing a v<version> tag publishes the unsigned build as a GitHub Release.
+    workflow = _read(".github/workflows/github-release.yml")
+    assert "  push:\n    tags:\n      - 'v*'" in workflow
+    assert "\n    branches:" not in workflow
+    assert "\n  pull_request:" not in workflow
+    assert "  workflow_dispatch:" in workflow
+    assert "permissions:\n  contents: write" in workflow
+    assert "secrets." not in workflow
+    # The tag must name the canonical version at the tagged commit.
+    assert "scripts/release_tools.py canonical-version" in workflow
+    assert 'if ($tag -ne "v$version")' in workflow
+    assert "resolve-channel --version $version --channel auto" in workflow
+    # Same builder (tests + packaged smoke) and provenance gate as Azure.
+    assert (
+        "./scripts/build_release.ps1 -Version $version -Channel $channel -Unsigned -Clean"
+        in workflow
+    )
+    assert "-SkipTests" not in workflow
+    assert "-Sign " not in workflow
+    assert "scripts/verify_release_provenance.py" in workflow
+    assert workflow.index("verify_release_provenance.py") < workflow.index("'release', 'create'")
+    assert "'--verify-tag'" in workflow
+    assert "'--prerelease'" in workflow
+    assert '"docs/releases/$version.md"' in workflow
+    for suffix in ("windows-x64-installer.exe", "windows-x64-portable.zip", "checksums.txt"):
+        assert f'"InferBridge-$version-{suffix}"' in workflow

@@ -115,4 +115,8 @@ Do not mark upgrade, uninstall, icons, or signing verified from a development ma
 
 The publisher validates the canonical version, clean tree, expected artifact names, checksums, provenance, duplicate tag, duplicate GitHub release, and any signature claims before creating an annotated tag and release. Stable releases may be unsigned; the manifest must make no signing claim, and release notes must disclose that status. Beta and nightly releases are marked pre-release and must not be described as signed unless their signatures are verified.
 
+### Publish from a tag on GitHub Actions
+
+`.github/workflows/github-release.yml` publishes without a local Windows build. Push a tag named `v` + `app/version.py` on the release branch's head (for example `git tag -a v1.1.1-beta.1 -m "InferBridge 1.1.1-beta.1"` on `beta`, then `git push origin v1.1.1-beta.1`). The workflow refuses a tag that does not match the version at the tagged commit or that already has a release (including a draft), builds with `scripts/build_release.ps1 -Unsigned -Clean` on `windows-2022` (ruff, pytest, mock contract, native contract tests, installed and portable packaged smoke), runs `scripts/verify_release_provenance.py`, then creates the release on the tagged commit with the same eleven assets `publish_release.ps1` uploads and `docs/releases/<version>.md` as its notes. Beta and nightly versions are marked pre-release. **Run workflow** with an existing tag re-runs it after a failure. These artifacts are unsigned, so Windows SmartScreen warns on first launch.
+
 Published tags and release assets are immutable. Already published unsigned releases must never be replaced or retagged. A later signed build must advance the version.

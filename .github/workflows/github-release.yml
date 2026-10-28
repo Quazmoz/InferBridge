@@ -1,0 +1,169 @@
+# Tag-driven GitHub Release publisher for InferBridge.
+#
+# Pushing a version tag (v<app/version.py>, e.g. v1.1.1-beta.1 from beta or v1.1.1 from
+# main) builds the unsigned Windows release through the same scripts/build_release.ps1
+# path as the Azure DevOps pipeline, including ruff, pytest, the source mock contract,
+# the native contract tests and the installed and portable packaged mock smoke tests.
+# The complete artifact set is then verified with scripts/verify_release_provenance.py
+# and published as a GitHub Release on the tagged commit. Beta and nightly versions are
+# marked pre-release. workflow_dispatch re-runs the publisher for an existing tag.
+#
+# Artifacts are UNSIGNED (Windows SmartScreen will warn) and are not hardware-qualified.
+# The tag must equal "v" + app/version.py at the tagged commit or the run fails.
+name: GitHub Release (tag)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing version tag to build and publish, e.g. v1.1.1-beta.1"
+        type: string
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: github-release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build, verify and publish unsigned Windows release
+    # Matches the Azure DevOps release agent image (azure-pipelines.yml vmImage).
+    runs-on: windows-2022
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ inputs.tag || github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          architecture: 'x64'
+
+      - name: Guard tag, version, channel and existing release
+        id: guard
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = $env:RELEASE_TAG
+          if ($tag -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$') { throw "Not a version tag: $tag" }
+          $version = (python scripts/release_tools.py canonical-version).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $version) { throw 'Could not read app/version.py.' }
+          if ($tag -ne "v$version") { throw "Tag $tag does not match app/version.py (v$version) at the tagged commit." }
+          $sha = (git rev-parse --verify HEAD).Trim()
+          $tagSha = (git rev-list -n 1 "refs/tags/$tag").Trim()
+          if ($LASTEXITCODE -ne 0 -or $sha -ne $tagSha) { throw "Checkout $sha is not the tagged commit $tagSha." }
+          if (-not (Test-Path -LiteralPath "docs/releases/$version.md" -PathType Leaf)) {
+            throw "Release notes are required at docs/releases/$version.md."
+          }
+          $null = cmd /c "gh release view $tag >NUL 2>NUL"
+          if ($LASTEXITCODE -eq 0) {
+            throw "A GitHub release (possibly a draft) already exists for $tag. Delete it before re-running."
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "sha=$sha" >> $env:GITHUB_OUTPUT
+          Write-Host "Release tag $tag -> version $version at $sha"
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install Inno Setup
+        run: |
+          choco install innosetup --no-progress -y
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup installation failed: $LASTEXITCODE" }
+
+      - name: Prepare qualified release dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements/release.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Release dependency installation failed' }
+          python -m pip install --disable-pip-version-check --no-deps --no-build-isolation .
+          if ($LASTEXITCODE -ne 0) { throw 'Project installation failed' }
+
+      - name: Build unsigned release with packaged smoke tests
+        id: build
+        env:
+          RELEASE_VERSION: ${{ steps.guard.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = $env:RELEASE_VERSION
+          $channel = (python scripts/release_tools.py resolve-channel --version $version --channel auto)
+          if ($LASTEXITCODE -ne 0 -or -not $channel) { throw "No release channel fits version $version." }
+          $channel = "$channel".Trim()
+          $output = Join-Path $env:GITHUB_WORKSPACE 'artifacts/github-release'
+          Write-Host "Building $version on channel $channel into $output"
+          & ./scripts/build_release.ps1 -Version $version -Channel $channel -Unsigned -Clean -OutputDirectory $output -Python python
+          if ($LASTEXITCODE -ne 0) { throw "Release build failed with exit code $LASTEXITCODE" }
+          "channel=$channel" >> $env:GITHUB_OUTPUT
+          "output=$output" >> $env:GITHUB_OUTPUT
+
+      - name: Verify release provenance and checksums
+        env:
+          RELEASE_VERSION: ${{ steps.guard.outputs.version }}
+          RELEASE_CHANNEL: ${{ steps.build.outputs.channel }}
+          RELEASE_SHA: ${{ steps.guard.outputs.sha }}
+          RELEASE_OUTPUT: ${{ steps.build.outputs.output }}
+        run: |
+          python scripts/verify_release_provenance.py --artifact-directory $env:RELEASE_OUTPUT --version $env:RELEASE_VERSION --channel $env:RELEASE_CHANNEL --expected-commit $env:RELEASE_SHA --source-model-manifest model_library_manifest.json
+          if ($LASTEXITCODE -ne 0) { throw 'Release provenance or checksums mismatch.' }
+
+      - name: Upload release artifacts to the run
+        uses: actions/upload-artifact@v7
+        with:
+          name: inferbridge-${{ steps.guard.outputs.version }}-windows-x64-unsigned
+          path: ${{ steps.build.outputs.output }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Create GitHub Release on the tagged commit
+        env:
+          RELEASE_VERSION: ${{ steps.guard.outputs.version }}
+          RELEASE_CHANNEL: ${{ steps.build.outputs.channel }}
+          RELEASE_OUTPUT: ${{ steps.build.outputs.output }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = $env:RELEASE_VERSION
+          $tag = $env:RELEASE_TAG
+          # Same asset set as scripts/publish_release.ps1 and earlier GitHub releases.
+          $expected = @(
+            "InferBridge-$version-windows-x64-installer.exe",
+            "InferBridge-$version-windows-x64-portable.zip",
+            "InferBridge-$version-checksums.txt",
+            "InferBridge-$version-release-manifest.json",
+            "InferBridge-$version-third-party-licenses.zip",
+            "InferBridge-$version-release-notes.md",
+            "InferBridge-$version-dependency-inventory.json",
+            "InferBridge-$version-dependency-freeze.txt",
+            "InferBridge-$version-release-summary.json",
+            "InferBridge-$version-release-timings.json",
+            "model-library-manifest.json"
+          )
+          $upload = foreach ($name in $expected) {
+            $path = Join-Path $env:RELEASE_OUTPUT $name
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing release artifact: $name" }
+            $path
+          }
+          $arguments = @('release', 'create', $tag, '--verify-tag', '--title', "InferBridge $version", '--notes-file', "docs/releases/$version.md")
+          if ($env:RELEASE_CHANNEL -ne 'stable') { $arguments += '--prerelease' }
+          $arguments += $upload
+          & gh @arguments
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub release creation or upload failed.' }
+          $published = @(((gh release view $tag --json assets | ConvertFrom-Json).assets) | ForEach-Object { $_.name })
+          foreach ($name in $expected) {
+            if ($published -notcontains $name) { throw "Published release is missing artifact: $name" }
+          }
+          gh release view $tag --json url,isPrerelease,assets --jq '{url, isPrerelease, assets: [.assets[] | {name, size}]}'
