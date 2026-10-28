@@ -12,6 +12,14 @@ on:
         description: "Skip pytest and the source mock contract (packaged smoke tests still run)"
         type: boolean
         default: false
+      extra_smoke_runs:
+        description: "Repeat the installed and portable packaged smoke tests this many extra times (flakiness check)"
+        type: string
+        default: '0'
+      cpu_affinity_mask:
+        description: "Optional CPU affinity mask for the build and smoke processes, e.g. 3 = two cores like Azure hosted agents"
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -56,7 +64,13 @@ jobs:
       - name: Build unsigned release with installed and portable packaged smoke tests
         env:
           SKIP_SOURCE_TESTS: ${{ inputs.skip_source_tests }}
+          CPU_AFFINITY_MASK: ${{ inputs.cpu_affinity_mask }}
         run: |
+          if ($env:CPU_AFFINITY_MASK) {
+            # Child processes (PyInstaller, the frozen tray and its server) inherit this.
+            (Get-Process -Id $PID).ProcessorAffinity = [IntPtr][int64]$env:CPU_AFFINITY_MASK
+            Write-Host "Processor affinity mask: $env:CPU_AFFINITY_MASK"
+          }
           $arguments = @{
             Channel = 'auto'
             Unsigned = $true
@@ -71,6 +85,40 @@ jobs:
           }
           & ./scripts/build_release.ps1 @arguments
           if ($LASTEXITCODE -ne 0) { throw "Release build failed with exit code $LASTEXITCODE" }
+
+      - name: Repeat packaged smoke tests
+        if: ${{ inputs.extra_smoke_runs != '0' && inputs.extra_smoke_runs != '' }}
+        env:
+          EXTRA_SMOKE_RUNS: ${{ inputs.extra_smoke_runs }}
+          CPU_AFFINITY_MASK: ${{ inputs.cpu_affinity_mask }}
+        run: |
+          if ($env:CPU_AFFINITY_MASK) {
+            (Get-Process -Id $PID).ProcessorAffinity = [IntPtr][int64]$env:CPU_AFFINITY_MASK
+          }
+          $runs = [int]$env:EXTRA_SMOKE_RUNS
+          $python = @(Get-ChildItem build/release-environments -Filter python.exe -Recurse |
+            Where-Object { $_.Directory.Name -eq 'Scripts' } | Select-Object -First 1)[0].FullName
+          $distribution = (Resolve-Path dist/InferBridge).Path
+          $marker = Join-Path $distribution 'portable.flag'
+          $failures = 0
+          for ($i = 1; $i -le $runs; $i++) {
+            foreach ($mode in @('installed', 'portable')) {
+              if ($mode -eq 'portable') { Set-Content -Path $marker -Value 'portable' -Encoding ascii }
+              try {
+                Write-Host "==> Extra packaged smoke $i/$runs ($mode)"
+                & ./scripts/smoke_test_packaged.ps1 -DistributionPath $distribution -Python $python -ExpectedMode $mode
+              }
+              catch {
+                $failures++
+                Write-Host "::error::Extra packaged smoke $i/$runs ($mode) failed: $($_.Exception.Message)"
+              }
+              finally {
+                Remove-Item -LiteralPath $marker -Force -ErrorAction SilentlyContinue
+              }
+            }
+          }
+          Write-Host "Extra packaged smoke failures: $failures of $($runs * 2)"
+          if ($failures) { throw "$failures extra packaged smoke run(s) failed." }
 
       - name: Upload build timing and summary
         if: always()
