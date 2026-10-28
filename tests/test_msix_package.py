@@ -185,3 +185,52 @@ def test_staging_rejects_symlinked_python_payload(tmp_path):
         pytest.skip("Symbolic links not available in this test environment.")
     with pytest.raises(RuntimeError, match="symbolic links"):
         _stage(tmp_path)
+
+
+def test_every_manifest_logo_ships_at_every_scale_with_unplated_taskbar_icons(tmp_path):
+    from PIL import Image
+
+    from scripts.msix_package import APP_ICON_TARGET_SIZES, SCALES, write_assets
+
+    root = ET.fromstring(render_manifest(version="1.0.0", **IDENTITY))
+    values = [value for element in root.iter() for value in element.attrib.values()]
+    values += [element.text or "" for element in root.iter()]
+    references = {
+        value.removeprefix("Assets\\").removesuffix(".png")
+        for value in values
+        if value.startswith("Assets\\")
+    }
+    # Store logo, app list icon, small/medium/wide/large tiles and the splash screen.
+    assert references == {
+        "StoreLogo",
+        "Square44x44Logo",
+        "Square71x71Logo",
+        "Square150x150Logo",
+        "Wide310x150Logo",
+        "Square310x310Logo",
+        "SplashScreen",
+    }
+    written = {path.name: path for path in write_assets(tmp_path)}
+    for name in references:
+        for scale in SCALES:
+            assert f"{name}.scale-{scale}.png" in written
+    for size in APP_ICON_TARGET_SIZES:
+        assert f"Square44x44Logo.targetsize-{size}_altform-unplated.png" in written
+    for name, path in written.items():
+        width, height, _mark = ASSETS[name]
+        with Image.open(path) as image:
+            assert image.size == (width, height), name
+            # Never blank: the brand mark is drawn on every asset.
+            assert image.getbbox() is not None, name
+    with Image.open(written["Square150x150Logo.scale-200.png"]) as tile:
+        assert tile.size == (300, 300)
+
+
+def test_stage_packs_resources_pri_for_scaled_logos(tmp_path):
+    _python_dist(tmp_path / "dist")
+    _native_publish(tmp_path / "native-publish")
+    mapping = _stage(tmp_path)
+    text = mapping.read_text(encoding="utf-8")
+    assert '"resources.pri"' in text
+    assert (tmp_path / "msix" / "layout" / "AppxManifest.xml").is_file()
+    assert not (tmp_path / "msix" / "layout" / "mapping.txt").exists()

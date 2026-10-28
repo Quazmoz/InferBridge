@@ -1,7 +1,8 @@
 """Stage the Microsoft Store MSIX layout: the WinUI client plus the Python engine.
 
 The package launches the native client from native/ and keeps the installed-mode
-PyInstaller engine at the root. Writes AppxManifest.xml, the tile assets, and a
+PyInstaller engine at the root. Writes AppxManifest.xml and the scaled logo
+assets under layout/ (indexed into resources.pri by build_msix.ps1), and a
 MakeAppx mapping file that points at the built files in place (no multi-gigabyte
 staging copy). scripts/build_msix.ps1 packs it.
 """
@@ -18,13 +19,38 @@ ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = ROOT / "packaging" / "msix" / "AppxManifest.xml"
 _IDENTITY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.-]{2,49}$")
 _VERSION_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$")
-# Tile sizes the manifest references; MakeAppx rejects a package missing any of them.
-ASSETS = {
-    "StoreLogo.png": (50, 50),
-    "Square44x44Logo.png": (44, 44),
-    "Square150x150Logo.png": (150, 150),
-    "Wide310x150Logo.png": (310, 150),
+# Logos the manifest references, as (100% width, 100% height, mark size as a
+# fraction of the shorter side). Each is written at every Store scale; the
+# packaged resources.pri (scripts/build_msix.ps1) lets Windows pick the sharpest.
+TILES = {
+    "StoreLogo": (50, 50, 1.0),
+    "Square44x44Logo": (44, 44, 1.0),
+    "Square71x71Logo": (71, 71, 0.75),
+    "Square150x150Logo": (150, 150, 0.5),
+    "Wide310x150Logo": (310, 150, 0.5),
+    "Square310x310Logo": (310, 310, 0.5),
+    "SplashScreen": (620, 300, 0.5),
 }
+SCALES = (100, 125, 150, 200, 400)
+# Taskbar, Start and Explorer icons; "altform-unplated" drops the accent plate.
+APP_ICON_TARGET_SIZES = (16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96, 256)
+
+
+def _asset_sizes() -> dict[str, tuple[int, int, float]]:
+    assets = {}
+    for name, (width, height, mark) in TILES.items():
+        for scale in SCALES:
+            size = (width * scale + 50) // 100, (height * scale + 50) // 100
+            assets[f"{name}.scale-{scale}.png"] = (*size, mark)
+    for size in APP_ICON_TARGET_SIZES:
+        assets[f"Square44x44Logo.targetsize-{size}.png"] = (size, size, 1.0)
+        assets[f"Square44x44Logo.targetsize-{size}_altform-unplated.png"] = (size, size, 1.0)
+    return assets
+
+
+ASSETS = _asset_sizes()
+LAYOUT = "layout"  # MakePri indexes only this folder: the manifest and Assets\.
+RESOURCES_PRI = "resources.pri"
 
 
 def msix_version(version: str) -> str:
@@ -72,11 +98,12 @@ def write_assets(directory: Path) -> list[Path]:
     from PIL import Image
 
     directory.mkdir(parents=True, exist_ok=True)
+    master = render_brand_icon()
     written = []
-    for name, (width, height) in ASSETS.items():
-        side = min(width, height)
+    for name, (width, height, fraction) in ASSETS.items():
+        side = max(1, round(min(width, height) * fraction))
         canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-        mark = render_brand_icon(max(side, 16)).resize((side, side), Image.Resampling.LANCZOS)
+        mark = master.resize((side, side), Image.Resampling.LANCZOS)
         canvas.paste(mark, ((width - side) // 2, (height - side) // 2), mark)
         path = directory / name
         canvas.save(path, format="PNG", optimize=True)
@@ -161,10 +188,14 @@ def stage(
             relative = file.relative_to(distribution)
             if bundled and relative.parts[0].casefold() == "native":
                 continue
-            if relative.parts[0].casefold() in {"appxmanifest.xml", "assets"}:
+            if relative.parts[0].casefold() in {"appxmanifest.xml", "assets", RESOURCES_PRI}:
                 raise RuntimeError(f"Distribution file collides with package metadata: {relative}")
             distribution_payload.append((file, str(relative).replace("/", "\\")))
-    targets = {"appxmanifest.xml", *(("assets\\" + name).casefold() for name in ASSETS)}
+    targets = {
+        "appxmanifest.xml",
+        RESOURCES_PRI,
+        *(("assets\\" + name).casefold() for name in ASSETS),
+    }
     for source, target in [*distribution_payload, *native_payload]:
         if '"' in str(source) or '"' in target:
             raise RuntimeError("MakeAppx mapping paths must not contain quotes.")
@@ -178,11 +209,14 @@ def stage(
         publisher_display_name=publisher_display_name,
         version=version,
     )
-    output_dir.mkdir(parents=True, exist_ok=True)
-    manifest = output_dir / "AppxManifest.xml"
+    layout = output_dir / LAYOUT
+    layout.mkdir(parents=True, exist_ok=True)
+    manifest = layout / "AppxManifest.xml"
     manifest.write_text(manifest_xml, encoding="utf-8")
     entries = [(manifest, "AppxManifest.xml")]
-    entries += [(path, f"Assets\\{path.name}") for path in write_assets(output_dir / "Assets")]
+    entries += [(path, f"Assets\\{path.name}") for path in write_assets(layout / "Assets")]
+    # build_msix.ps1 runs MakePri over the layout before packing.
+    entries.append((layout / RESOURCES_PRI, RESOURCES_PRI))
     entries.extend(distribution_payload)
     entries.extend(native_payload)
     mapping = output_dir / "mapping.txt"

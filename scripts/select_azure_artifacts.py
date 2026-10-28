@@ -46,6 +46,7 @@ def verify_msix(path: Path, *, identity: str, publisher: str, version: str) -> N
             "native/inferbridge.native.deps.json",
             "native/coreclr.dll",
             "inferbridge.exe",
+            "resources.pri",  # scaled and unplated logos resolve through it
         ):
             if required not in names:
                 raise ValueError(f"MSIX is missing the required {required} entry")

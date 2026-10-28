@@ -34,6 +34,7 @@ def _make_msix(
         archive.writestr("native/InferBridge.Native.deps.json", b"{}")
         archive.writestr("native/coreclr.dll", b"runtime")
         archive.writestr("InferBridge.exe", b"engine")
+        archive.writestr("resources.pri", b"mrm_pri2")
         if signed:
             archive.writestr("AppxSignature.p7x", b"signature")
 
@@ -116,7 +117,8 @@ def test_missing_msix_does_not_publish_partial_installer(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "bad", ["identity", "publisher", "version", "signed", "native", "engine", "runtime"]
+    "bad",
+    ["identity", "publisher", "version", "signed", "native", "engine", "runtime", "resources"],
 )
 def test_msix_identity_unsigned_and_native_payload_are_mandatory(tmp_path, bad):
     path = tmp_path / "candidate.msix"
@@ -127,11 +129,12 @@ def test_msix_identity_unsigned_and_native_payload_are_mandatory(tmp_path, bad):
         signed=bad == "signed",
         publisher="CN=other" if bad == "publisher" else PUBLISHER,
     )
-    if bad in ("native", "engine", "runtime"):
+    if bad in ("native", "engine", "runtime", "resources"):
         missing = {
             "native": "native/InferBridge.Native.exe",
             "engine": "InferBridge.exe",
             "runtime": "native/coreclr.dll",
+            "resources": "resources.pri",
         }[bad]
         with zipfile.ZipFile(path) as source:
             entries = {name: source.read(name) for name in source.namelist() if name != missing}

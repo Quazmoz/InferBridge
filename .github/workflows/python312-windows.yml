@@ -12,6 +12,7 @@ on:
       - 'requirements/release.txt'
       - 'requirements-dev.txt'
       - 'app/**'
+      - 'packaging/msix/**'
       - 'runtime/**'
       - 'scripts/**'
       - 'tests/**'
@@ -115,3 +116,26 @@ jobs:
               throw "Native WinUI publish missing required file: $name"
             }
           }
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          architecture: 'x64'
+      - name: Pack a structural Store MSIX (real WinUI client, placeholder engine, never uploaded)
+        shell: pwsh
+        run: |
+          # Validates the manifest, every scaled/unplated logo and resources.pri with the
+          # Windows SDK's MakePri and MakeAppx. Not a release candidate: the engine is a stub.
+          python -m pip install --disable-pip-version-check pillow==12.3.0
+          if ($LASTEXITCODE -ne 0) { throw 'Pillow install failed.' }
+          $engine = Join-Path $env:RUNNER_TEMP 'inferbridge-msix-engine'
+          New-Item (Join-Path $engine '_internal') -ItemType Directory -Force | Out-Null
+          Set-Content -LiteralPath (Join-Path $engine 'InferBridge.exe') -Value 'placeholder engine'
+          Set-Content -LiteralPath (Join-Path $engine '_internal\python312.dll') -Value 'placeholder runtime'
+          $out = Join-Path $env:RUNNER_TEMP 'inferbridge-msix-out'
+          $publisher = 'CN=CAC9A06A-996E-4DC7-9079-45803515E811'
+          ./scripts/build_msix.ps1 -Version 1.1.0 -DistributionPath $engine `
+            -NativePublishDirectory (Join-Path $env:RUNNER_TEMP 'inferbridge-native-qualification') `
+            -OutputDirectory $out -IdentityName QuinnFavo.InferBridge -Publisher $publisher -PublisherDisplayName 'Quinn Favo'
+          $package = Join-Path $out 'InferBridge-1.1.0-windows-x64.msix'
+          python -c "import sys; from pathlib import Path; from scripts.select_azure_artifacts import verify_msix; verify_msix(Path(sys.argv[1]), identity='QuinnFavo.InferBridge', publisher=sys.argv[2], version='1.1.0')" $package $publisher
+          if ($LASTEXITCODE -ne 0) { throw 'Structural MSIX verification failed.' }
