@@ -77,6 +77,8 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
           "sha=$sha" >> $env:GITHUB_OUTPUT
           Write-Host "Release tag $tag -> version $version at $sha"
+          # The release probe above exits 1 when no release exists; do not leak it as the step result.
+          exit 0
 
       - uses: actions/setup-dotnet@v6
         with:
