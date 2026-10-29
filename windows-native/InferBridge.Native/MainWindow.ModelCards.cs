@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 
 namespace InferBridge.Native;
@@ -67,9 +68,20 @@ public sealed partial class MainWindow
         var contextRow = new Grid { ColumnSpacing = 8, Margin = new Thickness(52, 0, 0, 0) };
         contextRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         contextRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        contextRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        // Spins while this model's context is applied (engine rebuild or save).
+        var contextBusy = new ProgressRing
+        {
+            IsActive = false, Visibility = Visibility.Collapsed, Width = 16, Height = 16,
+            VerticalAlignment = VerticalAlignment.Center, Foreground = Ui.ResBrush("InferBridgeBrandBrush"),
+        };
+        AutomationProperties.SetName(contextBusy, "Applying context for " + model.Name);
+        contextRow.Children.Add(contextBusy);
         var contextLine = Ui.Text(ContextLineText(ContextSummaryFor(model.Id)), "CaptionTextBlockStyle");
         contextLine.VerticalAlignment = VerticalAlignment.Center;
         AutomationProperties.SetName(contextLine, "Context window for " + model.Name);
+        AutomationProperties.SetLiveSetting(contextLine, AutomationLiveSetting.Polite);
+        Grid.SetColumn(contextLine, 1);
         contextRow.Children.Add(contextLine);
         var contextEdit = new Button
         {
@@ -80,10 +92,10 @@ public sealed partial class MainWindow
             ? "Change the context window. Apply now reloads the engine and keeps your chat."
             : "Change the context window. Used next time this model loads.");
         contextEdit.Click += ModelRowAction_Click;
-        Grid.SetColumn(contextEdit, 1);
+        Grid.SetColumn(contextEdit, 2);
         contextRow.Children.Add(contextEdit);
         card.Children.Add(contextRow);
-        _modelContextLines[model.Id] = (contextLine, contextEdit);
+        _modelContextLines[model.Id] = (contextLine, contextEdit, contextBusy);
 
         // A classified load failure explains itself and offers one-click recoveries.
         if (model.Status == "error" && model.Error is { Length: > 0 } failure)

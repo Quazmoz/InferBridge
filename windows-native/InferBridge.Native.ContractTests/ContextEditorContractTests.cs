@@ -153,6 +153,21 @@ internal static class ContextEditorContractTests
             && ContextEditor.CanCommit(unloaded, ContextEditor.Validate(unloaded, 8192), ContextEditorMode.LoadWith)
             && ContextEditor.CanCommit(unloaded, ContextEditor.Validate(unloaded, 4096), ContextEditorMode.Edit),
             "commit gating is wrong");
+        // In-progress and success copy shown from Apply until the engine confirms.
+        Check(ContextEditor.ApplyingText(16384, loaded: true) == "Applying 16K context… rebuilding engine"
+            && ContextEditor.ApplyingText(16384, loaded: false) == "Saving 16K context…"
+            && ContextEditor.ApplyingText(null, loaded: true) == "Applying the new context… rebuilding engine"
+            && ContextEditor.ApplyingText(8192, loaded: true, "u8") == "Applying INT8 KV cache… rebuilding engine"
+            && ContextEditor.ApplyingText(20000, loaded: true) == "Applying 20,000 context… rebuilding engine",
+            "applying status text changed");
+        Check(ContextEditor.AppliedText(16384) == "Context set to 16K"
+            && ContextEditor.AppliedText(8192, "u4") == "KV cache set to INT4 · context 8K"
+            && ContextEditor.AppliedText(8192, "auto") == "KV cache set to Auto · context 8K",
+            "success text changed");
+        Check(ContextEditor.SendPausedText(16384).StartsWith("Rebuilding the engine for 16K context…",
+                StringComparison.Ordinal)
+            && ContextEditor.SendPausedText(null).Contains("your message is kept", StringComparison.Ordinal),
+            "chat rebuild guard text changed");
         Check(ContextEditor.ChipText(8192) == "Context: 8,192 tokens"
             && ContextEditor.ChipText(null) == "Context: not reported", "model card chip text changed");
         Check(ContextEditor.Facts(unloaded) == "Current 8,192 · Recommended 8,192 · Model maximum 32,768",
@@ -190,7 +205,7 @@ internal static class ContextEditorContractTests
             return path switch
             {
                 "/v1/models" => Json("""{"data":[{"id":"model-a","name":"A","status":"ready_to_load"}]}"""),
-                "/v1/models/contexts" => Json("""{"object":"list","data":[{"model_id":"model-a","name":"A","configurable":true,"configured_context_tokens":8192,"recommended_context_tokens":8192,"model_architecture_limit_tokens":32768,"loaded":false,"trial":false},{"model_id":"embed","name":"E","configurable":false,"configured_context_tokens":null,"loaded":false}]}"""),
+                "/v1/models/contexts" => Json("""{"object":"list","data":[{"model_id":"model-a","name":"A","configurable":true,"configured_context_tokens":8192,"recommended_context_tokens":8192,"model_architecture_limit_tokens":32768,"loaded":false,"trial":false,"changing":true},{"model_id":"embed","name":"E","configurable":false,"configured_context_tokens":null,"loaded":false}]}"""),
                 "/v1/models/context" => Json("{\"status\":\"applied\",\"context\":" + ContextBody(20000) + "}"),
                 "/v1/models/load" => Json("""{"status":"queued"}"""),
                 _ => throw new InvalidOperationException("Unexpected route " + path),
@@ -202,6 +217,9 @@ internal static class ContextEditorContractTests
                 ArchitectureLimit: 32768, Loaded: false }
             && summaries[1] is { Configurable: false, Current: null },
             "the all-models context list was parsed incorrectly");
+        // The engine's own "changing" flag lets every surface show an apply started elsewhere.
+        Check(summaries[0].Changing && !summaries[1].Changing,
+            "the engine's in-progress (changing) flag was not parsed");
 
         var applied = await client.SetContextAsync(unloaded, 20000, Key, CancellationToken.None);
         Check(applied.Current == 20000, "a custom value was not confirmed by the engine");

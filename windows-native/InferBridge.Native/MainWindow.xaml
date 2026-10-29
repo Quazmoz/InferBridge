@@ -1303,12 +1303,23 @@
                                    TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    AutomationProperties.Name="Current inference settings" />
-                        <TextBlock x:Name="ChatContextSummary" Grid.Row="3" Grid.Column="0"
-                                   Text="Context: not reported" VerticalAlignment="Center"
-                                   TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   AutomationProperties.LiveSetting="Polite"
-                                   AutomationProperties.Name="Context window for the selected chat model" />
+                        <Grid Grid.Row="3" Grid.Column="0" ColumnSpacing="6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <!-- Spins while the selected model's context is applied (engine rebuild). -->
+                            <ProgressRing x:Name="ChatContextBusyRing" IsActive="False" Visibility="Collapsed"
+                                          Width="16" Height="16" VerticalAlignment="Center"
+                                          Foreground="{ThemeResource InferBridgeBrandBrush}"
+                                          AutomationProperties.Name="Applying context" />
+                            <TextBlock x:Name="ChatContextSummary" Grid.Column="1"
+                                       Text="Context: not reported" VerticalAlignment="Center"
+                                       TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       AutomationProperties.LiveSetting="Polite"
+                                       AutomationProperties.Name="Context window for the selected chat model" />
+                        </Grid>
                         <Button x:Name="ChatLoadWithContextButton" Grid.Row="3" Grid.Column="1"
                                 Content="Context…" IsEnabled="False"
                                 Click="ChatLoadWithContextButton_Click"
@@ -1417,6 +1428,12 @@
                             <local:WrapRow Grid.Row="1" Spacing="8">
                                 <ProgressRing x:Name="ChatProgress" IsActive="False"
                                               Width="20" Height="20" VerticalAlignment="Center" />
+                                <!-- Shown while the selected model's engine rebuilds for a new context. -->
+                                <TextBlock x:Name="ChatRebuildText" Visibility="Collapsed" VerticalAlignment="Center"
+                                           TextWrapping="Wrap" MaxWidth="560"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           AutomationProperties.LiveSetting="Polite"
+                                           AutomationProperties.Name="Engine rebuild status" />
                                 <TextBlock Text="Ctrl+Enter send · Esc stop · Ctrl+L new chat" VerticalAlignment="Center"
                                            Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
@@ -1495,15 +1512,20 @@
                                                      HorizontalAlignment="Center" />
                                     <Grid ColumnSpacing="8">
                                         <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock x:Name="ChatPaneContextText" Text="Context: not reported"
+                                        <ProgressRing x:Name="ChatPaneContextBusyRing" IsActive="False" Visibility="Collapsed"
+                                                      Width="16" Height="16" VerticalAlignment="Center"
+                                                      Foreground="{ThemeResource InferBridgeBrandBrush}"
+                                                      AutomationProperties.Name="Applying context" />
+                                        <TextBlock x:Name="ChatPaneContextText" Grid.Column="1" Text="Context: not reported"
                                                    VerticalAlignment="Center" TextWrapping="Wrap"
                                                    Style="{StaticResource CaptionTextBlockStyle}"
                                                    AutomationProperties.LiveSetting="Polite"
                                                    AutomationProperties.Name="Context window for the current model" />
-                                        <Button x:Name="ChatPaneContextButton" Grid.Column="1"
+                                        <Button x:Name="ChatPaneContextButton" Grid.Column="2"
                                                 Content="Change…" IsEnabled="False"
                                                 Click="ChatPaneContextButton_Click"
                                                 AutomationProperties.Name="Change the context window for the current model" />

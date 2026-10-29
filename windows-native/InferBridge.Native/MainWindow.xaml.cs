@@ -1348,14 +1348,16 @@ public sealed partial class MainWindow : Window
 
     private void UpdateChatButtons()
     {
+        // While the selected model's engine rebuilds for a new context, sends wait for it.
+        bool rebuilding = ChatModelRebuilding;
         SendButton.IsEnabled = !_chatBusy && !_isManaging && !RefreshLocksControls && !_quitting
-            && SelectedChatModel?.Status == "loaded"
+            && !rebuilding && SelectedChatModel?.Status == "loaded"
             && (_turns.Count == 0 || SelectedModelId == _conversationModelId);
         CancelButton.IsEnabled = _chatBusy;
         CopyLastReplyButton.IsEnabled = !_chatBusy && !_quitting
             && _turns.LastOrDefault() is { Role: "assistant" };
         RegenerateButton.IsEnabled = !_chatBusy && !_isManaging && !RefreshLocksControls && !_quitting
-            && ChatTranscript.CanRegenerate(_turns)
+            && !rebuilding && ChatTranscript.CanRegenerate(_turns)
             && SelectedChatModel?.Status == "loaded" && SelectedModelId == _conversationModelId;
         UpdateChatEjectButton();
         SavedChatsPicker.IsEnabled = !_chatBusy && !_quitting && _historyAvailable;
@@ -1375,7 +1377,7 @@ public sealed partial class MainWindow : Window
         ScanHardwareButton.IsEnabled = _engineConnected && !_quitting && !_scanningDevices;
         PromptBox.IsEnabled = !_chatBusy;
         NewChatButton.IsEnabled = !_chatBusy && !_quitting;
-        ChatProgress.IsActive = _chatBusy;
+        UpdateChatRebuildState();
         UpdateAttachmentSummary();
         UpdateGenerationSettingsInfo();
         UpdateModelButtons();
@@ -1796,6 +1798,13 @@ public sealed partial class MainWindow : Window
         string? modelId = SelectedModelId;
         string prompt = regenerate ? _turns.ElementAtOrDefault(_turns.Count - 2)?.Content ?? ""
             : PromptBox.Text.Trim();
+        if (!_chatBusy && ChatModelRebuilding)
+        {
+            // Guard, not queue: the draft stays in the composer and Send returns when ready.
+            ShowChatInfo("Engine rebuilding", ContextEditor.SendPausedText(_contextApplying?.Tokens),
+                InfoBarSeverity.Informational);
+            return;
+        }
         if (_chatBusy || _isManaging || _isRefreshing || modelId is null
             || _quitting || SelectedChatModel?.Status != "loaded"
             || (_turns.Count > 0 && modelId != _conversationModelId)

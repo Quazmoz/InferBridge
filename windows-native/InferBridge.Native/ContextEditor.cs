@@ -192,6 +192,30 @@ internal static class ContextEditor
         ? "Applied " + Format(tokens) + " tokens. The engine was rebuilt; your chat history is kept."
         : "Saved " + Format(tokens) + " tokens. Used next time this model loads.";
 
+    /// <summary>
+    /// The busy line shown from the moment a value is applied until the engine
+    /// confirms it: "Applying 16K context… rebuilding engine" for a loaded model,
+    /// "Saving 16K context…" for an unloaded one. A KV-only change names the precision.
+    /// </summary>
+    public static string ApplyingText(int? tokens, bool loaded, string? kvChange = null)
+    {
+        string what = kvChange is { Length: > 0 } kv ? KvName(kv) + " KV cache"
+            : tokens is int value ? ShortLabel(value) + " context" : "the new context";
+        return loaded ? "Applying " + what + "… rebuilding engine" : "Saving " + what + "…";
+    }
+
+    /// <summary>The brief success title: "Context set to 16K".</summary>
+    public static string AppliedText(int tokens, string? kvChange = null) =>
+        kvChange is { Length: > 0 } kv ? "KV cache set to " + KvName(kv) + " · context " + ShortLabel(tokens)
+            : "Context set to " + ShortLabel(tokens);
+
+    /// <summary>Composer note while the selected model's engine rebuilds; sends wait for it.</summary>
+    public static string SendPausedText(int? tokens) =>
+        "Rebuilding the engine" + (tokens is int value ? " for " + ShortLabel(value) + " context" : "")
+        + "… Send is paused until it is ready; your message is kept.";
+
+    private static string KvName(string value) => value == "auto" ? "Auto" : KvShort(value);
+
     /// <summary>The primary button is enabled only for a valid value that changes something.</summary>
     public static bool CanCommit(ContextConfiguration context, ContextChoice choice, ContextEditorMode mode,
         string? precision = null) =>

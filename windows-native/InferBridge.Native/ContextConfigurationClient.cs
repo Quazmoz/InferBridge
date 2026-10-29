@@ -24,7 +24,7 @@ internal sealed record ContextConfiguration(
 /// <summary>Context facts for one registered model, loaded or not (model lists).</summary>
 internal sealed record ContextSummary(
     string ModelId, string Name, bool Configurable, int? Current, int? Recommended,
-    int? ArchitectureLimit, bool Loaded, bool Trial);
+    int? ArchitectureLimit, bool Loaded, bool Trial, bool Changing = false);
 
 internal sealed partial class BackendClient
 {
@@ -221,7 +221,9 @@ internal sealed partial class BackendClient
                 configurable, current, Tokens(row, "recommended_context_tokens"),
                 Tokens(row, "model_architecture_limit_tokens"),
                 row.TryGetProperty("loaded", out var loaded) && loaded.ValueKind == JsonValueKind.True,
-                row.TryGetProperty("trial", out var trial) && trial.ValueKind == JsonValueKind.True));
+                row.TryGetProperty("trial", out var trial) && trial.ValueKind == JsonValueKind.True,
+                // An apply in progress anywhere (this app or the browser): engine is rebuilding.
+                row.TryGetProperty("changing", out var changing) && changing.ValueKind == JsonValueKind.True));
         }
         return result;
     }
