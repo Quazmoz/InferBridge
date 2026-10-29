@@ -10,7 +10,7 @@ _EXTENSION_ID = "ovllm-model-library-extension"
 # fmt: off
 MODEL_LIBRARY_CSS = r"""
 #model-library-btn{position:relative}.ml-modal .modal-card{width:min(1080px,calc(100vw - 24px));max-height:min(920px,calc(100dvh - 24px));overflow:hidden}.ml-head p{margin-top:3px;color:var(--text-3);font-size:10px}.ml-body{min-height:0;overflow:auto;padding:16px 18px 22px;overscroll-behavior:contain}.ml-toolbar{display:grid;grid-template-columns:minmax(180px,1fr) auto auto;gap:8px;align-items:center}.ml-search,.ml-path,.ml-field{width:100%;min-height:38px;border:1px solid var(--border);border-radius:9px;background:var(--surface-2);color:var(--text-1);padding:8px 10px;font:inherit;font-size:10px}.ml-btn,.ml-chip{min-height:36px;padding:7px 11px;border:1px solid var(--border);border-radius:9px;background:var(--surface-2);color:var(--text-1);font:inherit;font-size:10px;font-weight:700;cursor:pointer}.ml-btn:hover:not(:disabled),.ml-chip:hover{border-color:var(--primary);background:var(--surface-3)}.ml-btn.primary,.ml-chip.active{border-color:transparent;background:var(--primary);color:#fff}.ml-btn:disabled{opacity:.5;cursor:not-allowed}.ml-profiles{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}.ml-summary{display:flex;justify-content:space-between;gap:12px;margin:14px 0 10px;color:var(--text-3);font-size:9.5px}.ml-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.ml-card{display:flex;min-width:0;flex-direction:column;gap:11px;padding:14px;border:1px solid var(--border);border-radius:13px;background:color-mix(in srgb,var(--surface-2) 80%,transparent)}.ml-card-head{display:flex;justify-content:space-between;gap:10px}.ml-card h4{font-size:13px;color:var(--text-1)}.ml-id{margin-top:2px;color:var(--text-3);font-size:8.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ml-desc{color:var(--text-2);font-size:9.5px;line-height:1.45}.ml-badges{display:flex;flex-wrap:wrap;gap:5px}.ml-badge{display:inline-flex;padding:3px 7px;border:1px solid var(--border);border-radius:999px;color:var(--text-3);font-size:8.5px;font-weight:700}.ml-badge.verified{color:var(--green);border-color:color-mix(in srgb,var(--green) 38%,var(--border))}.ml-badge.local{color:var(--primary);border-color:color-mix(in srgb,var(--primary) 40%,var(--border))}.ml-badge.warn{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 38%,var(--border))}.ml-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.ml-stat{min-width:0;padding:8px;border-radius:9px;background:var(--surface-3)}.ml-stat span,.ml-stat strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ml-stat span{color:var(--text-3);font-size:8px;text-transform:uppercase;letter-spacing:.55px}.ml-stat strong{margin-top:4px;color:var(--text-1);font-size:10px}.ml-health{padding:8px 9px;border-left:3px solid var(--border);border-radius:6px;background:var(--surface-3);color:var(--text-2);font-size:9px;line-height:1.4}.ml-health.compatible{border-color:var(--green)}.ml-health.stale_runtime,.ml-health.incomplete,.ml-health.incompatible_definition,.ml-health.invalid_metadata{border-color:var(--amber)}.ml-quant{color:var(--text-2);font-size:9px;line-height:1.42}.ml-quant strong{color:var(--text-1)}.ml-actions{display:flex;gap:7px;margin-top:auto}.ml-actions .ml-btn{flex:1}.ml-empty,.ml-loading{display:grid;min-height:280px;place-items:center;color:var(--text-3);text-align:center;font-size:10px}.ml-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 18px calc(11px + env(safe-area-inset-bottom));border-top:1px solid var(--border);background:var(--surface-1)}.ml-footer-note{max-width:650px;color:var(--text-3);font-size:9px;line-height:1.4}.ml-footer-actions{display:flex;gap:7px}.ml-import-panel{display:none;margin-top:12px;padding:12px;border:1px solid var(--border);border-radius:11px;background:var(--surface-2)}.ml-import-panel.open{display:block}.ml-import-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.ml-import-grid .wide{grid-column:1/-1}.ml-import-panel h4{margin-bottom:8px;font-size:11px}.ml-discovered{display:none;margin-top:12px;padding:11px 12px;border:1px solid color-mix(in srgb,var(--amber,#e7a93b) 38%,var(--border));border-radius:11px;background:color-mix(in srgb,var(--amber,#e7a93b) 6%,var(--surface-2))}.ml-discovered.open{display:block}.ml-discovered-title{font-size:10.5px;font-weight:800}.ml-discovered-copy{margin-top:3px;color:var(--text-2);font-size:9.5px;line-height:1.45}.ml-discovered-list{display:flex;flex-direction:column;gap:7px;margin-top:9px}.ml-discovered-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 9px;border:1px solid var(--border);border-radius:9px;background:var(--surface-1)}.ml-discovered-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-1);font-size:10px;font-weight:700}.ml-quick-import{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:5px 9px;border:1px solid var(--border);border-radius:9px;background:var(--surface-2);color:var(--text-1);font:inherit;font-size:10px;font-weight:750;cursor:pointer;white-space:nowrap}.ml-quick-import:hover{border-color:var(--primary);background:var(--surface-3)}.ml-quick-import[data-count]:not([data-count="0"])::after{content:attr(data-count);display:grid;min-width:17px;height:17px;place-items:center;padding:0 4px;border-radius:999px;background:var(--amber,#e7a93b);color:#111;font-size:8px;font-weight:850}.ml-import-actions{display:flex;justify-content:flex-end;gap:7px;margin-top:9px}.ml-error{margin-top:10px;padding:9px;border:1px solid color-mix(in srgb,var(--red) 40%,var(--border));border-radius:8px;color:var(--red);font-size:9.5px}.ml-check{display:flex;align-items:center;gap:6px;color:var(--text-2);font-size:9.5px}.ml-check input{accent-color:var(--primary)}
-@media(max-width:950px){.ml-quick-import span{display:none}.ml-quick-import{width:32px;justify-content:center;padding:0}}@media(max-width:820px){.ml-grid{grid-template-columns:1fr}.ml-toolbar{grid-template-columns:1fr auto}.ml-toolbar .ml-check{grid-column:1/-1}.ml-import-grid{grid-template-columns:1fr}.ml-import-grid .wide{grid-column:auto}}@media(max-width:540px){.ml-modal .modal-card{width:calc(100vw - 12px);max-height:calc(100dvh - 12px)}.ml-body{padding:12px}.ml-toolbar{grid-template-columns:1fr}.ml-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.ml-footer{align-items:stretch;flex-direction:column;padding:10px 12px calc(10px + env(safe-area-inset-bottom))}.ml-footer-actions{display:grid;grid-template-columns:1fr 1fr}.ml-btn{min-height:42px}}.ml-context{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 9px;border:1px solid var(--border);border-radius:9px;background:var(--surface-3);color:var(--text-2);font-size:9.5px}.ml-context strong{color:var(--text-1);font-variant-numeric:tabular-nums}.ml-context .ml-btn{flex:0 0 auto;min-height:30px}.ml-trial{margin-left:4px;padding:1px 6px;border:1px solid color-mix(in srgb,var(--amber) 45%,var(--border));border-radius:999px;color:var(--amber);font-size:8.5px;font-weight:800}.ml-ctx-editor{display:grid;gap:8px;padding:11px;border:1px solid color-mix(in srgb,var(--primary) 40%,var(--border));border-radius:11px;background:var(--surface-2)}.ml-ctx-editor[hidden]{display:none}.ml-ctx-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}.ml-ctx-editor label{display:grid;gap:4px;color:var(--text-2);font-size:9.5px;font-weight:700}.ml-ctx-facts,.ml-ctx-note{color:var(--text-2);font-size:9.5px;line-height:1.45}.ml-ctx-note.warn{color:var(--amber)}.ml-ctx-note.error{color:var(--red)}.ml-ctx-actions{display:flex;flex-wrap:wrap;gap:7px;justify-content:flex-end}
+@media(max-width:950px){.ml-quick-import span{display:none}.ml-quick-import{width:32px;justify-content:center;padding:0}}@media(max-width:820px){.ml-grid{grid-template-columns:1fr}.ml-toolbar{grid-template-columns:1fr auto}.ml-toolbar .ml-check{grid-column:1/-1}.ml-import-grid{grid-template-columns:1fr}.ml-import-grid .wide{grid-column:auto}}@media(max-width:540px){.ml-modal .modal-card{width:calc(100vw - 12px);max-height:calc(100dvh - 12px)}.ml-body{padding:12px}.ml-toolbar{grid-template-columns:1fr}.ml-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.ml-footer{align-items:stretch;flex-direction:column;padding:10px 12px calc(10px + env(safe-area-inset-bottom))}.ml-footer-actions{display:grid;grid-template-columns:1fr 1fr}.ml-btn{min-height:42px}}.ml-context{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 9px;border:1px solid var(--border);border-radius:9px;background:var(--surface-3);color:var(--text-2);font-size:9.5px}.ml-context strong{color:var(--text-1);font-variant-numeric:tabular-nums}.ml-context .ml-btn{flex:0 0 auto;min-height:30px}.ml-trial{margin-left:4px;padding:1px 6px;border:1px solid color-mix(in srgb,var(--amber) 45%,var(--border));border-radius:999px;color:var(--amber);font-size:8.5px;font-weight:800}.ml-ctx-editor{display:grid;gap:8px;padding:11px;border:1px solid color-mix(in srgb,var(--primary) 40%,var(--border));border-radius:11px;background:var(--surface-2)}.ml-ctx-editor[hidden]{display:none}.ml-ctx-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}.ml-ctx-editor label{display:grid;gap:4px;color:var(--text-2);font-size:9.5px;font-weight:700}.ml-ctx-facts,.ml-ctx-note{color:var(--text-2);font-size:9.5px;line-height:1.45}.ml-ctx-note.warn{color:var(--amber)}.ml-ctx-note.error{color:var(--red)}.ml-ctx-note.ok{color:var(--green);font-weight:700}.ml-ctx-progress{display:flex;align-items:center;gap:9px;padding:8px 9px;border:1px solid color-mix(in srgb,var(--primary) 45%,var(--border));border-radius:9px;background:var(--surface-3);color:var(--text-1);font-size:10.5px;font-weight:700;line-height:1.4}.ml-ctx-progress[hidden]{display:none}.ml-ctx-progress .spinner{width:16px;height:16px}.ml-ctx-editor[aria-busy="true"] .ml-field{opacity:.6}.ml-ctx-actions{display:flex;flex-wrap:wrap;gap:7px;justify-content:flex-end}
 """
 
 MODEL_LIBRARY_JS = r"""
@@ -348,6 +348,7 @@ async function openContextEditor(modelId, mode, opener) {
     `<div class="ml-ctx-note" id="ml-ctx-kv-note-${escapeHtml(modelId)}">${escapeHtml(details.kv_cache_precision_note || '')}</div>` +
     `<div class="ml-ctx-note">${escapeHtml(details.context_guidance || '')}</div>` +
     `<div class="ml-ctx-note" data-ctx-note aria-live="polite"></div>` +
+    `<div class="ml-ctx-progress" data-ctx-progress role="status" aria-live="polite" hidden><span class="spinner" aria-hidden="true"></span><span data-ctx-progress-text></span></div>` +
     `<div class="ml-ctx-note">${mode === 'load' ? 'The model loads with this context and keeps it for next time.' : loaded ? 'Apply now rebuilds the engine; your chat history is kept.' : 'Used next time this model loads.'}</div>` +
     `<div class="ml-ctx-actions"><button type="button" class="ml-btn" data-ctx-cancel>Cancel</button><button type="button" class="ml-btn primary" data-ctx-save>${escapeHtml(primary)}</button></div>`;
   const preset = editor.querySelector('[data-ctx-preset]');
@@ -355,6 +356,17 @@ async function openContextEditor(modelId, mode, opener) {
   const note = editor.querySelector('[data-ctx-note]');
   const save = editor.querySelector('[data-ctx-save]');
   const kvSelect = editor.querySelector('[data-ctx-kv]');
+  const cancel = editor.querySelector('[data-ctx-cancel]');
+  const progress = editor.querySelector('[data-ctx-progress]');
+  const progressText = editor.querySelector('[data-ctx-progress-text]');
+  const cardButton = grid.querySelector(`[data-context-edit="${CSS.escape(modelId)}"]`);
+  // From Apply/Save until the engine answers: spinner, locked inputs, no double submit.
+  const setBusy = (busy, text = '') => {
+    editor.setAttribute('aria-busy', busy ? 'true' : 'false');
+    [preset, input, kvSelect, save, cancel, cardButton].forEach(control => { if (control) control.disabled = busy; });
+    progress.hidden = !busy;
+    progressText.textContent = text;
+  };
   const savedKv = details.kv_cache_precision || 'auto';
   kvSelect.value = savedKv;
   const refresh = () => {
@@ -372,14 +384,19 @@ async function openContextEditor(modelId, mode, opener) {
   preset.onchange = () => { if (preset.value) input.value = preset.value; refresh(); };
   kvSelect.onchange = refresh;
   input.oninput = refresh;
-  editor.querySelector('[data-ctx-cancel]').onclick = () => { closeContextEditors(); opener?.focus(); };
+  cancel.onclick = () => { closeContextEditors(); opener?.focus(); };
   save.onclick = async () => {
+    if (editor.getAttribute('aria-busy') === 'true') return;
     const precision = kvSelect.value || 'auto';
     const choice = contextChoice(details, input.value, precision);
     if (!choice.ok) { refresh(); return; }
-    save.disabled = true;
+    const kvOnly = precision !== savedKv && choice.tokens === details.configured_context_tokens;
+    const what = kvOnly ? `${precision === 'auto' ? 'Auto' : kvLabel(precision)} KV cache` : `${shortTokens(choice.tokens)} context`;
     note.className = 'ml-ctx-note';
-    note.textContent = mode === 'load' ? 'Saving context and starting the load…' : loaded ? 'Rebuilding the engine with the new context…' : 'Saving…';
+    note.removeAttribute('role');
+    note.textContent = '';
+    setBusy(true, mode === 'load' ? `Saving ${what} and starting the load…`
+      : loaded ? `Applying ${what}… rebuilding engine. This can take a while; chat history is kept.` : `Saving ${what}…`);
     try {
       if (mode === 'load') {
         await api('/v1/models/load', {method: 'POST', headers: jsonHeaders(),
@@ -387,13 +404,21 @@ async function openContextEditor(modelId, mode, opener) {
       } else {
         await api('/v1/models/context', {method: 'POST', headers: jsonHeaders(),
           body: JSON.stringify({model: modelId, context_tokens: choice.tokens, expected_context_tokens: details.configured_context_tokens, kv_cache_precision: precision})});
+        // Brief success state before the cards repaint with the confirmed value.
+        progress.hidden = true;
+        note.className = 'ml-ctx-note ok';
+        note.textContent = `${kvOnly ? `KV cache set to ${precision === 'auto' ? 'Auto' : kvLabel(precision)} · context` : 'Context set to'} ${shortTokens(choice.tokens)}. ` +
+          (loaded ? 'The engine was rebuilt; your chat history is kept.' : 'Used next time this model loads.');
+        await new Promise(resolve => setTimeout(resolve, 1400));
       }
       await load();
     } catch (err) {
+      // The engine kept the old value: unlock the editor and keep the friendly error.
+      setBusy(false);
+      refresh();
       note.className = 'ml-ctx-note error';
       note.setAttribute('role', 'alert');
       note.textContent = err.message || 'Context was not confirmed. Refresh before retrying.';
-      save.disabled = false;
     }
   };
   refresh();

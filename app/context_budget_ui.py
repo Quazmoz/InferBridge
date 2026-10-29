@@ -56,6 +56,15 @@ CONTEXT_BUDGET_JS = r"""
         .ovcb-section{margin-top:14px}.ovcb-section-title{font-size:11px;font-weight:820}.ovcb-omissions{display:grid;gap:7px;margin-top:8px}.ovcb-omission{padding:9px 10px;border-left:3px solid var(--amber);border-radius:7px;background:var(--surface-2)}.ovcb-role{color:var(--text-3);font-size:9px;font-weight:850;letter-spacing:.08em;text-transform:uppercase}.ovcb-preview{margin-top:3px;color:var(--text-2);font-size:10.5px;line-height:1.45;overflow-wrap:anywhere}
         .ovcb-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.ovcb-button{min-height:32px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);color:var(--text-1);font:inherit;font-size:10.5px;font-weight:750;cursor:pointer}.ovcb-button:hover:not(:disabled){background:var(--surface-3)}.ovcb-button:focus-visible{outline:2px solid var(--primary);outline-offset:2px}.ovcb-button:disabled{opacity:.5;cursor:not-allowed}.ovcb-button.primary{border-color:color-mix(in srgb,var(--primary) 58%,var(--border));background:color-mix(in srgb,var(--primary) 13%,var(--surface-2))}
         .ovcb-config{border-top:1px solid var(--border);padding:12px 17px 16px;display:grid;gap:9px}.ovcb-config label{font-size:11px;font-weight:700}.ovcb-config select{min-height:36px;width:100%;padding:6px 9px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-1);font:inherit;font-size:11px}.ovcb-config-note{color:var(--text-2);font-size:10.5px;line-height:1.5;overflow-wrap:anywhere}#ov-context-budget-panel{max-height:min(78dvh,800px);overflow-y:auto}
+        #ov-context-rebuild{display:flex;align-items:center;gap:9px;width:min(820px,100%);margin:0 auto 8px;padding:7px 11px;border:1px solid color-mix(in srgb,var(--primary) 50%,var(--border));border-radius:10px;background:var(--surface-2);color:var(--text-1);font-size:11px;font-weight:700;line-height:1.45;box-sizing:border-box}
+        #ov-context-rebuild[hidden]{display:none}
+        #ov-context-rebuild[data-state="done"]{border-color:color-mix(in srgb,var(--green) 55%,var(--border));color:var(--green)}
+        #ov-context-rebuild[data-state="error"]{border-color:color-mix(in srgb,var(--red) 55%,var(--border));color:var(--red)}
+        #ov-context-rebuild .spinner,.ovcb-config-progress .spinner{width:14px;height:14px}
+        #ov-context-rebuild .spinner[hidden]{display:none}
+        .ovcb-config-progress{display:flex;align-items:center;gap:8px;color:var(--text-1);font-size:10.5px;font-weight:700;line-height:1.45}
+        .ovcb-config-progress[hidden]{display:none}
+        .ovcb-config[aria-busy="true"] select{opacity:.6}
         @media(max-width:700px){#ov-context-budget-chip{max-width:52vw}#ov-context-budget-panel{right:12px;bottom:104px}.ovcb-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.ovcb-actions{display:grid;grid-template-columns:1fr}.ovcb-button{width:100%}}
         @media(max-width:430px){.ovcb-grid{grid-template-columns:1fr}}
         @media(prefers-reduced-motion:reduce){.ovcb-meter-fill{transition:none}}
@@ -115,7 +124,16 @@ CONTEXT_BUDGET_JS = r"""
     const configRefresh = createElement('button', 'ovcb-button', 'Refresh settings');
     configApply.type = configReset.type = configRefresh.type = 'button';
     configActions.append(configApply, configReset, configRefresh);
-    configPanel.append(configLabel, configSelect, configNote, configActions);
+    // Shown from Apply until the engine confirms; the select and buttons stay locked meanwhile.
+    const configProgress = createElement('div', 'ovcb-config-progress');
+    configProgress.setAttribute('role', 'status');
+    configProgress.setAttribute('aria-live', 'polite');
+    configProgress.hidden = true;
+    const configSpinner = createElement('span', 'spinner');
+    configSpinner.setAttribute('aria-hidden', 'true');
+    const configProgressText = createElement('span');
+    configProgress.append(configSpinner, configProgressText);
+    configPanel.append(configLabel, configSelect, configProgress, configNote, configActions);
     panel.appendChild(configPanel);
     inputArea.appendChild(panel);
 
@@ -184,12 +202,23 @@ CONTEXT_BUDGET_JS = r"""
         }
     }
 
+    function setConfigProgress(text) {
+        configPanel.setAttribute('aria-busy', text ? 'true' : 'false');
+        configProgress.hidden = !text;
+        configProgressText.textContent = text;
+    }
+
     async function applyContext(tokens) {
         const original = contextSettings;
         if (contextBusy || !original || !original.options.some(item => item.tokens === tokens)) return;
         contextBusy = true;
         updateContextControls();
-        configNote.textContent = 'Compiling a replacement if needed. The current engine remains available until handoff…';
+        const loaded = availableModels.get(original.model_id)?.is_loaded === true;
+        configNote.textContent = '';
+        setConfigProgress(loaded
+            ? `Applying ${shortTokens(tokens)} context… rebuilding engine. Chat history is kept.`
+            : `Saving ${shortTokens(tokens)} context…`);
+        let applied = false;
         try {
             const response = await fetch('/v1/models/context', {
                 method: 'POST', headers: requestHeaders(), cache: 'no-store',
@@ -201,13 +230,20 @@ CONTEXT_BUDGET_JS = r"""
                 throw new Error(typeof payload?.detail === 'string' ? payload.detail :
                     'Context was not confirmed. Refresh before retrying.');
             }
-            configNote.textContent = 'Context saved; conversation history was preserved.';
+            applied = true;
             scheduleInspect(0);
         } catch (error) {
+            setConfigProgress('');
             configNote.textContent = error instanceof Error ? error.message : 'Context state uncertain. Refresh before retrying.';
         } finally {
             contextBusy = false;
+            setConfigProgress('');
             await refreshContextSettings();
+        }
+        // After the refresh, which rewrites the note: a brief success state.
+        if (applied) {
+            configNote.textContent = `Context set to ${shortTokens(tokens)}. ` +
+                (loaded ? 'The engine was rebuilt; conversation history was preserved.' : 'Used next time this model loads.');
         }
     }
     configSelect.addEventListener('change', updateContextControls);
@@ -222,6 +258,103 @@ CONTEXT_BUDGET_JS = r"""
     function formatNumber(value) {
         return Number.isFinite(Number(value)) ? Number(value).toLocaleString() : '–';
     }
+
+    function shortTokens(value) {
+        return value >= 1024 && value % 1024 === 0 ? `${value / 1024}K` : formatNumber(value);
+    }
+
+    // --- Engine rebuild status in the composer ----------------------------------------
+    // Applying a new context to a loaded model rebuilds its engine (often many seconds).
+    // Every apply goes through POST /v1/models/context, whichever surface sent it (this
+    // panel or the Model Library), so the request layer below drives one composer strip
+    // and guards sends to that model until the engine confirms.
+    const rebuild = createElement('div');
+    rebuild.id = 'ov-context-rebuild';
+    rebuild.hidden = true;
+    rebuild.setAttribute('role', 'status');
+    rebuild.setAttribute('aria-live', 'polite');
+    const rebuildSpinner = createElement('span', 'spinner');
+    rebuildSpinner.setAttribute('aria-hidden', 'true');
+    const rebuildText = createElement('span');
+    rebuild.append(rebuildSpinner, rebuildText);
+    inputArea.insertBefore(rebuild, inputArea.firstChild);
+    let rebuilding = null;
+    let rebuildTimer = null;
+
+    function showRebuild(state, message) {
+        clearTimeout(rebuildTimer);
+        rebuild.dataset.state = state;
+        rebuildSpinner.hidden = state !== 'busy';
+        rebuildText.textContent = message;
+        rebuild.hidden = !message;
+        const sendButton = document.getElementById('send-btn');
+        if (state === 'busy') sendButton?.setAttribute('aria-describedby', 'ov-context-rebuild');
+        else sendButton?.removeAttribute('aria-describedby');
+        if (state !== 'busy' && message) rebuildTimer = setTimeout(() => { rebuild.hidden = true; }, 5000);
+    }
+
+    function rebuildingSelected() {
+        return !!rebuilding && rebuilding.loaded && rebuilding.model === modelSelect.value;
+    }
+
+    async function trackContextApply(downstream, input, init) {
+        let request = {};
+        try { request = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') || {}; } catch { request = {}; }
+        const model = String(request.model || '');
+        const meta = availableModels.get(model);
+        const tokens = Number(request.context_tokens);
+        const loaded = meta?.is_loaded === true;
+        const size = Number.isFinite(tokens) ? `${shortTokens(tokens)} context` : 'the new context';
+        rebuilding = { model, tokens, loaded };
+        if (loaded) {
+            showRebuild('busy', `Applying ${size} to ${meta.name || model}… rebuilding engine. ` +
+                'Sending waits until it is ready; your message is kept.');
+        }
+        let response;
+        try {
+            response = await downstream(input, init);
+        } catch (error) {
+            rebuilding = null;
+            if (loaded) showRebuild('error', 'Context change was not confirmed. The current engine is still running.');
+            throw error;
+        }
+        rebuilding = null;
+        if (loaded) {
+            let ok = response.ok;
+            if (ok) {
+                try { ok = (await response.clone().json())?.status === 'applied'; } catch { ok = false; }
+            }
+            showRebuild(ok ? 'done' : 'error', ok
+                ? `Context set to ${shortTokens(tokens)}. The engine was rebuilt; chat history is kept.`
+                : 'Context change was not applied. The current engine is still running.');
+        }
+        return response;
+    }
+
+    function blockSendWhileRebuilding() {
+        if (typeof isGenerating !== 'undefined' && isGenerating) return false;
+        if (!rebuildingSelected()) return false;
+        if (typeof showToast === 'function') {
+            showToast('The engine is rebuilding for the new context. Your message is kept; send it when it is ready.');
+        }
+        userInput.focus();
+        return true;
+    }
+
+    if (typeof sendMessage === 'function') {
+        const originalSendMessage = sendMessage;
+        sendMessage = function contextRebuildAwareSendMessage(...args) {
+            if (blockSendWhileRebuilding()) return Promise.resolve();
+            return originalSendMessage(...args);
+        };
+    }
+    // Regenerate is bound by reference, so guard its clicks before they reach it.
+    document.addEventListener('click', event => {
+        if (event.target instanceof Element && event.target.closest('.meta-btn.regen') && blockSendWhileRebuilding()) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+        }
+    }, true);
 
     function requestHeaders() {
         const headers = { 'Content-Type': 'application/json' };
@@ -588,6 +721,9 @@ CONTEXT_BUDGET_JS = r"""
     InferBridge.use(async function contextBudgetAwareFetch(input, init = {}) {
         const target = endpoint(input);
         const method = String(init?.method || input?.method || 'GET').toUpperCase();
+        if (target.sameOrigin && target.path === '/v1/models/context' && method === 'POST') {
+            return trackContextApply(previousFetch, input, init);
+        }
         const response = await previousFetch(input, init);
         if (target.sameOrigin && STATUS_PATHS.has(target.path) && method === 'GET' && response.ok) {
             scheduleForModelStatus(response);
