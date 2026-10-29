@@ -34,10 +34,28 @@ rebuilds the pipeline; if the rebuild fails, the old engine and settings stay
 active. For an unloaded model the value is saved and **used next time this
 model loads**.
 
+While a value is being applied the editor stays open: its controls and buttons
+are locked (no double submits, no Cancel mid-rebuild) and a progress ring reads
+**Applying 16K context… rebuilding engine** for a loaded model, or **Saving 16K
+context…** for an unloaded one. The model card, the Chat model bar and the
+Inference settings pane show the same line with a small ring. On success the
+editor briefly shows **Context set to 16K** and closes; on failure the controls
+come back with the engine's friendly error and the old engine keeps running.
+Narrator announces the start, success and failure. While the selected chat
+model rebuilds, **Send** and **Regenerate** pause with a note in the composer;
+your draft is kept. An apply started from the browser (the engine reports the
+model as `changing`) shows the same busy line after the next list refresh.
+
 ### Browser UI
 
 Open **Model Library**. Each registered model's card has the same context line,
 editor, presets, KV cache precision picker and **Load with context…**.
+Applying shows a spinner and the same status text, locks the editor
+(`aria-busy`, polite live status), then shows **Context set to 16K** before the
+cards refresh; an error keeps the editor open with the message. The chat
+composer shows a rebuilding strip for the selected loaded model whichever
+surface applied the change (the Model Library or the context budget panel), and
+holds Send and Regenerate with a toast until the engine confirms.
 
 ### API
 

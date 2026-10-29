@@ -76,7 +76,7 @@ def test_chat_shows_context_with_change_and_load_with_context() -> None:
 
 def test_model_cards_show_editable_context_and_load_with_context() -> None:
     cards = (PROJECT / "MainWindow.ModelCards.cs").read_text(encoding="utf-8")
-    assert "_modelContextLines[model.Id] = (contextLine, contextEdit);" in cards
+    assert "_modelContextLines[model.Id] = (contextLine, contextEdit, contextBusy);" in cards
     assert "ContextLineText(ContextSummaryFor(model.Id))" in cards
     assert 'Tag = (model.Id, "context")' in cards
     assert 'Add("loadctx", "\\uE768", "Load with context…", model.CanLoad);' in cards
@@ -197,3 +197,108 @@ def test_kv_cache_precision_is_in_both_editors() -> None:
         "max for this model",
     ):
         assert needle in web, needle
+
+
+def test_native_apply_shows_progress_until_the_engine_confirms() -> None:
+    """Applying a value keeps the dialog open with a ring and locked controls, then succeeds or restores."""
+    editor = (PROJECT / "MainWindow.ContextEditor.cs").read_text(encoding="utf-8")
+    dialog = editor.split("ShowContextEditorDialogAsync(ContextConfiguration context,", 1)[1].split(
+        "\n    private async Task<bool> SaveContextAsync(", 1
+    )[0]
+    for needle in (
+        "new ProgressRing",
+        'Foreground = Ui.ResBrush("InferBridgeBrandBrush")',
+        "picker.IsEnabled = box.IsEnabled = kvPicker.IsEnabled = !on;",
+        "dialog.IsPrimaryButtonEnabled = !on;",
+        'dialog.CloseButtonText = on ? "" : "Cancel";',
+        "if (applying) args.Cancel = true;",  # no Esc/close mid-rebuild
+        "args.Cancel = true; // Stay open with progress until the engine answers.",
+        "if (applying) return;",  # no double submit
+        "ContextEditor.ApplyingText(choice.Tokens, context.Loaded, kvChange)",
+        "AnnounceContext(busyRow, busy);",
+        "bool ok = await apply(choice.Tokens, kv, Local);",
+        "dialog.Hide();",
+        'SetApplying(false, "");',
+        "AutomationLiveSetting.Polite",
+    ):
+        assert needle in dialog, needle
+    save = editor.split("private async Task<bool> SaveContextAsync(", 1)[1].split(
+        "\n    private async void ContextListEdit_Click", 1
+    )[0]
+    assert "_contextApplying = (baseline.ModelId, tokens, baseline.Loaded, kvChange);" in save
+    assert "_contextApplying = null;" in save.split("finally", 1)[1]
+    assert "ContextEditor.AppliedText(tokens, kvChange)" in save
+    assert "return confirmed;" in save
+    # Every surface showing the model reflects the busy state; polls never set it.
+    controls = editor.split("private void UpdateContextControls()", 1)[1].split(
+        "\n    private ", 1
+    )[0]
+    for needle in (
+        "ShowBusy(entry.Busy, ContextBusyText(modelId) is not null);",
+        "ShowBusy(ChatContextBusyRing, busy is not null);",
+        "ShowBusy(ChatPaneContextBusyRing, busy is not null);",
+        "UpdateChatRebuildState();",
+    ):
+        assert needle in controls, needle
+    refresh = editor.split("private async Task RefreshContextSummariesAsync(", 1)[1].split(
+        "\n    /// <summary>", 1
+    )[0]
+    assert "_contextApplying" not in refresh
+    # The engine's own "changing" flag shows an apply started elsewhere (e.g. the browser).
+    assert "ContextSummaryFor(modelId) is { Changing: true } row" in editor
+    client = (PROJECT / "ContextConfigurationClient.cs").read_text(encoding="utf-8")
+    assert 'row.TryGetProperty("changing", out var changing)' in client
+    assert "new TextBlock" not in editor
+    assert not re.search(r"\b(Foreground|Style)\s*=\s*null\b", editor)
+
+
+def test_native_busy_indicators_and_chat_guard_are_wired() -> None:
+    root = ET.parse(PROJECT / "MainWindow.xaml").getroot()
+    chat = _named(root, "ChatPanel")
+    for name in ("ChatContextBusyRing", "ChatPaneContextBusyRing"):
+        ring = _named(chat, name)
+        assert ring.tag == XAML + "ProgressRing"
+        assert ring.get("Visibility") == "Collapsed" and ring.get("IsActive") == "False"
+        assert ring.get("Foreground") == "{ThemeResource InferBridgeBrandBrush}"
+        assert (ring.get("AutomationProperties.Name") or "").strip()
+    rebuild = _named(chat, "ChatRebuildText")
+    assert rebuild.get("AutomationProperties.LiveSetting") == "Polite"
+    assert rebuild.get("TextWrapping") == "Wrap"  # 150 % scale wraps instead of clipping
+    cards = (PROJECT / "MainWindow.ModelCards.cs").read_text(encoding="utf-8")
+    assert "var contextBusy = new ProgressRing" in cards
+    window = (PROJECT / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    assert "&& !rebuilding && SelectedChatModel?.Status" in window
+    assert "if (!_chatBusy && ChatModelRebuilding)" in window
+    assert "ContextEditor.SendPausedText(_contextApplying?.Tokens)" in window
+    logic = (PROJECT / "ContextEditor.cs").read_text(encoding="utf-8")
+    assert '"… rebuilding engine"' in logic and '"Context set to "' in logic
+
+
+def test_web_editors_show_progress_and_composer_guards_sends() -> None:
+    library = (ROOT / "app" / "model_library_ui.py").read_text(encoding="utf-8")
+    for needle in (
+        'data-ctx-progress role="status" aria-live="polite"',
+        '<span class="spinner" aria-hidden="true"></span>',
+        "editor.setAttribute('aria-busy', busy ? 'true' : 'false');",
+        "[preset, input, kvSelect, save, cancel, cardButton].forEach(",
+        "if (editor.getAttribute('aria-busy') === 'true') return;",
+        "… rebuilding engine.",
+        "'Context set to'",
+        "note.className = 'ml-ctx-note ok';",
+        "setBusy(false);",
+    ):
+        assert needle in library, needle
+    composer = (ROOT / "app" / "context_budget_ui.py").read_text(encoding="utf-8")
+    for needle in (
+        "rebuild.id = 'ov-context-rebuild';",
+        "rebuild.setAttribute('role', 'status');",
+        "rebuild.setAttribute('aria-live', 'polite');",
+        "target.path === '/v1/models/context' && method === 'POST'",
+        "return trackContextApply(previousFetch, input, init);",
+        "sendMessage = function contextRebuildAwareSendMessage(",
+        "closest('.meta-btn.regen')",
+        "configPanel.setAttribute('aria-busy', text ? 'true' : 'false');",
+        "… rebuilding engine.",
+        "Context set to ${shortTokens(tokens)}.",
+    ):
+        assert needle in composer, needle
