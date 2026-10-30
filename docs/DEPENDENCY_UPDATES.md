@@ -14,6 +14,7 @@ and must pass the pinned release-environment gate and the Windows-native build:
 | fastapi | 0.143.0 | 0.162.0 | API request handling and OpenAI compatibility |
 | pydantic | 2.14.0 | 2.14.2 | Validation fixes |
 | optimum-intel | 2.0.0 | 2.2.0 | Model export and conversion |
+| optimum | 2.2.0 | 2.3.0 | Required by optimum-intel 2.2.0 (\`~=2.3.0\`) |
 | nncf | 3.2.0 | 3.4.0 | Compression and quantization |
 | safetensors | 0.7.0 | 0.8.0 | Model file decoding and conversion |
 

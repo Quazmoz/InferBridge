@@ -18,7 +18,7 @@ httpx==0.28.1
 pystray==0.19.5
 python-certifi-win32==1.6.1; platform_system == "Windows"
 optimum-intel[openvino]==2.2.0
-optimum==2.2.0
+optimum==2.3.0
 nncf==3.4.0
 huggingface_hub==1.19.0
 transformers==5.0.0
