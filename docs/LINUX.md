@@ -103,7 +103,9 @@ To uninstall, run `./InferBridge --quit`, then `./InferBridge --uninstall-deskto
 and delete the extracted application directory. User data is preserved. With
 `--portable`, move its `data/` elsewhere before deleting the directory. Removing
 the old version's menu entries cannot remove entries registered by a newer version.
-Autostart is not enabled. `.deb`, `.rpm`, AppImage and Flatpak are deferred until
+With sibling data, quit using `./InferBridge --portable --quit`; with an explicit
+data root, include the same `--data-dir` when quitting. Desktop menu entries use
+default XDG mode. Autostart is not enabled. `.deb`, `.rpm`, AppImage and Flatpak are deferred until
 their separate installer/upgrade/uninstall paths can be qualified.
 
 ## Build and qualification
@@ -130,11 +132,33 @@ System glibc, graphics/NPU drivers and optional shell helpers are not bundled.
 
 | Environment | Source smoke | Packaged mock | Real CPU | Real GPU | Real NPU |
 |---|---|---|---|---|---|
-| Ubuntu 22.04 x86_64 / Python 3.11, 3.12 | Prior CI passed; rerun on each change | CI gate on `dev` | Not tested | Not tested | Not tested |
-| Ubuntu 24.04 x86_64 / Python 3.11, 3.12 | Prior CI passed; rerun on each change | CI gate on `dev` | Not tested | Not tested | Not tested |
-| Fedora 44 x86_64 container | Not tested | CI gate on the same archive | Not tested | Not tested | Not tested |
+| Ubuntu 22.04 x86_64 / source Python 3.11, 3.12 | Passed | Passed | Random-model probe passed on AMD EPYC; Intel unverified | Not tested | Not tested |
+| Ubuntu 24.04 x86_64 / source Python 3.11, 3.12 | Passed | Passed | Not tested | Not tested | Not tested |
+| Fedora 44 x86_64 container | Not tested | Passed with the same archive | Not tested | Not tested | Not tested |
 | GNOME/KDE, Wayland/X11 | Not tested | Headless CI only | Not tested | Not tested | Not tested |
-| macOS ARM64 development host | Unit/static checks only | Unsupported Linux artifact host | Not tested | Unsupported | Unsupported |
+| macOS ARM64 development host | Unit/static and Chromium browser checks | Unsupported Linux artifact host | Not tested | Unsupported | Unsupported |
+
+Results above qualify code commit `fea8bf35529d34336ce9797954d664524fe866cd`
+on 30 October 2026: [Linux source matrix](https://github.com/Quazmoz/InferBridge/actions/runs/41072708478),
+[portable and real CPU jobs](https://github.com/Quazmoz/InferBridge/actions/runs/41072708370),
+and [Windows full source qualification](https://github.com/Quazmoz/InferBridge/actions/runs/41072708378).
+Local checks passed 1,697 unit tests (17 platform skips), all 44 Chromium tests,
+pinned Ruff lint/format, shell syntax and all 37 embedded JavaScript blocks.
+Each packaged mock API run passed 13 checks with one warning for optional
+tool/structured outputs, and no failures. The archive passed bootstrap, native
+library/converter import, CLI discovery, desktop registration/removal, duplicate
+launch, occupied-port refusal, restart, SIGINT, SIGTERM, owner crash recovery and
+no-installation-write checks from paths with spaces and Unicode.
+
+[Retained reports and SHA-256 hashes](certification/linux/2026-10-30-fea8bf3/README.md)
+record the CPU probe on **AMD EPYC 9V45**, Ubuntu **22.04.5**, kernel
+**6.8.0-1070-azure**, OpenVINO **2026.2.1**, GenAI/tokenizers **2026.2.1.0**,
+Optimum Intel **2.0.0** and CPU PyTorch **2.12.0+cpu**. The 6,476,069-byte
+FP16 test-model input converted and generated/streamed through the bundled
+application engine in 13.16 seconds; maximum single-process high-water RSS
+was 603,352 KiB. This is native x86_64 CI execution on AMD, not emulation,
+Intel CPU certification, useful-chat quality, or a full real-inference API run.
+No suitable physical Intel Linux CPU/GPU/NPU or graphical desktop was available.
 
 Consult the exact commit and run conclusion before treating a CI gate as passed.
 The separate `cpu-probe` CI job downloads at most 16 MiB of files from the pinned

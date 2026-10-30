@@ -1,0 +1,45 @@
+{
+  "generated_at": "2026-10-30T14:38:31.959304+00:00",
+  "commit": "fea8bf35529d34336ce9797954d664524fe866cd",
+  "os": {
+    "NAME": "Ubuntu",
+    "ID": "ubuntu",
+    "PRETTY_NAME": "Ubuntu 22.04.5 LTS",
+    "VERSION_ID": "22.04",
+    "VERSION": "22.04.5 LTS (Jammy Jellyfish)",
+    "VERSION_CODENAME": "jammy",
+    "ID_LIKE": "debian",
+    "HOME_URL": "https://www.ubuntu.com/",
+    "SUPPORT_URL": "https://help.ubuntu.com/",
+    "BUG_REPORT_URL": "https://bugs.launchpad.net/ubuntu/",
+    "PRIVACY_POLICY_URL": "https://www.ubuntu.com/legal/terms-and-policies/privacy-policy",
+    "UBUNTU_CODENAME": "jammy"
+  },
+  "kernel": "6.8.0-1070-azure",
+  "cpu": {
+    "vendor_id": "AuthenticAMD",
+    "model name": "AMD EPYC 9V45 96-Core Processor"
+  },
+  "openvino_cpu_name": "AMD EPYC 9V45 96-Core Processor                ",
+  "versions": {
+    "openvino": "2026.2.1",
+    "openvino-genai": "2026.2.1.0",
+    "openvino-tokenizers": "2026.2.1.0",
+    "optimum-intel": "2.0.0",
+    "torch": "2.12.0+cpu"
+  },
+  "model": "trl-internal-testing/tiny-random-LlamaForCausalLM",
+  "revision": "2c542e4731d42d3bb68324c4eca16df9f93b8b33",
+  "precision": "fp16",
+  "download_bytes": 6476069,
+  "requested_device": "CPU",
+  "execution_evidence": "Successful OpenVINO GenAI LLMPipeline generation compiled for the direct CPU target; no AUTO or fallback routing",
+  "completion_tokens": 10,
+  "stream_chunks": 7,
+  "elapsed_seconds": 13.16,
+  "peak_process_rss_kib": 603352,
+  "memory_scope": "Maximum process high-water RSS of probe or child converter, not simultaneous process-tree RSS",
+  "mock": false,
+  "passed": true,
+  "limits": "Untrained random test weights; no language-quality, full application CPU API, GPU or NPU certification"
+}

@@ -4,11 +4,17 @@ Installed application files may be read-only. Desktop mode therefore separates p
 
 ## Installed mode
 
-The default data root is:
+The Windows default data root is:
 
 ```text
 %LOCALAPPDATA%\InferBridge
 ```
+
+Linux desktop downloads default to `$XDG_DATA_HOME/InferBridge` when the XDG
+value is absolute, otherwise `~/.local/share/InferBridge`. The same subdirectory
+layout applies, using normal Linux path separators. A relative XDG value is
+ignored. An explicit `LOCALAPPDATA` value remains a compatibility override;
+`OV_LLM_DATA_DIR` and `--data-dir` take precedence. See [Linux downloads](LINUX.md).
 
 Subdirectories:
 
@@ -42,13 +48,19 @@ data root.
 
 ## Portable mode
 
-A portable build contains `portable.flag`. Mutable state is stored under:
+A Windows portable ZIP contains `portable.flag`. Mutable state is stored under:
 
 ```text
 <portable folder>\data
 ```
 
 Move the entire portable directory to move the application and its data. Ensure the target volume is writable and has enough free space for model downloads and conversion staging.
+
+The Linux portable **application archive** uses XDG user data by default so the
+extracted application can be read-only. `./InferBridge --portable` explicitly opts
+into `<extracted directory>/data`. Use the same mode or `--data-dir` when quitting
+or relaunching. Preserve or move this sibling data before removing the application
+directory; see the [Linux upgrade/uninstall procedure](LINUX.md#data-upgrades-and-uninstall).
 
 ## Overrides and development compatibility
 

@@ -17,6 +17,14 @@ InferBridge.exe
 
 `app.desktop_launcher` remains the packaged executable entry point and converter/server-child dispatcher. Normal desktop launch delegates to `app.tray_app`.
 
+Linux uses a small shell entry point and a private relocatable CPython runtime to
+run these same modules. It opens the built-in browser UI and never invokes WinUI.
+The owner/controller remains active when no tray is available; an independent
+Quit menu entry and `--quit` use the existing command file and instance lock.
+SIGINT/SIGTERM request owner cleanup, while the child monitors owner identity to
+stop after an owner crash. Python sources and namespace registrations remain on
+disk for Optimum conversion discovery. See [Linux packaging](LINUX.md).
+
 `app.desktop_controller` owns start, stop, restart, readiness polling, child identity, port selection, metadata, graceful shutdown, and crash detection. It reuses the P0 instance lock, nonce verification, and writable paths.
 
 `app.desktop_operations` presents one typed operational view over existing model-manager, onboarding, hardware-advisor, benchmark, event, and configuration state. Tray status is derived from this view rather than becoming another source of truth.
@@ -58,5 +66,10 @@ An unexpected child exit changes tray state to error and makes Restart available
 ## Installed and portable paths
 
 Installed mode uses `%LOCALAPPDATA%\InferBridge`. Portable mode uses `<portable directory>\data`. Models, configuration, onboarding state, benchmarks, logs, diagnostics, caches, desktop network preferences, and the DPAPI-encrypted desktop API key remain outside packaged resources and survive ordinary upgrades.
+
+Those defaults and DPAPI persistence describe Windows. Linux normally uses XDG
+user data, with sibling data as an explicit `--portable` option. Linux GUI keys
+are currently memory-only; environment-provided keys are required across backend
+restarts. See [data paths](DATA_PATHS.md) and [Linux network setup](LINUX.md#first-model-chat-and-api).
 
 See [LAN and home-lab access](LAN_ACCESS.md) for configuration precedence, CORS, endpoint discovery, and firewall guidance.
