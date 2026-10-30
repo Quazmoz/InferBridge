@@ -15,7 +15,7 @@ import pytest
 from app import frozen_entrypoint
 from app.desktop_launcher import main
 from app.tray_runtime import TrayRuntimeMixin
-from scripts.build_linux_distribution import archive_bundle
+from scripts.build_linux_distribution import PYTHON, archive_bundle, managed_installation
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location(
@@ -23,6 +23,13 @@ spec = importlib.util.spec_from_file_location(
 )
 desktop = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(desktop)
+
+
+def test_managed_interpreter_ignores_uv_minor_version_alias(tmp_path):
+    runtime = tmp_path / f"cpython-{PYTHON}-linux-x86_64-gnu"
+    runtime.mkdir()
+    (tmp_path / "cpython-3.12-linux-x86_64-gnu").symlink_to(runtime, target_is_directory=True)
+    assert managed_installation(tmp_path) == runtime
 
 
 def test_archive_reproducibility_permissions_and_symlinks(tmp_path):

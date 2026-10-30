@@ -37,6 +37,18 @@ def digest(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def managed_installation(directory: Path) -> Path:
+    # uv also creates a minor-version symlink; move the concrete runtime only.
+    installations = [
+        path
+        for path in directory.glob(f"cpython-{PYTHON}-*")
+        if path.is_dir() and not path.is_symlink()
+    ]
+    if len(installations) != 1:
+        raise RuntimeError("Expected exactly one managed CPython installation.")
+    return installations[0]
+
+
 def archive_bundle(bundle: Path, destination: Path, *, epoch: int) -> None:
     """Stable order, ownership and timestamps; retain private-runtime symlinks."""
 
@@ -81,10 +93,7 @@ def build(output: Path) -> Path:
     managed = stage / "managed-python"
     # uv verifies the managed CPython download and installs only inside this build.
     run("uv", "python", "install", "--no-config", "--no-bin", "--install-dir", str(managed), PYTHON)
-    installations = list(managed.glob("cpython-*"))
-    if len(installations) != 1:
-        raise RuntimeError("Expected exactly one managed CPython installation.")
-    shutil.move(str(installations[0]), bundle / "python")
+    shutil.move(str(managed_installation(managed)), bundle / "python")
     python = bundle / "python" / "bin" / "python3.12"
     lock = ROOT / "requirements" / "linux.lock"
     run(
