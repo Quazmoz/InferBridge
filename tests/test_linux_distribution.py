@@ -192,6 +192,32 @@ def test_linux_signal_requests_cleanup_and_restores_handlers(monkeypatch):
     assert signal.getsignal(signal.SIGTERM) == previous
 
 
+def test_linux_constraints_stay_aligned_with_retained_hash_lock():
+    # Candidate Windows pins must never silently invalidate the Linux baseline.
+    import re
+
+    source = (ROOT / "requirements/linux.in").read_text(encoding="utf-8")
+    assert "-c linux-baseline.txt" in source
+    baseline = (ROOT / "requirements/linux-baseline.txt").read_text(encoding="utf-8")
+    lock = (ROOT / "requirements/linux.lock").read_text(encoding="utf-8")
+    entries = dict(
+        (name.lower().replace("_", "-"), version)
+        for name, version in re.findall(
+            r"^([A-Za-z0-9_.-]+)==([^\\s;]+)", baseline, re.MULTILINE
+        )
+    )
+    locked = dict(
+        (name.lower().replace("_", "-"), version)
+        for name, version in re.findall(
+            r"^([A-Za-z0-9_.-]+)==([^\\s\\\\]+)", lock, re.MULTILINE
+        )
+    )
+    assert entries
+    for name, expected in entries.items():
+        if name in locked:
+            assert locked[name].split("+", 1)[0] == expected, name
+
+
 def test_linux_lock_contains_cpu_torch_and_no_cuda():
     lock = (ROOT / "requirements/linux.lock").read_text()
     assert "torch==2.12.0+cpu" in lock

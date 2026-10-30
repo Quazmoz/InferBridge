@@ -197,6 +197,8 @@ regenerate the certificate in Partner Center; see
 [STORE_LISTING.md](STORE_LISTING.md#age-rating-iarc-questionnaire).
 This is a Partner Center action, not an MSIX manifest fix.
 
+A development dependency-refresh candidate is recorded in [DEPENDENCY_UPDATES.md](DEPENDENCY_UPDATES.md).
+
 ## Certification regression gate
 
 Older Store evaluation evidence reported an overall WACK **PASS**, with optional

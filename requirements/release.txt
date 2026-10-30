@@ -1,29 +1,31 @@
 # Pinned top-level release environment. A complete resolved inventory is emitted per build.
-# Qualified 2026-07-24 on Intel Core Ultra 9 185H (issue #14). See docs/releases/0.6.0.md.
+# Windows development candidate, not hardware-qualified. Previous Intel qualification
+# applies to the retained 2026.2.1 OpenVINO stack, not these updated Python packages.
+# Linux preserves its separately qualified hash-lock in linux.lock/linux-baseline.txt.
 pip==26.2.1
 setuptools==81.0.0
 wheel==0.48.0
 openvino==2026.2.1
 openvino-genai==2026.2.1.0
 openvino-tokenizers==2026.2.1.0
-fastapi==0.143.0
+fastapi==0.162.0
 uvicorn[standard]==0.54.0
-pydantic==2.14.0
+pydantic==2.14.2
 python-dotenv==1.2.4
 psutil==7.2.2
 pillow==12.3.0
 httpx==0.28.1
 pystray==0.19.5
 python-certifi-win32==1.6.1; platform_system == "Windows"
-optimum-intel[openvino]==2.0.0
+optimum-intel[openvino]==2.2.0
 optimum==2.2.0
-nncf==3.2.0
+nncf==3.4.0
 huggingface_hub==1.19.0
 transformers==5.0.0
 tokenizers==0.22.2
 torch==2.12.0
 numpy==2.4.6
-safetensors==0.7.0
+safetensors==0.8.0
 pyinstaller==6.22.3
 pip-licenses==5.5.5
 pytest==9.1.1
