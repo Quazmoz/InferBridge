@@ -57,18 +57,37 @@ def validate(bundle: Path, evidence: Path) -> None:
         )
 
         def run(*arguments, timeout=90, check=True):
-            return subprocess.run(
+            result = subprocess.run(
                 [str(executable), *arguments],
                 cwd=work,
                 env=environment,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                check=check,
+                check=False,
             )
+            if check and result.returncode:
+                print(result.stdout[-4000:] + result.stderr[-4000:], file=sys.stderr)
+                result.check_returncode()
+            return result
 
         run("--bootstrap-smoke")
         run("--native-smoke", timeout=180)
+        conversion = subprocess.run(
+            [str(bundle / "python/bin/optimum-cli"), "export", "openvino", "--help"],
+            cwd=work,
+            env={
+                **environment,
+                "PYTHONPATH": str(bundle / "resources"),
+                "PYTHONSAFEPATH": "1",
+                "PYTHONDONTWRITEBYTECODE": "1",
+            },
+            capture_output=True,
+            text=True,
+            timeout=180,
+            check=True,
+        )
+        assert "--model" in conversion.stdout
         run("--install-desktop")
         entries = list((work / "xdg" / "applications").glob("*.desktop"))
         assert len(entries) == 2

@@ -156,7 +156,7 @@ def build(output: Path) -> Path:
     optimum = python.parent / "optimum-cli"
     optimum.write_text(
         '#!/bin/sh\nexec "$(dirname -- "$(readlink -f -- "$0")")/python3.12" '
-        '-P -s -B -m optimum.commands.optimum_cli "$@"\n',
+        "-P -s -B -c 'from optimum.commands.optimum_cli import main; main()' \"$@\"\n",
         encoding="utf-8",
     )
     optimum.chmod(0o755)

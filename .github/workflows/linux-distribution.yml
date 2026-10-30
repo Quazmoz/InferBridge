@@ -33,7 +33,7 @@ jobs:
           python-version: '3.12'
       - name: Build tools and host libraries
         run: |
-          python -m pip install uv==0.11.21 ruff==0.16.10 pytest==9.1.1
+          python -m pip install uv==0.11.21 ruff==0.16.10 pytest==9.1.1 fastapi==0.143.0 psutil==7.2.2 httpx==0.28.1 pillow==12.3.0 python-dotenv==1.2.4
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends desktop-file-utils libnuma1 libtbb12 libgomp1 libatomic1 ocl-icd-libopencl1
       - name: Source gates
