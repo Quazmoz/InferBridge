@@ -19,9 +19,13 @@ def test_native_project_uses_winui_and_a_pinned_windows_sdk():
     assert props["UseWinUI"] == "true"
     assert props["WindowsPackageType"] == "None"
     assert props["WindowsAppSDKSelfContained"] == "true"
+    # Store certification 2026-10-30: 2.5.1's XAML.dll 3.2.3.0 crashed at
+    # 0xc000027b / 0x3a9dbd. Trimming/single-file can also break XAML metadata.
+    assert props["PublishTrimmed"] == "false"
+    assert props["PublishSingleFile"] == "false"
     packages = root.findall(".//PackageReference")
     assert any(
-        item.get("Include") == "Microsoft.WindowsAppSDK" and item.get("Version") == "2.5.1"
+        item.get("Include") == "Microsoft.WindowsAppSDK" and item.get("Version") == "2.6.4"
         for item in packages
     )
 

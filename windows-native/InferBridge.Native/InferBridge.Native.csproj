@@ -12,6 +12,9 @@
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <SelfContained>true</SelfContained>
+    <!-- WinUI needs intact XAML/WinRT metadata and adjacent native binaries at launch. -->
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishSingleFile>false</PublishSingleFile>
     <Product>InferBridge</Product>
     <EnableMsixTooling>true</EnableMsixTooling>
     <Nullable>enable</Nullable>
@@ -20,6 +23,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Content Include="Assets\InferBridge.ico" CopyToOutputDirectory="PreserveNewest" />
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.4" />
   </ItemGroup>
 </Project>

@@ -153,10 +153,28 @@ copy or migrate large downloads. To share, explicitly set a common
 
 Partner Center product ID `9PJ0NSD01070` failed on a **Microsoft Surface Laptop 4, Windows build 26300.9711**:
 **10.1.2.10 Functionality** (crash at launch) and **11.11.1 Age Ratings** (questionnaire).
-The certification report references an `InferBridge_CrashLog.evtx` inside the downloadable
-supporting ZIP, but the incident cannot be attributed to a particular process,
-module, or exception until that log is actually inspected. Do not infer that a
-successful source test, unpackaged execution, or structural MSIX pack fixes it.
+The supplied `InferBridge_CrashLog.evtx` identifies an **Application Error**
+in `InferBridge.Native.exe` version `1.1.1.0`, with the bundled
+`native\\Microsoft.UI.Xaml.dll` version `3.2.3.0` as the faulting module,
+exception `0xC000027B` (stowed exception), and offset `0x3A9DBD`. The event
+does **not** contain the inner stowed error or a stack trace; it does not establish
+which application XAML statement, if any, caused the fault.
+
+The **module, version, exception and offset exactly match** Microsoft
+[microsoft-ui-xaml#12169](https://github.com/microsoft/microsoft-ui-xaml/issues/12169),
+which affected several Microsoft applications on Windows 11 26H2. That issue
+concerns a *framework-dependent* runtime path, whereas the InferBridge MSIX
+**bundles its own** XAML.dll under `native\\`: a shared runtime defect is a
+credible hypothesis, not a demonstrated identical root cause. The other
+reporter's recovery after a restart had no confirmed causal explanation.
+
+The `dev` remediation candidate upgrades `Microsoft.WindowsAppSDK` from
+`2.5.1` to Microsoft's stable `2.6.4` (released 2026-10-27), disallows
+trimming and single-file publication, and requires the self-contained
+`Microsoft.UI.Xaml.dll` in package staging. **This is not yet proof that
+the Store crash is fixed**: qualify the updated *installed MSIX* before
+resubmitting. If it persists, collect the stowed exception with a private
+user-mode dump/WinDbg instead of guessing at a XAML control.
 
 On a Windows machine, extract the Microsoft ZIP and inspect the actual event log:
 

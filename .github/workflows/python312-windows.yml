@@ -125,7 +125,7 @@ jobs:
           $nativeRoot = Join-Path $env:RUNNER_TEMP 'inferbridge-native-qualification'
           dotnet publish windows-native/InferBridge.Native/InferBridge.Native.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64 -o $nativeRoot
           if ($LASTEXITCODE -ne 0) { throw 'Native WinUI publish failed.' }
-          foreach ($name in @('InferBridge.Native.exe', 'InferBridge.Native.runtimeconfig.json', 'InferBridge.Native.deps.json', 'coreclr.dll')) {
+          foreach ($name in @('InferBridge.Native.exe', 'InferBridge.Native.runtimeconfig.json', 'InferBridge.Native.deps.json', 'coreclr.dll', 'Microsoft.UI.Xaml.dll')) {
             if (-not (Test-Path -LiteralPath (Join-Path $nativeRoot $name) -PathType Leaf)) {
               throw "Native WinUI publish missing required file: $name"
             }

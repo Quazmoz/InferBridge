@@ -123,6 +123,7 @@ def native_entries(native_publish: Path) -> list[tuple[Path, str]]:
         "InferBridge.Native.deps.json",
         "InferBridge.Native.runtimeconfig.json",
         "coreclr.dll",
+        "Microsoft.UI.Xaml.dll",
     ):
         if not (native_publish / required).is_file():
             raise FileNotFoundError(f"Native publish output is missing {required}.")

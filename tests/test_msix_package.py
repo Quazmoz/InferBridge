@@ -21,6 +21,7 @@ NATIVE_RUNTIME = (
     "InferBridge.Native.deps.json",
     "InferBridge.Native.runtimeconfig.json",
     "coreclr.dll",
+    "Microsoft.UI.Xaml.dll",
 )
 
 
@@ -143,7 +144,13 @@ def test_stage_rejects_incomplete_native_or_engine_payload_without_partial_outpu
         _stage(tmp_path, output="staging")
     assert not (tmp_path / "staging").exists()
 
-    _native_publish(tmp_path / "native-ok")
+    native_ok = _native_publish(tmp_path / "native-ok")
+    (native_ok / "Microsoft.UI.Xaml.dll").unlink()
+    with pytest.raises(FileNotFoundError, match="Microsoft.UI.Xaml.dll"):
+        _stage(tmp_path, output="staging", native_publish=native_ok)
+    assert not (tmp_path / "staging").exists()
+    (native_ok / "Microsoft.UI.Xaml.dll").write_bytes(b"MZ")
+
     (dist / "_internal" / "python311.dll").unlink()
     with pytest.raises(FileNotFoundError, match="Python runtime DLL"):
         _stage(tmp_path, output="staging", native_publish=tmp_path / "native-ok")
