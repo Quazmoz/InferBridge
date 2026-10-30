@@ -122,3 +122,31 @@ jobs:
           path: /tmp/inferbridge-fedora-evidence/
           if-no-files-found: ignore
           retention-days: 7
+
+  cpu-probe:
+    needs: build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: InferBridge-linux-x86_64-development
+          path: dist/linux
+      - name: Install OS libraries and extract the already-built application
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libnuma1 libtbb12 libgomp1 libatomic1 ocl-icd-libopencl1
+          mkdir -p build/cpu
+          tar -xzf dist/linux/*-portable.tar.gz -C build/cpu
+      - name: Real CPU conversion and generation with bounded random test weights
+        run: |
+          bundles=(build/cpu/InferBridge-*)
+          timeout --signal=TERM --kill-after=15s 10m "${bundles[0]}/python/bin/python3.12" -I -B scripts/validate_linux_cpu.py --bundle "${bundles[0]}" --output build/cpu-evidence.json
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: linux-real-cpu-probe-evidence
+          path: build/cpu-evidence.json
+          if-no-files-found: ignore
+          retention-days: 7

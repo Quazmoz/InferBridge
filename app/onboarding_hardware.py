@@ -150,7 +150,7 @@ def classify_npu_readiness(
             title="NPU readiness could not be confirmed",
             explanation=(
                 "This processor family can include an Intel NPU, but neither OpenVINO nor the "
-                "Windows device query confirmed a usable NPU. Driver or platform details may be unavailable."
+                "system device query confirmed a usable NPU. Driver or platform details may be unavailable."
             ),
             available_devices=available,
             fallback_device=fallback,
@@ -194,6 +194,7 @@ def build_system_scan(snapshot: Mapping[str, Any]) -> SystemScanResponse:
         items.append(SystemItem(key=key, label=label, value=value, status=status, detail=detail))
 
     windows = str(os_info.get("system") or "").lower() == "windows"
+    linux = str(os_info.get("system") or "").lower() == "linux"
     add(
         "windows",
         "Operating system",
@@ -263,7 +264,11 @@ def build_system_scan(snapshot: Mapping[str, Any]) -> SystemScanResponse:
         )
 
     warnings: list[str] = []
-    if not windows and not bool(runtime.get("mock")):
+    if linux and not bool(runtime.get("mock")):
+        warnings.append(
+            "Linux desktop support is experimental. Validate CPU inference before GPU or NPU use."
+        )
+    elif not windows and not bool(runtime.get("mock")):
         warnings.append("Windows 11 is the primary supported desktop distribution target.")
     if not available and not bool(runtime.get("mock")):
         warnings.append("OpenVINO did not report a usable inference device.")

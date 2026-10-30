@@ -526,6 +526,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--server-child", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--convert-model", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--native-smoke", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--check-devices",
+        action="store_true",
+        help="Print OpenVINO inventory and Linux device-node access",
+    )
     parser.add_argument("--port", type=int, default=None)
     parser.add_argument("--instance-nonce", default="")
     parser.add_argument("--control-token", default="", help=argparse.SUPPRESS)
@@ -548,6 +553,23 @@ def main(argv: list[str] | None = None) -> int:
         return _native_runtime_smoke() or _conversion_import_smoke()
     if remaining:
         parser.error(f"unrecognized arguments: {' '.join(remaining)}")
+    if args.check_devices:
+        from runtime import device_check
+
+        print(
+            json.dumps(
+                {
+                    "available": device_check.available_devices(),
+                    "details": device_check.device_details(),
+                    "linux_device_nodes": device_check.linux_device_nodes()
+                    if sys.platform.startswith("linux")
+                    else {},
+                    "note": "Device nodes are hints. GPU requires render-node access and Intel drivers; NPU requires accel-node access, a compatible driver and OpenVINO plugin. Only OpenVINO-visible devices can be selected.",
+                },
+                indent=2,
+            )
+        )
+        return 0
     if args.port is not None and not 1 <= args.port <= 65535:
         parser.error("--port must be between 1 and 65535")
     if args.server_child:

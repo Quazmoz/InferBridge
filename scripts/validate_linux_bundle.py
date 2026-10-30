@@ -34,6 +34,14 @@ def validate(bundle: Path, evidence: Path) -> None:
     evidence.mkdir(parents=True, exist_ok=True)
     executable = bundle / "InferBridge"
     assert executable.is_file() and os.access(executable, os.X_OK)
+    assert not (bundle / "data").exists()
+    assert not any(
+        path.name in {".env", "desktop-instance.json", "tray-command.json"}
+        for path in (bundle / "resources").rglob("*")
+    )
+    assert not any(bundle.rglob("*.safetensors")), (
+        "A distribution must not contain downloaded model weights"
+    )
     before = {
         str(p.relative_to(bundle)): p.stat().st_mtime_ns for p in bundle.rglob("*") if p.is_file()
     }
@@ -45,6 +53,8 @@ def validate(bundle: Path, evidence: Path) -> None:
             for key, value in os.environ.items()
             if not key.startswith(("OV_LLM_", "HF_", "HUGGING", "PYTHON"))
         }
+        for key in ("LD_LIBRARY_PATH", "LD_PRELOAD", "LD_AUDIT", "VIRTUAL_ENV", "CONDA_PREFIX"):
+            environment.pop(key, None)
         environment.update(
             {
                 "XDG_DATA_HOME": str(work / "xdg"),
@@ -118,10 +128,15 @@ def validate(bundle: Path, evidence: Path) -> None:
         command = [str(executable), "--mock", "--headless", "--no-browser", "--data-dir", str(data)]
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
-        def request(metadata, path, *, key=True):
+        def request(metadata, path, *, key=True, method="GET"):
             headers = {"Authorization": f"Bearer {environment['OV_LLM_API_KEY']}"} if key else {}
+            if method == "POST":
+                headers.update({"X-OV-LLM-UI": "1", "Content-Type": "application/json"})
             req = urllib.request.Request(
-                f"http://127.0.0.1:{metadata['port']}{path}", headers=headers
+                f"http://127.0.0.1:{metadata['port']}{path}",
+                headers=headers,
+                method=method,
+                data=b"{}" if method == "POST" else None,
             )
             with opener.open(req, timeout=2) as response:
                 return response.read()
@@ -179,15 +194,26 @@ def validate(bundle: Path, evidence: Path) -> None:
                     cwd=work,
                     env=environment,
                 )
+                request(metadata, "/restart-server", method="POST")
+
+                def restarted():
+                    current = ready()
+                    return current if current and current["nonce"] != metadata["nonce"] else None
+
+                wait_for(restarted)
+                assert owner.poll() is None
                 run("--quit", "--data-dir", str(data))
                 assert owner.wait(timeout=45) == 0
                 assert not metadata_file.exists()
-                owner = subprocess.Popen(command, cwd=work, env=environment, stdout=log, stderr=log)
-                processes.append(owner)
-                wait_for(ready)
-                owner.send_signal(signal.SIGTERM)
-                assert owner.wait(timeout=45) == 0
-                assert sentinel.read_text(encoding="utf-8") == "preserve me"
+                for signum in (signal.SIGINT, signal.SIGTERM):
+                    owner = subprocess.Popen(
+                        command, cwd=work, env=environment, stdout=log, stderr=log
+                    )
+                    processes.append(owner)
+                    wait_for(ready)
+                    owner.send_signal(signum)
+                    assert owner.wait(timeout=45) == 0
+                    assert sentinel.read_text(encoding="utf-8") == "preserve me"
                 # SIGKILL bypasses cleanup; the server owner monitor must reap the orphan.
                 owner = subprocess.Popen(command, cwd=work, env=environment, stdout=log, stderr=log)
                 processes.append(owner)

@@ -36,9 +36,11 @@ class TrayRuntimeMixin:
     def run(self) -> int:
         if not self.lock.acquire():
             if getattr(self.args, "quit", False):
-                atomic_json(self.command_file, {"command": "quit"})
                 deadline = time.monotonic() + 45
                 while time.monotonic() < deadline:
+                    # Startup clears stale coordination files. Reissue until the
+                    # owner releases its lock so a concurrent startup cannot lose Quit.
+                    atomic_json(self.command_file, {"command": "quit"})
                     if self.lock.acquire():
                         self.lock.release()
                         return 0

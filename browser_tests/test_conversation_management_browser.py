@@ -28,6 +28,7 @@ def _open_settings(page: Page) -> None:
     """
 
     page.locator("#settings-toggle-btn").click()
+    page.locator("#conversation-export-json").scroll_into_view_if_needed()
     expect(page.locator("#conversation-export-json")).to_be_in_viewport()
 
 

@@ -9,6 +9,7 @@ unset PYTHONHOME PYTHONSTARTUP PYTHONUSERBASE
 export PYTHONPATH="$APP_ROOT/resources"
 export PYTHONSAFEPATH=1 PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1
 export PATH="$APP_ROOT/python/bin:$PATH"
+export LD_LIBRARY_PATH="$APP_ROOT/python/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 for argument in "$@"; do
     if [ "$argument" = --portable ] && [ -z "${OV_LLM_DATA_DIR:-}" ]; then
         export OV_LLM_DATA_DIR="$APP_ROOT/data"

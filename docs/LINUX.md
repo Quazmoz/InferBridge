@@ -71,6 +71,10 @@ settings. Copy the active OpenAI endpoint there for VS Code clients or Open WebU
 normally `http://127.0.0.1:8000/v1`, with the actual selected port shown in the UI.
 Configure an API key before enabling LAN access; desktop startup remains loopback
 only unless explicitly configured otherwise. See [LAN access](LAN_ACCESS.md).
+Linux currently retains GUI-generated keys in memory only; Windows DPAPI remains
+Windows-only. Set `OV_LLM_API_KEY` in the launch environment for a key that must
+remain active across backend restarts. Keep it out of `.desktop` commands and shell
+history. Missing credentials keep LAN binding blocked after a restart.
 
 For an installation-only check without weights or inference:
 
@@ -133,6 +137,15 @@ System glibc, graphics/NPU drivers and optional shell helpers are not bundled.
 | macOS ARM64 development host | Unit/static checks only | Unsupported Linux artifact host | Not tested | Unsupported | Unsupported |
 
 Consult the exact commit and run conclusion before treating a CI gate as passed.
+The separate `cpu-probe` CI job downloads at most 16 MiB of files from the pinned
+`trl-internal-testing/tiny-random-LlamaForCausalLM` revision
+`2c542e4731d42d3bb68324c4eca16df9f93b8b33`, excludes pickle weights, converts FP16
+OpenVINO IR, and tests direct CPU generation, streaming and cleanup using the
+bundle's own interpreter and application engine. It uploads exact CPU, kernel,
+runtime, model, commit, elapsed-time and peak-process-RSS evidence. Random weights
+test runtime execution and do not establish useful chat quality or full CPU API
+certification. These models remain outside the downloadable application.
+
 Mock output, native library imports and CPU enumeration do not certify real inference.
 Hardware reports must include the application commit, CPU/GPU/NPU model, OS/kernel,
 driver, OpenVINO/GenAI versions, requested and actual device, model revision,
@@ -142,6 +155,8 @@ private data before attaching them to an issue.
 ## Troubleshooting downloads
 
 Start `./InferBridge --headless --no-browser` in a terminal to review errors.
+Run `./InferBridge --check-devices` for actual OpenVINO inventory and GPU/NPU
+device-node access hints. A node's presence does not certify an accelerator.
 Use `./InferBridge --bootstrap-smoke` for import startup and `--native-smoke` for
 OpenVINO/tokenizer and converter import checks without weights. On an occupied
 default port, the controller selects a free port; an explicit `--port` or

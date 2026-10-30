@@ -181,10 +181,10 @@ def test_context_apply_shows_rebuild_status_and_holds_sends(
 
     # Any surface (Model Library, chat panel) applies through this one endpoint.
     page.evaluate(
-        "window.__apply = fetch('/v1/models/context', {method: 'POST',"
+        "() => { window.__apply = fetch('/v1/models/context', {method: 'POST',"
         " headers: {'Content-Type': 'application/json'},"
         f" body: JSON.stringify({{model: '{MODEL_ID}', context_tokens: 4096,"
-        " expected_context_tokens: 2048})}).then(response => response.status)"
+        " expected_context_tokens: 2048})}).then(response => response.status); }"
     )
     status = page.locator("#ov-context-rebuild")
     expect(status).to_be_visible()

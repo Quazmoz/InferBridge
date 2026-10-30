@@ -9,10 +9,12 @@ from __future__ import annotations
 import atexit
 import importlib.util
 import logging
+import os
 import re
 import sys
 import threading
 from dataclasses import dataclass
+from pathlib import Path
 
 logger = logging.getLogger("ov-llm.device")
 
@@ -189,6 +191,17 @@ def available_devices() -> list[str]:
     except Exception as exc:  # pragma: no cover - depends on local OpenVINO/drivers
         logger.warning("OpenVINO device discovery failed: %s", exc)
         return []
+
+
+def linux_device_nodes(root: Path = Path("/dev")) -> dict[str, list[dict]]:
+    """Access hints only: a device node never establishes OpenVINO support."""
+    return {
+        kind: [
+            {"path": str(path), "read_write": os.access(path, os.R_OK | os.W_OK)}
+            for path in sorted(root.glob(pattern))
+        ]
+        for kind, pattern in (("GPU", "dri/renderD*"), ("NPU", "accel/accel*"))
+    }
 
 
 def device_details() -> list[dict]:

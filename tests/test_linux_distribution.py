@@ -32,6 +32,28 @@ def test_managed_interpreter_ignores_uv_minor_version_alias(tmp_path):
     assert managed_installation(tmp_path) == runtime
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX resource measurement")
+def test_real_probe_rejects_unbounded_and_pickle_only_downloads():
+    from scripts.validate_linux_cpu import selected_files
+
+    assert selected_files(
+        [
+            SimpleNamespace(rfilename="model.safetensors", size=123),
+            SimpleNamespace(rfilename="pytorch_model.bin", size=999),
+        ]
+    ) == ["model.safetensors"]
+    for files in (
+        [SimpleNamespace(rfilename="model.safetensors", size=None)],
+        [SimpleNamespace(rfilename="model.safetensors", size=17 * 1024 * 1024)],
+        [SimpleNamespace(rfilename="pytorch_model.bin", size=123)],
+    ):
+        with pytest.raises(RuntimeError):
+            selected_files(files)
+
+
+@pytest.mark.skipif(
+    os.name == "nt", reason="Linux archive requires POSIX executable permission bits"
+)
 def test_archive_reproducibility_permissions_and_symlinks(tmp_path):
     bundle = tmp_path / "InferBridge-1.0.0-linux-x86_64"
     bundle.mkdir()
@@ -124,6 +146,31 @@ def test_quit_reuses_owner_command_and_waits_for_lock(tmp_path):
     assert application.lock.released
 
 
+def test_quit_is_not_lost_when_startup_clears_stale_commands(tmp_path):
+    command = tmp_path / "tray-command.json"
+
+    class Lock:
+        attempts = 0
+
+        def acquire(self):
+            self.attempts += 1
+            if self.attempts == 2:
+                command.unlink()
+            if self.attempts == 3:
+                assert json.loads(command.read_text())["command"] == "quit"
+                return True
+            return False
+
+        def release(self):
+            pass
+
+    application = TrayRuntimeMixin()
+    application.args = SimpleNamespace(quit=True)
+    application.lock = Lock()
+    application.command_file = command
+    assert application.run() == 0
+
+
 @pytest.mark.skipif(os.name == "nt", reason="POSIX signal boundary")
 def test_linux_signal_requests_cleanup_and_restores_handlers(monkeypatch):
     import app.tray_app as tray_app
@@ -151,3 +198,21 @@ def test_linux_lock_contains_cpu_torch_and_no_cuda():
     assert "nvidia-" not in lock
     assert "openvino-genai==2026.2.1.0" in lock
     assert "--hash=sha256:" in lock
+
+
+def test_packaged_device_report_does_not_invent_accelerators(monkeypatch, tmp_path, capsys):
+    from runtime import device_check
+
+    nodes = tmp_path / "dev"
+    (nodes / "dri").mkdir(parents=True)
+    (nodes / "dri/renderD128").touch()
+    monkeypatch.setattr(device_check, "available_devices", lambda: ["CPU"])
+    monkeypatch.setattr(device_check, "device_details", lambda: [{"device": "CPU"}])
+    inspect = device_check.linux_device_nodes
+    monkeypatch.setattr(device_check, "linux_device_nodes", lambda: inspect(nodes))
+    monkeypatch.setattr(sys, "platform", "linux")
+    assert main(["--check-devices"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["available"] == ["CPU"]
+    assert len(report["linux_device_nodes"]["GPU"]) == 1
+    assert report["linux_device_nodes"]["NPU"] == []
