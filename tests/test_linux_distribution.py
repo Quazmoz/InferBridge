@@ -133,7 +133,12 @@ def test_service_preserves_custom_unit_and_uses_absolute_xdg_paths(monkeypatch, 
     root = tmp_path / "bundle"
     desktop.integrate_service(root)
     target = tmp_path / ".config/systemd/user/inferbridge.service"
-    assert str(tmp_path / ".local/share") in target.read_text()
+    environment = next(
+        line.split("=", 1)[1]
+        for line in target.read_text().splitlines()
+        if line.startswith("Environment=")
+    )
+    assert json.loads(environment) == "XDG_DATA_HOME=" + str(tmp_path / ".local/share")
     custom = target.read_text() + "# user's changes\n"
     target.write_text(custom)
     assert desktop.integrate_service(root) == 2

@@ -90,7 +90,11 @@ def test_desktop_ipc_refuses_redirect_without_forwarding_control_token():
     assert forwarded == []
 
 
-@pytest.mark.parametrize("payload", [b"[]", b"not json", b"\xff", b"{}" + b" " * (512 * 1024)])
+@pytest.mark.parametrize(
+    "payload",
+    [b"[]", b"not json", b"\xff", b"{}" + b" " * (512 * 1024)],
+    ids=["array", "invalid-json", "invalid-utf8", "oversized"],
+)
 def test_desktop_ipc_rejects_invalid_or_oversized_responses(payload):
     with _listener(lambda request: _reply(request, payload)) as origin:
         assert _http_json(origin) is None
