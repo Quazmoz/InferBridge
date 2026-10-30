@@ -72,7 +72,7 @@ jobs:
       - name: Run Linux script regression checks
         run: |
           .venv/bin/python -m pip install 'pytest>=8,<10'
-          .venv/bin/python -m pytest -q tests/test_linux_smoke_script.py tests/test_linux_support_files.py tests/test_linux_polish.py
+          .venv/bin/python -m pytest -q tests/test_linux_smoke_script.py tests/test_linux_support_files.py tests/test_linux_polish.py tests/test_conversion_cli_preflight.py
       - name: Run Azure artifact and native source contract regressions
         run: |
           .venv/bin/python -m pytest -q \

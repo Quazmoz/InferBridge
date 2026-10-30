@@ -69,7 +69,7 @@ jobs:
         run: python -m pip install --disable-pip-version-check pytest==9.1.1
       - name: Validate Azure artifact selection and Windows native source contracts
         run: |
-          python -m pytest -q tests/test_linux_smoke_script.py tests/test_azure_artifact_selection.py tests/test_ci_dependency_contract.py tests/test_native_windows_source_contract.py
+          python -m pytest -q tests/test_linux_smoke_script.py tests/test_azure_artifact_selection.py tests/test_ci_dependency_contract.py tests/test_native_windows_source_contract.py tests/test_conversion_cli_preflight.py
 
   windows-python312-release-deps:
     name: Python 3.12 x64 / pinned release environment / full pytest

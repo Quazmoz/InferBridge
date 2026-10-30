@@ -193,23 +193,32 @@ def test_linux_signal_requests_cleanup_and_restores_handlers(monkeypatch):
 
 
 def test_linux_constraints_stay_aligned_with_retained_hash_lock():
-    # Candidate Windows pins must never silently invalidate the Linux baseline.
+    # Parse extras as part of the same distribution name: uvicorn[standard]
+    # and optimum-intel[openvino] must not silently escape this contract.
     import re
+
+    def pins(contents):
+        return {
+            name.lower().replace("_", "-"): version
+            for name, version in re.findall(
+                r"^([A-Za-z0-9_.-]+)(?:\[[^\]]+\])?==([^\s;\\]+)",
+                contents,
+                re.MULTILINE,
+            )
+        }
 
     source = (ROOT / "requirements/linux.in").read_text(encoding="utf-8")
     assert "-c linux-baseline.txt" in source
-    baseline = (ROOT / "requirements/linux-baseline.txt").read_text(encoding="utf-8")
-    lock = (ROOT / "requirements/linux.lock").read_text(encoding="utf-8")
-    entries = dict(
-        (name.lower().replace("_", "-"), version)
-        for name, version in re.findall(r"^([A-Za-z0-9_.-]+)==([^\s;]+)", baseline, re.MULTILINE)
-    )
-    locked = dict(
-        (name.lower().replace("_", "-"), version)
-        for name, version in re.findall(r"^([A-Za-z0-9_.-]+)==([^\s\\]+)", lock, re.MULTILINE)
-    )
-    assert entries
-    for name, expected in entries.items():
+    baseline = pins((ROOT / "requirements/linux-baseline.txt").read_text(encoding="utf-8"))
+    locked = pins((ROOT / "requirements/linux.lock").read_text(encoding="utf-8"))
+    requested = {
+        line.strip().split("[", 1)[0].lower().replace("_", "-")
+        for line in source.splitlines()
+        if line.strip() and not line.lstrip().startswith(("#", "-"))
+    }
+    assert {"uvicorn", "optimum-intel"} <= requested
+    assert requested <= locked.keys()
+    for name, expected in baseline.items():
         if name in locked:
             assert locked[name].split("+", 1)[0] == expected, name
 

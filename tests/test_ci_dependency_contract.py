@@ -269,3 +269,16 @@ def test_tag_release_workflow_builds_verifies_and_publishes_through_release_buil
     assert '"docs/releases/$version.md"' in workflow
     for suffix in ("windows-x64-installer.exe", "windows-x64-portable.zip", "checksums.txt"):
         assert f'"InferBridge-$version-{suffix}"' in workflow
+
+def test_conversion_cli_preflight_is_required_before_windows_package_freeze() -> None:
+    preflight = "scripts/check_conversion_cli.py"
+    for path in ("scripts/build_release.ps1", "scripts/build_dev_package.ps1"):
+        contents = _read(path)
+        assert preflight in contents
+        assert contents.index(preflight) < contents.index("PyInstaller")
+
+    windows = _read(".github/workflows/python312-windows.yml")
+    assert f"run: python {preflight}" in windows
+    assert "tests/test_conversion_cli_preflight.py" in windows
+
+
