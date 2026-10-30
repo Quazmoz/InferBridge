@@ -80,7 +80,7 @@ def unit_quote(value: str) -> str:
 def service_entry(root: Path) -> str:
     # ':' disables environment substitution in ExecStart; '%' still needs escaping.
     # systemd syntax differs from both shell and .desktop quoting.
-    executable = unit_quote(str(root / "InferBridge"))
+    launcher = unit_quote(str(root / "InferBridge"))
     configured = Path(os.environ.get("XDG_DATA_HOME", ""))
     data_home = configured if configured.is_absolute() else Path.home() / ".local" / "share"
     data_dir = os.environ.get("OV_LLM_DATA_DIR")
@@ -91,7 +91,8 @@ def service_entry(root: Path) -> str:
         "[Unit]\nDescription=InferBridge local AI server\n"
         "StartLimitIntervalSec=120\nStartLimitBurst=3\n\n"
         "[Service]\nType=exec\n"
-        f"ExecStart=:{executable} --service{data_option}\n"
+        # systemd restricts executable names; the bundle path is a literal Bash argument.
+        f"ExecStart=:/bin/bash -- {launcher} --service{data_option}\n"
         f"Environment={unit_quote('XDG_DATA_HOME=' + str(data_home))}\n"
         "Restart=on-failure\nRestartSec=5\nTimeoutStopSec=60\n"
         "KillMode=mixed\nUMask=0077\n\n"

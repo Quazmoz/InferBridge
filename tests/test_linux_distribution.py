@@ -160,7 +160,7 @@ def test_entry_write_failure_preserves_existing_file_and_removes_staging_file(
 def test_service_unit_escapes_systemd_paths_and_preserves_data_override(monkeypatch, tmp_path):
     monkeypatch.setenv("OV_LLM_DATA_DIR", str(tmp_path / 'data %h ${HOME} "λ"'))
     unit = desktop.service_entry(tmp_path / 'bundle %h ${HOME} "λ" \\')
-    assert 'ExecStart=:"' in unit  # Disable $ expansion; specifiers still need doubling.
+    assert 'ExecStart=:/bin/bash -- "' in unit  # A safe executable; the bundle is an argument.
     assert "%%h" in unit and "${HOME}" in unit and '\\"λ\\"' in unit
     assert " --data-dir " in unit and "data %%h" in unit
     for control in ("\n", "\r", "\t", "\0", "\x7f"):
