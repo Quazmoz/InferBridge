@@ -1,9 +1,9 @@
 {
   "mcp": {
-    "graft": {
+    "trail": {
       "type": "local",
       "command": [
-        "graft",
+        "trail",
         "mcp"
       ],
       "enabled": true
