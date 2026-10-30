@@ -281,6 +281,9 @@ $RunMockSmoke = (-not [bool]$SkipTests) -or [bool]$MockSmokeTest
 if ($BuildPhase) {
 Invoke-Checked "Install project without dependency re-resolution" { & $ReleasePython -m pip install --disable-pip-version-check --no-deps --no-build-isolation . }
 
+Invoke-Checked "Verify Optimum Intel CLI and converter flags" {
+    & $ReleasePython scripts/check_conversion_cli.py
+}
 Invoke-Checked "Generate dependency inventory" {
     & $ReleasePython -m pip list --format=json | Set-Content -Path $InventoryJson -Encoding utf8
 }

@@ -82,6 +82,9 @@ if (-not $EnvironmentValid) {
 else {
     Write-Host "Reusing validated development packaging environment: $EnvironmentKey"
 }
+Invoke-Checked "Verify Optimum Intel CLI and converter flags" {
+    & $PackagePython scripts/check_conversion_cli.py
+}
 
 Invoke-Checked "Install current source without dependency re-resolution" {
     & $PackagePython -m pip install --disable-pip-version-check --no-deps --no-build-isolation .

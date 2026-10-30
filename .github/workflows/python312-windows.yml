@@ -97,6 +97,8 @@ jobs:
           python -m pip check
           python scripts/release_environment.py write-metadata --requirements requirements/release.txt --metadata .ci-release-environment.json
           python scripts/release_environment.py validate --requirements requirements/release.txt --metadata .ci-release-environment.json
+      - name: Validate real Optimum Intel CLI and converter flags
+        run: python scripts/check_conversion_cli.py
       - name: Validate embedded browser JavaScript
         run: python scripts/check_injected_javascript.py
       - name: Run full pytest suite in mock mode
