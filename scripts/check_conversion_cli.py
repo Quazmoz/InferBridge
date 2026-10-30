@@ -7,7 +7,7 @@ pure-Python/mock endpoint tests do not exercise.
 
 from __future__ import annotations
 
-import shutil
+import sysconfig
 import subprocess
 import sys
 from pathlib import Path
@@ -45,9 +45,13 @@ def validate_help(output: str) -> None:
 
 
 def main() -> int:
-    executable = shutil.which("optimum-cli")
-    if not executable:
-        print("optimum-cli is missing from the pinned release environment.", file=sys.stderr)
+    # Use the console entrypoint from this exact interpreter's scripts folder.
+    # Release scripts invoke the venv Python directly without activating its PATH.
+    executable = Path(sysconfig.get_path("scripts")) / (
+        "optimum-cli.exe" if sys.platform == "win32" else "optimum-cli"
+    )
+    if not executable.is_file():
+        print("optimum-cli is missing from this Python environment.", file=sys.stderr)
         return 1
     try:
         result = subprocess.run(
