@@ -3,7 +3,9 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import shutil
 import signal
+import subprocess
 import sys
 import tarfile
 import threading
@@ -101,6 +103,126 @@ def test_relative_xdg_desktop_path_uses_home(monkeypatch, tmp_path):
 def test_desktop_entry_rejects_newline_injection():
     with pytest.raises(ValueError):
         desktop.desktop_entry(Path("/tmp/injected\nExec=bad"))
+
+
+def test_user_service_install_collision_and_uninstall(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config λ"))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / 'data $user % "λ"'))
+    monkeypatch.delenv("OV_LLM_DATA_DIR", raising=False)
+    old, new = tmp_path / "old bundle", tmp_path / "new bundle"
+    target = tmp_path / "config λ/systemd/user/inferbridge.service"
+    assert desktop.integrate_service(old) == 0
+    original = target.read_text(encoding="utf-8")
+    assert "--service" in original
+    assert "Restart=on-failure" in original and "KillMode=mixed" in original
+    assert desktop.integrate_service(old) == 0
+    assert desktop.integrate_service(new) == 2
+    assert target.read_text(encoding="utf-8") == original
+    desktop.integrate_service(new, remove=True)
+    assert target.is_file()
+    desktop.integrate_service(old, remove=True)
+    assert not target.exists()
+    assert not list(target.parent.glob(".*"))
+
+
+def test_service_preserves_custom_unit_and_uses_absolute_xdg_paths(monkeypatch, tmp_path):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    monkeypatch.setenv("XDG_CONFIG_HOME", "relative")
+    monkeypatch.setenv("XDG_DATA_HOME", "relative")
+    monkeypatch.delenv("OV_LLM_DATA_DIR", raising=False)
+    root = tmp_path / "bundle"
+    desktop.integrate_service(root)
+    target = tmp_path / ".config/systemd/user/inferbridge.service"
+    assert str(tmp_path / ".local/share") in target.read_text()
+    custom = target.read_text() + "# user's changes\n"
+    target.write_text(custom)
+    assert desktop.integrate_service(root) == 2
+    desktop.integrate_service(root, remove=True)
+    assert target.read_text() == custom
+
+
+def test_entry_write_failure_preserves_existing_file_and_removes_staging_file(
+    monkeypatch, tmp_path
+):
+    target = tmp_path / "inferbridge.desktop"
+    target.write_text("original")
+
+    def fail_replace(_source, _destination):
+        raise PermissionError("read-only destination")
+
+    monkeypatch.setattr(Path, "replace", fail_replace)
+    with pytest.raises(PermissionError):
+        desktop.write_entry(target, "replacement")
+    assert target.read_text() == "original"
+    assert list(tmp_path.iterdir()) == [target]
+
+
+def test_service_unit_escapes_systemd_paths_and_preserves_data_override(monkeypatch, tmp_path):
+    monkeypatch.setenv("OV_LLM_DATA_DIR", str(tmp_path / 'data %h ${HOME} "λ"'))
+    unit = desktop.service_entry(tmp_path / 'bundle %h ${HOME} "λ" \\')
+    assert 'ExecStart=:"' in unit  # Disable $ expansion; specifiers still need doubling.
+    assert "%%h" in unit and "${HOME}" in unit and '\\"λ\\"' in unit
+    assert " --data-dir " in unit and "data %%h" in unit
+    for control in ("\n", "\r", "\t", "\0", "\x7f"):
+        with pytest.raises(ValueError):
+            desktop.service_entry(tmp_path / f"bad{control}path")
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" or not shutil.which("systemd-analyze"),
+    reason="Linux systemd unit parser",
+)
+def test_service_unit_passes_systemd_parser(monkeypatch, tmp_path):
+    monkeypatch.delenv("OV_LLM_DATA_DIR", raising=False)
+    root = tmp_path / 'bundle %h ${HOME} "λ" \\'
+    root.mkdir()
+    executable = root / "InferBridge"
+    executable.write_text("#!/bin/sh\nexit 0\n")
+    executable.chmod(0o755)
+    target = tmp_path / "inferbridge.service"
+    target.write_text(desktop.service_entry(root))
+    subprocess.run(["systemd-analyze", "--user", "verify", str(target)], check=True, timeout=20)
+
+
+def test_service_cli_requires_headless_exclusive_owner(monkeypatch):
+    import app.tray_app
+
+    captured = []
+    monkeypatch.setattr(
+        app.tray_app, "run_tray_controller", lambda args: captured.append(args) or 0
+    )
+    assert main(["--service"]) == 0
+    assert captured[0].headless and captured[0].no_browser and captured[0].service
+
+
+def test_service_refuses_an_existing_desktop_owner(capsys):
+    application = TrayRuntimeMixin()
+    application.args = SimpleNamespace(service=True, quit=False)
+    application.lock = SimpleNamespace(acquire=lambda: False)
+    assert application.run() == 6
+    assert "Another application instance" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "headless,stopping,expected", [(True, False, 6), (True, True, 0), (False, False, 0)]
+)
+def test_headless_backend_failure_is_visible_but_intentional_quit_is_clean(
+    capsys, headless, stopping, expected
+):
+    application = TrayRuntimeMixin()
+    application.args = SimpleNamespace(headless=headless, headless_seconds=0)
+    application.stop_event = threading.Event()
+    application.controller = SimpleNamespace(
+        running=False, last_error="Server exited with code 17."
+    )
+
+    def poll():
+        if stopping or not headless:
+            application.stop_event.set()
+
+    application._poll_once = poll
+    assert application._run_headless() == expected
+    assert ("headless backend failed" in capsys.readouterr().err) == (expected == 6)
 
 
 def test_linux_frozen_entrypoint_uses_existing_controller(monkeypatch):

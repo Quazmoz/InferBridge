@@ -35,6 +35,12 @@ def _report_headless_startup_failure(message: str) -> None:
 class TrayRuntimeMixin:
     def run(self) -> int:
         if not self.lock.acquire():
+            if getattr(self.args, "service", False) and not getattr(self.args, "quit", False):
+                _report_headless_startup_failure(
+                    "Another application instance owns this data directory. Quit it before "
+                    "starting the service."
+                )
+                return 6
             if getattr(self.args, "quit", False):
                 deadline = time.monotonic() + 45
                 while time.monotonic() < deadline:
@@ -121,6 +127,23 @@ class TrayRuntimeMixin:
         )
         while not self.stop_event.wait(0.5):
             self._poll_once()
+            controller = getattr(self, "controller", None)
+            if (
+                getattr(self.args, "headless", False)
+                and controller is not None
+                and controller.last_error
+                and not controller.running
+                and not self.stop_event.is_set()
+            ):
+                logger.error("Headless backend failed: %s", controller.last_error)
+                if sys.stderr is not None:
+                    with contextlib.suppress(OSError, ValueError):
+                        print(
+                            f"InferBridge headless backend failed: {controller.last_error}",
+                            file=sys.stderr,
+                            flush=True,
+                        )
+                return 6
             if deadline and time.monotonic() >= deadline:
                 break
         return 0

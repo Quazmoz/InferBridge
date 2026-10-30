@@ -41,7 +41,7 @@ jobs:
           ruff check .
           ruff format --check .
           bash -n setup.sh start_server.sh setup/linux/*.sh packaging/linux/InferBridge
-          python -m pytest tests/test_linux_distribution.py
+          python -m pytest tests/test_linux_distribution.py tests/test_desktop_http.py
       - name: Build private runtime and portable archive without models
         env:
           HF_HUB_OFFLINE: '1'

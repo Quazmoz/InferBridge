@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import json
 import logging
 import os
 import secrets
@@ -11,7 +10,6 @@ import socket
 import subprocess
 import sys
 import time
-import urllib.request
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -20,6 +18,7 @@ from typing import Any
 
 from app.desktop_launcher import (
     InstanceMetadata,
+    _http_json as _json_request,
     _read_metadata,
     _write_metadata,
     verify_instance,
@@ -96,35 +95,6 @@ def _sanitize_message(value: Any, *, limit: int = 300) -> str:
     text = str(value or "").replace("\r", " ").replace("\n", " ").strip()
     text = "".join(char for char in text if ord(char) >= 32)
     return text[:limit]
-
-
-def _json_request(
-    url: str,
-    *,
-    method: str = "GET",
-    headers: Mapping[str, str] | None = None,
-    body: Mapping[str, Any] | None = None,
-    timeout: float = 2.0,
-) -> dict[str, Any] | None:
-    payload = None if body is None else json.dumps(body).encode("utf-8")
-    request_headers = {"Accept": "application/json", **dict(headers or {})}
-    if payload is not None:
-        request_headers["Content-Type"] = "application/json"
-    request = urllib.request.Request(
-        url,
-        data=payload,
-        headers=request_headers,
-        method=method,
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
-            data = response.read(512 * 1024)
-            if not data:
-                return {}
-            parsed = json.loads(data.decode("utf-8"))
-            return parsed if isinstance(parsed, dict) else None
-    except (OSError, ValueError):
-        return None
 
 
 class DesktopServerController:

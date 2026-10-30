@@ -42,6 +42,7 @@ def test_preflight_rejects_other_command_help():
     with pytest.raises(RuntimeError, match="OpenVINO"):
         validate_help("usage: optimum-cli export onnx --model --weight-format")
 
+
 def _fixture_executable(monkeypatch, tmp_path: Path) -> Path:
     scripts = tmp_path / "venv-scripts"
     scripts.mkdir()

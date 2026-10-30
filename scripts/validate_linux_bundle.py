@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import secrets
+import shutil
 import signal
 import socket
 import subprocess
@@ -58,6 +59,7 @@ def validate(bundle: Path, evidence: Path) -> None:
         environment.update(
             {
                 "XDG_DATA_HOME": str(work / "xdg"),
+                "XDG_CONFIG_HOME": str(work / "config"),
                 "HF_HUB_OFFLINE": "1",
                 "TRANSFORMERS_OFFLINE": "1",
                 "HF_HUB_DISABLE_TELEMETRY": "1",
@@ -105,6 +107,16 @@ def validate(bundle: Path, evidence: Path) -> None:
             subprocess.run(["desktop-file-validate", str(entry)], check=True, timeout=10)
         run("--uninstall-desktop")
         assert not any((work / "xdg" / "applications").glob("*.desktop"))
+        assert "--install-service" in run("--help").stdout
+        run("--install-service")
+        unit = work / "config/systemd/user/inferbridge.service"
+        assert unit.is_file() and "--service" in unit.read_text(encoding="utf-8")
+        if shutil.which("systemd-analyze"):
+            subprocess.run(
+                ["systemd-analyze", "--user", "verify", str(unit)], check=True, timeout=20
+            )
+        run("--uninstall-service")
+        assert not unit.exists()
         # A foreign listener must remain untouched, and a fixed-port launch must fail.
         with socket.socket() as listener:
             listener.bind(("127.0.0.1", 0))
@@ -125,7 +137,15 @@ def validate(bundle: Path, evidence: Path) -> None:
         sentinel = data / "models" / "user-owned.txt"
         sentinel.write_text("preserve me", encoding="utf-8")
         metadata_file = data / "desktop-instance.json"
-        command = [str(executable), "--mock", "--headless", "--no-browser", "--data-dir", str(data)]
+        command = [str(executable), "--mock", "--service", "--data-dir", str(data)]
+        # Readiness and control IPC must work even when a shell has no proxy bypass.
+        launch_environment = {
+            **environment,
+            "http_proxy": "http://127.0.0.1:1",
+            "HTTP_PROXY": "http://127.0.0.1:1",
+            "no_proxy": "",
+            "NO_PROXY": "",
+        }
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
         def request(metadata, path, *, key=True, method="GET"):
@@ -152,10 +172,13 @@ def validate(bundle: Path, evidence: Path) -> None:
         processes = []
         with (evidence / "launcher.log").open("w", encoding="utf-8") as log:
             try:
-                owner = subprocess.Popen(command, cwd=work, env=environment, stdout=log, stderr=log)
+                owner = subprocess.Popen(
+                    command, cwd=work, env=launch_environment, stdout=log, stderr=log
+                )
                 processes.append(owner)
                 metadata = wait_for(ready)
-                run(*command[1:])
+                run("--mock", "--headless", "--no-browser", "--data-dir", str(data))
+                assert run(*command[1:], check=False).returncode == 6
                 assert ready()["pid"] == metadata["pid"], (
                     "Duplicate launch created a competing server"
                 )
@@ -207,15 +230,27 @@ def validate(bundle: Path, evidence: Path) -> None:
                 assert not metadata_file.exists()
                 for signum in (signal.SIGINT, signal.SIGTERM):
                     owner = subprocess.Popen(
-                        command, cwd=work, env=environment, stdout=log, stderr=log
+                        command, cwd=work, env=launch_environment, stdout=log, stderr=log
                     )
                     processes.append(owner)
                     wait_for(ready)
                     owner.send_signal(signum)
                     assert owner.wait(timeout=45) == 0
                     assert sentinel.read_text(encoding="utf-8") == "preserve me"
+                # A backend crash must release the owner lock and fail the supervisor.
+                owner = subprocess.Popen(
+                    command, cwd=work, env=launch_environment, stdout=log, stderr=log
+                )
+                processes.append(owner)
+                crashed = wait_for(ready)
+                os.kill(crashed["pid"], signal.SIGKILL)
+                assert owner.wait(timeout=45) == 6
+                assert not metadata_file.exists()
+                assert sentinel.read_text(encoding="utf-8") == "preserve me"
                 # SIGKILL bypasses cleanup; the server owner monitor must reap the orphan.
-                owner = subprocess.Popen(command, cwd=work, env=environment, stdout=log, stderr=log)
+                owner = subprocess.Popen(
+                    command, cwd=work, env=launch_environment, stdout=log, stderr=log
+                )
                 processes.append(owner)
                 stale = wait_for(ready)
                 owner.kill()
@@ -229,7 +264,9 @@ def validate(bundle: Path, evidence: Path) -> None:
                     return False
 
                 wait_for(orphan_stopped, timeout=35)
-                owner = subprocess.Popen(command, cwd=work, env=environment, stdout=log, stderr=log)
+                owner = subprocess.Popen(
+                    command, cwd=work, env=launch_environment, stdout=log, stderr=log
+                )
                 processes.append(owner)
                 recovered = wait_for(ready)
                 assert recovered["nonce"] != stale["nonce"]

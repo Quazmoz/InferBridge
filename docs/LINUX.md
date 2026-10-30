@@ -105,8 +105,61 @@ and delete the extracted application directory. User data is preserved. With
 the old version's menu entries cannot remove entries registered by a newer version.
 With sibling data, quit using `./InferBridge --portable --quit`; with an explicit
 data root, include the same `--data-dir` when quitting. Desktop menu entries use
-default XDG mode. Autostart is not enabled. `.deb`, `.rpm`, AppImage and Flatpak are deferred until
+default XDG mode. Autostart is not enabled unless you opt into the user service below.
+`.deb`, `.rpm`, AppImage and Flatpak are deferred until
 their separate installer/upgrade/uninstall paths can be qualified.
+
+## Background service and login startup
+
+The portable bundle can register an optional **systemd user service** on Ubuntu
+and Fedora. It uses the same backend, browser UI and user data as desktop mode,
+without a tray or browser window. No root access is needed. Installation writes
+the unit only; it does not start the app or enable login startup:
+
+```bash
+./InferBridge --install-service
+./InferBridge --quit
+systemctl --user daemon-reload
+systemctl --user enable --now inferbridge.service
+systemctl --user status inferbridge.service
+```
+
+Open `http://127.0.0.1:8000/` in a browser, using the actual port recorded in
+`desktop-instance.json` under your data directory if the default was occupied.
+`systemctl` reports process state; `/health/ready` reports backend readiness.
+The unit captures the install command's absolute `XDG_DATA_HOME` (or its normal
+fallback) and any `OV_LLM_DATA_DIR` override. Other shell environment variables
+are not copied into it. The service uses saved application settings and remains
+subject to the normal API authentication and LAN safeguards. Do not put tokens
+in the unit or its command line. Use `systemctl --user edit inferbridge.service`
+for nonsecret overrides such as `Environment=OV_LLM_PORT=8000`.
+
+Backend crashes exit with an error so systemd can restart the service, with a
+five-second delay and at most three starts per two minutes. Intentional Quit
+and service stops remain clean exits. A competing desktop instance causes a
+visible service failure instead of a second server. After fixing a persistent
+startup error, run `systemctl --user reset-failed inferbridge.service` and
+`systemctl --user start inferbridge.service`. Review
+`journalctl --user -u inferbridge.service` plus the application's data-directory
+logs. Desktop readiness and control requests bypass HTTP proxies and refuse
+redirects, so proxy configuration cannot reroute local control credentials.
+
+To stop it and remove login startup:
+
+```bash
+systemctl --user disable --now inferbridge.service
+./InferBridge --uninstall-service
+systemctl --user daemon-reload
+```
+
+Stop and uninstall the old unit before registering an upgraded bundle. A
+different or manually edited unit is preserved; back it up and remove it
+explicitly if replacing it. Application data is retained. User services normally
+follow the user's login session; running before login or after logout requires
+separate host administration (`loginctl enable-linger`), which this installer
+does not change. Systems without systemd can run `./InferBridge --service` under
+their own process supervisor. `--service` stays in the foreground, disables the
+browser and tray, and requires exclusive ownership of its data directory.
 
 ## Build and qualification
 

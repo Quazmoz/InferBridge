@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import http.client
 import json
 import os
 import socket
 import subprocess
 import sys
 import time
+import urllib.parse
 import urllib.request
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, BinaryIO
@@ -82,15 +84,53 @@ def choose_available_port(preferred: int = 8000) -> int:
     raise RuntimeError("No local TCP port is available for the application server.")
 
 
-def _http_json(url: str, *, timeout: float = 1.5) -> dict[str, Any] | None:
-    request = urllib.request.Request(url, headers={"Accept": "application/json"})
+class _NoDesktopRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # Desktop control credentials must never follow a redirect to another listener.
+        return None
+
+
+def _http_json(
+    url: str,
+    *,
+    timeout: float = 1.5,
+    method: str = "GET",
+    headers: Mapping[str, str] | None = None,
+    body: Mapping[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Bounded, direct loopback IPC, independent of system/network proxy settings."""
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
-            if response.status != 200:
+        endpoint = urllib.parse.urlsplit(url)
+        if (
+            endpoint.scheme != "http"
+            or endpoint.hostname != "127.0.0.1"
+            or endpoint.username is not None
+            or endpoint.password is not None
+            or endpoint.port is None
+        ):
+            return None
+        request_headers = {"Accept": "application/json", **dict(headers or {})}
+        if body is not None:
+            request_headers["Content-Type"] = "application/json"
+        request = urllib.request.Request(
+            url,
+            data=None if body is None else json.dumps(body).encode("utf-8"),
+            headers=request_headers,
+            method=method,
+        )
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoDesktopRedirect())
+        with opener.open(request, timeout=timeout) as response:
+            if not 200 <= response.status < 300:
                 return None
-            payload = json.loads(response.read(128 * 1024).decode("utf-8"))
+            data = response.read(512 * 1024 + 1)
+            if len(data) > 512 * 1024:
+                return None
+            expected_length = response.headers.get("Content-Length")
+            if expected_length is not None and int(expected_length) != len(data):
+                return None
+            payload = json.loads(data.decode("utf-8")) if data else {}
             return payload if isinstance(payload, dict) else None
-    except (OSError, ValueError):
+    except (OSError, ValueError, http.client.HTTPException):
         return None
 
 
@@ -544,9 +584,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--quit", action="store_true", help="Stop this user's desktop application")
     parser.add_argument("--startup", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--start-stopped", action="store_true", help=argparse.SUPPRESS)
-    parser.add_argument("--headless", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--headless", action="store_true", help="Run without a system-tray icon")
+    parser.add_argument(
+        "--service",
+        action="store_true",
+        help="Run without a browser or tray, requiring exclusive server ownership",
+    )
     parser.add_argument("--headless-seconds", type=float, default=0, help=argparse.SUPPRESS)
     args, remaining = parser.parse_known_args(arguments)
+    if args.service:
+        args.headless = True
+        args.no_browser = True
     if args.convert_model:
         return _run_packaged_converter(remaining)
     if args.native_smoke:
