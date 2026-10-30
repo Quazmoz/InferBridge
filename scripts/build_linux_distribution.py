@@ -104,6 +104,8 @@ def build(output: Path) -> Path:
         "--python",
         str(python),
         "--system",
+        # This is the copied interpreter inside build/linux, never the host Python.
+        "--break-system-packages",
         "--require-hashes",
         "--only-binary",
         ":all:",
