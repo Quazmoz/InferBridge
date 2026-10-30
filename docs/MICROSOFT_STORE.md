@@ -143,6 +143,36 @@ models and private data. The standalone installer continues to use
 copy or migrate large downloads. To share, explicitly set a common
 `OV_LLM_DATA_DIR` outside AppData and never run both editions concurrently.
 
+## Certification rejection: 2026-10-30
+
+Partner Center product ID `9PJ0NSD01070` failed on a **Microsoft Surface Laptop 4, Windows build 26300.9711**:
+**10.1.2.10 Functionality** (crash at launch) and **11.11.1 Age Ratings** (questionnaire).
+The certification report references an `InferBridge_CrashLog.evtx` inside the downloadable
+supporting ZIP, but the incident cannot be attributed to a particular process,
+module, or exception until that log is actually inspected. Do not infer that a
+successful source test, unpackaged execution, or structural MSIX pack fixes it.
+
+On a Windows machine, extract the Microsoft ZIP and inspect the actual event log:
+
+```powershell
+.\scripts\inspect_store_crash.ps1 -EvtxPath "C:\path\InferBridge_CrashLog.evtx" -OutputPath "artifacts\store-certification-crash.json"
+```
+
+Review the output before sharing it; event messages may contain machine paths
+and personal information. Record the faulting **process, module, exception code**
+and the exact submitted MSIX version/build provenance. Fix the evidenced fault,
+then rebuild and repeat the **installed**, package-identity launch smoke test
+on a clean Windows 11 environment (no Visual Studio-installed SDK assumed),
+including the Windows App Certification Kit. For local smoke-test failures,
+`scripts/smoke_test_msix.ps1` captures bounded application/activation
+event details in the chosen evidence directory.
+
+The Store reviewer also requires **Yes** for **User Content Sharing** in
+the age-ratings questionnaire. Revisit all IARC answers for accuracy and
+regenerate the certificate in Partner Center; see
+[STORE_LISTING.md](STORE_LISTING.md#age-rating-iarc-questionnaire).
+This is a Partner Center action, not an MSIX manifest fix.
+
 ## Certification regression gate
 
 Older Store evaluation evidence reported an overall WACK **PASS**, with optional

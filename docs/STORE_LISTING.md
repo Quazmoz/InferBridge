@@ -94,7 +94,7 @@ Desktop screenshots: PNG, 1366×768 or larger (1920×1080 recommended), 1–10 i
 ## Age rating (IARC questionnaire)
 
 - Category: **App** (not a game); utility/developer tool.
-- Users cannot talk to or share content with other users. No user accounts, social features, purchases, ads, location or personal data sharing.
+- **User Content Sharing: Yes** in the IARC questionnaire, as explicitly required by the Microsoft Store certification report dated 2026-10-30 (11.11.1). Users can copy/export generated responses or expose the local API to their own tools, even though InferBridge has no built-in social network, user-to-user messaging, accounts, ads, or purchases. Do not answer No merely because inference runs locally. Other answers must still describe actual functionality accurately; do not claim the app hosts public social features.
 - Answer **Yes** to "generates content using AI in response to user input" (or the equivalent live generative AI question). Downloaded open models can produce unfiltered text, and InferBridge applies no content filter. Expect IARC to assign a higher rating (for example 12+ or Teen, possibly higher) because of unrestricted AI-generated content. Answer truthfully rather than aiming for a rating.
 - The browser interface is local to the PC and is not unrestricted web browsing. Links open the user's own browser.
 - The privacy policy states that the app is not directed at children under 13.

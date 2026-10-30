@@ -231,6 +231,8 @@ jobs:
             "scripts/build_dev_package.ps1",
             "scripts/build_native_installer.ps1",
             "scripts/build_msix.ps1",
+            "scripts/inspect_store_crash.ps1",
+            "scripts/smoke_test_msix.ps1",
             "scripts/build_release.ps1",
             "scripts/build_windows_distribution.ps1",
             "scripts/publish_release.ps1",

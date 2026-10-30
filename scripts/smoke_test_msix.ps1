@@ -16,6 +16,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
+$TestStartedAt = (Get-Date).AddSeconds(-10)
 $Package = (Resolve-Path $Package).Path
 $Work = Join-Path ([IO.Path]::GetTempPath()) ("InferBridge-msix-smoke-" + [guid]::NewGuid().ToString("N"))
 New-Item $Work -ItemType Directory -Force | Out-Null
@@ -223,6 +224,13 @@ try {
     }
 } catch {
     Save-Screenshot "failure.png"
+    # A native/engine launch crash can precede the UI and its own logging.
+    # Preserve bounded Windows error and activation events before uninstall.
+    try {
+        & (Join-Path $PSScriptRoot "inspect_store_crash.ps1") -Since $TestStartedAt -OutputPath (Join-Path $EvidenceDirectory "store-activation-events.json") | Out-Host
+    } catch {
+        Write-Warning "Crash-event collection failed: $($_.Exception.GetType().Name)"
+    }
     throw
 } finally {
     if ($Installed) {
