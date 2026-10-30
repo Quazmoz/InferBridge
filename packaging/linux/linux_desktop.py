@@ -29,7 +29,7 @@ def desktop_entry(root: Path, *, quit: bool = False) -> str:
         "Comment=Local OpenVINO AI server and model manager\n"
         f"Exec={executable}{' --quit' if quit else ''}\n"
         f"Icon={icon}\nTerminal=false\nStartupNotify=false\n"
-        "Categories=Development;Science;\n"
+        "Categories=Development;\n"
         f"X-InferBridge-Root={str(root).replace(chr(92), chr(92) * 2)}\n"
     )
 

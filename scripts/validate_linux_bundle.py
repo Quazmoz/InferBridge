@@ -194,7 +194,7 @@ def validate(bundle: Path, evidence: Path) -> None:
                     cwd=work,
                     env=environment,
                 )
-                request(metadata, "/restart-server", method="POST")
+                request(metadata, "/v1/desktop/operations/restart-server", method="POST")
 
                 def restarted():
                     current = ready()
