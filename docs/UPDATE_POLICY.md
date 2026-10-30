@@ -2,6 +2,7 @@
 
 Update checks are optional release discovery, never forced updating. Core inference has no online-update dependency.
 
+- Microsoft Store installs never check GitHub: Microsoft Store delivers their updates, the engine refuses update-check requests, and the native app and tray hide every update control and download link.
 - Stable is the default channel.
 - Beta requires explicit opt-in and never moves a stable user automatically.
 - A due check may run once when the local browser UI opens. The UI remains quiet unless a compatible update is available.

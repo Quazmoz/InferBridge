@@ -54,6 +54,21 @@ Advanced controls can override measured-run count, output-token target, benchmar
 
 The public benchmark API remains backward compatible. Existing clients can continue to send a single `model`, while newer clients can send `models` for a comparison matrix.
 
+### Context-configuration comparisons
+
+Run the same prepared model/device with one saved context configuration, change
+context via native Settings or the browser budget panel, then repeat the same
+benchmark workload. Each result records `configured_context_tokens` and
+`reserved_output_tokens` alongside precision, actual/requested device, prompt
+and completion tokens, runtime/hardware fingerprint, and methodology. The
+process RSS sampler is host memory only, not measured Intel NPU memory.
+
+The native history displays context beside each row. It refuses a throughput
+or latency percentage across different (or unknown legacy) context settings.
+Inspect each raw measurement to understand the tradeoff; differing prompt
+lengths also make a direct speed percentage misleading. Mock results remain
+synthetic and do not qualify any context size on hardware.
+
 ## Metric definitions
 
 ### Generation speed / decode throughput
@@ -195,6 +210,26 @@ A previous-run delta is shown only when the important comparison conditions matc
 If those conditions do not match, Benchmark Lab suppresses the percentage comparison rather than presenting incompatible evidence as a regression or improvement.
 
 This makes Benchmark Lab suitable for before/after OpenVINO, OpenVINO GenAI, and driver qualification on the same PC.
+
+## Native Windows Benchmark Lab
+
+The native WinUI 3 sidebar has a separate **Benchmark Lab** destination.
+It loads manual benchmark history through the same authenticated `GET /v1/benchmarks`
+endpoint as the web GUI, then displays run settings, model precision, the requested
+versus reported actual execution device, decoded throughput (or clearly labelled
+legacy overall throughput), TTFT, total/load latency, process RSS and token counts.
+
+Select two runs to compare. Percentage changes appear only for successful matching
+model/source/precision/requested-and-actual-device rows when the hardware fingerprint,
+synthetic/real status, methodology version, output target, measured runs and warm-ups
+all match. Missing/non-positive comparison baselines and mixed throughput definitions
+are not treated as valid deltas. The hardware fingerprint stays in transient in-memory
+comparison state; it is not included in the displayed details.
+
+The native page does not currently configure or launch the full model/device benchmark
+matrix, stream detailed progress, or send remote cancellation commands. A separate
+**Quick benchmark** action under Operations invokes the existing backend route for
+a single loaded model/device. Native and web interfaces do not own separate engines.
 
 ## Advisor integration
 

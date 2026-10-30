@@ -115,6 +115,10 @@ def startup_command(
     arguments: Sequence[str] = (),
 ) -> str:
     executable = Path(executable).expanduser().resolve()
+    # A native Windows app owns foreground startup; backend flags are only
+    # meaningful for the Python engine/tray executable.
+    if executable.name.casefold() == "inferbridge.native.exe":
+        return subprocess_list2cmdline([str(executable)])
     command = [str(executable), *(str(argument) for argument in arguments), "--startup"]
     if portable:
         command.append("--portable")
@@ -163,6 +167,19 @@ class StartupRegistration:
         backend: RegistryBackend | None = None,
     ) -> StartupRegistration:
         command = desktop_launcher_command_prefix()
+        is_store = is_packaged() if packaged is None else packaged
+        if getattr(sys, "frozen", False) and os.name == "nt" and not is_store:
+            # HKCU auto-start opens the same WinUI app as installed shortcuts.
+            # Do not require the file here: set_enabled() will refuse an
+            # incomplete installation, rather than register an engine fallback.
+            native = Path(command[0]).parent / "native" / "InferBridge.Native.exe"
+            return cls(
+                executable=native,
+                arguments=(),
+                portable=portable,
+                packaged=packaged,
+                backend=backend,
+            )
         return cls(
             executable=Path(command[0]),
             arguments=command[1:],
@@ -182,6 +199,12 @@ class StartupRegistration:
 
     def _migrate_legacy_if_enabled(self) -> None:
         current = self.backend.read(RUN_KEY, CURRENT_VALUE_NAME)
+        if self.executable.name.casefold() == "inferbridge.native.exe":
+            previous_engine = self.executable.parent.parent / "InferBridge.exe"
+            previous = startup_command(previous_engine, portable=self.portable)
+            if current == previous:
+                self.backend.write(RUN_KEY, CURRENT_VALUE_NAME, self.expected_command)
+                current = self.expected_command
         if self.arguments:
             previous_source_command = startup_command(
                 self.executable,
@@ -223,6 +246,11 @@ class StartupRegistration:
                 "Windows Settings > Apps > Startup."
             )
         if enabled:
+            if (
+                self.executable.name.casefold() == "inferbridge.native.exe"
+                and not self.executable.is_file()
+            ):
+                raise RuntimeError("Native WinUI executable is missing; cannot enable startup.")
             self.backend.write(RUN_KEY, CURRENT_VALUE_NAME, self.expected_command)
             legacy = self.backend.read(RUN_KEY, LEGACY_VALUE_NAME)
             if _recognized_legacy_command(legacy):

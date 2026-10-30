@@ -450,17 +450,21 @@ syncPanelBackdrop();
 });
 window.addEventListener('resize', syncPanelBackdrop, { passive: true });
 let deviceSwitchInFlight = false;
-deviceSelectElement?.addEventListener('change', async event => {
-if (deviceSwitchInFlight || typeof getSelectedModelMeta !== 'function') return;
+// Native parity: choosing a device only sets the next load target; the switch is an
+// explicit Load-button action (MainWindow ApplyChatDeviceButton → /v1/models/load).
+loadButton?.addEventListener('click', async event => {
+if (typeof getSelectedModelMeta !== 'function') return;
 const model = getSelectedModelMeta();
 const nextDevice = typeof normalizeUiDevice === 'function'
-? normalizeUiDevice(deviceSelectElement.value)
-: String(deviceSelectElement.value || '').trim().toUpperCase();
+? normalizeUiDevice(deviceSelectElement?.value)
+: String(deviceSelectElement?.value || '').trim().toUpperCase();
 if (!model?.is_loaded || !model.device || model.device === nextDevice) return;
 event.preventDefault();
 event.stopImmediatePropagation();
+if (deviceSwitchInFlight) return;
 const previousDevice = model.device;
 deviceSwitchInFlight = true;
+if (loadButton) loadButton.disabled = true;
 document.querySelector('.header-right')?.classList.add('lifecycle-switching');
 selectedDevice = nextDevice;
 try { localStorage.setItem('ovllm.device.v1', selectedDevice); } catch { }
@@ -485,7 +489,7 @@ if (typeof showToast === 'function') showToast(loadData.message || `Preparing ${
 await updateStatus();
 } catch (error) {
 selectedDevice = previousDevice;
-deviceSelectElement.value = previousDevice;
+if (deviceSelectElement) deviceSelectElement.value = previousDevice;
 try { localStorage.setItem('ovllm.device.v1', previousDevice); } catch { }
 if (typeof updateDeviceWarning === 'function') updateDeviceWarning();
 if (typeof showToast === 'function') showToast(`Device switch failed: ${error.message}`, 'error');

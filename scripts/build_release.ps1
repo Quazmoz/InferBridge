@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param(
     [string]$Version = "",
-    [ValidateSet("stable", "beta", "nightly")][string]$Channel = "stable",
+    # auto derives the channel from the version: no suffix -> stable, beta/rc -> beta,
+    # dev or other suffix -> nightly. An explicit channel is validated against the version.
+    [ValidateSet("auto", "stable", "beta", "nightly")][string]$Channel = "auto",
     [switch]$Clean,
     [switch]$Unsigned,
     [switch]$SkipInstaller,
@@ -184,6 +186,13 @@ $PackagePhase = $Phase -in @("All", "Package")
 $CanonicalVersion = (& $Python scripts/release_tools.py canonical-version).Trim()
 if ($LASTEXITCODE -ne 0) { throw "Could not read the canonical application version." }
 if (-not $Version) { $Version = $CanonicalVersion }
+$SourceBranch = (& git branch --show-current 2>$null)
+if ($LASTEXITCODE -ne 0 -or -not $SourceBranch) { $SourceBranch = "$env:BUILD_SOURCEBRANCH" }
+$RequestedChannel = $Channel
+$ResolvedChannel = (& $Python scripts/release_tools.py resolve-channel --version $Version --channel $RequestedChannel --branch "$SourceBranch")
+if ($LASTEXITCODE -ne 0 -or -not $ResolvedChannel) { throw "Release channel '$RequestedChannel' is not valid for version $Version (see the release validation message above)." }
+$Channel = "$ResolvedChannel".Trim()
+Write-Host "Release build: version $Version, channel $Channel (requested $RequestedChannel), branch $(if ($SourceBranch) { $SourceBranch } else { 'detached' })"
 Invoke-Checked "Validate semantic version and channel" { & $Python scripts/release_tools.py validate-version --version $Version --channel $Channel }
 Invoke-Checked "Verify canonical version consistency" { & $Python scripts/release_tools.py verify-version-consistency --root $Root --version $Version }
 Invoke-Checked "Verify pinned release requirements" { & $Python scripts/release_tools.py verify-requirements --path requirements/release.txt }
@@ -313,6 +322,20 @@ finally {
 }
 
 Invoke-Checked "Verify packaged native components" { & $ReleasePython scripts/release_tools.py verify-native --path $BuiltRoot }
+# The installed and portable desktop distributions launch WinUI; InferBridge.exe
+# remains the engine/tray child and must never be mistaken for the frontend.
+$NativeRoot = Join-Path $BuiltRoot "native"
+$NativeLauncher = Join-Path $NativeRoot "InferBridge.Native.exe"
+Invoke-Checked "Publish self-contained native Windows frontend" {
+    & dotnet publish windows-native/InferBridge.Native/InferBridge.Native.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64 "-p:Version=$Version" -o $NativeRoot
+}
+if (-not (Test-Path -LiteralPath $NativeLauncher -PathType Leaf) -or
+    -not (Test-Path -LiteralPath (Join-Path $NativeRoot "coreclr.dll") -PathType Leaf)) {
+    throw "Native Windows frontend payload is incomplete. Refusing a browser-only installer."
+}
+Invoke-Checked "Run native backend contract tests" {
+    & dotnet run --project windows-native/InferBridge.Native.ContractTests/InferBridge.Native.ContractTests.csproj -c Release
+}
 Invoke-Checked "Scan packaged directory" { & $ReleasePython scripts/release_tools.py scan --path $BuiltRoot }
 
 if ($RunMockSmoke -and -not $SkipInstaller) {
@@ -327,13 +350,23 @@ if ($RunMockSmoke -and -not $SkipInstaller) {
 }
 
 if (-not (Test-Path $Launcher)) { throw "Packaged launcher is missing: $Launcher. Run -Phase Launcher first." }
+$NativeLauncher = Join-Path $BuiltRoot "native\InferBridge.Native.exe"
+if (-not (Test-Path -LiteralPath $NativeLauncher -PathType Leaf)) {
+    throw "Native WinUI launcher is missing. The release cannot fall back to a browser-only package."
+}
 $LauncherSigned = $false
 if ($Sign -and $BuildPhase) {
-    Invoke-Checked "Sign and verify packaged launcher" { Sign-AndVerify $Launcher }
+    Invoke-Checked "Sign and verify packaged launcher" {
+        Sign-AndVerify $Launcher
+        Sign-AndVerify $NativeLauncher
+    }
     $LauncherSigned = $true
 }
 elseif ($ExternallySigned -and -not $BuildPhase) {
-    Invoke-Checked "Verify externally signed launcher" { Assert-Signature $Launcher }
+    Invoke-Checked "Verify externally signed launchers" {
+        Assert-Signature $Launcher
+        Assert-Signature $NativeLauncher
+    }
     $LauncherSigned = $true
 }
 elseif (-not $ExternallySigned) {
@@ -359,7 +392,7 @@ if (-not $SkipInstaller) {
     $CoreVersion = ($Version -split '[-+]')[0]
     $NumericVersion = "$CoreVersion.0"
     Invoke-Checked "Compile Inno Setup installer" {
-        & $Compiler "/DMyAppVersion=$Version" "/DMyAppVersionNumeric=$NumericVersion" "/DSourceRoot=$BuiltRoot" "/DArtifactDir=$Artifacts" "/DAppIconPath=$AppIcon" packaging/installer.iss
+        & $Compiler "/DMyAppVersion=$Version" "/DMyAppVersionNumeric=$NumericVersion" "/DSourceRoot=$BuiltRoot" "/DArtifactDir=$Artifacts" "/DAppIconPath=$AppIcon" /DNativeFrontend packaging/installer.iss
     }
     if (-not (Test-Path $Installer)) { throw "Installer was not produced: $Installer" }
     if ($Sign) {
@@ -389,7 +422,7 @@ if (-not $SkipPortable) {
 InferBridge $Version portable release
 
 1. Extract the complete directory to a writable non-administrator location.
-2. Run InferBridge.exe.
+2. Run native\InferBridge.Native.exe for the Windows app. Double-clicking the root InferBridge.exe forwards to WinUI in this distribution; engine flags (including --no-browser) still control the tray/server.
 3. Mutable configuration, models, caches, logs, onboarding state, and benchmarks remain under .\data.
 4. This package does not change the registry or Start Menu and does not enable Start with Windows.
 5. See UPGRADE_ROLLBACK.md before replacing an existing portable directory.

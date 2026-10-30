@@ -1,29 +1,72 @@
 # Code signing
 
-Unsigned local-development builds and **unsigned stable publication** are currently supported. Artifact filenames remain deterministic and do not use `signed` or `unsigned` suffixes. Trust state is recorded only in the validated release manifest and summary. A signed release must have independently verified Authenticode signatures on **both** the installer and the launcher inside the portable ZIP. Publishing an unsigned release must never claim the files are signed; users must be informed that Windows may show an unknown publisher warning.
+Unsigned local-development builds and **unsigned stable publication** are currently supported. Artifact filenames remain deterministic and do not use `signed` or `unsigned` suffixes. Trust state is recorded only in the validated release manifest and summary. A signed release must have independently verified Authenticode signatures on **all three executables**: the installer, the engine launcher (`InferBridge.exe`) and the native WinUI launcher (`native/InferBridge.Native.exe`) inside the portable ZIP. Publishing an unsigned release must never claim the files are signed; users must be informed that Windows may show an unknown publisher warning.
 
-## Free signing through SignPath Foundation (CI)
+## SignPath Foundation (not configured in Azure)
 
-InferBridge is MIT-licensed, so it qualifies for free OSS code signing from [SignPath Foundation](https://signpath.org). The certificate is issued to SignPath Foundation, so Windows shows **SignPath Foundation** as the publisher. Every release needs a maintainer's manual approval in SignPath, and SmartScreen reputation still builds over the first downloads.
+InferBridge is MIT-licensed and may apply for [SignPath Foundation](https://signpath.org)
+free OSS code signing. Acceptance and use of the certificate are subject to
+SignPath's requirements and manual approval. Windows would identify the
+certificate's publisher as **SignPath Foundation**; signing alone does not
+guarantee immediate SmartScreen reputation.
 
-`.github/workflows/release.yml` (manual `workflow_dispatch`) runs the build in three phases on a GitHub-hosted runner:
+GitHub-hosted release and native build workflows have been retired. The
+manual Azure DevOps pipeline currently builds **unsigned** evaluation artifacts
+only; no SignPath signing request is submitted by that pipeline.
+To add signing later, first configure SignPath's Azure DevOps trusted build
+system and secure service connection, implement the signed
+`Launcher -> Package -> Finalize` phases with origin verification, and require
+maintainer approval. Do not treat unsigned Azure artifacts as signed.
 
-1. `build_release.ps1 -ExternallySigned -Phase Launcher` builds and smoke-tests the PyInstaller layout.
-2. `InferBridge.exe` is uploaded and signed through SignPath (artifact configuration `launcher`), then copied back.
-3. `-Phase Package` verifies the launcher signature, compiles the installer, and creates the portable ZIP.
-4. The installer is signed through SignPath (artifact configuration `installer`) and copied back.
-5. `-Phase Finalize` verifies the installer signature and writes the manifest, summary, and checksums with both trust fields set.
+Local builds can still use an independently provisioned trusted Windows
+certificate through the existing release script's certificate-store or PFX
+signing options, subject to full signature verification.
 
-The workflow never publishes. Download the release artifact and publish with `publish_release.ps1`, which re-verifies both signatures.
+## Azure DevOps provenance boundary (unsigned evaluation builds)
 
-One-time setup:
+The manual [Azure pipeline](../azure-pipelines.yml) runs against the **same Git commit**
+that Azure DevOps selects for the pipeline definition. The pipeline uses `checkout: self`,
+does **not** switch branches after checkout, and fails before installing dependencies if
+the Azure-provided repository, branch, or source commit differs from the checkout.
+It requires a clean checkout and records the checked-in YAML's SHA-256 hash.
 
-1. Apply at https://signpath.org/apply with the repository URL.
-2. After acceptance, in SignPath: link the predefined *GitHub.com* trusted build system to the project, install the [SignPath GitHub App](https://github.com/apps/signpath) on this repository, and create artifact configurations with the slugs `launcher` and `installer` from `.signpath/artifact-configurations/`.
-3. In GitHub repository settings add the secret `SIGNPATH_API_TOKEN` (a submitter's API token) and the variable `SIGNPATH_ORGANIZATION_ID`. Override `SIGNPATH_PROJECT_SLUG` (default `InferBridge`) or `SIGNPATH_SIGNING_POLICY_SLUG` (default `release-signing`) only if SignPath assigned different slugs.
-4. Run **Release build** with *sign* checked and approve both signing requests in SignPath.
+After packaging, it runs `scripts/verify_release_provenance.py` against the produced
+release manifest, summary, model-library manifest, and artifact checksums using
+Azure's `Build.SourceVersion`. It publishes the unsigned binaries alongside
+`azure-build-provenance.json` identifying the source ref, commit, pipeline YAML
+hash, release channel, and Azure run ID. The channel is `nightly` for `dev`,
+`beta` for `beta`, and `stable` for `main`. This JSON is an **audit aid**,
+not a signed attestation.
 
-Locally, the same phases work with any external signer: run each phase with identical arguments in the same checkout and replace the file between phases.
+**Azure Python version:** The unsigned Azure evaluation builder uses **64-bit Python 3.12**.
+OpenVINO, OpenVINO GenAI, and PyTorch pinned by `requirements/release.txt`
+publish Windows Python 3.12 wheels, but this is a **new candidate build
+environment**, not a previously qualified runtime. Its version is checked
+immediately after `UsePythonVersion@0`, and the pinned Ruff lint and formatting
+checks run before Inno Setup or the full ML dependency installation. The release
+builder repeats its original full checks after installing the pinned environment.
+GitHub-hosted Windows build workflows are no longer used. Verify `pip check`, full tests, packaged installer/portable
+smoke tests and model inference on real Windows hardware before considering
+Python 3.12 artifacts qualified. Python 3.13 is deferred until the full
+conversion and packaging stack is validated.
+
+**Manual branch selection:** The YAML currently lives on `dev`. Select `dev`
+to build and evaluate `dev` artifacts. To build an official `main` candidate,
+first promote the reviewed pipeline YAML to `main` under the repository's
+branch policy, then queue the Azure pipeline with `main` selected. Do not
+select `dev` and fetch `main` inside the job: that produces misleading
+origin metadata. No release is published automatically.
+
+**SignPath is not enabled in Azure.** If approved for SignPath Foundation,
+configure the **Azure DevOps trusted build system** and SignPath extension /
+service connection, require SignPath origin verification on the real Azure
+build run, restrict release signing policy to `main`, and require manual
+maintainer approval. SignPath must verify origin through its Azure DevOps
+connector (not self-reported JSON). Its signing task also requires artifacts
+to have been stored on Azure DevOps before submission. Keep the signed launcher
+and installer in the existing `Launcher -> Package -> Finalize` order and
+verify both signatures before publishing. Do not add signing secrets or enable
+signing in the unsigned evaluation pipeline.
 
 ## Code signing policy
 
@@ -32,7 +75,7 @@ Free code signing provided by [SignPath.io](https://about.signpath.io), certific
 - Committers and reviewers: [Quazmoz](https://github.com/Quazmoz)
 - Approvers: [Quazmoz](https://github.com/Quazmoz)
 
-SignPath Foundation signing requests are submitted only from the manual `.github/workflows/release.yml` workflow in this repository, and every signing request requires maintainer approval. Separate local certificate-store/PFX signing is supported under the same artifact verification rules.
+No SignPath signing integration is currently active in the manual Azure pipeline. A future trusted Azure configuration must require maintainer approval and independently verify artifact signatures. Separate local certificate-store/PFX signing is supported under the same artifact verification rules.
 
 Privacy: this program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. Update checks are off by default, and model downloads from Hugging Face happen only when the user starts them.
 
@@ -80,7 +123,7 @@ The release build:
 
 A signing, timestamp, or verification failure blocks a signed release. The ZIP archive itself is not Authenticode-signed. Its manifest records whether the contained launcher signature was verified, and users must still verify the ZIP SHA-256 checksum.
 
-`/tr <url> /td SHA256` applies an RFC 3161 timestamp. Before publishing a release whose metadata claims signatures, `publish_release.ps1` independently runs `signtool verify /pa /all` against the installer and against the launcher extracted from the portable ZIP. A missing SignTool, partial claim, manifest/summary disagreement, missing artifact, malformed ZIP, or nonzero verification result blocks publication.
+`/tr <url> /td SHA256` applies an RFC 3161 timestamp. Before publishing a release whose metadata claims signatures, `publish_release.ps1` independently runs `signtool verify /pa /all` against the installer, the engine launcher and the native WinUI launcher extracted from the portable ZIP. A missing SignTool, partial claim, manifest/summary disagreement, missing artifact, malformed ZIP, or nonzero verification result blocks publication.
 
 Stable publication currently runs the signing verifier **without** `--require-signed`, so genuinely unsigned artifacts with consistent unsigned manifest and summary claims may be published. The optional `--require-signed` flag exists for a future signed-only policy but is **not** enabled by `scripts/publish_release.ps1`. An artifact that claims to be signed is still rejected unless both signatures pass independent verification.
 

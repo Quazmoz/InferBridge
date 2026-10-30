@@ -1458,6 +1458,15 @@
             white-space: nowrap;
         }
 
+        #device-routing-summary {
+            color: var(--text-2);
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            flex: 0 1 auto;
+        }
+
         #model-status.loading {
             color: var(--amber);
         }
@@ -2786,6 +2795,8 @@
                         <span><kbd>Enter</kbd> send &middot; <kbd>Shift+Enter</kbd> newline &middot;
                             <kbd>Ctrl+L</kbd> new chat &middot; <kbd>Esc</kbd> stop</span>
                         <div class="footer-right">
+                            <span id="device-routing-summary" role="status" aria-live="polite"
+                                aria-label="Device routing">Device: not scanned</span>
                             <span id="model-status" role="status" aria-live="polite">Loading model catalog…</span>
                             <span id="token-counter">0 tokens</span>
                         </div>
@@ -2824,6 +2835,14 @@
                         <span id="settings-temperature-val">0.7</span>
                     </div>
                     <input type="range" id="settings-temperature" min="0" max="1.5" step="0.1" value="0.7">
+                </div>
+
+                <div class="setting-group">
+                    <div class="setting-label-row">
+                        <label for="settings-top-p">Top-p Sampling</label>
+                        <span id="settings-top-p-val">1.0</span>
+                    </div>
+                    <input type="range" id="settings-top-p" min="0" max="1" step="0.05" value="1.0">
                 </div>
 
                 <div class="setting-group">
@@ -3093,12 +3112,7 @@
         const SUN_ICON = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>';
         const MOON_ICON = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>';
         const SIMPLE_DEVICE_OPTIONS = ['NPU', 'GPU', 'CPU', 'AUTO'];
-        const DEFAULT_ADVANCED_DEVICE_OPTIONS = [
-            'AUTO:NPU,GPU,CPU',
-            'AUTO:GPU,NPU,CPU',
-            'MULTI:NPU,GPU,CPU',
-            'HETERO:NPU,GPU,CPU',
-        ];
+        const DIRECT_DEVICE_PATTERN = /^(CPU|GPU|NPU)(\.[0-9]{1,3})?$/;
 
         // ── DOM Refs ──────────────────────────────────────────
         const chatInner = document.getElementById('chat-inner');
@@ -3107,6 +3121,7 @@
         const userInput = document.getElementById('user-input');
         const sendBtn = document.getElementById('send-btn');
         const modelSelect = document.getElementById('model-select');
+        const deviceRoutingSummary = document.getElementById('device-routing-summary');
         const deviceSelect = document.getElementById('device-select');
         const deviceWarning = document.getElementById('device-warning');
         const deviceInfo = document.getElementById('device-info');
@@ -3154,6 +3169,8 @@
         const settingsSystemPrompt = document.getElementById('settings-system-prompt');
         const settingsTemperature = document.getElementById('settings-temperature');
         const settingsTemperatureVal = document.getElementById('settings-temperature-val');
+        const settingsTopP = document.getElementById('settings-top-p');
+        const settingsTopPVal = document.getElementById('settings-top-p-val');
         const settingsMaxTokens = document.getElementById('settings-max-tokens');
         const settingsMaxTokensVal = document.getElementById('settings-max-tokens-val');
         const infoEngineType = document.getElementById('info-engine-type');
@@ -3266,7 +3283,7 @@
                     continue;
                 }
 
-                const heading = line.match(/^(#{1,3})\s+(.+)$/);
+                const heading = line.match(/^(#{1,6})\s+(.+)$/);
                 if (heading) {
                     flushBlocks();
                     const level = heading[1].length;
@@ -3386,13 +3403,23 @@
                 `;
             } else if (model.status === 'error') {
                 const actionLabel = model.can_convert ? 'Conversion failed' : 'Load failed';
+                // Classified failures (NPU compile rejection) offer one-click recoveries.
+                const recovery = (Array.isArray(model.recovery_actions) ? model.recovery_actions : [])
+                    .map(action => action && action.url
+                        ? `<a class="action-btn" href="${escapeAttr(action.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(action.label || 'Open')}</a>`
+                        : `<button class="action-btn" data-recovery-action="${escapeAttr(action?.id || '')}">${escapeHtml(action?.label || 'Retry')}</button>`)
+                    .join('');
                 card.innerHTML = `
                     <div class="action-card-title" style="color:var(--red)">${actionLabel}</div>
                     <p class="action-card-text">${escapeHtml(model.error || 'An error occurred during preparation.')}</p>
                     <button class="action-btn" data-model-action>
                         Retry Preparation
                     </button>
+                    ${recovery}
                 `;
+                card.querySelectorAll('[data-recovery-action]').forEach(button => {
+                    button.addEventListener('click', () => runModelRecovery(model.id, button.dataset.recoveryAction));
+                });
             } else if (model.status === 'ready_to_load') {
                 card.innerHTML = `
                     <div class="action-card-title">Model Converted: <span>${safeName}</span></div>
@@ -3631,35 +3658,74 @@
             if (title) opt.title = title;
             parent.appendChild(opt);
         }
-        function renderDeviceOptions(dev = {}) {
-            const selected = modelLoadDevice();
+        // Mirrors native IsSupportedInferenceDevice: AUTO/MULTI/HETERO over 2-3 distinct direct devices.
+        function isSupportedRoutingTarget(value) {
+            const match = /^(AUTO|MULTI|HETERO):([A-Z,]+)$/.exec(value);
+            if (!match) return false;
+            const targets = match[2].split(',');
+            return targets.length >= 2 && targets.length <= 3
+                && targets.every(target => ['CPU', 'GPU', 'NPU'].includes(target))
+                && new Set(targets).size === targets.length;
+        }
+        // Native GetDevicesAsync parity: only detected direct devices (all in mock mode),
+        // AUTO routing, and backend-suggested composite targets are offered.
+        function deviceRoutingOptions(dev = {}) {
+            const detected = new Set((Array.isArray(dev.available) ? dev.available : []).slice(0, 32)
+                .map(item => String(item || '').toUpperCase())
+                .filter(item => DIRECT_DEVICE_PATTERN.test(item))
+                .map(item => item.split('.', 1)[0]));
+            const direct = ['NPU', 'GPU', 'CPU'].filter(device => dev.mock || detected.has(device));
             const advanced = new Map();
-            DEFAULT_ADVANCED_DEVICE_OPTIONS.forEach(value => advanced.set(value, { experimental: value.startsWith('MULTI:') || value.startsWith('HETERO:') }));
-            (dev.suggestions || []).forEach(item => {
+            (Array.isArray(dev.suggestions) ? dev.suggestions : []).forEach(item => {
                 const value = deviceSuggestionValue(item);
-                if (!value || SIMPLE_DEVICE_OPTIONS.includes(value)) return;
-                advanced.set(value, {
-                    experimental: !!item.experimental,
-                    note: item.note || '',
-                });
+                if (advanced.size >= 16 || advanced.has(value) || !isSupportedRoutingTarget(value)) return;
+                advanced.set(value, { experimental: item?.experimental === true, note: String(item?.note || '').slice(0, 240) });
             });
-            if (!SIMPLE_DEVICE_OPTIONS.includes(selected)) {
-                advanced.set(selected, advanced.get(selected) || { experimental: isAdvancedDevice(selected), note: '' });
+            return { direct, advanced };
+        }
+        let renderedDeviceSignature = '';
+        function renderDeviceOptions(dev = {}) {
+            const { direct, advanced } = deviceRoutingOptions(dev);
+            const offered = new Set([...direct, 'AUTO', ...advanced.keys()]);
+            let selected = modelLoadDevice();
+            if (!offered.has(selected)) {
+                // A stored target the engine no longer offers must not be sent silently.
+                selected = offered.has(defaultDevice) ? defaultDevice : 'AUTO';
+                selectedDevice = selected;
             }
-
-            deviceSelect.innerHTML = '';
-            SIMPLE_DEVICE_OPTIONS.forEach(value => appendDeviceOption(deviceSelect, value));
-            if (advanced.size) {
-                const group = document.createElement('optgroup');
-                group.label = 'Advanced / Experimental';
-                advanced.forEach((meta, value) => {
-                    const suffix = meta.experimental ? ' experimental' : '';
-                    appendDeviceOption(group, value, value, `${value}${suffix}${meta.note ? ` - ${meta.note}` : ''}`);
-                });
-                deviceSelect.appendChild(group);
+            const signature = JSON.stringify([direct, [...advanced]]);
+            if (signature !== renderedDeviceSignature) {
+                // Rebuild only when the inventory changes so polling never steals keyboard focus.
+                renderedDeviceSignature = signature;
+                deviceSelect.replaceChildren();
+                direct.forEach(value => appendDeviceOption(deviceSelect, value, value, `Load on the detected ${value} processor.`));
+                appendDeviceOption(deviceSelect, 'AUTO', 'AUTO', 'OpenVINO chooses one compatible processor. It does not use all processors at once.');
+                if (advanced.size) {
+                    const group = document.createElement('optgroup');
+                    group.label = 'Advanced / Experimental';
+                    advanced.forEach((meta, value) => {
+                        const suffix = meta.experimental ? ' · experimental' : '';
+                        appendDeviceOption(group, value, `${value}${suffix}`, meta.note || 'OpenVINO advanced routing.');
+                    });
+                    deviceSelect.appendChild(group);
+                }
             }
             deviceSelect.value = selected;
             updateDeviceWarning();
+        }
+        // Requested target and engine-reported active device are deliberately separate facts.
+        function updateDeviceRoutingSummary(model) {
+            const target = modelLoadDevice();
+            const active = model?.is_loaded ? (model.device || 'not reported') : 'not loaded';
+            const routingNote = /^(MULTI|HETERO):/.test(target)
+                ? 'Experimental: multi-device support depends on the model and OpenVINO runtime.'
+                : 'AUTO routes to one compatible device; it does not combine processors.';
+            const text = `Next load target: ${target} · Reported active device: ${active}`;
+            if (deviceRoutingSummary.textContent !== text) deviceRoutingSummary.textContent = text;
+            deviceRoutingSummary.title = `${text}. ${routingNote}`;
+        }
+        function deviceSwitchNeeded(model) {
+            return Boolean(model?.is_loaded && !model.is_loading && model.device && model.device !== modelLoadDevice());
         }
         function updateDeviceWarning() {
             const advanced = isAdvancedDevice(selectedDevice);
@@ -3702,6 +3768,7 @@
             const model = getSelectedModelMeta();
             if (!model) {
                 setModelStatus('Loading model catalog…');
+                updateDeviceRoutingSummary(null);
                 updateSendButtonState();
                 loadModelBtn.disabled = true;
                 unloadModelBtn.disabled = true; deleteModelBtn.disabled = true; deviceSelect.disabled = true;
@@ -3740,20 +3807,55 @@
 
             updateSendButtonState();
             const canPrimaryAction = model.can_load || model.can_convert;
-            loadModelBtn.disabled = isGenerating || !canPrimaryAction;
+            const canSwitchDevice = deviceSwitchNeeded(model);
+            updateDeviceRoutingSummary(model);
+            loadModelBtn.disabled = isGenerating || !(canPrimaryAction || canSwitchDevice);
             unloadModelBtn.disabled = isGenerating || !model.can_unload;
             deleteModelBtn.disabled = isGenerating || !model.can_delete;
             deviceSelect.disabled = isGenerating || model.is_loading;
             loadModelBtn.innerHTML = model.can_convert ? CONVERT_ICON : LOAD_ICON;
             loadModelBtn.title = model.can_convert
                 ? `Convert ${model.name}, then load it on ${loadDevice}`
-                : (model.is_loaded ? `${model.name} is already loaded` : `Load ${model.name} on ${loadDevice}`);
-            loadModelBtn.setAttribute('aria-label', model.can_convert ? 'Convert and load selected model' : 'Load selected model');
+                : canSwitchDevice
+                    ? `Switch ${model.name} from ${model.device} to ${loadDevice} (current model stays available until the replacement is ready)`
+                    : (model.is_loaded ? `${model.name} is already loaded on ${model.device || 'its device'}` : `Load ${model.name} on ${loadDevice}`);
+            loadModelBtn.setAttribute('aria-label', model.can_convert ? 'Convert and load selected model'
+                : canSwitchDevice ? `Switch selected model to ${loadDevice}` : 'Load selected model');
             unloadModelBtn.title = model.can_unload ? `Unload ${model.name} from memory` : `${model.name} is not loaded`;
             deleteModelBtn.title = model.can_delete ? `Delete ${model.name} from disk` : `No local files to delete for ${model.name}`;
 
             if (!emptyState.classList.contains('hidden')) {
                 updateEmptyStateActionCard(model);
+            }
+        }
+
+        // One-click recovery for a classified load failure: load on GPU instead, or
+        // reconvert for NPU with channel-wise INT4 (symmetric, ratio 1.0, group size -1).
+        async function runModelRecovery(modelId, actionId) {
+            const model = availableModels.get(modelId);
+            const action = (model?.recovery_actions || []).find(item => item && item.id === actionId);
+            if (!model || !action || action.url) return;
+            const convert = action.convert && typeof action.convert === 'object' ? action.convert : null;
+            const body = convert
+                ? { model: modelId, load_after: true, device: convert.device, weight_format: convert.weight_format,
+                    group_size: convert.group_size, ratio: convert.ratio, sym: convert.sym }
+                : { model: modelId, device: action.device };
+            waitingForModelId = modelId;
+            updateModelUi();
+            try {
+                const res = await fetch(convert ? '/v1/models/convert' : '/v1/models/load', {
+                    method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }),
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+                showToast(data.message || action.label);
+                setStatusPolling(1000);
+                await updateStatus();
+            } catch (err) {
+                waitingForModelId = null;
+                setModelStatus(`${model.name}: ${action.label} failed`, 'error', `${model.name}: ${err.message}`);
+                showToast(`${action.label} failed`);
             }
         }
 
@@ -4671,14 +4773,9 @@
             selectedDevice = newDevice;
             localStorage.setItem('ovllm.device.v1', selectedDevice);
             updateDeviceWarning();
+            // Selecting a device only sets the next load target; switching a loaded
+            // model is the explicit Load-button action (in-place, no unload first).
             updateModelUi();
-            // If the selected model is loaded on a different device, auto-switch
-            const model = getSelectedModelMeta();
-            if (model && model.is_loaded && model.device && model.device !== selectedDevice) {
-                showToast(`Switching ${model.name} to ${selectedDevice}…`);
-                await requestModelUnload(model.id);
-                await requestModelLoad(model.id, true);
-            }
         });
 
         function setSendButtonMode(mode) {
@@ -4807,6 +4904,7 @@
 
             const systemPrompt = settingsSystemPrompt.value.trim();
             const temperature = parseFloat(settingsTemperature.value);
+            const topP = Math.min(1, Math.max(0, parseFloat(settingsTopP.value)));
             const maxTokens = parseInt(settingsMaxTokens.value);
 
             const messages = [];
@@ -4824,6 +4922,7 @@
                         stream: true,
                         stream_options: { include_usage: true },
                         temperature: temperature,
+                        top_p: Number.isFinite(topP) ? topP : 1.0,
                         max_tokens: maxTokens
                     }),
                     signal: currentAbort.signal
@@ -4912,6 +5011,13 @@
             localStorage.setItem('ovllm.temperature.v1', settingsTemperature.value);
         });
 
+        settingsTopP.addEventListener('input', () => {
+            settingsTopPVal.textContent = settingsTopP.value;
+        });
+        settingsTopP.addEventListener('change', () => {
+            localStorage.setItem('ovllm.top_p.v1', settingsTopP.value);
+        });
+
         settingsMaxTokens.addEventListener('input', () => {
             settingsMaxTokensVal.textContent = settingsMaxTokens.value;
         });
@@ -4939,6 +5045,11 @@
         if (savedTemp !== null) {
             settingsTemperature.value = savedTemp;
             settingsTemperatureVal.textContent = savedTemp;
+        }
+        const savedTopP = localStorage.getItem('ovllm.top_p.v1');
+        if (savedTopP !== null && Number.isFinite(parseFloat(savedTopP))) {
+            settingsTopP.value = savedTopP;
+            settingsTopPVal.textContent = settingsTopP.value;
         }
         const savedMaxTokens = localStorage.getItem('ovllm.max_tokens.v1');
         if (savedMaxTokens !== null) {

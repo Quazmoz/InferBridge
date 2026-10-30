@@ -19,6 +19,19 @@ from app.tray_support import APP_TITLE, atomic_json, guarded_tray_icon, tray_ico
 logger = logging.getLogger("ov-llm.tray")
 
 
+HEADLESS_STARTUP_FAILURE_PREFIX = "InferBridge headless startup failed: "
+
+
+def _report_headless_startup_failure(message: str) -> None:
+    """Write the sanitized startup failure to stderr when the process has one."""
+
+    stream = sys.stderr
+    if stream is None:  # windowed launches without redirected stdio
+        return
+    with contextlib.suppress(Exception):
+        print(f"{HEADLESS_STARTUP_FAILURE_PREFIX}{message}", file=stream, flush=True)
+
+
 class TrayRuntimeMixin:
     def run(self) -> int:
         if not self.lock.acquire():
@@ -44,7 +57,9 @@ class TrayRuntimeMixin:
                     )
                     if self.args.headless:
                         # A headless integration check must never report a failed
-                        # initial server startup as a successful timed run.
+                        # initial server startup as a successful timed run. Say why on
+                        # stderr too: callers rarely have the data-dir tray log.
+                        _report_headless_startup_failure(message)
                         return 6
                     show_dialog(APP_TITLE, message, error=True)
             if self.args.headless:
@@ -58,11 +73,12 @@ class TrayRuntimeMixin:
         metadata = _read_metadata(self.paths.launcher_metadata_file)
         if metadata and verify_instance(metadata):
             if not self.args.no_browser:
-                if is_packaged():
+                if sys.platform == "win32" or is_packaged():
                     if not open_store_window(metadata.port, metadata.nonce):
                         show_dialog(
                             APP_TITLE,
-                            "The Store application window could not be opened.",
+                            "The native InferBridge window could not be opened. "
+                            "Verify that native\\InferBridge.Native.exe is installed.",
                             error=True,
                         )
                 else:

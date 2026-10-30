@@ -428,7 +428,7 @@ def install_model_load_target_routing() -> None:
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 - surfaced through model status
-            message = errors.format_model_load_error(exc)
+            message = errors.format_model_load_error(exc, device=current_device)
             existing = self.engines.get(model_id)
             if existing is not None:
                 existing_device = device_check.normalize_device(existing.device)
@@ -456,7 +456,7 @@ def install_model_load_target_routing() -> None:
                 self.engines.pop(model_id, None)
                 self.locks.pop(model_id, None)
                 self.devices.pop(model_id, None)
-                self._set_status(model_id, "error", error=message)
+                message = self._record_load_failure(model_id, exc, current_device)
                 self._set_progress(model_id, "error", f"Load failed: {message}")
                 manager_module.logger.exception("Failed to load '%s': %s", model_id, message)
                 self.emit_event("error", f"Failed to load {cfg.name}: {message}")

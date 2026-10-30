@@ -14,6 +14,13 @@ def test_benchmark_request_keeps_existing_single_model_defaults():
     assert request.max_tokens == 64
 
 
+def test_benchmark_run_correlation_id_must_be_strict_hex():
+    for value in ("x" * 32, "a" * 31, "A" * 32, "a" * 32 + "\\n", "a" * 31 + "\\n"):
+        with pytest.raises(ValidationError):
+            BenchmarkRunRequest(model="model", client_run_id=value)
+    assert BenchmarkRunRequest(model="model", client_run_id="a" * 32).client_run_id == "a" * 32
+
+
 def test_benchmark_request_rejects_excessive_model_device_matrix():
     with pytest.raises(ValidationError, match="at most 32 model/device combinations"):
         BenchmarkRunRequest(

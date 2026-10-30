@@ -130,19 +130,139 @@ def is_tls_certificate_error(exc: BaseException) -> bool:
     return False
 
 
-def format_model_load_error(exc: BaseException) -> str:
+NPU_DRIVER_DOWNLOAD_URL = (
+    "https://www.intel.com/content/www/us/en/download/794734/intel-npu-driver-windows.html"
+)
+NPU_COMPILE_REJECTED = "npu_compile_rejected"
+KV_CACHE_PRECISION_REJECTED = "kv_cache_precision_rejected"
+
+
+def is_npu_compile_rejection(exc: BaseException, *, device: str | None) -> bool:
+    """True for an Intel NPU graph-compilation rejection on a direct NPU load.
+
+    Level Zero's invalid-argument code identifies the rejection, not which layer
+    (IR, driver, firmware or runtime) caused it. NPUW's "Failed to compile. No more
+    devices are left" is the same class of failure seen with older drivers.
+    """
+    if str(device or "").strip().upper().split(".", 1)[0] != "NPU":
+        return False
+    chain = _exception_chain_text(exc).lower()
+    level_zero = "ze_result_error_invalid_argument" in chain and any(
+        marker in chain for marker in ("pfncreate2", "ze_graph_ext_wrappers", "compilation failed")
+    )
+    npuw = "failed to compile" in chain and "no more devices are left" in chain
+    return level_zero or npuw
+
+
+def model_load_error_code(exc: BaseException, *, device: str | None) -> str | None:
+    """A stable code for load failures that have one-click recovery actions."""
+    if is_npu_compile_rejection(exc, device=device):
+        return NPU_COMPILE_REJECTED
+    if format_kv_cache_precision_error(exc) is not None:
+        return KV_CACHE_PRECISION_REJECTED
+    return None
+
+
+def load_recovery_actions(
+    code: str | None,
+    *,
+    weight_format: str,
+    has_source_model: bool,
+    available_devices: list[str] | tuple[str, ...],
+) -> list[dict[str, object]]:
+    """One-click next steps the UI can offer for a classified load failure."""
+    if code != NPU_COMPILE_REJECTED:
+        return []
+    actions: list[dict[str, object]] = [
+        {
+            "id": "update_npu_driver",
+            "label": "Update Intel NPU driver",
+            "url": NPU_DRIVER_DOWNLOAD_URL,
+        }
+    ]
+    if any(str(item).upper().split(".", 1)[0] == "GPU" for item in available_devices):
+        actions.append({"id": "load_gpu", "label": "Load on GPU instead", "device": "GPU"})
+    if str(weight_format).lower() == "int4" and has_source_model:
+        actions.append(
+            {
+                "id": "reconvert_npu",
+                "label": "Reconvert for NPU (channel-wise INT4)",
+                "convert": {
+                    "device": "NPU",
+                    "weight_format": "int4",
+                    "group_size": -1,
+                    "ratio": 1.0,
+                    "sym": True,
+                },
+            }
+        )
+    return actions
+
+
+def format_kv_cache_precision_error(exc: BaseException, *, loading: bool = False) -> str | None:
+    """Friendly message when OpenVINO rejects a KV_CACHE_PRECISION value, else None.
+
+    Older OpenVINO builds or devices may not accept every precision (GPU INT4 KV
+    arrived in OpenVINO 2026.2). The previous engine stays loaded in that case.
+    """
+    chain = _exception_chain_text(exc).lower()
+    if "kv_cache_precision" not in chain and "kv cache precision" not in chain:
+        return None
+    retry = (
+        "load again."
+        if loading
+        else "apply again; the previous engine and saved settings were kept."
+    )
+    return (
+        "This OpenVINO runtime or device rejected the selected KV cache precision. "
+        f"Set KV cache precision to Auto (or FP16) in the context editor, then {retry} "
+        "INT4 (u4) KV cache on GPU needs OpenVINO 2026.2 or later."
+    )
+
+
+def format_model_load_error(exc: BaseException, *, device: str | None = None) -> str:
     """Return a concise, actionable message for a failed model load."""
     if is_openvino_tokenizer_runtime_error(exc):
         return format_openvino_tokenizer_runtime_error()
+    kv_message = format_kv_cache_precision_error(exc, loading=True)
+    if kv_message is not None:
+        return kv_message
+    # Never return the native stack trace: it can contain local model paths.
+    chain = _exception_chain_text(exc).lower()
+    if is_npu_compile_rejection(exc, device=device):
+        return (
+            "Intel NPU compilation rejected this model (OpenVINO Level Zero: "
+            "ZE_RESULT_ERROR_INVALID_ARGUMENT). The NPU was selected, but the model was not "
+            "loaded. This usually means the Intel NPU driver is too old for this model or "
+            "the model's INT4 layout does not suit this NPU. Try, in order: update the "
+            f"Intel NPU driver ({NPU_DRIVER_DOWNLOAD_URL}) and retry; load the model on "
+            "GPU instead; or reconvert it for NPU with channel-wise INT4 (group size -1). "
+            "InferBridge has not switched devices. Share a reviewed diagnostics export "
+            "(it includes the NPU driver version) if the failure persists."
+        )
     if is_tls_certificate_error(exc):
-        bundle = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("SSL_CERT_FILE")
-        hint = f" Active CA bundle: {bundle}." if bundle else ""
         return (
             "HTTPS download failed while contacting huggingface.co. Python could not verify the "
             "TLS certificate. On Windows, install python-certifi-win32, or set REQUESTS_CA_BUNDLE / "
-            "SSL_CERT_FILE to your organization's CA bundle, then retry." + hint
+            "SSL_CERT_FILE to your organization's CA bundle, then retry."
         )
-    return _redact_secrets(str(exc))
+    # Raw exception text comes from native libraries and model files and may
+    # contain absolute paths, prompts or arbitrary credentials. Fail closed.
+    if "no converted openvino model found" in chain:
+        return (
+            "No complete converted OpenVINO model files were found. Use the Model Library "
+            "to convert or repair this model before loading it."
+        )
+    if "not converted with a verified npu-compatible int4 profile" in chain:
+        return (
+            "This INT4 model has no verified NPU-compatible conversion profile. "
+            "Reconvert it with symmetric INT4, ratio 1.0 and group size 128, then retry NPU."
+        )
+    return (
+        "Model loading failed. Check that the requested device is available and the converted "
+        "model files are complete. Review System Doctor and export diagnostics locally if "
+        "the problem persists. No automatic device fallback occurred."
+    )
 
 
 def format_model_convert_error(exc: BaseException) -> str:

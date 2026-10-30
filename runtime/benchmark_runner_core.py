@@ -18,6 +18,7 @@ import threading
 import time
 import uuid
 from collections.abc import Callable
+from contextvars import ContextVar
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -40,6 +41,16 @@ DEFAULT_BENCHMARK_PROMPT = (
 )
 DEFAULT_BENCHMARK_DEVICES = ("CPU", "GPU", "NPU", "AUTO")
 BENCHMARK_METHODOLOGY_VERSION = 2
+
+
+class BenchmarkBusyError(RuntimeError):
+    """The engine is already executing a benchmark matrix."""
+
+
+_benchmark_client_run_id: ContextVar[str | None] = ContextVar(
+    "benchmark_client_run_id", default=None
+)
+
 BENCHMARK_CAVEAT = (
     "AUTO, MULTI, and HETERO are OpenVINO routing modes. Requested and actual "
     "devices are reported separately. Results describe only this local run and "
@@ -81,6 +92,8 @@ class BenchmarkResult:
     active_experts: int | None = None
     estimated_weight_footprint_gb: float | None = None
     synthetic: bool = False
+    configured_context_tokens: int | None = None
+    reserved_output_tokens: int | None = None
 
 
 @dataclass
@@ -213,6 +226,8 @@ async def run_benchmark_suite(
     max_tokens: int = 64,
     runs: int = 1,
     warmup_runs: int | None = None,
+    client_run_id: str | None = None,
+    reject_when_busy: bool = False,
 ) -> dict[str, Any]:
     """Run every requested model/device combination and return one persisted run."""
 
@@ -221,16 +236,24 @@ async def run_benchmark_suite(
         suite_lock = asyncio.Lock()
         manager._benchmark_suite_lock = suite_lock
 
+    # Do not queue another expensive API matrix behind an existing run.
+    # The check and uncontended acquisition execute without an intervening await.
+    if reject_when_busy and suite_lock.locked():
+        raise BenchmarkBusyError("A benchmark is already running on this engine.")
     async with suite_lock:
-        return await _run_benchmark_suite_locked(
-            manager,
-            model_ids=model_ids,
-            devices=devices,
-            prompt=prompt,
-            max_tokens=max_tokens,
-            runs=runs,
-            warmup_runs=warmup_runs,
-        )
+        token = _benchmark_client_run_id.set(client_run_id)
+        try:
+            return await _run_benchmark_suite_locked(
+                manager,
+                model_ids=model_ids,
+                devices=devices,
+                prompt=prompt,
+                max_tokens=max_tokens,
+                runs=runs,
+                warmup_runs=warmup_runs,
+            )
+        finally:
+            _benchmark_client_run_id.reset(token)
 
 
 async def _run_benchmark_suite_locked(
@@ -286,6 +309,7 @@ async def _run_benchmark_suite_locked(
     leaders = summarize_benchmark_results(results)
     return {
         "run_id": run_id,
+        "client_run_id": _benchmark_client_run_id.get(),
         "benchmark_schema_version": 2,
         "methodology_version": BENCHMARK_METHODOLOGY_VERSION,
         "created_at": started_at,
@@ -761,6 +785,8 @@ def _model_identity(manager: ModelManager, cfg: Any | None) -> dict[str, Any]:
         "num_experts": getattr(cfg, "num_experts", None) if cfg else None,
         "active_experts": getattr(cfg, "active_experts", None) if cfg else None,
         "estimated_weight_footprint_gb": None,
+        "configured_context_tokens": cfg.max_context_len if cfg else None,
+        "reserved_output_tokens": cfg.max_output_tokens if cfg else None,
     }
     if cfg is None:
         return identity
@@ -1068,6 +1094,11 @@ def _emit_benchmark_progress(
 ) -> None:
     emit = getattr(manager, "emit_event", None)
     if callable(emit):
+        client_run_id = _benchmark_client_run_id.get()
+        if client_run_id:
+            message = message.replace(
+                "Benchmark Lab · ", f"Benchmark Lab · run {client_run_id} · ", 1
+            )
         emit(level, message)
 
 

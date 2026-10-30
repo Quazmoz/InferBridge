@@ -41,6 +41,7 @@ from app.model_library_schema import (
 )
 from app.openai_api import ModelRegisterRequest
 from app.paths import packaged_resource_root
+from app.quantization_policy import npu_known_issue
 
 OFFICIAL_MANIFEST_URL = (
     "https://github.com/Quazmoz/openvino-windows-llm/"
@@ -481,8 +482,18 @@ class ModelLibraryService:
         )
         local = self._local_evidence(model_id)
         verification = self._verification(metadata, local)
+        npu_note = npu_known_issue(cfg.source_model)
+        if npu_note and verification.get("NPU", {}).get("status") == "expected_unverified":
+            # Local benchmark or certification evidence still wins over the caveat.
+            verification["NPU"] = {
+                "status": "known_issue",
+                "label": "NPU: known issue",
+                "note": npu_note,
+            }
         recommendation = self._quantization(cfg, estimate, snapshot)
         preferred_device = str(cfg.recommended_device or "CPU").split(":", 1)[0].upper()
+        if preferred_device == "NPU" and verification["NPU"].get("status") == "known_issue":
+            preferred_device = "GPU"
         available = {
             str(value).split(".", 1)[0].upper() for value in snapshot.get("available_devices", [])
         }
@@ -573,6 +584,7 @@ class ModelLibraryService:
             "license": metadata.get("license") or "Unknown",
             "gated": bool(metadata.get("gated")),
             "verification": verification,
+            "npu_note": npu_note,
             "metrics": {
                 "time_to_first_load_ms": metric("load_time_ms"),
                 "tokens_sec": metric("tokens_sec"),

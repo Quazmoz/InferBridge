@@ -137,6 +137,7 @@ def build_plugin_config(
     *,
     max_response_len: int | None = None,
     backend: str = "openvino-genai",
+    kv_cache_precision: str | None = None,
 ) -> dict[str, Any]:
     """Build a complete, backend-aware OpenVINO plugin configuration.
 
@@ -152,6 +153,9 @@ def build_plugin_config(
     if is_direct_npu(normalized) and not is_embedding and max_prompt_len:
         config["MAX_PROMPT_LEN"] = int(max_prompt_len)
         config["MIN_RESPONSE_LEN"] = _positive_int(max_response_len) or 128
+    if not is_embedding:
+        # CPU/GPU only; the NPU compiles its own static KV layout.
+        config.update(engine.kv_cache_precision_property(normalized, kv_cache_precision))
 
     if cache_dir:
         try:
@@ -226,6 +230,7 @@ def create_engine(
     backend: str = "openvino-genai",
     draft_model_path: str | None = None,
     max_response_len: int | None = None,
+    kv_cache_precision: str | None = None,
 ) -> engine.BaseEngine:
     """Create an engine, adding complete context configuration for direct NPUs."""
 
@@ -240,6 +245,7 @@ def create_engine(
             cache_dir=cache_dir,
             backend=backend,
             draft_model_path=draft_model_path,
+            kv_cache_precision=kv_cache_precision,
         )
 
     backend_lower = backend.lower()

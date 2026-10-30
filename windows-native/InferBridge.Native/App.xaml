@@ -7,6 +7,53 @@
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
+            <!-- InferBridge identity: a "bridge teal" data accent for charts, pills
+                 and the header rule. Primary commands keep the user's Windows
+                 accent (AccentButtonStyle). These are the only literal colors in
+                 the native UI; high contrast maps to system colors. -->
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <Color x:Key="InferBridgeBrandColor">#FF0B6E78</Color>
+                    <SolidColorBrush x:Key="InferBridgeBrandBrush" Color="{StaticResource InferBridgeBrandColor}" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <Color x:Key="InferBridgeBrandColor">#FF4FC3C7</Color>
+                    <SolidColorBrush x:Key="InferBridgeBrandBrush" Color="{StaticResource InferBridgeBrandColor}" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush x:Key="InferBridgeBrandBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+            <x:Double x:Key="InferBridgeContentMaxWidth">1280</x:Double>
+            <Style x:Key="InferBridgeCardStyle" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="Padding" Value="16" />
+            </Style>
+            <Style x:Key="InferBridgeSectionHeaderStyle" TargetType="TextBlock"
+                   BasedOn="{StaticResource SubtitleTextBlockStyle}">
+                <Setter Property="FontSize" Value="18" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+                <Setter Property="Margin" Value="0,4,0,0" />
+            </Style>
+            <Style x:Key="InferBridgePageTitleStyle" TargetType="TextBlock"
+                   BasedOn="{StaticResource TitleTextBlockStyle}">
+                <Setter Property="TextWrapping" Value="Wrap" />
+            </Style>
+            <Style x:Key="InferBridgeHelpTextStyle" TargetType="TextBlock"
+                   BasedOn="{StaticResource BodyTextBlockStyle}">
+                <Setter Property="TextWrapping" Value="Wrap" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Style>
+            <!-- The 3 px brand rule beside page titles. -->
+            <Style x:Key="InferBridgeHeaderRuleStyle" TargetType="Border">
+                <Setter Property="Width" Value="3" />
+                <Setter Property="CornerRadius" Value="2" />
+                <Setter Property="Background" Value="{ThemeResource InferBridgeBrandBrush}" />
+                <Setter Property="Margin" Value="0,4,12,4" />
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

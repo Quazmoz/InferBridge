@@ -1,5 +1,8 @@
 # Context budget visibility
 
+> Looking for how to use a **larger context window**, KV cache precision, or why
+> the defaults are small? See [Context and memory](CONTEXT_AND_MEMORY.md).
+
 InferBridge can inspect a chat request before generation and show how the selected loaded model will use its context window.
 
 The WebGUI displays a compact context indicator beside the existing token counter. Open it to review:
@@ -51,6 +54,94 @@ Leading system instructions remain pinned. When the request exceeds the prompt b
 Pending browser images use the same conservative per-image token reserve as vision generation. That portion is an estimate because the images have not yet entered the server-side vision prompt. The UI labels attachment token use with an approximation marker.
 
 The preflight does not change generation behavior. It reports what the existing prompt builder will do.
+
+## Adaptive model context configuration
+
+Every registered model has its own saved context window, and it can be read
+and changed **without loading the model**. One shared editor serves every
+surface:
+
+- **Native Model library:** each model card shows `Context: 8,192 tokens` with a
+  **Context…** button. Downloaded (unloaded) models also offer **Load with
+  context…**, which opens the same editor and loads with the chosen value.
+- **Native Chat:** the model/device bar shows the selected model's context with
+  **Context…** (or **Load with context…** for an unloaded model), and the
+  Inference settings pane shows it next to the *Context used* ring with
+  **Change…**. An ordinary load states which saved context it uses.
+- **Native Settings → Per-model context window:** a list of every model and its
+  context, each with **Edit…**.
+- **Browser Model Library:** the same per-model line, editor and **Load with
+  context…** on each registered model's card.
+
+The editor shows the current value, the recommended value and the model's
+architecture maximum (from the converted `config.json`), offers presets (2K, 4K,
+8K, 16K, 32K, 64K, 128K, capped at the model maximum) plus a custom whole number,
+estimates the FP16 KV cache for any value, and marks values above the
+recommendation as **trial**. Invalid values get a friendly message before
+anything is sent. For a loaded model the primary action is **Apply now (reloads
+engine, chat kept)**; otherwise **Save for next load** ("Used next time this
+model loads"). Connect a tool and Connection Hub token limits follow the saved
+value immediately.
+
+`GET /v1/models/contexts` lists every registered model (loaded or not) with its
+configured, recommended and architecture-limit values, custom-value bounds, a
+`trial` flag, `loaded`, and `applies` (`now` or `next-load`); embedding models
+are listed with `configurable: false`. `POST /v1/models/load` accepts an optional
+strict `context_tokens`: for an unloaded model it is validated and persisted
+exactly like the route below before the load is scheduled; for an already
+loaded model a different value is refused with 409 and a pointer to Apply now.
+
+`GET /v1/models/context?model=<id>` returns options, presets, custom-value bounds
+(`minimum_context_tokens`, `maximum_context_tokens`), `applies`, and advisory
+estimates for any registered model, loaded or not.
+`POST /v1/models/context` accepts a strict JSON body:
+
+```json
+{"model":"tinyllama-1.1b-chat-fp16","context_tokens":4096,"expected_context_tokens":2048}
+```
+
+The `expected_context_tokens` compare-and-set guard rejects a stale client with
+HTTP 409. Embedding models, invalid values, and requests exceeding an explicit
+converted `config.json` architecture limit are rejected. Without trustworthy
+architecture metadata, values above the model's original recommended context
+are unavailable. Legacy `models.json` entries remain valid: the original
+`max_context_len` becomes the saved recommended baseline only when a context
+preference is successfully applied. **Restore recommended** preserves that
+baseline across restarts. If new architecture metadata contradicts a previously
+saved context, the UI marks that *existing–unverified* value as read-only and
+offers only validated reductions. Restore is disabled if the old recommendation
+is no longer eligible.
+
+For a loaded model, an eligible change compiles a new pipeline under the
+shared model-load lock, waits for a safe per-model handoff, then atomically
+persists the catalog and switches engines. Build, persistence, cancellation,
+or stale-state failure leaves the old engine and config active. Requests using
+other models can continue. If no engine is loaded, the validated preference is
+saved and applied on the next load. Do not blindly retry after a client-side
+timeout: refresh authoritative state first.
+
+Direct NPU LLMs use the installed compatibility layer's `MAX_PROMPT_LEN` and
+`MIN_RESPONSE_LEN`; their sum is the configured total. CPU/GPU context budgets
+are enforced in the existing chat prompt builder, but acceptance does **not**
+prove memory availability or the ability to generate at that depth. An option
+above the recommendation is labeled *eligible–unverified*. A per-model **KV
+cache precision** (Auto, f16, u8, u4) is offered in every editor and applies to
+CPU and GPU loads only; see [Context and memory](CONTEXT_AND_MEMORY.md) for
+how to use larger context, KV precision trade-offs and why the defaults are
+small.
+
+Where architecture and hardware metadata permit, the options also show a
+**host-RAM planning floor** (converted weights plus illustrative FP16 KV cache,
+overhead, and other loaded models), alongside an estimated memory reserve and
+available host RAM. These values do not represent NPU allocated memory, GPU
+VRAM requirements, or successful runtime qualification. Missing KV metadata
+results in *unverified memory*, not an artificially precise fit estimate.
+
+FP16 KV-cache figures are calculated only when the converted model provides
+layer/head/hidden-dimension metadata, and represent illustrative K+V allocation,
+not measured OpenVINO or NPU memory. Actual converted weight footprint is
+distinguished from an estimate. The Hardware Advisor's host-memory estimate is
+a lower bound when KV architecture is unavailable, never a fit guarantee.
 
 ## WebGUI actions
 

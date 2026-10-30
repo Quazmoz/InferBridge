@@ -8,7 +8,7 @@ OpenVINO dependency.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -368,6 +368,12 @@ class ModelLoadRequest(BaseModel):
     draft_model: str | None = (
         None  # catalog model id or path to draft model for speculative decoding
     )
+    # Optional per-model context chosen at load time. Validated and persisted
+    # exactly like POST /v1/models/context before the load is scheduled.
+    context_tokens: int | None = Field(default=None, strict=True, ge=128, le=262144)
+    # Optional per-model KV-cache precision (auto/f16/u8/u4), persisted with the
+    # context before the load. Sent to CPU/GPU only; the NPU ignores it.
+    kv_cache_precision: Literal["auto", "f16", "u8", "u4"] | None = None
 
 
 class ModelConvertRequest(BaseModel):
@@ -432,6 +438,14 @@ class ModelRegisterRequest(BaseModel):
 # --- Benchmark requests ---------------------------------------------------
 
 
+class ModelContextRequest(BaseModel):
+    model: str = Field(min_length=1, max_length=128)
+    context_tokens: int = Field(strict=True, ge=128, le=262144)
+    expected_context_tokens: int = Field(strict=True, ge=128, le=262144)
+    # None keeps the saved precision; "auto" restores OpenVINO's own selection.
+    kv_cache_precision: Literal["auto", "f16", "u8", "u4"] | None = None
+
+
 class BenchmarkRunRequest(BaseModel):
     model: str | None = Field(default=None, max_length=128)
     models: list[str] | None = Field(default=None, max_length=16)
@@ -442,6 +456,9 @@ class BenchmarkRunRequest(BaseModel):
     prompt: str | None = Field(default=None, max_length=16_384)
     max_tokens: int = Field(default=64, ge=1, le=4096)
     runs: int = Field(default=1, ge=1, le=10)
+    client_run_id: str | None = Field(
+        default=None, min_length=32, max_length=32, pattern=r"^[0-9a-f]{32}$"
+    )
 
     @model_validator(mode="after")
     def validate_matrix_size(self):

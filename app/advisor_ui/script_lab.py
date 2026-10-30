@@ -6,6 +6,55 @@ SCRIPT_LAB = r"""
         standard: { label: 'Standard', runs: 5, warmups: 1, maxTokens: 64, description: 'Recommended · 1 warm-up + 5 measured runs' },
         thorough: { label: 'Thorough', runs: 8, warmups: 2, maxTokens: 128, description: 'More stable · 2 warm-ups + 8 measured runs' },
     };
+    // Same ceiling as native BenchmarkLab.MaximumCombinations: the server accepts 32,
+    // but expensive local matrix runs are deliberately kept small.
+    const BENCHMARK_MAX_COMBINATIONS = 8;
+
+    // benchmark-parity:start (pure helpers mirrored from BenchmarkLabClient.cs)
+    function newBenchmarkClientRunId() {
+        const bytes = new Uint8Array(16);
+        window.crypto.getRandomValues(bytes);
+        return Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
+    }
+
+    function readBenchmarkActivity(events, clientRunId, expectedCombinations) {
+        if (!/^[0-9a-f]{32}$/.test(String(clientRunId || ''))) return null;
+        const prefix = `Benchmark Lab · run ${clientRunId} · combination `;
+        let latest = null;
+        (Array.isArray(events) ? events : []).forEach(event => {
+            const message = String(event?.message || '');
+            // Timestamps and combination counts cannot distinguish operations.
+            if (message.length > 240 || !message.startsWith(prefix)) return;
+            const rest = message.slice(prefix.length);
+            const match = rest.match(/^(\d+)\/(\d+) · /);
+            if (!match) return;
+            const index = Number(match[1]);
+            const total = Number(match[2]);
+            if (total !== expectedCombinations || index < 1 || index > total) return;
+            const finished = message.endsWith('· complete') || message.endsWith('· failed');
+            const completed = finished ? index : index - 1;
+            // Engine event order is authoritative; never roll progress backwards.
+            if (!latest || completed >= latest.completed) {
+                latest = { message: `Benchmark Lab · combination ${rest}`, completed, total };
+            }
+        });
+        return latest;
+    }
+
+    function benchmarkCompletionError(result, clientRunId, models, devices) {
+        if (!result || typeof result !== 'object' || typeof result.run_id !== 'string' || !result.run_id) return 'The engine did not confirm the benchmark run.';
+        if (result.client_run_id !== clientRunId) return 'The engine returned a different benchmark operation.';
+        if (typeof result.synthetic !== 'boolean' || !Array.isArray(result.results)) return 'The engine did not confirm the benchmark matrix.';
+        if (result.mock === true && result.synthetic !== true) return 'Mock benchmark cannot be labeled as real.';
+        const expected = new Set(models.flatMap(model => devices.map(device => `${model}\u001f${device}`)));
+        if (result.results.length !== expected.size) return 'The engine did not confirm the benchmark matrix.';
+        for (const row of result.results) {
+            if (!row || typeof row.success !== 'boolean' || !expected.delete(`${row.model_id}\u001f${row.requested_device}`)) return 'Unexpected or duplicate benchmark result.';
+            if ((row.synthetic === true || row.mock === true) && result.synthetic !== true) return 'Synthetic result cannot be labeled as measured hardware.';
+        }
+        return expected.size ? 'Missing benchmark combinations.' : '';
+    }
+    // benchmark-parity:end
 
     function benchmarkModels(data) {
         const runtimeModels = new Map((latestStatus?.models?.available || []).map(model => [model.id, model]));
@@ -131,14 +180,14 @@ SCRIPT_LAB = r"""
     }
 
     function benchmarkProgressHtml() {
-        if (!benchmarkRunning && !benchmarkError) return '';
+        if (!benchmarkRunning && !benchmarkError && !benchmarkNotice) return '';
         const percent = benchmarkProgress.total > 0
             ? Math.round((benchmarkProgress.current / benchmarkProgress.total) * 100)
             : 0;
         return `<div class="benchmark-progress ${benchmarkError ? 'has-error' : ''}" role="status" aria-live="polite">
-            <div class="benchmark-progress-head"><strong>${benchmarkError ? 'Benchmark stopped' : 'Benchmark running'}</strong><span>${benchmarkProgress.total > 0 ? `${benchmarkProgress.current} / ${benchmarkProgress.total} combinations` : 'Starting…'}</span></div>
+            <div class="benchmark-progress-head"><strong>${benchmarkError ? 'Benchmark stopped' : benchmarkRunning ? 'Benchmark running' : 'Benchmark'}</strong><span>${benchmarkProgress.total > 0 ? `${benchmarkProgress.current} / ${benchmarkProgress.total} combinations` : 'Starting…'}</span></div>
             <div class="benchmark-progress-track" role="progressbar" aria-label="Benchmark progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><span style="width:${percent}%"></span></div>
-            <div id="benchmark-progress-message" class="benchmark-progress-message">${escapeHtml(benchmarkError || benchmarkProgress.message)}</div>
+            <div id="benchmark-progress-message" class="benchmark-progress-message">${escapeHtml(benchmarkError || benchmarkNotice || benchmarkProgress.message)}</div>
             <div class="benchmark-resource-note">Benchmarking can temporarily use substantial CPU, GPU, NPU, RAM, and power. Normal chat may be slower while it runs.</div>
         </div>`;
     }
@@ -148,6 +197,8 @@ SCRIPT_LAB = r"""
         const preset = benchmarkPresetConfig();
         const combinations = benchmarkSelectedModels.size * benchmarkSelectedDevices.size;
         const workUnits = combinations * (preset.runs + preset.warmups);
+        const overLimit = combinations > BENCHMARK_MAX_COMBINATIONS;
+        const blocked = benchmarkRunning || !combinations || overLimit || Boolean(benchmarkUncertainRunId);
         return `
             <div id="advisor-panel-benchmark" role="tabpanel" aria-labelledby="advisor-tab-benchmark" class="benchmark-lab">
                 <section class="benchmark-intro">
@@ -182,8 +233,9 @@ SCRIPT_LAB = r"""
 
                     <div class="benchmark-run-bar">
                         <div><strong>${combinations || 0} combination${combinations === 1 ? '' : 's'}</strong><span>${workUnits || 0} total warm-up/measured generations · ${preset.maxTokens} output-token target</span></div>
-                        <button id="benchmark-run-lab-btn" class="advisor-primary" type="button" ${benchmarkRunning || !combinations ? 'disabled' : ''}>${benchmarkRunning ? 'Benchmark running…' : 'Run benchmark'}</button>
+                        <button id="benchmark-run-lab-btn" class="advisor-primary" type="button" aria-describedby="benchmark-run-limits" ${blocked ? 'disabled' : ''}>${benchmarkRunning ? 'Benchmark running…' : 'Run benchmark'}</button>
                     </div>
+                    <div id="benchmark-run-limits" class="benchmark-advanced-note">${overLimit ? `<strong class="benchmark-error">Select at most ${BENCHMARK_MAX_COMBINATIONS} model/device combinations.</strong> ` : ''}${benchmarkUncertainRunId ? '<strong class="benchmark-error">The previous request\'s outcome is uncertain. Refresh history to confirm it; no automatic retry is permitted.</strong> ' : ''}The engine has no benchmark cancellation; closing this window only stops monitoring. A concurrent benchmark is refused, never queued.</div>
                     ${benchmarkProgressHtml()}
                 </section>
 
@@ -244,6 +296,7 @@ SCRIPT_LAB = r"""
             a?.hardware_fingerprint
             && b?.hardware_fingerprint
             && a.hardware_fingerprint === b.hardware_fingerprint
+            && Boolean(a.synthetic || a.mock) === Boolean(b.synthetic || b.mock)
             && Number(a.methodology_version || 1) === Number(b.methodology_version || 1)
             && Number(a.max_tokens) === Number(b.max_tokens)
             && Number(a.runs_per_combo) === Number(b.runs_per_combo)
@@ -257,11 +310,15 @@ SCRIPT_LAB = r"""
             if (historical.run_id === run.run_id || historical.automatic || !methodologyCompatible(run, historical)) continue;
             const candidate = (historical.results || []).find(previous => (
                 previous.success
+                && Boolean(previous.synthetic || historical.synthetic || historical.mock) === Boolean(row.synthetic || run.synthetic || run.mock)
+                && row.actual_device && previous.actual_device
+                && previous.configured_context_tokens != null && previous.configured_context_tokens === row.configured_context_tokens
+                && previous.reserved_output_tokens != null && previous.reserved_output_tokens === row.reserved_output_tokens
                 && previous.model_id === row.model_id
                 && previous.source_model === row.source_model
                 && previous.weight_format === row.weight_format
                 && previous.requested_device === row.requested_device
-                && (previous.actual_device || '') === (row.actual_device || '')
+                && previous.actual_device === row.actual_device
             ));
             if (candidate) return candidate;
         }
@@ -353,7 +410,7 @@ SCRIPT_LAB = r"""
         if (benchmarkHistoryLoading) return '<section class="advisor-card benchmark-history"><h3>Recent benchmark runs</h3><div class="advisor-spinner"></div></section>';
         const runs = benchmarkHistory.filter(run => !run.automatic).slice(0, 5);
         return `<section class="advisor-card benchmark-history">
-            <div class="benchmark-history-head"><div><h3>Recent benchmark runs</h3><p>Open a previous local run or compare compatible evidence automatically.</p></div>${runs.length ? '<button id="benchmark-clear-history" type="button" class="advisor-secondary benchmark-danger">Clear history</button>' : ''}</div>
+            <div class="benchmark-history-head"><div><h3>Recent benchmark runs</h3><p>Open a previous local run or compare compatible evidence automatically.</p></div><div class="benchmark-result-actions"><button id="benchmark-refresh-history" type="button" class="advisor-secondary">Refresh history</button>${runs.length ? '<button id="benchmark-clear-history" type="button" class="advisor-secondary benchmark-danger">Clear history</button>' : ''}</div></div>
             ${runs.length ? `<div class="benchmark-history-list">${runs.map(run => `<button type="button" class="benchmark-history-row ${benchmarkRun?.run_id === run.run_id ? 'active' : ''}" data-benchmark-history="${escapeHtml(run.run_id)}">
                 <span><strong>${escapeHtml(new Date(run.created_at || Date.now()).toLocaleString())}</strong><small>${escapeHtml((run.models || [...new Set((run.results || []).map(row => row.model_id))]).length)} model(s) · ${escapeHtml((run.devices || [...new Set((run.results || []).map(row => row.requested_device))]).join(', '))} · ${escapeHtml(run.preset || 'custom')}</small></span>
                 <span>${escapeHtml(runFastestSummary(run, data))}</span>
@@ -389,6 +446,7 @@ SCRIPT_LAB = r"""
         document.getElementById('benchmark-copy-results')?.addEventListener('click', () => void copyBenchmarkResults());
         document.getElementById('benchmark-download-json')?.addEventListener('click', downloadBenchmarkJson);
         document.getElementById('benchmark-clear-history')?.addEventListener('click', () => void clearBenchmarkHistory());
+        document.getElementById('benchmark-refresh-history')?.addEventListener('click', () => void loadBenchmarkHistory(true));
         document.getElementById('benchmark-add-device')?.addEventListener('click', addAdvancedBenchmarkDevice);
 
         const search = document.getElementById('benchmark-model-search');
@@ -457,19 +515,28 @@ SCRIPT_LAB = r"""
     }
 
     async function runBenchmarkLab() {
-        if (benchmarkRunning) return;
+        if (benchmarkRunning || benchmarkUncertainRunId) return;
         const models = [...benchmarkSelectedModels];
         const devices = [...benchmarkSelectedDevices];
         if (!models.length || !devices.length) {
             toast('Select at least one prepared model and one device.');
             return;
         }
+        if (models.length * devices.length > BENCHMARK_MAX_COMBINATIONS) {
+            toast(`Select at most ${BENCHMARK_MAX_COMBINATIONS} model/device combinations.`);
+            return;
+        }
 
         const preset = benchmarkPresetConfig();
+        const clientRunId = newBenchmarkClientRunId();
+        const total = models.length * devices.length;
         benchmarkRunning = true;
         benchmarkError = '';
+        benchmarkNotice = '';
+        benchmarkClientRunId = clientRunId;
+        benchmarkExpectedCombinations = total;
         benchmarkStartedAt = Date.now();
-        benchmarkProgress = { message: 'Preparing benchmark matrix…', current: 0, total: models.length * devices.length };
+        benchmarkProgress = { message: 'Starting benchmark; waiting for the engine\'s activity events…', current: 0, total };
         render();
         startBenchmarkProgressPolling();
 
@@ -478,27 +545,48 @@ SCRIPT_LAB = r"""
             devices,
             runs: preset.runs,
             max_tokens: preset.maxTokens,
+            client_run_id: clientRunId,
         };
         if (benchmarkCustomPrompt.trim()) payload.prompt = benchmarkCustomPrompt.trim();
 
+        let response = null;
         try {
-            const response = await window.fetch('/v1/benchmarks/run', {
+            response = await window.fetch('/v1/benchmarks/run', {
                 method: 'POST',
                 headers: apiHeaders({ 'Content-Type': 'application/json' }),
                 body: JSON.stringify(payload),
             });
-            const result = await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(result.detail || `Benchmark failed (${response.status})`);
+            const result = await response.json().catch(() => null);
+            if (response.status >= 400 && response.status < 500) {
+                // An explicit refusal (409 busy, validation, auth) proves nothing was accepted.
+                const detail = typeof result?.detail === 'string' ? result.detail : '';
+                throw Object.assign(new Error(response.status === 409
+                    ? `Benchmark refused: ${detail || 'another benchmark or model operation is running'}. Nothing was queued.`
+                    : `Benchmark request rejected: ${detail || `HTTP ${response.status}`}`), { confirmed: true });
+            }
+            if (!response.ok) throw new Error(`Engine returned HTTP ${response.status}`);
+            const invalid = benchmarkCompletionError(result, clientRunId, models, devices);
+            if (invalid) throw new Error(invalid);
             benchmarkRun = result;
             benchmarkHistory = [result, ...benchmarkHistory.filter(run => run.run_id !== result.run_id)];
             benchmarkHistoryLoaded = true;
-            benchmarkProgress = { message: 'Benchmark complete.', current: devices.length * models.length, total: devices.length * models.length };
-            toast(result.mock ? 'Synthetic benchmark complete.' : 'Benchmark complete.');
+            benchmarkProgress = { message: `${total} / ${total} combinations completed.`, current: total, total };
+            const failures = result.results.filter(row => !row.success).length;
+            benchmarkNotice = `${result.synthetic ? 'Synthetic benchmark saved (not hardware evidence)' : 'Measured benchmark saved'}: ${total - failures} successful, ${failures} failed.`;
+            toast(result.synthetic ? 'Synthetic benchmark complete.' : 'Benchmark complete.');
         } catch (error) {
-            benchmarkError = error instanceof Error ? error.message : String(error);
+            const message = error instanceof Error ? error.message : String(error);
+            if (error?.confirmed) {
+                benchmarkError = message;
+            } else {
+                // After dispatch, a lost or unreadable response does not prove the engine stopped.
+                benchmarkUncertainRunId = clientRunId;
+                benchmarkError = `Unable to confirm benchmark outcome: ${message}. It may still be running. Refresh history before making another request.`;
+            }
             toast(benchmarkError);
         } finally {
             benchmarkRunning = false;
+            benchmarkClientRunId = '';
             stopBenchmarkProgressPolling();
             if (overlay.classList.contains('visible') && activeView === 'benchmark') render();
         }
@@ -525,18 +613,10 @@ SCRIPT_LAB = r"""
             const response = await upstreamFetch('/v1/system/status', { headers: apiHeaders() });
             if (!response.ok) return;
             latestStatus = await response.json();
-            const cutoff = Math.floor(benchmarkStartedAt / 1000) - 1;
-            const events = (latestStatus.events || []).filter(event => Number(event.timestamp || 0) >= cutoff && String(event.message || '').startsWith('Benchmark Lab ·'));
-            const latest = events.at(-1);
-            if (!latest) return;
-            const message = String(latest.message || '');
-            const match = message.match(/combination\s+(\d+)\/(\d+)/i);
-            benchmarkProgress.message = message;
-            if (match) {
-                benchmarkProgress.current = Math.max(Number(match[1]) - (message.endsWith('· complete') ? 0 : 1), 0);
-                benchmarkProgress.total = Number(match[2]);
-                if (message.endsWith('· complete')) benchmarkProgress.current = Number(match[1]);
-            }
+            const activity = readBenchmarkActivity(latestStatus.events, benchmarkClientRunId, benchmarkExpectedCombinations);
+            if (!activity || activity.completed < benchmarkProgress.current) return;
+            benchmarkProgress = { message: activity.message, current: activity.completed, total: activity.total };
+            const message = activity.message;
             const messageNode = document.getElementById('benchmark-progress-message');
             if (messageNode) messageNode.textContent = message;
             const progress = document.querySelector('.benchmark-progress-track');
@@ -561,8 +641,19 @@ SCRIPT_LAB = r"""
             const response = await upstreamFetch('/v1/benchmarks', { headers: apiHeaders() });
             if (!response.ok) throw new Error(`History request failed (${response.status})`);
             const payload = await response.json();
-            benchmarkHistory = Array.isArray(payload.data) ? payload.data : [];
+            // The engine keeps at most 100 runs; never trust an unbounded payload.
+            benchmarkHistory = (Array.isArray(payload.data) ? payload.data : []).slice(0, 100);
             benchmarkHistoryLoaded = true;
+            const recovered = benchmarkUncertainRunId
+                && benchmarkHistory.find(run => run?.client_run_id === benchmarkUncertainRunId);
+            if (recovered) {
+                benchmarkUncertainRunId = '';
+                benchmarkError = '';
+                benchmarkRun = recovered;
+                benchmarkNotice = 'Engine history confirms the previous benchmark was saved. No request was retried.';
+            } else if (benchmarkUncertainRunId) {
+                benchmarkNotice = 'The uncertain benchmark is not in saved history yet. Absence does not prove it was rejected.';
+            }
             if (!benchmarkRun) benchmarkRun = benchmarkHistory.find(run => !run.automatic) || null;
         } catch (error) {
             toast(error instanceof Error ? error.message : String(error));

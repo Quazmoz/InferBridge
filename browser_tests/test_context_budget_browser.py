@@ -146,3 +146,71 @@ def test_context_budget_chip_previews_omissions_and_reduces_output(
         "content": "Keep this current draft in the budget calculation.",
     }
     assert latest["image_count"] == 0
+
+
+def test_context_apply_shows_rebuild_status_and_holds_sends(
+    page: Page,
+    inferbridge_url: str,
+) -> None:
+    """A context apply to the loaded model shows a composer spinner and guards Send until it lands."""
+    page.add_init_script("localStorage.setItem('inferbridge.onboarding.auto-opened.v1', '1')")
+    page.route(
+        "**/v1/models/status",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(_status_payload()),
+        ),
+    )
+    page.route(
+        "**/v1/chat/context-budget",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(_budget_payload()),
+        ),
+    )
+    pending = []
+    page.route("**/v1/models/context", lambda route: pending.append(route))
+    completions = []
+    page.route("**/v1/chat/completions", lambda route: (completions.append(route), route.abort()))
+
+    page.goto(inferbridge_url, wait_until="networkidle")
+    page.evaluate("fetch('/v1/models/status').then(response => response.json())")
+    expect(page.locator("#model-select")).to_have_value(MODEL_ID)
+
+    # Any surface (Model Library, chat panel) applies through this one endpoint.
+    page.evaluate(
+        "window.__apply = fetch('/v1/models/context', {method: 'POST',"
+        " headers: {'Content-Type': 'application/json'},"
+        f" body: JSON.stringify({{model: '{MODEL_ID}', context_tokens: 4096,"
+        " expected_context_tokens: 2048})}).then(response => response.status)"
+    )
+    status = page.locator("#ov-context-rebuild")
+    expect(status).to_be_visible()
+    expect(status).to_have_attribute("role", "status")
+    expect(status).to_have_attribute("data-state", "busy")
+    expect(status).to_contain_text("Applying 4K context")
+    expect(status).to_contain_text("rebuilding engine")
+    expect(status.locator(".spinner")).to_be_visible()
+
+    page.locator("#user-input").fill("Hold this until the rebuild finishes.")
+    page.locator("#send-btn").click()
+    expect(page.locator("#toast")).to_contain_text("rebuilding")
+    expect(page.locator("#user-input")).to_have_value("Hold this until the rebuild finishes.")
+    assert not completions
+
+    for _ in range(50):
+        if pending:
+            break
+        page.wait_for_timeout(100)
+    assert pending, "the apply request never reached the network"
+    pending[0].fulfill(
+        status=200,
+        content_type="application/json",
+        body=json.dumps({"status": "applied", "context": {"model_id": MODEL_ID}}),
+    )
+    assert page.evaluate("window.__apply") == 200
+    expect(status).to_have_attribute("data-state", "done")
+    expect(status).to_contain_text("Context set to 4K")
+    expect(status.locator(".spinner")).to_be_hidden()

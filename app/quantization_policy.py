@@ -7,6 +7,7 @@ always win over these priors.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 SUPPORTED_WEIGHT_FORMATS = frozenset({"int4", "int8", "fp16"})
@@ -63,11 +64,77 @@ def int4_conversion_defaults() -> dict[str, object]:
     return {"group_size": 128, "ratio": 1.0, "sym": True}
 
 
+# Intel's NPU guidance (docs.openvino.ai, "OpenVINO GenAI on NPU") allows INT4 symmetric,
+# ratio 1.0 with group size 128 (GQ, recommended up to ~4-5B parameters) or channel-wise
+# -1 (CW, better for larger models). OVMS deploys NPU LLMs from -cw-ov repositories.
+# Phi-4-mini (3.8B, 200k vocabulary, LongRoPE) has failed NPU compilation with GQ128
+# ("Failed to compile. No more devices are left!" on NPU driver 32.0.100.3967,
+# openvino.genai#2082, where a newer driver fixed it for the reporter) and on Meteor
+# Lake (NPU 3720, InferBridge #65, ZE_RESULT_ERROR_INVALID_ARGUMENT). A community
+# conversion reported as working on NPU in #2082 ("with help from Intel folks",
+# huggingface.co/FluidInference/phi-4-mini-instruct-int4-ov-npu) uses
+# `--weight-format int4 --group-size -1 --ratio 1.0 --sym`. No public
+# OpenVINO/Phi-4-mini-instruct-int4-cw-ov repository exists to download.
+NPU_CHANNEL_WISE_SOURCES = frozenset(
+    {"microsoft/phi-4-mini-instruct", "microsoft/phi-4-mini-reasoning"}
+)
+NPU_GROUP_WISE_MAX_PARAMS_B = 4.0
+NPU_3720_GROUP_WISE_MAX_PARAMS_B = 3.0
+NPU_KNOWN_ISSUES = {
+    "microsoft/phi-4-mini-instruct": (
+        "NPU is unverified for Phi-4 Mini: older NPU drivers and Meteor Lake (NPU 3720) "
+        "can reject its NPU compilation (ZE_RESULT_ERROR_INVALID_ARGUMENT). Use the "
+        "latest Intel NPU driver and convert it for NPU with channel-wise INT4 "
+        "(group size -1), or load it on GPU."
+    ),
+}
+_PARAMS_RE = re.compile(r"(?<![A-Za-z0-9.])(\d+(?:\.\d+)?)\s*[bB](?![A-Za-z])")
+
+
+def _source_key(source_model: str | None) -> str:
+    return str(source_model or "").strip().lower()
+
+
+def estimated_parameters_b(source_model: str | None) -> float | None:
+    """Parameter count in billions parsed from a repository name ("Qwen2.5-7B" -> 7.0).
+
+    ponytail: name heuristic only; MoE names ("30B-A3B") report the total. Unknown
+    names (Phi-4-mini) return None and rely on the explicit source list.
+    """
+    name = _source_key(source_model).rsplit("/", 1)[-1]
+    match = _PARAMS_RE.search(name)
+    return float(match.group(1)) if match else None
+
+
+def npu_int4_group_size(source_model: str | None, *, npu_architecture: str | None = None) -> int:
+    """INT4 group size for an NPU-targeted conversion: -1 (channel-wise) or 128.
+
+    Channel-wise for sources known to need it, for models above ~4B parameters (Intel's
+    GQ128 guidance), and for 3B+ models on NPU 3720 (Meteor Lake/Arrow Lake).
+    """
+    if _source_key(source_model) in NPU_CHANNEL_WISE_SOURCES:
+        return -1
+    params = estimated_parameters_b(source_model)
+    if params is not None and params > NPU_GROUP_WISE_MAX_PARAMS_B:
+        return -1
+    arch = str(npu_architecture or "").strip()
+    if params is not None and "3720" in arch and params >= NPU_3720_GROUP_WISE_MAX_PARAMS_B:
+        return -1
+    return 128
+
+
+def npu_known_issue(source_model: str | None) -> str | None:
+    """A user-facing NPU caveat for sources with a known NPU problem, else None."""
+    return NPU_KNOWN_ISSUES.get(_source_key(source_model))
+
+
 def recommend_quantization(
     *,
     backend: str,
     device: str | None,
     profile: str | None = "balanced",
+    source_model: str | None = None,
+    npu_architecture: str | None = None,
 ) -> QuantizationRecommendation:
     """Recommend a weight format without claiming device certification.
 
@@ -96,10 +163,12 @@ def recommend_quantization(
         )
     if base == "NPU":
         defaults = int4_conversion_defaults()
+        group_size = npu_int4_group_size(source_model, npu_architecture=npu_architecture)
         return QuantizationRecommendation(
             "int4",
-            "Intel NPU text-generation preparation prefers InferBridge's NPU-safe symmetric INT4 profile.",
-            group_size=int(defaults["group_size"]),
+            "Intel NPU text-generation preparation prefers InferBridge's NPU-safe symmetric INT4 profile"
+            + (" with channel-wise quantization (group size -1)." if group_size == -1 else "."),
+            group_size=group_size,
             ratio=float(defaults["ratio"]),
             sym=bool(defaults["sym"]),
         )

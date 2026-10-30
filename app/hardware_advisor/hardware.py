@@ -73,6 +73,8 @@ def device_details() -> list[dict[str, Any]]:
         ("DEVICE_TYPE", "type"),
         ("OPTIMIZATION_CAPABILITIES", "optimization_capabilities"),
         ("GPU_DEVICE_TOTAL_MEM_SIZE", "total_memory_bytes"),
+        # Intel NPU plugin: ov::intel_npu::driver_version (integer, e.g. 1688).
+        ("NPU_DRIVER_VERSION", "npu_driver_version"),
     )
     for device in available:
         item = {"device": device, "base": base_device(device)}
@@ -84,6 +86,8 @@ def device_details() -> list[dict[str, Any]]:
                     item["total_memory_gb"] = round(safe_float(value) / (1024**3), 2)
             except Exception:
                 continue
+        if item.get("npu_driver_version") is not None and not item.get("driver_version"):
+            item["driver_version"] = str(item["npu_driver_version"])
         details.append(item)
     return details
 

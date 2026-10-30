@@ -15,7 +15,101 @@ CONNECTION_HUB_CSS = r"""
 .ch-test-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px}.ch-test-head h4{margin:0}.ch-tests{display:grid;gap:6px}.ch-test-row{display:grid;grid-template-columns:minmax(145px,.8fr) 92px 74px minmax(0,1.6fr);gap:8px;align-items:center;padding:9px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface-1)}.ch-test-name{color:var(--text-1);font-size:9.5px;font-weight:700}.ch-test-status{font-size:9px;font-weight:750}.ch-test-status.passed{color:var(--green)}.ch-test-status.failed{color:var(--red)}.ch-test-status.running{color:var(--primary)}.ch-test-status.skipped{color:var(--amber)}.ch-test-duration{color:var(--text-3);font-size:8.5px;font-variant-numeric:tabular-nums}.ch-test-detail{color:var(--text-2);font-size:9px;line-height:1.4;overflow-wrap:anywhere}.ch-message{min-height:18px;margin-top:8px;color:var(--text-2);font-size:9.5px;line-height:1.4}.ch-message.error{color:var(--red)}
 .ch-lan{margin-top:10px}.ch-lan summary{color:var(--text-2);font-size:10px;font-weight:700;cursor:pointer}.ch-lan-body{margin-top:8px;padding:10px;border:1px solid var(--border);border-radius:9px;background:var(--surface-1)}.ch-lan-title{font-size:10px;font-weight:750;color:var(--text-1)}.ch-lan-detail{margin-top:5px;color:var(--text-2);font-size:9px;line-height:1.5}.ch-lan-body.warn{border-color:color-mix(in srgb,var(--amber) 42%,var(--border))}.ch-lan-body.warn .ch-lan-title{color:var(--amber)}
 .ch-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 18px calc(11px + env(safe-area-inset-bottom));border-top:1px solid var(--border);background:var(--surface-1)}.ch-footer-note{max-width:650px;color:var(--text-3);font-size:9px;line-height:1.4}.ch-copy-feedback{min-height:16px;color:var(--green);font-size:9px}
+.ch-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.ch-tool{min-width:0;padding:11px;border:1px solid var(--border);border-radius:10px;background:var(--surface-1)}.ch-tool h5{margin:0 0 6px;color:var(--text-1);font-size:10.5px}.ch-badges{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px}.ch-badge{padding:2px 7px;border:1px solid var(--border);border-radius:999px;color:var(--text-2);font-size:8.5px;font-weight:700}.ch-badge.ready{color:var(--green)}.ch-badge.warn{color:var(--amber)}.ch-tool p{margin:0 0 6px;color:var(--text-2);font-size:9.5px;line-height:1.45}.ch-tool ol{margin:6px 0;padding-left:18px;color:var(--text-2);font-size:9.5px;line-height:1.5}.ch-tool .ch-config-row{grid-template-columns:96px minmax(0,1fr) auto}.ch-tool .ch-code-wrap{padding:6px 0}.ch-tool-actions{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-top:7px}.ch-tool-actions a{color:var(--primary);font-size:9.5px}.ch-tool-warn{color:var(--amber)}.ch-tool-actions a:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+@media(max-width:720px){.ch-tools{grid-template-columns:1fr}}
 @media(max-width:720px){#connection-hub-modal .modal-card{width:calc(100vw - 12px);max-height:calc(100dvh - 12px)}.ch-body{padding:12px}.ch-grid{grid-template-columns:1fr}.ch-test-head{align-items:stretch;flex-direction:column}.ch-test-row{grid-template-columns:minmax(0,1fr) auto}.ch-test-duration{grid-column:2}.ch-test-detail{grid-column:1/-1}.ch-config-row{grid-template-columns:1fr auto}.ch-config-row>span:first-child{grid-column:1/-1}.ch-footer{align-items:stretch;flex-direction:column;padding:10px 12px calc(10px + env(safe-area-inset-bottom))}.ch-footer .ch-btn{min-height:42px}.ch-model-row{grid-template-columns:1fr}.ch-copy-model{width:100%}}
+"""
+
+TOOL_SETUP_JS = r"""
+(() => {
+'use strict';
+// Pure "Connect a tool" builders, mirrored by the native ToolSetup.cs. Values
+// come from Connection Hub metadata; snippets only ever carry the placeholder.
+if (window.__ovllmToolSetup) return;
+const MANAGED = 'InferBridge (local)';
+const START = '# >>> InferBridge (local): managed by InferBridge, Undo in InferBridge restores your backup';
+const END = '# <<< InferBridge (local)';
+const clients = [
+    {id:'continue', title:'Continue (VS Code \u00b7 JetBrains)', native:true, summary:'Adds one model named \u201cInferBridge (local)\u201d to Continue\u2019s config.yaml.', doc:'https://docs.continue.dev/reference', docLabel:'Continue config.yaml reference'},
+    {id:'copilot-cli', title:'GitHub Copilot CLI', native:true, summary:'Sets the Copilot CLI bring-your-own-model environment variables.', doc:'https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/use-byok-models', docLabel:'GitHub Docs: Copilot CLI models'},
+    {id:'vscode-copilot', title:'VS Code \u00b7 GitHub Copilot Chat', native:false, summary:'Add InferBridge as a Custom Endpoint in VS Code\u2019s Language Models editor.', doc:'https://code.visualstudio.com/docs/agent-customization/language-models', docLabel:'VS Code: AI language models'},
+    {id:'copilot-app', title:'GitHub Copilot app', native:false, summary:'Add InferBridge as an OpenAI-compatible model provider (public preview).', doc:'https://docs.github.com/en/copilot/how-tos/github-copilot-app/use-byok-models', docLabel:'GitHub Docs: Copilot app models'},
+    {id:'cline', title:'Cline', native:false, summary:'Choose the OpenAI Compatible API provider in Cline settings.', doc:'https://docs.cline.bot/provider-config/openai-compatible', docLabel:'Cline: OpenAI Compatible'},
+    {id:'roo', title:'Roo Code / Zoo Code', native:false, summary:'Roo Code was discontinued on 15 May 2026; its community fork Zoo Code keeps the same OpenAI Compatible provider.', doc:'https://github.com/Zoo-Code-Org/Zoo-Code-Docs/blob/main/docs/providers/openai-compatible.md', docLabel:'Zoo Code: OpenAI Compatible'},
+    {id:'generic', title:'Other apps (Open WebUI, n8n, scripts)', native:false, summary:'Any client with a custom OpenAI-compatible Base URL.', doc:'https://github.com/Quazmoz/InferBridge/blob/main/docs/INTEGRATIONS.md', docLabel:'InferBridge integrations guide'},
+];
+function values(metadata, modelId) {
+    const model = (metadata?.models || []).find(item => item.id === modelId && item.loaded && item.generation_capable);
+    if (!metadata?.base_url || !model) return null;
+    const auth = Boolean(metadata.authentication?.required);
+    const context = Number.isInteger(model.context_tokens) ? model.context_tokens : null;
+    const output = Number.isInteger(model.max_output_tokens) && context && model.max_output_tokens < context ? model.max_output_tokens : null;
+    return {base:metadata.base_url, model:model.id, auth, key:auth ? 'YOUR_INFERBRIDGE_API_KEY' : 'not-required', context, output, input:context ? context - (output || 0) : null};
+}
+function fields(id, v) {
+    const rows = [['Base URL', v.base], ['Model ID', v.model], ['API key', v.key]];
+    if (['cline','roo','generic'].includes(id) && v.context) {
+        rows.push(['Context window', String(v.context)]);
+        if (v.output) rows.push(['Max output tokens', String(v.output)]);
+    }
+    return rows;
+}
+function steps(id, v) {
+    const key = v.auth ? 'Authentication is on: replace YOUR_INFERBRIDGE_API_KEY with your own key. InferBridge never writes it.' : 'Authentication is off, so the API key value is not-required.';
+    return ({
+        'continue': ['One-click setup with backup and Undo is in the InferBridge Windows app (Local API page). In the browser, copy the entry below.', 'Open Continue\u2019s config selector, select the gear next to Local Config to open config.yaml.', 'Paste the entry under models: and save. Continue reloads automatically.', key],
+        'copilot-cli': ['One-click setup with Undo is in the InferBridge Windows app (Local API page). In the browser, copy the commands below.', 'Run them in PowerShell, then open a new terminal and run copilot.', v.auth ? 'In that terminal run $env:COPILOT_PROVIDER_API_KEY = "<your key>". InferBridge never stores it.' : 'Authentication is off, so no API key variable is needed.'],
+        'vscode-copilot': ['In VS Code run Chat: Manage Language Models from the Command Palette.', 'Select Add Models \u2192 Custom Endpoint and enter a group name such as InferBridge.', 'Enter a display name and the API key value below, and choose the Chat Completions API type.', 'VS Code opens chatLanguageModels.json: paste the entry below and save.', 'Pick the model in the chat model picker. Restart VS Code if it does not appear.'],
+        'copilot-app': ['Open the GitHub Copilot app settings and select Model providers.', 'Select Add provider and choose OpenAI-compatible (any OpenAI-compatible HTTP endpoint).', 'Paste the Base URL and API key below, then select Add provider.', 'Choose the model ID below in a new session.'],
+        'cline': ['Open Cline settings and set API Provider to OpenAI Compatible.', 'Paste the Base URL, API key and Model ID below.', 'Under Model Configuration set Context Window and Max Output Tokens to the values below.', 'Use Verify or start a task to confirm the connection.'],
+        'roo': ['Install Zoo Code (Roo Code no longer receives updates).', 'Open its settings and set API Provider to OpenAI Compatible.', 'Paste the Base URL, API key and Model ID below.', 'Under Model Configuration set Context Window and Max Output Tokens to the values below.'],
+    })[id] || ['In the app choose an OpenAI-compatible or custom OpenAI provider.', 'Paste the Base URL, API key and Model ID below.', 'Use Test connection here to confirm the engine answers.'];
+}
+const q = value => JSON.stringify(value);
+const ps = value => `'${String(value).replace(/'/g, "''")}'`;
+function continueSnippet(v) {
+    const lines = ['models:', `  ${START}`, `  - name: ${q(MANAGED)}`, '    provider: openai', `    model: ${q(v.model)}`, `    apiBase: ${q(v.base)}`, `    apiKey: ${q(v.key)}`, '    roles:', '      - chat', '      - edit', '      - apply'];
+    if (v.context) { lines.push('    defaultCompletionOptions:', `      contextLength: ${v.context}`); if (v.output) lines.push(`      maxTokens: ${v.output}`); }
+    lines.push(`  ${END}`);
+    return lines.join('\n') + '\n';
+}
+function copilotEnv(v) {
+    const plan = [['COPILOT_PROVIDER_BASE_URL', v.base], ['COPILOT_PROVIDER_TYPE', 'openai'], ['COPILOT_MODEL', v.model]];
+    if (v.input) plan.push(['COPILOT_PROVIDER_MAX_PROMPT_TOKENS', String(v.input)]);
+    if (v.output) plan.push(['COPILOT_PROVIDER_MAX_OUTPUT_TOKENS', String(v.output)]);
+    return plan;
+}
+function copilotCli(v) {
+    let text = '# Run in PowerShell, then open a new terminal.\n';
+    for (const [name, value] of copilotEnv(v)) text += `[Environment]::SetEnvironmentVariable(${ps(name)}, ${ps(value)}, 'User')\n`;
+    if (v.auth) text += "# In each terminal: $env:COPILOT_PROVIDER_API_KEY = 'YOUR_INFERBRIDGE_API_KEY'\n";
+    return text;
+}
+function limits(model, v) { if (v.input) model.maxInputTokens = v.input; if (v.output) model.maxOutputTokens = v.output; return model; }
+function vscodeCustomEndpoint(v) {
+    const model = limits({id:v.model, name:`InferBridge \u00b7 ${v.model}`, url:`${v.base}/chat/completions`, toolCalling:true, vision:false}, v);
+    return JSON.stringify([{name:'InferBridge', vendor:'customendpoint', apiKey:v.auth ? '${input:inferbridgeApiKey}' : 'not-required', apiType:'chat-completions', models:[model]}], null, 2) + '\n';
+}
+function vscodeDeprecated(v) {
+    const model = limits({name:`InferBridge \u00b7 ${v.model}`, url:`${v.base}/chat/completions`, toolCalling:true, vision:false}, v);
+    model.requiresAPIKey = v.auth;
+    return '// Deprecated: github.copilot.chat.customOAIModels. Prefer Custom Endpoint.\n"github.copilot.chat.customOAIModels": ' + JSON.stringify({[v.model]: model}, null, 2) + '\n';
+}
+function snippets(id, v) {
+    if (id === 'continue') return [['config.yaml entry', continueSnippet(v)]];
+    if (id === 'copilot-cli') return [['PowerShell commands', copilotCli(v)]];
+    if (id === 'vscode-copilot') return [['chatLanguageModels.json entry (Custom Endpoint)', vscodeCustomEndpoint(v)], ['Deprecated: settings.json customOAIModels (older VS Code only)', vscodeDeprecated(v)]];
+    return [];
+}
+function agenticNote(context) {
+    const n = Number.isInteger(context) ? context.toLocaleString('en-US') : '';
+    if (!n) return {warning:true, text:'Context window unknown. Agentic coding tools need tool calling and a large context window; check the model before relying on agent mode.'};
+    if (context < 32768) return {warning:true, text:`Small context window (${n} tokens). Agentic coding tools need tool calling and much larger context; expect truncated or failed agent tasks. Chat and short edits work best.`};
+    if (context < 131072) return {warning:true, text:`Context window ${n} tokens. Fine for chat; agentic tools also need tool calling, and GitHub recommends at least 128k tokens for Copilot CLI.`};
+    return {warning:false, text:`Context window ${n} tokens. Agentic tools also need a model that supports tool calling.`};
+}
+window.__ovllmToolSetup = Object.freeze({clients, values, fields, steps, snippets, copilotEnv, agenticNote});
+})();
 """
 
 CONNECTION_HUB_JS = r"""
@@ -37,6 +131,7 @@ let selectedModel = '';
 let returnFocus = null;
 let activeController = null;
 let running = false;
+let toolCopies = [];
 
 function browserApiKey() {
     const fieldValue = String(document.getElementById('settings-api-key')?.value || '').trim();
@@ -113,6 +208,12 @@ modal.innerHTML = `
       </div></div></details>
     </section>
 
+    <section class="ch-section" aria-labelledby="ch-tools-heading">
+      <h4 id="ch-tools-heading">Connect a tool</h4>
+      <p class="ch-hint" id="ch-tools-hint">Refresh and select a loaded chat model to get ready-to-use settings for coding assistants and apps.</p>
+      <div class="ch-tools" id="ch-tools" role="list" aria-label="Tool setup cards"></div>
+    </section>
+
     <section class="ch-section" aria-labelledby="ch-test-heading">
       <div class="ch-test-head"><h4 id="ch-test-heading">Connection self-test</h4><button type="button" class="ch-btn primary" id="ch-run-test">Run connection self-test</button></div>
       <div class="ch-tests" id="ch-tests"></div>
@@ -163,6 +264,7 @@ function setRunning(value) {
     runButton.disabled = running;
     runButton.setAttribute('aria-busy', running ? 'true' : 'false');
     modelSelect.disabled = running || !usableModels().length;
+    modal.querySelectorAll('[data-tool-test]').forEach(button => { button.disabled = running || !window.__ovllmToolSetup?.values(metadata, selectedModel); });
 }
 function usableModels() {
     return Array.isArray(metadata?.models) ? metadata.models.filter(item => item.loaded && item.generation_capable) : [];
@@ -213,12 +315,67 @@ function copyValue(kind) {
     if (kind === 'curl') return curlSnippet();
     return '';
 }
+function renderTools() {
+    const setup = window.__ovllmToolSetup;
+    const container = $('#ch-tools');
+    if (!setup || !container) return;
+    const v = setup.values(metadata, selectedModel);
+    toolCopies = [];
+    container.replaceChildren();
+    $('#ch-tools-hint').textContent = v
+        ? `Ready. Settings use ${v.model} at ${v.base}. One-click Continue and Copilot CLI setup (with preview and Undo) is in the InferBridge Windows app.`
+        : 'Not ready: the engine must be available and a loaded chat model selected above.';
+    const text = (tag, value, className = '') => { const node = document.createElement(tag); node.textContent = value; if (className) node.className = className; return node; };
+    const copyButton = (value, label) => {
+        const index = toolCopies.push([value, label]) - 1;
+        const button = text('button', 'Copy', 'ch-copy');
+        button.type = 'button'; button.dataset.toolCopy = String(index); button.setAttribute('aria-label', `Copy ${label}`);
+        return button;
+    };
+    setup.clients.forEach((client, position) => {
+        const card = document.createElement('article');
+        card.className = 'ch-tool'; card.setAttribute('role', 'listitem');
+        const headingId = `ch-tool-${position}`;
+        card.setAttribute('aria-labelledby', headingId);
+        const heading = text('h5', client.title); heading.id = headingId; card.appendChild(heading);
+        const badges = document.createElement('div'); badges.className = 'ch-badges';
+        badges.append(text('span', v ? 'Ready' : 'Not ready', `ch-badge ${v ? 'ready' : 'warn'}`), text('span', client.native ? 'One-click in the Windows app' : 'Guided setup', 'ch-badge'));
+        card.append(badges, text('p', client.summary));
+        if (v) {
+            if (client.id !== 'generic') { const note = setup.agenticNote(v.context); card.appendChild(text('p', note.text, note.warning ? 'ch-tool-warn' : '')); }
+            const config = document.createElement('div'); config.className = 'ch-config';
+            for (const [label, value] of setup.fields(client.id, v)) {
+                const row = document.createElement('div'); row.className = 'ch-config-row';
+                row.append(text('span', label), text('span', value, 'ch-config-value'), copyButton(value, `${label} for ${client.title}`));
+                config.appendChild(row);
+            }
+            card.appendChild(config);
+            const list = document.createElement('ol'); list.setAttribute('aria-label', `${client.title} setup steps`);
+            setup.steps(client.id, v).forEach(step => list.appendChild(text('li', step)));
+            card.appendChild(list);
+            for (const [title, code] of setup.snippets(client.id, v)) {
+                card.appendChild(text('p', title));
+                const wrap = document.createElement('div'); wrap.className = 'ch-code-wrap';
+                wrap.append(text('pre', code, 'ch-code'), copyButton(code, `${title} for ${client.title}`));
+                card.appendChild(wrap);
+            }
+        }
+        const actions = document.createElement('div'); actions.className = 'ch-tool-actions';
+        const test = text('button', 'Test connection', 'ch-btn'); test.type = 'button'; test.dataset.toolTest = '1'; test.disabled = !v || running;
+        test.setAttribute('aria-label', `Test connection for ${client.title}`);
+        const link = text('a', client.docLabel); link.href = client.doc; link.target = '_blank'; link.rel = 'noopener noreferrer';
+        actions.append(test, link);
+        card.appendChild(actions);
+        container.appendChild(card);
+    });
+}
 function updateSnippets() {
     $('#ch-python').textContent = pythonSnippet();
     $('#ch-curl').textContent = curlSnippet();
     $('#ch-value-base').textContent = metadata?.base_url || '-';
     $('#ch-value-key').textContent = metadata?.authentication?.api_key_placeholder || '-';
     $('#ch-value-model').textContent = selectedModel || 'Select a loaded model';
+    renderTools();
 }
 async function writeClipboard(text) {
     if (!text) throw new Error('Nothing is available to copy yet.');
@@ -236,9 +393,9 @@ async function writeClipboard(text) {
     textarea.remove();
     if (!copied) throw new Error('Clipboard access was blocked. Select the visible value and copy it manually.');
 }
-async function copy(kind, label) {
+async function copy(kind, label, explicit = null) {
     try {
-        await writeClipboard(copyValue(kind));
+        await writeClipboard(explicit ?? copyValue(kind));
         copyFeedback.textContent = `${label} copied.`;
     } catch (error) {
         copyFeedback.textContent = error instanceof Error ? error.message : 'Clipboard access failed.';
@@ -316,6 +473,11 @@ $('#ch-close').addEventListener('click', closeHub); $('#ch-done').addEventListen
 runButton.addEventListener('click', () => void runSelfTest());
 modelSelect.addEventListener('change', () => { selectedModel = modelSelect.value; $('#ch-copy-model').disabled = !selectedModel; updateSnippets(); });
 $('#ch-copy-model').addEventListener('click', () => void copy('model', 'Model ID'));
+modal.addEventListener('click', event => {
+    const toolCopy = event.target.closest('[data-tool-copy]');
+    if (toolCopy) { const [value, label] = toolCopies[Number(toolCopy.dataset.toolCopy)] || ['', 'Value']; void copy(null, label, value); return; }
+    if (event.target.closest('[data-tool-test]')) { void runSelfTest(); return; }
+});
 modal.addEventListener('click', event => { const button = event.target.closest('[data-copy-target]'); if (button) { const kind = button.dataset.copyTarget; const labels = {base:'Base URL',key:'API key placeholder',model:'Model ID',python:'Python example',curl:'curl example'}; void copy(kind, labels[kind] || 'Value'); return; } if (event.target === modal) closeHub(); });
 modal.addEventListener('keydown', event => {
     if (event.key === 'Escape') { event.preventDefault(); closeHub(); return; }
@@ -331,7 +493,7 @@ modal.addEventListener('keydown', event => {
 
 EXTENSION = UiExtension(
     extension_id=_EXTENSION_ID,
-    javascript=CONNECTION_HUB_JS,
+    javascript=TOOL_SETUP_JS + CONNECTION_HUB_JS,
     css=CONNECTION_HUB_CSS,
     description="Local Connection Hub client connection examples.",
 )
@@ -346,5 +508,6 @@ def install_connection_hub_ui_extension() -> None:
 __all__ = [
     "CONNECTION_HUB_CSS",
     "CONNECTION_HUB_JS",
+    "TOOL_SETUP_JS",
     "install_connection_hub_ui_extension",
 ]

@@ -14,6 +14,32 @@ InferBridge implements a practical subset of the OpenAI API plus local model, de
 
 A mock contract result is not evidence that a driver or hardware target works.
 
+## Local model context configuration (not OpenAI routes)
+
+- `GET /v1/models/contexts`: every registered model, loaded or not, with
+  `configured_context_tokens`, `recommended_context_tokens`,
+  `model_architecture_limit_tokens`, custom-value bounds, `trial`, `loaded`,
+  `applies` (`now`/`next-load`) and `configurable` (false for embedding models).
+- `GET /v1/models/context?model=<id>`: works for any registered model (loaded or
+  not); adds `presets`, `minimum_context_tokens`, `maximum_context_tokens` and
+  `applies` to the current total, prompt/output budgets,
+  recommended baseline, optional converted-model architecture bound, candidate
+  choices, and explicitly unverified memory guidance.
+- `POST /v1/models/context`: `{ "model": "<id>", "context_tokens": 4096,
+  "expected_context_tokens": 2048 }`. Integers are strict; the expected value
+  rejects stale clients (409). Validation failures return 400/422. Apply
+  succeeds only after engine replacement (if loaded) and durable catalog save.
+  Compilation or persistence failure retains the prior engine/config and
+  returns a sanitized 409 response. No inference is started by this route.
+  For an unloaded model the value is only persisted and used on its next load.
+- `POST /v1/models/load` accepts optional strict `context_tokens`. For an unloaded
+  model it is validated and persisted as above before the load is scheduled
+  (400/409 leave the catalog and load state unchanged); a different value for an
+  already loaded model returns 409 (use the context route to apply now).
+
+Hardware eligibility beyond the original recommendation must be certified on
+the requested OpenVINO runtime/device. See [Context budget](CONTEXT_BUDGET.md).
+
 ## OpenAI-compatible routes
 
 ### `GET /v1/models`
@@ -130,8 +156,13 @@ The selected model must use the `openvino-embeddings` backend. Text-generation m
 
 | Method | Route | Purpose |
 |---|---|---|
+| `GET` | `/v1/huggingface/status` | Sanitized account/source state, no token value. |
+| `POST` | `/v1/huggingface/token` | Verify read token against Hugging Face and store in backend (Windows DPAPI). |
+| `POST` | `/v1/huggingface/test` | Revalidate currently configured credentials. |
+| `DELETE` | `/v1/huggingface/token` | Remove backend-stored token, not environment-owned credentials. |
+| `POST` | `/v1/huggingface/preflight` | Check publisher/model access before conversion. |
 | `POST` | `/v1/models/register` | Add a custom catalog entry. |
-| `GET` | `/v1/models/search-hf` | Search compatible Hugging Face models. |
+| `GET` | `/v1/models/search-hf` | Search Hugging Face metadata candidates; local hardware compatibility is not guaranteed. |
 | `POST` | `/v1/models/download-custom` | Register, convert, and optionally load a custom model. |
 | `POST` | `/v1/models/convert` | Convert a catalog model in the background. |
 | `POST` | `/v1/models/load` | Load a converted model on a selected device. |
@@ -145,6 +176,14 @@ The selected model must use the `openvino-embeddings` backend. Text-generation m
 | `GET` | `/v1/benchmarks/latest` | Return the latest run and recommendation. |
 | `DELETE` | `/v1/benchmarks` | Clear saved benchmark runs. |
 | `POST` | `/v1/chat/export` | Export a supplied conversation as Markdown. |
+
+The Hugging Face search endpoint queries remote metadata only. It does not prove local OpenVINO compatibility, remote-code safety, permission to access a gated model, available disk space, or that a model was downloaded. The backend owns token verification/persistence, gated preflight and model conversion for both frontends. Never log, cache, or display submitted tokens in a frontend.
+
+Native model details use safe optional fields from the same lifecycle snapshot: `backend`, `source_model`, `weight_format`, `recommended_device`, `device`, `max_context_len`, `max_output_tokens` and `supports_vision`. Display validation is allowlist-based: malformed fields are downgraded to *Not reported* rather than echoed or used to authorize cancellation; configured device is a preference, not proven hardware compatibility. A session epoch invalidates in-flight status responses after engine disconnect or API-key challenge.
+
+Native model preparation reads the existing `GET /v1/models/status` schema version `1` (`models.available[].progress.phase/percent/operation_id`, plus `can_cancel`). The client displays only validated stage and bounded percentage; it never renders free-form conversion logs or operation identifiers. `POST /v1/models/cancel` accepts `{model, operation_id}`. The native client confirms the exact same operation still has a cancellation capability in a new status snapshot before submitting, and accepts success only when the backend echoes the model ID, operation ID and `cancelled` state. Because cancellation may complete despite a response timeout, the client never retries automatically; refresh instead. OpenVINO native compilation can be deliberately non-cancellable. No second task queue is introduced.
+
+The `POST /v1/models/download-custom` request uses the existing Pydantic `DownloadCustomRequest` contract: unique filesystem-safe `model_id`, bounded `name`/`source_model`, backend (`openvino-genai`, `openvino-embeddings`, `openvino-vlm`), weight format (`int4`, `int8`, `fp16`), a validated `recommended_device`, context/output token budgets and `load_after`. The native wizard always sends `trust_remote_code=false`, rechecks current device availability and model ID conflicts before POST, and never automatically retries an ambiguous outcome. A `queued_convert` result is an engine **queue acknowledgement**, not completed conversion or verified hardware support. Gated access errors retain the backend's existing `409` behavior. Existing ID collisions must be resolved through the model library, not silent overwrites.
 
 Model conversion and loading are asynchronous. Clients should poll `/v1/system/status` and inspect the matching catalog entry until `is_loaded` is true or an error state is returned.
 

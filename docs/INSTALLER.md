@@ -6,7 +6,7 @@ The Inno Setup configuration targets Windows x64-compatible systems on build 190
 
 - per-user installation under `%LOCALAPPDATA%\Programs\InferBridge`
 - no administrator rights required for the normal path
-- Start Menu shortcut launching the system-tray controller
+- Start Menu shortcut launching the native WinUI 3 interface and its existing engine/tray controller
 - optional desktop shortcut
 - Windows uninstall entry
 - stable application ID for in-place upgrades
@@ -15,7 +15,7 @@ The Inno Setup configuration targets Windows x64-compatible systems on build 190
 - Start with Windows disabled by default
 - LAN access disabled by default
 
-Launching the shortcut starts the tray controller, which owns the FastAPI child server and opens the existing browser UI through loopback. The packaged listener defaults to `127.0.0.1`. Explicit authenticated LAN access can be enabled later from **Network / API access** without modifying files in the installation directory. Closing the browser does not stop the application.
+Launching the shortcut opens `native\InferBridge.Native.exe` (WinUI 3). The native client starts the bundled `InferBridge.exe` engine/tray with `--no-browser` if necessary. Double-clicking the packaged root `InferBridge.exe` also forwards to WinUI in native-first builds. Explicit engine and headless command flags keep their original backend semantics. The packaged listener defaults to `127.0.0.1`. Explicit authenticated LAN access can be enabled later from **Network / API access** without modifying files in the installation directory. Closing the browser does not stop the application.
 
 Start with Windows is enabled later from the tray. It creates one HKCU Run value and starts the tray/server in the background without opening the browser.
 
@@ -31,7 +31,7 @@ A GUI-managed API key is stored under the writable InferBridge data root using W
 .\scripts\build_windows_distribution.ps1
 ```
 
-Use `-SkipInstaller` to create only the portable ZIP when Inno Setup is unavailable. Artifacts are versioned, checksummed, and accurately marked signed or unsigned.
+The standard build now requires a .NET 10 SDK on the build machine to publish WinUI. Use `-SkipInstaller` to create only the portable ZIP when Inno Setup is unavailable. Both outputs include `native\InferBridge.Native.exe`; for portable usage, launch that file, **not** the root engine executable. If `native\InferBridge.Native.exe` is missing, the installer is from an older browser-only build or is incomplete. Artifacts are versioned, checksummed, and accurately marked signed or unsigned.
 
 Before compiling the installer, the release pipeline runs the packaged executable without `portable.flag`, verifies that it reports `installed` mode, and exercises the full mock API, UI, lifecycle, benchmark, and owned-shutdown contract. The extracted portable ZIP is then tested separately in `portable` mode. Actual installer installation, authenticated LAN binding, Windows Firewall prompting, upgrade, downgrade, and uninstall behavior still require validation on a clean Windows machine before release.
 
@@ -46,3 +46,17 @@ See [LAN and home-lab access](LAN_ACCESS.md) for the packaged network configurat
 ## Fixed-port acceptance test
 
 The development and release packaged smoke tests now set `OV_LLM_PORT` to a nondefault loopback port and reject a launcher that silently starts on a different port. The installer/portable smoke tests are separate from source-level mock tests; CI's Python and PowerShell syntax suites do **not** prove that a fully packaged Windows executable has passed these checks. For a local pre-release test, run `scripts/build_dev_package.ps1` on Windows without `-SkipSmokeTest` and retain the result. This remains a mock API test rather than a real Intel-device or clean-machine upgrade certification.
+
+## Native-first policy
+
+All supported Windows installer builds must include `native\InferBridge.Native.exe`
+and the self-contained .NET runtime. The installer fails compilation if the
+native entrypoint is missing. Start Menu and desktop shortcuts launch WinUI,
+and the root `InferBridge.exe` forwards ordinary double-clicks to WinUI.
+Engine/diagnostic command-line flags retain their backend behavior. The tray's
+default action launches WinUI; **Open web GUI** is a deliberate secondary action.
+
+If **Start with Windows** is enabled from the tray, the per-user Run entry
+targets WinUI directly. Existing background engine entries are migrated without
+modifying user model files or application configuration. The Store's separate
+Windows StartupTask is also native-first.

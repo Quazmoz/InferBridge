@@ -50,6 +50,19 @@ def run(argv: list[str] | None = None) -> int:
         return _bootstrap_smoke()
 
     try:
+        # Double-clicking the packaged root EXE should open the Windows app, not
+        # the legacy browser. Native starts the engine with --no-browser, so its
+        # engine child and all explicit CLI/helper modes never recurse here.
+        if not arguments and getattr(sys, "frozen", False):
+            from pathlib import Path
+            from subprocess import Popen
+
+            native = Path(sys.executable).resolve().parent / "native" / "InferBridge.Native.exe"
+            if not native.is_file():
+                raise FileNotFoundError("The required native WinUI frontend is missing.")
+            Popen([str(native)], cwd=str(native.parent))
+            return 0
+
         from app.desktop_launcher import main
 
         return main(arguments)

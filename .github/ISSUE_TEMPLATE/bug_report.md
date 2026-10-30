@@ -7,7 +7,7 @@ assignees: ''
 
 ---
 
-> Prefer a simpler feedback form? You can report bugs, request features, or send beta feedback at the [InferBridge support page](https://consultant.quinnfavo.com/apps/inferbridge#feedback). No GitHub issue formatting is required.
+> Prefer a simpler form? Use **Send feedback** on the [InferBridge support page](https://consultant.quinnfavo.com/apps/inferbridge#feedback) to report a bug or request a feature. No GitHub issue formatting is required.
 >
 > If you are using the desktop app, you may paste **Copy diagnostics** output from the tray, or the **Copy support report** output from System Doctor, instead of manually gathering every environment detail below.
 

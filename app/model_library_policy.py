@@ -80,6 +80,7 @@ class ModelLibraryService(_BaseModelLibraryService):
             backend=cfg.backend,
             device=current_device,
             profile=profile,
+            source_model=cfg.source_model,
         )
         preferred = self._precision_variant(cfg, policy.weight_format)
         preferred_device = current_device

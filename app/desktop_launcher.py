@@ -514,7 +514,6 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(description=f"{DISPLAY_NAME} desktop tray launcher")
     parser.add_argument("--server-child", action="store_true", help=argparse.SUPPRESS)
-    parser.add_argument("--window-child", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--convert-model", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--native-smoke", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--port", type=int, default=None)
@@ -548,12 +547,6 @@ def main(argv: list[str] | None = None) -> int:
         ):
             parser.error("--server-child requires instance and control tokens")
         return _server_child(args)
-    if args.window_child:
-        if args.server_child or args.port is None:
-            parser.error("--window-child requires --port and cannot be a server child")
-        from app.store_window import run_store_window
-
-        return run_store_window(args.port, args.instance_nonce)
     if args.diagnostic:
         return _diagnostic_export(args)
 

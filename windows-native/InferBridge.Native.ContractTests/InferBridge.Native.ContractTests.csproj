@@ -8,5 +8,24 @@
   <ItemGroup>
     <Compile Include="../InferBridge.Native/NativeDataPaths.cs" Link="NativeDataPaths.cs" />
     <Compile Include="../InferBridge.Native/BackendClient.cs" Link="BackendClient.cs" />
+    <Compile Include="../InferBridge.Native/ConnectionHubClient.cs" Link="ConnectionHubClient.cs" />
+    <Compile Include="../InferBridge.Native/ContextConfigurationClient.cs" Link="ContextConfigurationClient.cs" />
+    <Compile Include="../InferBridge.Native/ContextEditor.cs" Link="ContextEditor.cs" />
+    <Compile Include="../InferBridge.Native/BenchmarkHistoryClient.cs" Link="BenchmarkHistoryClient.cs" />
+    <Compile Include="../InferBridge.Native/BenchmarkLabClient.cs" Link="BenchmarkLabClient.cs" />
+    <Compile Include="../InferBridge.Native/HuggingFaceClient.cs" Link="HuggingFaceClient.cs" />
+    <Compile Include="../InferBridge.Native/ModelPreparationClient.cs" Link="ModelPreparationClient.cs" />
+    <Compile Include="../InferBridge.Native/NativeConversationStore.cs" Link="NativeConversationStore.cs" />
+    <Compile Include="../InferBridge.Native/EngineLauncher.cs" Link="EngineLauncher.cs" />
+    <Compile Include="../InferBridge.Native/ChatMarkdown.cs" Link="ChatMarkdown.cs" />
+    <Compile Include="../InferBridge.Native/RuntimeHealthClient.cs" Link="RuntimeHealthClient.cs" />
+    <Compile Include="../InferBridge.Native/ReleaseUpdateClient.cs" Link="ReleaseUpdateClient.cs" />
+    <Compile Include="../InferBridge.Native/ModelLibraryClient.cs" Link="ModelLibraryClient.cs" />
+    <Compile Include="../InferBridge.Native/PickerRefresh.cs" Link="PickerRefresh.cs" />
+    <Compile Include="../InferBridge.Native/ChartMath.cs" Link="ChartMath.cs" />
+    <Compile Include="../InferBridge.Native/ToolSetup.cs" Link="ToolSetup.cs" />
+    <Compile Include="../InferBridge.Native/ChatSession.cs" Link="ChatSession.cs" />
+    <Compile Include="../InferBridge.Native/NativePreferences.cs" Link="NativePreferences.cs" />
+    <Compile Include="../InferBridge.Native/HardwareAdvisorClient.cs" Link="HardwareAdvisorClient.cs" />
   </ItemGroup>
 </Project>

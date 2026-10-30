@@ -24,6 +24,7 @@ from typing import Any
 
 from app import errors, model_registry as registry
 from app.config import BASE_DIR, Settings
+from app.quantization_policy import npu_known_issue
 from runtime import device_check
 from runtime.openvino_engine import BaseEngine, GenParams, GenResult, StreamHandle, create_engine
 
@@ -115,6 +116,34 @@ class ModelManager:
             "error": error,
             "updated_at": int(time.time()),
         }
+
+    def _record_load_failure(self, model_id: str, exc: BaseException, device: str | None) -> str:
+        """Set the error status for a failed load and return its safe message.
+
+        Shared by every load path so the device-aware classification (for example an
+        Intel NPU compile rejection) and its one-click recoveries are never lost.
+        """
+        message = errors.format_model_load_error(exc, device=device)
+        self._set_status(model_id, "error", error=message)
+        code = errors.model_load_error_code(exc, device=device)
+        cfg = self.catalog.get(model_id)
+        if code is not None and cfg is not None:
+            try:
+                available = (
+                    ["CPU", "GPU", "NPU"]
+                    if getattr(self, "force_mock", False)
+                    else device_check.available_devices()
+                )
+            except Exception:  # noqa: BLE001 - recovery hints are optional
+                available = []
+            self.status_overrides[model_id]["error_code"] = code
+            self.status_overrides[model_id]["recovery_actions"] = errors.load_recovery_actions(
+                code,
+                weight_format=cfg.weight_format,
+                has_source_model=bool(cfg.source_model),
+                available_devices=available,
+            )
+        return message
 
     def _clear_status(self, model_id: str) -> None:
         self.status_overrides.pop(model_id, None)
@@ -333,7 +362,7 @@ class ModelManager:
         downloaded = self.force_mock or registry.is_downloaded(cfg, BASE_DIR)
         lock = self.locks.get(model_id)
         busy = bool(lock and lock.locked())
-        return registry.make_catalog_entry(
+        entry = registry.make_catalog_entry(
             cfg,
             loaded=loaded,
             queued=queued,
@@ -346,6 +375,12 @@ class ModelManager:
             error=error,
             progress=self.progress.get(model_id),
         )
+        # Classified load failures carry one-click next steps (load on GPU,
+        # reconvert for NPU, update the NPU driver); see errors.load_recovery_actions.
+        entry["error_code"] = override.get("error_code") if error else None
+        entry["recovery_actions"] = list(override.get("recovery_actions") or []) if error else []
+        entry["npu_note"] = npu_known_issue(cfg.source_model)
+        return entry
 
     def catalog_entries(self) -> list[dict]:
         return [self.catalog_entry(model_id) for model_id in self.catalog]
@@ -390,6 +425,7 @@ class ModelManager:
             cache_dir=self.settings.cache_dir,
             backend=cfg.backend,
             draft_model_path=draft_model_path,
+            kv_cache_precision=cfg.kv_cache_precision,
         )
 
     def _engine_build_timeout_seconds(self) -> float:
@@ -495,10 +531,11 @@ class ModelManager:
                 self.engines.pop(model_id, None)
                 self.locks.pop(model_id, None)
                 self.devices.pop(model_id, None)
-                message = errors.format_model_load_error(exc)
-                self._set_status(model_id, "error", error=message)
+                message = self._record_load_failure(model_id, exc, device)
                 self._set_progress(model_id, "error", f"Load failed: {message}")
-                logger.exception("Failed to load '%s': %s", model_id, message)
+                # The native exception chain may include private model paths or
+                # tokens; log the classified public message, never its traceback.
+                logger.error("Failed to load '%s' on %s: %s", model_id, device, message)
                 self.emit_event("error", f"Failed to load {cfg.name}: {message}")
         finally:
             self.load_tasks.pop(model_id, None)

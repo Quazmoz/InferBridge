@@ -156,5 +156,17 @@ else {
     Write-Warning "Packaged mock smoke test was skipped by explicit request."
 }
 
-Write-Host "Development package completed: $BuiltRoot"
+# The packaged engine is an internal dependency, never a browser-first
+# alternative to the actual Windows application.
+$NativeRoot = Join-Path $BuiltRoot "native"
+& dotnet publish windows-native/InferBridge.Native/InferBridge.Native.csproj -c Release `
+    -r win-x64 --self-contained true -p:Platform=x64 -o $NativeRoot
+if ($LASTEXITCODE -ne 0) { throw "Native WinUI publish failed." }
+foreach ($Required in @("InferBridge.Native.exe", "coreclr.dll", "InferBridge.Native.runtimeconfig.json")) {
+    if (-not (Test-Path -LiteralPath (Join-Path $NativeRoot $Required) -PathType Leaf)) {
+        throw "Development package is missing the native runtime file: $Required"
+    }
+}
+Write-Host "Native-first development package completed: $BuiltRoot"
+Write-Host "Launch native\\InferBridge.Native.exe (or double-click the root EXE)."
 Write-Host "This output is unsigned and is not a release artifact."

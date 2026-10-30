@@ -2,18 +2,6 @@ name: CI
 
 on:
   workflow_dispatch:
-  push:
-    branches: ["main", "dev", "beta"]
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
-      - "screenshots/**"
-  pull_request:
-    branches: ["main", "dev", "beta"]
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
-      - "screenshots/**"
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -241,6 +229,7 @@ jobs:
         run: |
           $paths = @(
             "scripts/build_dev_package.ps1",
+            "scripts/build_native_installer.ps1",
             "scripts/build_msix.ps1",
             "scripts/build_release.ps1",
             "scripts/build_windows_distribution.ps1",

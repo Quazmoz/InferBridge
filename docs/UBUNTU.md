@@ -108,3 +108,28 @@ See the repository's [Open WebUI guide](../OPENWEBUI.md) for model loading, auth
 - Import errors: remove and recreate `.venv`, then rerun setup.
 - Gated Hugging Face models: export `HF_TOKEN=hf_...` only after accepting the model license.
 - Corporate TLS or proxy failures: configure `REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE`, and/or `HTTPS_PROXY` before installing dependencies or converting models.
+
+## Verify the complete Linux source path
+
+After `./setup.sh --minimal`, run the headless Linux smoke test:
+
+```bash
+bash ./setup/linux/smoke_test.sh
+# If TCP port 8124 is already in use:
+bash ./setup/linux/smoke_test.sh --port 8125
+```
+
+This launches **the actual Linux `start_server.sh` entrypoint**, binds only to
+`127.0.0.1`, exercises the existing full OpenAI-compatible mock API validator
+(including embeddings, model lifecycle, and a mock benchmark), and stops its
+server process. It uses temporary model/catalog/cache/benchmark data, does
+not download model weights, and requires no GPU/NPU device. Setup must be run
+first so the smoke test cannot accidentally install packages on startup.
+
+Successful output means the source-launcher and mock API paths work. It does
+**not** certify real CPU generation, Intel GPU/NPU drivers, model conversion,
+or Linux desktop tray integration. On failure, the test reports the location
+of a private temporary directory containing the server log and contract report;
+remove that directory after inspecting it.
+
+CI exercises this command on Ubuntu 22.04 and 24.04 for relevant `dev` changes.

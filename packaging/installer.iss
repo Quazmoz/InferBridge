@@ -19,6 +19,15 @@
 #define MyAppPublisher "Quazmoz"
 #define MyAppExeName "InferBridge.exe"
 #define MyLegacyAppExeName "OpenVINOWindowsLLM.exe"
+#if !FileExists(SourceRoot + "\native\InferBridge.Native.exe")
+  #error InferBridge installers require the bundled native WinUI application
+#endif
+#define MyLaunchExeName "native\InferBridge.Native.exe"
+#ifdef NativeEvaluation
+  #define MyInstallerPlatform "native-windows-x64"
+#else
+  #define MyInstallerPlatform "windows-x64"
+#endif
 
 [Setup]
 AppId={{F94A3938-C943-4E6D-B482-852D4AAE06F8}
@@ -35,7 +44,7 @@ DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 OutputDir={#ArtifactDir}
-OutputBaseFilename=InferBridge-{#MyAppVersion}-windows-x64-installer
+OutputBaseFilename=InferBridge-{#MyAppVersion}-{#MyInstallerPlatform}-installer
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -43,7 +52,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0.19041
 SetupIconFile={#AppIconPath}
-UninstallDisplayIcon={app}\{#MyAppExeName}
+UninstallDisplayIcon={app}\{#MyLaunchExeName}
 LicenseFile=..\LICENSE
 VersionInfoVersion={#MyAppVersionNumeric}
 VersionInfoCompany={#MyAppPublisher}
@@ -57,7 +66,7 @@ VersionInfoProductVersion={#MyAppVersionNumeric}
 ; guarantees the locked files are released. Force is scoped by Restart Manager to processes
 ; holding files under {app}.
 CloseApplications=force
-CloseApplicationsFilter={#MyAppExeName},{#MyLegacyAppExeName},*.dll,*.pyd
+CloseApplicationsFilter={#MyAppExeName},{#MyLegacyAppExeName},*.dll,*.pyd,InferBridge.Native.exe
 ; Do not let Restart Manager relaunch the just-replaced executable before Setup's installed-
 ; runtime probe has validated it. The checked post-install [Run] entry is the single restart
 ; authority for interactive installs; InferBridge does not auto-install updates silently.
@@ -81,6 +90,7 @@ Type: filesandordirs; Name: "{app}\_internal"
 Type: filesandordirs; Name: "{app}\app"
 Type: filesandordirs; Name: "{app}\runtime"
 Type: filesandordirs; Name: "{app}\web"
+Type: filesandordirs; Name: "{app}\native"
 Type: files; Name: "{app}\{#MyAppExeName}"
 Type: files; Name: "{app}\{#MyLegacyAppExeName}"
 Type: filesandordirs; Name: "{userprograms}\{#MyLegacyAppName}"
@@ -100,11 +110,11 @@ Type: dirifempty; Name: "{app}"
 Source: "{#SourceRoot}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyLaunchExeName}"; WorkingDir: "{app}"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyLaunchExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent; Check: CanLaunchInstalledRuntime
+Filename: "{app}\{#MyLaunchExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent; Check: CanLaunchInstalledRuntime
 
 [Code]
 const
@@ -413,6 +423,9 @@ var
   Started: Boolean;
 begin
   Result := False;
+  if not FileExists(ExpandConstant('{app}\native\InferBridge.Native.exe')) or
+     not FileExists(ExpandConstant('{app}\native\coreclr.dll')) then
+    exit;
   for Attempt := 1 to RuntimeCheckAttempts do
   begin
     ResultCode := -1;

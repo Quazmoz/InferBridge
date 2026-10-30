@@ -34,6 +34,10 @@ class ConnectionHubModel(BaseModel):
     loaded: bool
     generation_capable: bool
     busy: bool
+    # Configured window for the loaded generation model; None when unknown.
+    # "Connect a tool" uses these so agentic clients get honest token limits.
+    context_tokens: int | None = None
+    max_output_tokens: int | None = None
 
 
 class ConnectionAuthState(BaseModel):
@@ -140,6 +144,16 @@ def is_generation_capable_backend(backend: str) -> bool:
     }
 
 
+def _token_limits(cfg: Any) -> tuple[int | None, int | None]:
+    context = getattr(cfg, "max_context_len", None)
+    output = getattr(cfg, "max_output_tokens", None)
+    if not isinstance(context, int) or isinstance(context, bool) or not 0 < context <= 10_000_000:
+        return None, None
+    if not isinstance(output, int) or isinstance(output, bool) or not 0 < output < context:
+        output = None
+    return context, output
+
+
 def _keys(settings: Any) -> list[str]:
     return [
         part.strip()
@@ -206,6 +220,8 @@ class ConnectionHubService:
             loaded = model_id in self.manager.engines
             lock = self.manager.locks.get(model_id)
             entry = self.manager.catalog_entry(model_id)
+            generation = is_generation_capable_backend(getattr(cfg, "backend", ""))
+            context, output = _token_limits(cfg) if generation else (None, None)
             models.append(
                 ConnectionHubModel(
                     id=model_id,
@@ -213,8 +229,10 @@ class ConnectionHubService:
                     backend=str(getattr(cfg, "backend", "unknown")),
                     status=str(entry.get("status") or "unknown"),
                     loaded=loaded,
-                    generation_capable=is_generation_capable_backend(getattr(cfg, "backend", "")),
+                    generation_capable=generation,
                     busy=bool(lock and lock.locked()),
+                    context_tokens=context,
+                    max_output_tokens=output,
                 )
             )
         loaded = [item.id for item in models if item.loaded]

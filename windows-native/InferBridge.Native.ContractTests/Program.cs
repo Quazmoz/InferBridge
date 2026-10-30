@@ -64,7 +64,44 @@ try
     }
 
     Console.WriteLine("Native data-root contract: all cases passed.");
+    var defaultStart = EngineLauncher.CreateStartInfo(null);
+    if (!defaultStart.ArgumentList.SequenceEqual(new[] { "--no-browser" })
+        || defaultStart.UseShellExecute || !defaultStart.CreateNoWindow)
+        throw new InvalidOperationException("Default engine launch contract changed.");
+    string engineData = Path.Combine(root, "custom engine data");
+    var customStart = EngineLauncher.CreateStartInfo(engineData);
+    if (!customStart.ArgumentList.SequenceEqual(new[] { "--no-browser", "--data-dir", engineData }))
+        throw new InvalidOperationException("Engine data override was not passed as one argument.");
+    foreach (string invalid in new[] { "", "relative-root", @".\data" })
+    {
+        try
+        {
+            _ = EngineLauncher.CreateStartInfo(invalid);
+        }
+        catch (ArgumentException)
+        {
+            continue;
+        }
+        throw new InvalidOperationException("Relative engine data override was accepted.");
+    }
+    Console.WriteLine("Native engine launch contract: all cases passed.");
     await BackendContractTests.RunAsync(root);
+    await ConnectionHubContractTests.RunAsync(root);
+    ToolSetupContractTests.Run(root);
+    await BenchmarkLabContractTests.RunAsync(root);
+    await HuggingFaceContractTests.RunAsync(root);
+    await HuggingFaceDownloadContractTests.RunAsync(root);
+    await ModelPreparationContractTests.RunAsync(root);
+    NativeConversationContractTests.Run(root);
+    ChatMarkdownContractTests.Run();
+    PickerRefreshContractTests.Run();
+    ChartMathContractTests.Run();
+    await ChatRequestContractTests.RunAsync(root);
+    await OperationsParityContractTests.RunAsync(root);
+    await ModelLibraryContractTests.RunAsync(root);
+    await ContextEditorContractTests.RunAsync(root);
+    await ChatParityContractTests.RunAsync(root);
+    await NpuRecoveryContractTests.RunAsync(root);
     return 0;
 }
 finally

@@ -14,13 +14,15 @@ OpenVINO GenAI remains the inference runtime. InferBridge does not replace OpenV
 
 ## Project and release status
 
-**Current stable release: `0.9.6`.** See [0.9.6](docs/releases/0.9.6.md) for the full record. It promotes the 0.9.6 beta architecture, installer hardening, security boundaries, lifecycle reliability, support workflows, and privacy-safe diagnostics to the stable channel.
+**Current stable release: `1.1.0` (28 October 2026).** See [1.1.0](docs/releases/1.1.0.md). 1.1.0 is the first native-first release and is distributed through [Microsoft Store](#microsoft-store-recommended-from-110) once the listing passes certification. The latest installer and portable ZIP on GitHub Releases are still [1.0.0](docs/releases/1.0.0.md), which is browser-first:
 
-- [Windows installer](https://github.com/Quazmoz/InferBridge/releases/download/v0.9.6/InferBridge-0.9.6-windows-x64-installer.exe)
-- [Portable ZIP](https://github.com/Quazmoz/InferBridge/releases/download/v0.9.6/InferBridge-0.9.6-windows-x64-portable.zip)
-- [SHA-256 checksums](https://github.com/Quazmoz/InferBridge/releases/download/v0.9.6/InferBridge-0.9.6-checksums.txt)
+- [Windows installer](https://github.com/Quazmoz/InferBridge/releases/download/v1.0.0/InferBridge-1.0.0-windows-x64-installer.exe)
+- [Portable ZIP](https://github.com/Quazmoz/InferBridge/releases/download/v1.0.0/InferBridge-1.0.0-windows-x64-portable.zip)
+- [SHA-256 checksums](https://github.com/Quazmoz/InferBridge/releases/download/v1.0.0/InferBridge-1.0.0-checksums.txt)
 
-There is no pre-release newer than the current stable release. Versions 0.9.0 through 0.9.3 were published only as betas and are superseded by 0.9.6. Beta builds ship ahead of the next stable release and are marked pre-release on GitHub.
+> **Important — native-first from the next release:** The published **1.0.0** installer and portable ZIP are **browser-first**, even if the source tree has the native WinUI app. They cannot launch native XAML screens because the native executable was not part of those artifacts. The `dev` release builder now stages the WinUI client into `native\InferBridge.Native.exe` and points installed shortcuts to it. This fix is **not** included in 1.0.0. Version `1.1.0` carries it.
+
+Native-first improvements currently live on `dev` and are not represented by the published 1.0.0 binary artifacts. Beta and nightly builds, if published, are marked as pre-releases on GitHub.
 
 Releases from `v0.7.0` onward use the canonical `Quazmoz/InferBridge` repository and `InferBridge-<version>` artifact names. Releases through `v0.6.3` were published before the rename, and their repository links and artifact filenames intentionally retain the former product identity.
 
@@ -32,8 +34,8 @@ The retained 0.6.1 hardware evidence comes from one Intel Core Ultra 9 185H lapt
 
 ## Download, install, choose a model, and chat
 
-1. Download a versioned installer or portable ZIP.
-2. Run `InferBridge.exe` from the installed shortcut or extracted directory.
+1. Install from Microsoft Store (1.1.0 and later, once published), or download a versioned installer or portable ZIP.
+2. For a native-first build, open the **InferBridge Start Menu shortcut** or `native\InferBridge.Native.exe` in an extracted portable ZIP. For the currently published 1.0.0 release, `InferBridge.exe` launches the browser interface.
 3. Review the hardware and OpenVINO system scan.
 4. Confirm the available Intel CPU, GPU, or NPU target.
 5. Accept the conservative model recommendation or choose another compatible model.
@@ -41,11 +43,15 @@ The retained 0.6.1 hardware evidence comes from one Intel Core Ultra 9 185H lapt
 7. Follow the download, conversion, validation, compilation, loading, and benchmark stages.
 8. Continue to chat or copy the OpenAI-compatible endpoint for another client.
 
-The desktop launcher binds to `127.0.0.1` by default, selects an available port, waits for liveness and readiness, opens the browser, and prevents duplicate instances. Packaged **Network / API access** settings can deliberately enable authenticated LAN access while internal health checks and desktop control remain on loopback. See [LAN and home-lab access](docs/LAN_ACCESS.md). Model weights are downloaded separately and are not included in the base installer.
+The Python engine/tray binds to `127.0.0.1` by default, selects an available port, and provides liveness and readiness. In native-first frozen builds, double-clicking the root `InferBridge.exe` forwards to the WinUI frontend; explicit engine modes such as `--no-browser` still start the tray/engine directly. The WinUI app starts the engine without opening a browser. The native frontend enforces its own per-installation single-window instance. Packaged **Network / API access** settings can deliberately enable authenticated LAN access while internal health checks and desktop control remain on loopback. See [LAN and home-lab access](docs/LAN_ACCESS.md). Model weights are downloaded separately and are not included in the base installer.
 
 The first model setup can take significant time. NPU support depends on the actual Intel platform, driver, model, precision, and OpenVINO release. A requested target is not proof of execution. InferBridge reports the actual device from successful measured generation when the runtime exposes that evidence.
 
 ## Installation options
+
+### Microsoft Store (recommended, from 1.1.0)
+
+Starting with 1.1.0, InferBridge is submitted to Microsoft Store as Store ID `9PJ0NSD01070`: <https://apps.microsoft.com/detail/9PJ0NSD01070>. The link works once the listing passes certification and is published. The Store edition opens the native Windows app, installs per user without administrator rights and is signed by Microsoft. Microsoft Store delivers its updates (it never checks GitHub). It keeps models and settings in `%USERPROFILE%\InferBridgeStoreData`, which stays in place after uninstall until you delete it. See [Microsoft Store packaging](docs/MICROSOFT_STORE.md).
 
 ### Windows installer
 
@@ -61,7 +67,7 @@ See the [Windows installer guide](docs/INSTALLER.md).
 
 ### Portable ZIP
 
-Extract the complete ZIP to a writable directory and run `InferBridge.exe`. Portable mode stores mutable data under a sibling `data` directory and does not create registry or Start Menu entries.
+Extract the complete ZIP to a writable directory and run `native\InferBridge.Native.exe` for a native-first build (previous releases through 1.0.0 use `InferBridge.exe` and open the browser). Portable mode stores mutable data under a sibling `data` directory and does not create registry or Start Menu entries.
 
 See the [portable package guide](docs/PORTABLE.md).
 
@@ -93,27 +99,47 @@ See [QUICKSTART.md](QUICKSTART.md) for the complete setup flow.
 
 ## Visual preview
 
-### Main chat interface
+### Native Windows app
+
+#### Chat
+
+![InferBridge native chat with live inference stats](screenshots/native_chat.png)
+
+#### Model library
+
+![InferBridge native model library](screenshots/native_models.png)
+
+#### System Doctor
+
+![InferBridge native System Doctor](screenshots/native_doctor.png)
+
+#### Local API
+
+![InferBridge native Local API connection hub](screenshots/native_api.png)
+
+### Browser UI
+
+#### Main chat interface
 
 ![InferBridge chat interface](screenshots/chat_preview.png)
 
-### System Doctor hardware diagnostics
+#### System Doctor hardware diagnostics
 
 ![InferBridge System Doctor](screenshots/system_doctor.png)
 
-### Settings and system information
+#### Settings and system information
 
 ![InferBridge settings](screenshots/settings_preview.png)
 
-### First-run model flow
+#### First-run model flow
 
 ![InferBridge empty state](screenshots/empty_state.png)
 
-### Light theme
+#### Light theme
 
 ![InferBridge light theme](screenshots/light_theme.png)
 
-### Responsive layout
+#### Responsive layout
 
 ![InferBridge responsive preview](screenshots/responsive_preview.png)
 
@@ -148,6 +174,7 @@ See [QUICKSTART.md](QUICKSTART.md) for the complete setup flow.
 - [Model preparation cancellation](docs/model-cancellation.md)
 - [Model preparation recovery](docs/MODEL_RECOVERY.md)
 - [Context budget visibility](docs/CONTEXT_BUDGET.md)
+- [Context and memory: larger context, KV cache precision, NPU limits, contributing benchmarks](docs/CONTEXT_AND_MEMORY.md)
 
 ### Data, diagnostics, and support
 

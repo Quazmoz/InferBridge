@@ -135,11 +135,48 @@ def test_format_model_load_error_tls_message_and_bundle(monkeypatch):
     msg = errors.format_model_load_error(ssl.SSLCertVerificationError("CERTIFICATE_VERIFY_FAILED"))
     assert "TLS certificate" in msg
     assert "python-certifi-win32" in msg
-    assert r"C:\certs\corp.pem" in msg  # active bundle surfaced
+    assert r"C:\certs\corp.pem" not in msg  # local paths must not be surfaced
 
 
-def test_format_model_load_error_passes_through_plain():
-    assert errors.format_model_load_error(ValueError("boom")) == "boom"
+def test_format_model_load_error_masks_unclassified_private_details():
+    exc = ValueError(r"C:\Users\PrivateUser\Model: prompt=confidential hf_supersecretvalue")
+    message = errors.format_model_load_error(exc)
+    assert "Model loading failed" in message
+    assert "PrivateUser" not in message
+    assert "confidential" not in message
+    assert "hf_supersecretvalue" not in message
+
+
+def test_missing_openvino_artifact_still_gets_a_specific_safe_next_step():
+    exc = RuntimeError(r"No converted OpenVINO model found at C:\Users\PrivateUser")
+    message = errors.format_model_load_error(exc)
+    assert "Model Library" in message
+    assert "PrivateUser" not in message
+
+
+def test_npu_level_zero_compiler_error_is_actionable_without_leaking_native_details():
+    native = RuntimeError(
+        r"Exception from C:\Users\PrivateUser\Models\phi-4: Compilation failed. "
+        "Level0 pfnCreate2 result: ZE_RESULT_ERROR_INVALID_ARGUMENT, "
+        "token=hf_secret_that_must_never_appear"
+    )
+    wrapper = RuntimeError("Unable to initialize model")
+    wrapper.__cause__ = native
+
+    message = errors.format_model_load_error(wrapper, device="NPU")
+
+    assert "ZE_RESULT_ERROR_INVALID_ARGUMENT" in message
+    assert "Intel NPU driver" in message
+    assert "has not switched devices" in message
+    assert "PrivateUser" not in message
+    assert "hf_secret" not in message
+    assert "pfnCreate2" not in message
+
+
+def test_unrelated_or_non_npu_invalid_argument_is_not_misclassified():
+    native = RuntimeError("ZE_RESULT_ERROR_INVALID_ARGUMENT in a GPU kernel")
+    assert "NPU compilation" not in errors.format_model_load_error(native, device="GPU")
+    assert "NPU compilation" not in errors.format_model_load_error(native, device="NPU")
 
 
 def test_format_missing_openvino_mentions_install_and_mock():

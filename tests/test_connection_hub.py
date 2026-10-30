@@ -28,8 +28,18 @@ class DummyLock:
 class DummyManager:
     def __init__(self, *, busy: bool = False, active: int = 0, loaded: bool = True) -> None:
         self.catalog = {
-            "chat-model": SimpleNamespace(name="Chat Model", backend="openvino-genai"),
-            "embed-model": SimpleNamespace(name="Embed Model", backend="openvino-embeddings"),
+            "chat-model": SimpleNamespace(
+                name="Chat Model",
+                backend="openvino-genai",
+                max_context_len=8192,
+                max_output_tokens=1024,
+            ),
+            "embed-model": SimpleNamespace(
+                name="Embed Model",
+                backend="openvino-embeddings",
+                max_context_len=512,
+                max_output_tokens=0,
+            ),
         }
         self.engines = {"chat-model": SimpleNamespace(model_id="chat-model")} if loaded else {}
         self.locks = {"chat-model": DummyLock(busy)}
@@ -159,6 +169,28 @@ def test_connection_metadata_uses_runtime_settings_and_never_returns_secret():
     assert payload["loaded_model_ids"] == ["chat-model"]
     assert payload["usable_model_ids"] == ["chat-model"]
     assert "super-secret-value" not in json.dumps(payload)
+
+
+def test_connection_metadata_reports_generation_token_limits_for_tool_setup():
+    hub, app = service()
+    models = {item["id"]: item for item in hub.metadata(request_for(app)).model_dump()["models"]}
+
+    assert models["chat-model"]["context_tokens"] == 8192
+    assert models["chat-model"]["max_output_tokens"] == 1024
+    # Embedding models never advertise a chat window to coding tools.
+    assert models["embed-model"]["context_tokens"] is None
+    assert models["embed-model"]["max_output_tokens"] is None
+
+
+def test_token_limits_reject_missing_or_inconsistent_configuration():
+    from app.connection_hub import _token_limits
+
+    assert _token_limits(SimpleNamespace()) == (None, None)
+    assert _token_limits(SimpleNamespace(max_context_len=True, max_output_tokens=1)) == (None, None)
+    assert _token_limits(SimpleNamespace(max_context_len=4096, max_output_tokens=4096)) == (
+        4096,
+        None,
+    )
 
 
 def test_connection_hub_internal_route_is_loopback_ui_only_and_secret_free():
