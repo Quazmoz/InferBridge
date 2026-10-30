@@ -7,6 +7,7 @@ pure-Python/mock endpoint tests do not exercise.
 
 from __future__ import annotations
 
+import re
 import sysconfig
 import subprocess
 import sys
@@ -39,7 +40,8 @@ def validate_help(output: str) -> None:
 
     if "usage:" not in output.lower() or "openvino" not in output.lower():
         raise RuntimeError("The installed Optimum CLI did not describe OpenVINO export.")
-    missing = sorted(flag for flag in required_flags() if flag not in output)
+    available = set(re.findall(r"(?<![\\w-])--[a-z][a-z0-9-]*(?![\\w-])", output))
+    missing = sorted(required_flags() - available)
     if missing:
         raise RuntimeError("Optimum export CLI is missing arguments: " + ", ".join(missing))
 
