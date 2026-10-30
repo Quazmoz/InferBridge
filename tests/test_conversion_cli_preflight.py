@@ -30,7 +30,7 @@ def test_preflight_rejects_missing_optional_flags():
 def test_preflight_does_not_accept_prefix_similar_flags():
     available = (required_flags() - {"--ratio"}) | {"--ratio-fallback"}
     with pytest.raises(RuntimeError, match="--ratio"):
-        validate_help("usage: optimum-cli export openvino\\n" + " ".join(sorted(available)))
+        validate_help("usage: optimum-cli export openvino\n" + " ".join(sorted(available)))
 
 
 def test_preflight_rejects_other_command_help():
