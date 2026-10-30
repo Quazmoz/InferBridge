@@ -202,15 +202,11 @@ def test_linux_constraints_stay_aligned_with_retained_hash_lock():
     lock = (ROOT / "requirements/linux.lock").read_text(encoding="utf-8")
     entries = dict(
         (name.lower().replace("_", "-"), version)
-        for name, version in re.findall(
-            r"^([A-Za-z0-9_.-]+)==([^\s;]+)", baseline, re.MULTILINE
-        )
+        for name, version in re.findall(r"^([A-Za-z0-9_.-]+)==([^\s;]+)", baseline, re.MULTILINE)
     )
     locked = dict(
         (name.lower().replace("_", "-"), version)
-        for name, version in re.findall(
-            r"^([A-Za-z0-9_.-]+)==([^\s\\]+)", lock, re.MULTILINE
-        )
+        for name, version in re.findall(r"^([A-Za-z0-9_.-]+)==([^\s\\]+)", lock, re.MULTILINE)
     )
     assert entries
     for name, expected in entries.items():
