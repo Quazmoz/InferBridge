@@ -102,11 +102,17 @@ approved promotion), and choose the **Artifact output type** parameter:
 
 **Release channel** defaults to `auto`: the channel follows `app/version.py` on the
 selected commit (no suffix -> `stable`, `beta`/`rc` -> `beta`, `dev` or another
-suffix -> `nightly`), so `main` at `1.1.0` builds stable, `beta` at `1.1.0-beta.1`
-builds beta and `dev` at `1.1.1-dev.1` builds nightly. Choose `stable`, `beta` or
-`nightly` only to override it; an explicit channel that does not fit the version
-fails with the branch or channel to use instead. The run log prints the resolved
-version, channel and branch before the build starts.
+suffix -> `nightly`). For example, `1.1.0` builds stable, `1.1.0-beta.1`
+builds beta, and `1.1.1-dev.1` builds nightly **regardless of branch name**.
+Choose `stable`, `beta` or `nightly` only to override it; an explicit channel
+that does not fit the version fails instead of silently producing the wrong
+artifact. The run log prints the resolved version, channel and branch.
+
+**Release blocker (2026-10-30):** the current `main` revision still declares
+`1.1.1-dev.1`, not a stable version. Do not build a new Store submission from
+that revision as though it were a stable release. Fix and qualify the launch
+crash on `dev`, then separately promote a reviewed, correctly versioned stable
+candidate before using `main` for Store packaging.
 
 For the Store MSIX submission: source branch `main`, **Artifact output type**
 `msix`, **Release channel** `auto` (or `stable`), and the default MSIX identity

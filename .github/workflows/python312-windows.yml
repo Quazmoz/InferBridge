@@ -42,6 +42,20 @@ jobs:
         run: |
           python -c "import sys; assert sys.version_info[:2] == (3, 12) and sys.maxsize > 2**32, sys.version; print(sys.version)"
           if ($LASTEXITCODE -ne 0) { throw 'Expected x64 Python 3.12.' }
+      - name: Parse installed-MSIX smoke and certification crash triage scripts
+        shell: pwsh
+        run: |
+          foreach ($path in @('scripts/inspect_store_crash.ps1', 'scripts/smoke_test_msix.ps1')) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $path), [ref]$tokens, [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -ne 0) {
+              $errors | ForEach-Object { Write-Error "${path}: $($_.Message)" }
+              exit 1
+            }
+          }
       - name: Fast-fail Azure-pinned Ruff gates
         shell: pwsh
         run: |
