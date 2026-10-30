@@ -155,7 +155,7 @@ Partner Center product ID `9PJ0NSD01070` failed on a **Microsoft Surface Laptop 
 **10.1.2.10 Functionality** (crash at launch) and **11.11.1 Age Ratings** (questionnaire).
 The supplied `InferBridge_CrashLog.evtx` identifies an **Application Error**
 in `InferBridge.Native.exe` version `1.1.1.0`, with the bundled
-`native\\Microsoft.UI.Xaml.dll` version `3.2.3.0` as the faulting module,
+`native\Microsoft.UI.Xaml.dll` version `3.2.3.0` as the faulting module,
 exception `0xC000027B` (stowed exception), and offset `0x3A9DBD`. The event
 does **not** contain the inner stowed error or a stack trace; it does not establish
 which application XAML statement, if any, caused the fault.
@@ -164,7 +164,7 @@ The **module, version, exception and offset exactly match** Microsoft
 [microsoft-ui-xaml#12169](https://github.com/microsoft/microsoft-ui-xaml/issues/12169),
 which affected several Microsoft applications on Windows 11 26H2. That issue
 concerns a *framework-dependent* runtime path, whereas the InferBridge MSIX
-**bundles its own** XAML.dll under `native\\`: a shared runtime defect is a
+**bundles its own** XAML.dll under `native\`: a shared runtime defect is a
 credible hypothesis, not a demonstrated identical root cause. The other
 reporter's recovery after a restart had no confirmed causal explanation.
 
