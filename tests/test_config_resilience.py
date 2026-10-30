@@ -1,4 +1,5 @@
 from app.config import Settings, _device_env, _int_env
+from runtime.device_check import DEFAULT_DEVICE
 
 
 def test_from_env_invalid_numeric_values_fall_back(monkeypatch, caplog):
@@ -21,7 +22,7 @@ def test_from_env_invalid_device_falls_back(monkeypatch, caplog):
 
     settings = Settings.from_env()
 
-    assert settings.device == "NPU"
+    assert settings.device == DEFAULT_DEVICE
     assert "OV_LLM_DEVICE" in caplog.text
 
 

@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+APP_ROOT="$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")"
+if [ "$(uname -m)" != x86_64 ]; then
+    echo 'InferBridge requires Linux x86_64. This download does not support ARM64.' >&2
+    exit 2
+fi
+unset PYTHONHOME PYTHONSTARTUP PYTHONUSERBASE
+export PYTHONPATH="$APP_ROOT/resources"
+export PYTHONSAFEPATH=1 PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1
+export PATH="$APP_ROOT/python/bin:$PATH"
+for argument in "$@"; do
+    if [ "$argument" = --portable ] && [ -z "${OV_LLM_DATA_DIR:-}" ]; then
+        export OV_LLM_DATA_DIR="$APP_ROOT/data"
+    fi
+done
+exec "$APP_ROOT/python/bin/python3.12" -P -s -B "$APP_ROOT/resources/linux_desktop.py" "$@"

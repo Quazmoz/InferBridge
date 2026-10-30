@@ -49,6 +49,19 @@ The first model setup can take significant time. NPU support depends on the actu
 
 ## Installation options
 
+### Linux x86_64 development download
+
+Ubuntu and Fedora users can test the private-runtime portable archive from a successful
+[Linux development distribution workflow](https://github.com/Quazmoz/InferBridge/actions/workflows/linux-distribution.yml)
+on `dev`. Download the `InferBridge-linux-x86_64-development` artifact while signed in
+to GitHub, unzip it, verify its SHA-256 file, and extract the complete `.tar.gz`.
+Run `./InferBridge` to open the existing browser UI; no source checkout, Python setup,
+or administrator privileges are required. Run `./InferBridge --install-desktop` for
+application menu entries and `./InferBridge --quit` to stop it.
+
+These are development downloads, with hardware qualification tracked separately from
+mock API tests. See the [Linux install, model, upgrade and uninstall guide](docs/LINUX.md).
+
 ### Microsoft Store (recommended, from 1.1.0)
 
 Starting with 1.1.0, InferBridge is submitted to Microsoft Store as Store ID `9PJ0NSD01070`: <https://apps.microsoft.com/detail/9PJ0NSD01070>. The link works once the listing passes certification and is published. The Store edition opens the native Windows app, installs per user without administrator rights and is signed by Microsoft. Microsoft Store delivers its updates (it never checks GitHub). It keeps models and settings in `%USERPROFILE%\InferBridgeStoreData`, which stays in place after uninstall until you delete it. See [Microsoft Store packaging](docs/MICROSOFT_STORE.md).

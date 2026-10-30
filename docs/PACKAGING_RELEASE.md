@@ -1,5 +1,9 @@
 # Windows packaging and release
 
+Linux development downloads have a separate private-runtime builder and CI
+workflow; see [Linux packaging and qualification](LINUX.md#build-and-qualification).
+They do not invoke this Windows release/publishing pipeline.
+
 Use the production release entry point with the canonical version from `app/version.py`:
 
 ```powershell

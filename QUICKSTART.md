@@ -94,6 +94,13 @@ See [Windows hardware certification](docs/WINDOWS_CERTIFICATION.md).
 
 ## Experimental Linux
 
+For a downloadable application without Git or Python dependency setup, follow the
+[Linux portable quickstart](docs/LINUX.md#download-and-launch). The archive bundles
+Python, OpenVINO GenAI, conversion tools and the browser UI. Linux defaults to CPU;
+GPU and NPU require devices exposed by the installed OpenVINO runtime and drivers.
+
+The commands below are the alternative developer/source installation.
+
 ### Ubuntu prerequisites
 
 ```bash

@@ -20,7 +20,7 @@ from app.network_exposure_safety import host_is_loopback, install_network_exposu
 from app.paths import resolve_runtime_paths
 from app.status_split import install_status_split_routes_extension
 from app.ui_composition import compose as compose_browser_ui
-from runtime.device_check import normalize_device
+from runtime.device_check import DEFAULT_DEVICE, normalize_device
 from runtime.npu_compat import install_openvino_genai_compat
 
 # Install runtime compatibility and route extensions before app.model_manager/app.server
@@ -85,7 +85,7 @@ def _int_env(
     return value
 
 
-def _device_env(name: str = "OV_LLM_DEVICE", default: str = "NPU") -> str:
+def _device_env(name: str = "OV_LLM_DEVICE", default: str = DEFAULT_DEVICE) -> str:
     """Read and normalize a device target, falling back after malformed overrides."""
 
     raw = os.environ.get(name)
@@ -104,7 +104,7 @@ class Settings:
 
     host: str = "127.0.0.1"
     port: int = 8000
-    device: str = "NPU"
+    device: str = DEFAULT_DEVICE
     models_file: Path = _RUNTIME_PATHS.models_file
     models_dir: Path = _RUNTIME_PATHS.models_dir
     cache_dir: Path = _RUNTIME_PATHS.compiled_cache_dir

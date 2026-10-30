@@ -12,6 +12,12 @@ This project is Windows-first. Linux support is experimental and currently suppo
 
 ## Device Discovery
 
+Linux configuration defaults to **CPU**, retaining explicit device selections and
+checking them against OpenVINO's inventory before loading. Windows retains its NPU
+default. A CPU default is not a claim that every host or model is supported. See
+the [Linux evidence matrix](LINUX.md#build-and-qualification) for separate source,
+packaged mock and real inference status.
+
 Device visibility is ultimately determined by:
 
 ```bash

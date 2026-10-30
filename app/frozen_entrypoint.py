@@ -53,7 +53,7 @@ def run(argv: list[str] | None = None) -> int:
         # Double-clicking the packaged root EXE should open the Windows app, not
         # the legacy browser. Native starts the engine with --no-browser, so its
         # engine child and all explicit CLI/helper modes never recurse here.
-        if not arguments and getattr(sys, "frozen", False):
+        if not arguments and sys.platform == "win32" and getattr(sys, "frozen", False):
             from pathlib import Path
             from subprocess import Popen
 

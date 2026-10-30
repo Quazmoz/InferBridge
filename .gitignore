@@ -89,3 +89,6 @@ graft/
 .agent-tools/ponytail-graft/state/
 .claude/.ponytail-active
 .claude/.ponytail-statusline-nudged
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/.trail/cache/

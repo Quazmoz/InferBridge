@@ -91,6 +91,7 @@ def test_installer_bootstrap_probe_is_noninteractive_and_never_restart_registere
 def test_frozen_root_exe_opens_native_frontend_without_starting_browser(tmp_path, monkeypatch):
     import subprocess
 
+    monkeypatch.setattr(sys, "platform", "win32")
     engine = tmp_path / "InferBridge.exe"
     engine.write_bytes(b"engine")
     native = tmp_path / "native" / "InferBridge.Native.exe"
@@ -138,6 +139,7 @@ def test_frozen_engine_cli_mode_never_redirects_to_native(tmp_path, monkeypatch)
 def test_root_exe_refuses_to_open_browser_when_winui_is_missing(tmp_path, monkeypatch):
     import subprocess
 
+    monkeypatch.setattr(sys, "platform", "win32")
     engine = tmp_path / "InferBridge.exe"
     engine.write_bytes(b"engine")
     monkeypatch.setattr(sys, "frozen", True, raising=False)

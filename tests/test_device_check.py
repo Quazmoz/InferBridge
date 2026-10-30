@@ -5,8 +5,8 @@ install_openvino_genai_compat()
 
 
 def test_normalize_device_defaults_and_casing():
-    assert device_check.normalize_device(None) == "NPU"
-    assert device_check.normalize_device("") == "NPU"
+    assert device_check.normalize_device(None) == device_check.DEFAULT_DEVICE
+    assert device_check.normalize_device("") == device_check.DEFAULT_DEVICE
     assert device_check.normalize_device("  npu ") == "NPU"
     assert device_check.normalize_device("gpu") == "GPU"
     assert device_check.normalize_device(" auto:npu, gpu, cpu ") == "AUTO:NPU,GPU,CPU"

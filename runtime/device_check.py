@@ -10,12 +10,13 @@ import atexit
 import importlib.util
 import logging
 import re
+import sys
 import threading
 from dataclasses import dataclass
 
 logger = logging.getLogger("ov-llm.device")
 
-DEFAULT_DEVICE = "NPU"
+DEFAULT_DEVICE = "CPU" if sys.platform.startswith("linux") else "NPU"
 PHYSICAL_DEVICE_BASES = ("CPU", "GPU", "NPU")
 META_DEVICES = ("AUTO", "MULTI", "HETERO")
 SUPPORTED_DEVICE_EXAMPLES = (

@@ -1,0 +1,23 @@
+# Linux bundle only. Keep the qualified Windows release environment unchanged.
+# Resolve on Python 3.12/x86_64, with CPU-only PyTorch (conversion, not inference).
+-c release.txt
+openvino
+openvino-genai
+openvino-tokenizers
+fastapi
+uvicorn[standard]
+pydantic
+python-dotenv
+psutil
+pillow
+httpx
+pystray
+optimum-intel[openvino]
+nncf
+huggingface_hub
+transformers
+tokenizers
+torch
+numpy
+safetensors
+sentencepiece

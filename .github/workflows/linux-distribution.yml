@@ -1,0 +1,124 @@
+name: Linux development distribution
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - 'app/**'
+      - 'runtime/**'
+      - 'web/**'
+      - 'packaging/linux/**'
+      - 'requirements/linux.*'
+      - 'requirements/release.txt'
+      - 'scripts/*linux*.py'
+      - 'tests/test_linux_distribution.py'
+      - '.github/workflows/linux-distribution.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-distribution-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Build tools and host libraries
+        run: |
+          python -m pip install uv==0.11.21 ruff==0.16.10 pytest==9.1.1
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends desktop-file-utils libnuma1 libtbb12 libgomp1 libatomic1 ocl-icd-libopencl1
+      - name: Source gates
+        run: |
+          ruff check .
+          ruff format --check .
+          bash -n setup.sh start_server.sh setup/linux/*.sh packaging/linux/InferBridge
+          python -m pytest tests/test_linux_distribution.py
+      - name: Build private runtime and portable archive without models
+        env:
+          HF_HUB_OFFLINE: '1'
+          HF_HUB_DISABLE_TELEMETRY: '1'
+          DO_NOT_TRACK: '1'
+        run: python scripts/build_linux_distribution.py
+      - name: Verify checksum and native library dependencies
+        run: |
+          cd dist/linux
+          sha256sum -c *-linux-SHA256SUMS.txt
+          cd ../..
+          find build/linux/InferBridge-* -type f -name '*.so*' -exec sh -c 'for library do echo "$library"; ldd "$library" || true; done' sh {} + > build/linux/native-libraries.txt
+          ldd build/linux/InferBridge-*/python/bin/python3.12
+      - name: Qualify relocated application on Ubuntu 22.04 x86_64
+        run: python scripts/validate_linux_bundle.py --archive dist/linux/*-portable.tar.gz --evidence build/linux/evidence
+      - name: Upload development downloads
+        uses: actions/upload-artifact@v7
+        with:
+          name: InferBridge-linux-x86_64-development
+          path: dist/linux/*
+          compression-level: 0
+          retention-days: 7
+      - name: Retain concise qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-ubuntu22-evidence
+          path: |
+            build/linux/evidence/
+            build/linux/native-libraries.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
+  ubuntu24:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v7
+        with:
+          name: InferBridge-linux-x86_64-development
+          path: dist/linux
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends desktop-file-utils libnuma1 libtbb12 libgomp1 libatomic1 ocl-icd-libopencl1
+      - run: python scripts/validate_linux_bundle.py --archive dist/linux/*-portable.tar.gz --evidence build/linux/evidence
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: linux-ubuntu24-evidence
+          path: build/linux/evidence/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  fedora:
+    needs: build
+    runs-on: ubuntu-24.04
+    container: fedora:44
+    timeout-minutes: 20
+    steps:
+      - name: Fedora runtime prerequisites
+        run: dnf install -y git tar gzip python3 binutils libstdc++ libgomp numactl-libs tbb ocl-icd libxcrypt-compat desktop-file-utils shadow-utils
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: InferBridge-linux-x86_64-development
+          path: dist/linux
+      - name: Qualify the same archive as an ordinary Fedora user
+        run: |
+          useradd --create-home inferbridge-test
+          su -s /bin/bash inferbridge-test -c 'python3 scripts/validate_linux_bundle.py --archive dist/linux/*-portable.tar.gz --evidence /tmp/inferbridge-fedora-evidence'
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: linux-fedora44-evidence
+          path: /tmp/inferbridge-fedora-evidence/
+          if-no-files-found: ignore
+          retention-days: 7

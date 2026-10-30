@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from app.config import BASE_DIR, Settings, _bool_env, _resolve
+from runtime.device_check import DEFAULT_DEVICE
 
 _ENV_VARS = [
     "OV_LLM_HOST",
@@ -33,7 +34,7 @@ def test_from_env_defaults(clean_env):
     s = Settings.from_env()
     assert s.host == "127.0.0.1"
     assert s.port == 8000
-    assert s.device == "NPU"
+    assert s.device == DEFAULT_DEVICE
     assert s.models_file == BASE_DIR / "models.json"
     assert s.models_dir == BASE_DIR / "models" / "openvino"
     assert s.cache_dir == BASE_DIR / "models" / "cache"

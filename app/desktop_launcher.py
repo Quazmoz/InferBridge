@@ -436,7 +436,17 @@ def _native_runtime_smoke() -> int:
         core = Core()
         # OpenVINO GenAI resolves this extension by DLL name. Using the same lookup
         # here catches missing transitive DLLs and incorrect PyInstaller search paths.
-        core.add_extension("openvino_tokenizers.dll")
+        if sys.platform.startswith("linux"):
+            import openvino_tokenizers
+
+            extension = next(
+                Path(openvino_tokenizers.__file__).parent.rglob("libopenvino_tokenizers.so")
+            )
+            core.add_extension(str(extension))
+            if "CPU" not in core.available_devices:
+                raise RuntimeError("OpenVINO did not expose a CPU device.")
+        else:
+            core.add_extension("openvino_tokenizers.dll")
         if not callable(LLMPipeline):
             raise RuntimeError("OpenVINO GenAI LLMPipeline binding is unavailable.")
     except Exception as exc:  # noqa: BLE001 - packaged native boundary
@@ -522,10 +532,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--owner-pid", type=int, default=0, help=argparse.SUPPRESS)
     parser.add_argument("--owner-created-at", type=float, default=0.0, help=argparse.SUPPRESS)
     parser.add_argument("--portable", action="store_true", default=_portable_default())
-    parser.add_argument("--data-dir")
+    parser.add_argument("--data-dir", default=os.environ.get("OV_LLM_DATA_DIR"))
     parser.add_argument("--mock", action="store_true")
     parser.add_argument("--diagnostic", action="store_true")
     parser.add_argument("--no-browser", action="store_true")
+    parser.add_argument("--quit", action="store_true", help="Stop this user's desktop application")
     parser.add_argument("--startup", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--start-stopped", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--headless", action="store_true", help=argparse.SUPPRESS)

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import signal
+import sys
 import threading
 from pathlib import Path
 from typing import Any
@@ -78,4 +80,19 @@ class TrayApplication(
 
 
 def run_tray_controller(args: argparse.Namespace) -> int:
-    return TrayApplication(args).run()
+    application = TrayApplication(args)
+    previous = {}
+    if sys.platform.startswith("linux") and threading.current_thread() is threading.main_thread():
+        # Keep signal handlers nonblocking: the owner's finally block drains the child.
+        def request_exit(_signum, _frame):
+            application.stop_event.set()
+            if application.icon is not None:
+                application.icon.stop()
+
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            previous[signum] = signal.signal(signum, request_exit)
+    try:
+        return application.run()
+    finally:
+        for signum, handler in previous.items():
+            signal.signal(signum, handler)

@@ -83,6 +83,27 @@ def test_status_reports_portable_installations_distinctly(tmp_path) -> None:
         )
 
 
+def test_linux_bundle_never_offers_windows_updates(paths, monkeypatch):
+    (paths.resource_root / "linux-build.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        "app.release_routes.UpdateChecker",
+        lambda **_kwargs: pytest.fail("Linux contacted the Windows update feed"),
+    )
+    app = FastAPI()
+    register_release_routes(app, paths=paths)
+    with TestClient(app, base_url="http://127.0.0.1:8000") as client:
+        assert client.get("/desktop/release/status").json()["update_checks"]["enabled"] is False
+        result = client.post("/desktop/release/check", headers=LOCAL_UI)
+        assert result.json()["status"] == "disabled"
+        assert "Linux" in result.json()["message"]
+        assert (
+            client.put(
+                "/desktop/release/settings", json={"enabled": True}, headers=LOCAL_UI
+            ).status_code
+            == 409
+        )
+
+
 def test_status_surfaces_a_recent_check_as_not_due(client, paths) -> None:
     store = UpdateStore(paths.config_dir)
     checked_at = datetime.now(UTC) - timedelta(hours=1)

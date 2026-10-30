@@ -21,6 +21,7 @@ from app.update_checker import (
 from app.version import DATA_SCHEMA_VERSION
 
 STORE_UPDATE_MESSAGE = "Microsoft Store delivers updates for this installation."
+LINUX_UPDATE_MESSAGE = "Linux development builds are upgraded manually. Download a qualified Linux archive and preserve the existing data directory."
 
 _LOOPBACK_CLIENTS = frozenset({"127.0.0.1", "::1", "localhost", "testclient"})
 
@@ -42,6 +43,7 @@ def _require_local_ui(request: Request) -> None:
 def register_release_routes(app, *, paths, packaged: bool | None = None) -> None:
     store = UpdateStore(paths.config_dir)
     store_managed = is_packaged() if packaged is None else packaged
+    linux_bundle = (paths.resource_root / "linux-build.json").is_file()
     if store_managed:
         installation_mode = "store"
     else:
@@ -51,7 +53,7 @@ def register_release_routes(app, *, paths, packaged: bool | None = None) -> None
     @app.get("/desktop/release/status", include_in_schema=False)
     async def release_status():
         preferences = store.load_preferences()
-        if store_managed:
+        if store_managed or linux_bundle:
             preferences.enabled = False
         cache = store.load_cache()
         cache_matches_channel = cache.channel == preferences.channel
@@ -67,12 +69,18 @@ def register_release_routes(app, *, paths, packaged: bool | None = None) -> None
             ),
             "last_update_check_time": relevant_last_checked_at,
             "check_due": check_due(relevant_last_checked_at, datetime.now(UTC)),
-            "cached_manifest": cache.manifest if cache_matches_channel else None,
+            "cached_manifest": cache.manifest
+            if cache_matches_channel and not linux_bundle
+            else None,
         }
 
     @app.post("/desktop/release/check", include_in_schema=False)
     async def check_release(request: Request):
         _require_local_ui(request)
+        if linux_bundle:
+            return UpdateCheckResult(status="disabled", message=LINUX_UPDATE_MESSAGE).model_dump(
+                mode="json"
+            )
         if store_managed:
             return UpdateCheckResult(status="disabled", message=STORE_UPDATE_MESSAGE).model_dump(
                 mode="json"
@@ -88,6 +96,8 @@ def register_release_routes(app, *, paths, packaged: bool | None = None) -> None
     @app.put("/desktop/release/settings", include_in_schema=False)
     async def update_release_settings(request: Request):
         _require_local_ui(request)
+        if linux_bundle:
+            raise HTTPException(status_code=409, detail=LINUX_UPDATE_MESSAGE)
         if store_managed:
             raise HTTPException(status_code=409, detail=STORE_UPDATE_MESSAGE)
         try:

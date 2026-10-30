@@ -35,9 +35,21 @@ def _report_headless_startup_failure(message: str) -> None:
 class TrayRuntimeMixin:
     def run(self) -> int:
         if not self.lock.acquire():
+            if getattr(self.args, "quit", False):
+                atomic_json(self.command_file, {"command": "quit"})
+                deadline = time.monotonic() + 45
+                while time.monotonic() < deadline:
+                    if self.lock.acquire():
+                        self.lock.release()
+                        return 0
+                    time.sleep(0.1)
+                _report_headless_startup_failure("The application did not stop within 45 seconds.")
+                return 6
             self._activate_existing_instance()
             return 0
         try:
+            if getattr(self.args, "quit", False):
+                return 0
             # Command and restart markers are one-shot coordination files owned by a
             # specific tray session. If a prior tray exited before consuming them, they
             # must not trigger actions in this newly authoritative controller instance.
@@ -62,6 +74,8 @@ class TrayRuntimeMixin:
                         _report_headless_startup_failure(message)
                         return 6
                     show_dialog(APP_TITLE, message, error=True)
+                    if sys.platform.startswith("linux"):
+                        return 6
             if self.args.headless:
                 return self._run_headless()
             return self._run_tray()
@@ -137,7 +151,8 @@ class TrayRuntimeMixin:
             APP_TITLE,
             "The Linux system-tray icon is unavailable in this desktop session. "
             "InferBridge will keep running without a tray icon. Use the browser UI or "
-            "stop the launcher process to exit.",
+            "choose Quit InferBridge from the application menu, or run InferBridge --quit. "
+            "Closing the browser tab leaves the application running.",
         )
         return self._run_headless()
 
