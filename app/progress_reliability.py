@@ -656,8 +656,8 @@ PROGRESS_RELIABILITY_JS = r"""
         return modelId;
     }
 
-    function clearOptimistic(modelId) {
-        if (!modelId) return;
+    function clearOptimistic(modelId, request) {
+        if (!modelId || optimistic.get(modelId) !== request) return;
         optimistic.delete(modelId);
         modelState.delete(modelId);
         if (activeModelId === modelId) activeModelId = '';
@@ -669,26 +669,17 @@ PROGRESS_RELIABILITY_JS = r"""
         }
     }
 
-    function mergeReturnedModel(payload, requestRevision, baseline) {
+    function mergeReturnedModel(payload, requestRevision) {
         if (!payload?.model) return;
+        // Any status GET accepted after the POST began is authoritative, even
+        // when the visible status and operation metadata have not changed.
+        // This also prevents resurrecting a deleted model via a delayed POST.
+        if (latestStatusRevision > requestRevision) return;
         const current = latestStatus || { models: { available: [] } };
         const models = Array.isArray(current.models?.available)
             ? [...current.models.available]
             : [];
         const index = models.findIndex(model => model.id === payload.model.id);
-        const observed = index >= 0 ? models[index] : null;
-        if (latestStatusRevision > requestRevision && observed) {
-            const before = baseline?.progress || {};
-            const after = observed.progress || {};
-            const movedForward = observed.is_loaded
-                || observed.is_loading
-                || (baseline && observed.status !== baseline.status)
-                || String(after.operation_id || '') !== String(before.operation_id || '')
-                || Number(after.revision || 0) > Number(before.revision || 0)
-                || Number(after.updated_at || 0) > Number(before.updated_at || 0);
-            // A delayed POST acknowledgment is not the authoritative current state.
-            if (movedForward) return;
-        }
         if (index >= 0) models[index] = payload.model;
         else models.push(payload.model);
         scheduleRender({
@@ -726,11 +717,13 @@ PROGRESS_RELIABILITY_JS = r"""
             && method === 'POST'
             && PREPARATION_PATHS.has(target.path);
         let optimisticModelId = null;
-        let requestRevision = nextStatusRevision;
+        let optimisticRequest = null;
+        const requestRevision = nextStatusRevision;
 
         if (isPreparation) {
             const body = await requestBody(input, init);
             optimisticModelId = renderOptimistic(target.path, body);
+            optimisticRequest = optimistic.get(optimisticModelId);
         }
 
         let response;
@@ -744,7 +737,7 @@ PROGRESS_RELIABILITY_JS = r"""
                 response = await previousFetch(input, init);
             }
         } catch (error) {
-            clearOptimistic(optimisticModelId);
+            clearOptimistic(optimisticModelId, optimisticRequest);
             throw error;
         }
 
@@ -752,14 +745,23 @@ PROGRESS_RELIABILITY_JS = r"""
             response.clone().json().then(data => scheduleRender(data, revision)).catch(() => {});
         } else if (isPreparation) {
             if (!response.ok) {
-                clearOptimistic(optimisticModelId);
+                clearOptimistic(optimisticModelId, optimisticRequest);
             } else {
                 response.clone().json().then(payload => {
-                    const pending = optimistic.get(optimisticModelId);
-                    optimistic.delete(optimisticModelId);
-                    mergeReturnedModel(payload, requestRevision, pending?.baseline || null);
+                    // A previous POST must not clear or overwrite a newer retry.
+                    // A confirmed GET can have already retired this request.
+                    if (optimisticModelId
+                        && optimistic.get(optimisticModelId) !== optimisticRequest) return;
+                    const acknowledged = payload?.model;
+                    if (acknowledged && !acknowledged.is_loading) {
+                        optimistic.delete(optimisticModelId);
+                    }
+                    // Keep the queued indicator after acceptance until an
+                    // authoritative status poll confirms this retry, preventing
+                    // the previous attempt's error from flashing again.
+                    mergeReturnedModel(payload, requestRevision);
                 }).catch(() => {
-                    clearOptimistic(optimisticModelId);
+                    clearOptimistic(optimisticModelId, optimisticRequest);
                 });
             }
         }

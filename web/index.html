@@ -3789,7 +3789,7 @@
                     : `Loading ${model.name}…`;
             } else if (model.status === 'error') {
                 const isConvertRetry = !!model.can_convert;
-                const actionLabel = isConvertRetry ? 'Conversion failed' : 'Load failed';
+                const actionLabel = model.status_label || 'Model preparation failed';
                 const fullError = `${model.name}: ${model.error || actionLabel}`;
                 setModelStatus(`${model.name}: ${actionLabel}`, 'error', fullError);
                 userInput.placeholder = isConvertRetry
