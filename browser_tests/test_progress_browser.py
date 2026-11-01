@@ -478,6 +478,8 @@ def test_retry_keeps_previous_failure_hidden_until_new_operation_and_ignores_lat
         {"id": model_id, "queued": queued},
     )
     page.wait_for_function("typeof window.__releaseConvert === 'function'")
+    page.evaluate("window.__releaseConvert()")  # accepted, still waiting for a GET
+    page.wait_for_function("window.__convertDone === true")
     _invalidate_and_fetch_status(page)  # old terminal response, not this retry
     expect(dock).not_to_have_class(re.compile(r"\berror\b"))
     expect(dock.locator(".ovrp-message")).to_contain_text("Queued")
@@ -485,7 +487,3 @@ def test_retry_keeps_previous_failure_hidden_until_new_operation_and_ignores_lat
     state["stage"] = "loaded"
     _invalidate_and_fetch_status(page)
     expect(dock).to_be_hidden(timeout=10_000)
-
-    page.evaluate("window.__releaseConvert()")  # POST reply arrives after successful load
-    page.wait_for_function("window.__convertDone === true")
-    expect(dock).to_be_hidden()

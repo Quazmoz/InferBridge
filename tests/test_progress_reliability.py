@@ -67,6 +67,7 @@ def test_progress_announcements_only_change_with_operation_phase() -> None:
     assert "if (text === lastAnnouncement" in script
     assert 'aria-live="polite"' in script
 
+
 def test_late_ack_and_concurrent_retry_guards_execute_against_real_browser_code() -> None:
     """Exercise the embedded JS with Node: late ACK, deletion, and retry ownership."""
 
@@ -154,7 +155,7 @@ def test_preparation_ack_is_scoped_to_current_retry() -> None:
     script = PROGRESS_RELIABILITY_JS
     assert "optimistic.get(optimisticModelId) !== optimisticRequest" in script
     assert "clearOptimistic(optimisticModelId, optimisticRequest)" in script
-    assert "if (acknowledged && !acknowledged.is_loading)" in script
+    assert "if (acknowledged?.is_loading && optimisticModelId)" in script
     assert "if (latestStatusRevision > requestRevision) return;" in script
 
 

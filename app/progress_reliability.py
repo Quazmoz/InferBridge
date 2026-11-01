@@ -753,12 +753,15 @@ PROGRESS_RELIABILITY_JS = r"""
                     if (optimisticModelId
                         && optimistic.get(optimisticModelId) !== optimisticRequest) return;
                     const acknowledged = payload?.model;
-                    if (acknowledged && !acknowledged.is_loading) {
+                    if (acknowledged?.is_loading && optimisticModelId) {
+                        // Only a GET may confirm an active operation. Rendering
+                        // the POST's queued snapshot would retire our optimistic
+                        // guard before the first authoritative heartbeat.
+                        return;
+                    }
+                    if (acknowledged) {
                         optimistic.delete(optimisticModelId);
                     }
-                    // Keep the queued indicator after acceptance until an
-                    // authoritative status poll confirms this retry, preventing
-                    // the previous attempt's error from flashing again.
                     mergeReturnedModel(payload, requestRevision);
                 }).catch(() => {
                     clearOptimistic(optimisticModelId, optimisticRequest);
