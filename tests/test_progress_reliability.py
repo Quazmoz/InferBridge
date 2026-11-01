@@ -90,6 +90,9 @@ def test_late_ack_and_concurrent_retry_guards_execute_against_real_browser_code(
     merge = "function mergeReturnedModel(" + extract(
         "    function mergeReturnedModel(", "\n    const previousFetch ="
     )
+    identity = "function optimisticIdentity(" + extract(
+        "    function optimisticIdentity(", "\n    function renderOptimistic("
+    )
     # Execute actual source functions rather than reimplementing the reducer in Python.
     js = (
         """
@@ -109,6 +112,7 @@ function setRenderTicker() { throw new Error('stale request changed the UI'); }
 """
         + clear
         + merge
+        + identity
         + """
 clearOptimistic('demo', oldRequest);
 assert.equal(optimistic.get('demo'), currentRequest);
@@ -143,6 +147,9 @@ optimistic.delete('demo');
 clearOptimistic('demo', undefined);
 assert.equal(modelState.has('demo'), true, 'cleared retry must not delete model state');
 assert.equal(activeModelId, 'demo', 'cleared retry must not reset current selection');
+assert.equal(optimisticIdentity('/v1/models/convert', null), null);
+assert.equal(optimisticIdentity('/v1/models/convert', []), null);
+assert.equal(optimisticIdentity('/v1/models/convert', {model: 'demo'}).modelId, 'demo');
 """
     )
     result = subprocess.run(

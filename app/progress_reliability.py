@@ -606,11 +606,11 @@ PROGRESS_RELIABILITY_JS = r"""
     }
 
     function optimisticIdentity(path, body) {
-        const modelId = String(body.model || body.model_id || '').trim();
+        const modelId = String(body?.model || body?.model_id || '').trim();
         if (!modelId) return null;
         return {
             modelId,
-            device: body.device || body.recommended_device || null,
+            device: body?.device || body?.recommended_device || null,
             converting: path !== '/v1/models/load',
         };
     }

@@ -6,6 +6,7 @@ import re
 from typing import Any
 from urllib.request import urlopen
 
+import pytest
 from playwright.sync_api import Page, Route, expect
 
 
@@ -397,8 +398,9 @@ def test_expandable_queue_lists_all_active_operations_and_changes_primary(
     expect(panel).to_be_visible()
 
 
+@pytest.mark.parametrize("ack_before_poll", [False, True])
 def test_retry_keeps_previous_failure_hidden_until_new_operation_and_ignores_late_ack(
-    page: Page, inferbridge_url: str
+    page: Page, inferbridge_url: str, ack_before_poll: bool
 ) -> None:
     baseline = _server_snapshot(inferbridge_url)
     original_model = baseline["models"]["available"][0]
@@ -478,8 +480,9 @@ def test_retry_keeps_previous_failure_hidden_until_new_operation_and_ignores_lat
         {"id": model_id, "queued": queued},
     )
     page.wait_for_function("typeof window.__releaseConvert === 'function'")
-    page.evaluate("window.__releaseConvert()")  # accepted, still waiting for a GET
-    page.wait_for_function("window.__convertDone === true")
+    if ack_before_poll:
+        page.evaluate("window.__releaseConvert()")  # accepted, still waiting for a GET
+        page.wait_for_function("window.__convertDone === true")
     _invalidate_and_fetch_status(page)  # old terminal response, not this retry
     expect(dock).not_to_have_class(re.compile(r"\berror\b"))
     expect(dock.locator(".ovrp-message")).to_contain_text("Queued")
@@ -487,3 +490,7 @@ def test_retry_keeps_previous_failure_hidden_until_new_operation_and_ignores_lat
     state["stage"] = "loaded"
     _invalidate_and_fetch_status(page)
     expect(dock).to_be_hidden(timeout=10_000)
+    if not ack_before_poll:
+        page.evaluate("window.__releaseConvert()")  # stale response after success
+        page.wait_for_function("window.__convertDone === true")
+        expect(dock).to_be_hidden()
