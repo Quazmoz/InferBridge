@@ -139,6 +139,10 @@ optimistic.set('demo', currentRequest);
 rendered = null;
 clearOptimistic('demo', oldRequest);
 assert.equal(optimistic.get('demo'), currentRequest);
+optimistic.delete('demo');
+clearOptimistic('demo', undefined);
+assert.equal(modelState.has('demo'), true, 'cleared retry must not delete model state');
+assert.equal(activeModelId, 'demo', 'cleared retry must not reset current selection');
 """
     )
     result = subprocess.run(

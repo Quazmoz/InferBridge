@@ -657,7 +657,7 @@ PROGRESS_RELIABILITY_JS = r"""
     }
 
     function clearOptimistic(modelId, request) {
-        if (!modelId || optimistic.get(modelId) !== request) return;
+        if (!modelId || !optimistic.has(modelId) || optimistic.get(modelId) !== request) return;
         optimistic.delete(modelId);
         modelState.delete(modelId);
         if (activeModelId === modelId) activeModelId = '';
