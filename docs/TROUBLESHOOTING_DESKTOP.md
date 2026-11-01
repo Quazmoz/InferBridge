@@ -60,6 +60,22 @@ Verify that the writable diagnostics directory is not a symlink and has free spa
 
 The tray displays the actual device reported for the loaded engine. A requested NPU or `AUTO` target is not proof of NPU execution. Use Hardware Scan and the first-run NPU readiness panel, then fall back to an OpenVINO-visible CPU or Intel GPU when necessary.
 
+## A model shows “Conversion failed” but later loads
+
+Check the model's latest state before retrying or deleting any files. A previous
+attempt's error can be superseded by a new download, conversion, or load operation.
+A model is ready only when the current status reports **Loaded**. Downloaded source
+weights alone are not a converted OpenVINO model, and a converted model is not
+necessarily loaded on the requested device.
+
+For public Hugging Face models, an access token is not normally required. For
+gated/private models, confirm account authorization and use the secure token
+setting. If the failure is reproducible, inspect the **Recovery** details for
+its exact stage and choose **Resume preparation** to reuse source weights.
+Try a small public FP16 model on CPU to separate a converter failure from a
+GPU/NPU compilation problem. Export and review sanitized diagnostics before
+sharing; never disclose a Hugging Face access token.
+
 ## Support workflow
 
 1. Reproduce the issue once.

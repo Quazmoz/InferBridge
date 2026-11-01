@@ -25,3 +25,24 @@ If the hardware fingerprint changes because devices, drivers, memory, or OpenVIN
 ## Privacy and safety
 
 The onboarding record contains operational values only. It does not store prompts or chat content. Connection examples never reveal a configured API key and use a placeholder until the user deliberately supplies the secret.
+
+## Model download, conversion, and first load
+
+For public Hugging Face models, an access token is normally unnecessary. A token is
+needed for gated/private repositories when your account has permission, but it is
+not a remedy for OpenVINO conversion or device compilation errors. Never paste a
+token into a support comment or diagnostics archive.
+
+Model preparation has distinct stages: **download** fetches source weights,
+**conversion** exports validated OpenVINO IR, and **load** initializes the model on
+the selected CPU/GPU/NPU. Large downloads and conversions can take significant time
+and may show indeterminate progress; wait for the model to reach **Loaded** before
+concluding it is ready for chat. A past failed attempt should not be mistaken for
+a failure of a newer retry.
+
+If preparation fails, open the model's **Recovery** details to see the failed
+stage and sanitized error. **Resume preparation** reuses eligible cached source
+files; it does not re-download everything. Retry a small public FP16 model on CPU
+to distinguish a general converter problem from NPU compilation or memory pressure.
+If this also fails, use **Tray → Export Diagnostics**, review the ZIP for private
+data, and report the model ID, build/version, selected device, and actual error.

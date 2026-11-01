@@ -146,7 +146,28 @@ def test_make_catalog_entry_status_precedence(tmp_path):
         cfg, loaded=False, queued=False, loading=False, downloaded=False, error="boom"
     )
     assert conversion_error["status"] == "error"
-    assert conversion_error["status_label"] == "Conversion failed"
+    assert conversion_error["status_label"] == "Preparation failed"
+
+    classified_conversion = make_catalog_entry(
+        cfg,
+        loaded=False,
+        queued=False,
+        loading=False,
+        downloaded=False,
+        error="Conversion failed: converter exited with code 1",
+        progress={"phase": "error", "operation_type": "convert", "message": ""},
+    )
+    assert classified_conversion["status_label"] == "Conversion failed"
+    classified_load = make_catalog_entry(
+        cfg,
+        loaded=False,
+        queued=False,
+        loading=False,
+        downloaded=False,
+        error="Failed to compile on NPU",
+        progress={"phase": "error", "operation_type": "load", "message": ""},
+    )
+    assert classified_load["status_label"] == "Load failed"
 
     ready = make_catalog_entry(cfg, loaded=False, queued=False, loading=False, downloaded=True)
     assert ready["status"] == "ready_to_load"

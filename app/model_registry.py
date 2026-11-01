@@ -344,7 +344,16 @@ def make_catalog_entry(
         status = "not_downloaded"
 
     is_busy_state = status in {"queued", "loading", "queued_convert", "converting"}
-    label = "Conversion failed" if status == "error" and not downloaded else status_label(status)
+    label = status_label(status)
+    if status == "error":
+        operation_type = progress.get("operation_type") if isinstance(progress, dict) else None
+        if operation_type == "convert" or str(error).startswith("Conversion failed"):
+            label = "Conversion failed"
+        elif operation_type == "load" or downloaded:
+            label = "Load failed"
+        else:
+            # Missing IR files do not prove that conversion was the failed stage.
+            label = "Preparation failed"
     progress_payload = _normalize_progress(progress, status, label)
 
     display_name = cfg.name

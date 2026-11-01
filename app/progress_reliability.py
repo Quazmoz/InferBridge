@@ -461,9 +461,24 @@ PROGRESS_RELIABILITY_JS = r"""
         const models = source.map(model => {
             const pending = optimistic.get(model.id);
             if (!pending) return model;
-            if (model.is_loading || model.is_loaded || ['error', 'cancelled'].includes(model.status)) {
+            if (model.is_loading || model.is_loaded) {
                 optimistic.delete(model.id);
                 return model;
+            }
+            if (['error', 'cancelled'].includes(model.status)) {
+                const old = pending.baseline;
+                const currentProgress = model.progress || {};
+                const oldProgress = old?.progress || {};
+                const unchangedPreviousFailure = old?.status === model.status
+                    && String(currentProgress.operation_id || '') === String(oldProgress.operation_id || '')
+                    && Number(currentProgress.revision || 0) <= Number(oldProgress.revision || 0)
+                    && Number(currentProgress.updated_at || 0) <= Number(oldProgress.updated_at || 0);
+                // A poll can return the previous attempt's failure while a retry is
+                // being accepted. Only a newer operation may end its optimistic state.
+                if (!unchangedPreviousFailure) {
+                    optimistic.delete(model.id);
+                    return model;
+                }
             }
             if (now - pending.createdAt > OPTIMISTIC_TTL_MS) {
                 optimistic.delete(model.id);
@@ -633,7 +648,7 @@ PROGRESS_RELIABILITY_JS = r"""
                 log_tail: [],
             },
         };
-        optimistic.set(modelId, { model, createdAt: Date.now() });
+        optimistic.set(modelId, { model, createdAt: Date.now(), baseline: catalog.find(item => item.id === modelId) || null });
         const info = renderDock(model, 1);
         renderInline(model, info);
         renderFooter(model, info);
@@ -654,13 +669,26 @@ PROGRESS_RELIABILITY_JS = r"""
         }
     }
 
-    function mergeReturnedModel(payload) {
+    function mergeReturnedModel(payload, requestRevision, baseline) {
         if (!payload?.model) return;
         const current = latestStatus || { models: { available: [] } };
         const models = Array.isArray(current.models?.available)
             ? [...current.models.available]
             : [];
         const index = models.findIndex(model => model.id === payload.model.id);
+        const observed = index >= 0 ? models[index] : null;
+        if (latestStatusRevision > requestRevision && observed) {
+            const before = baseline?.progress || {};
+            const after = observed.progress || {};
+            const movedForward = observed.is_loaded
+                || observed.is_loading
+                || (baseline && observed.status !== baseline.status)
+                || String(after.operation_id || '') !== String(before.operation_id || '')
+                || Number(after.revision || 0) > Number(before.revision || 0)
+                || Number(after.updated_at || 0) > Number(before.updated_at || 0);
+            // A delayed POST acknowledgment is not the authoritative current state.
+            if (movedForward) return;
+        }
         if (index >= 0) models[index] = payload.model;
         else models.push(payload.model);
         scheduleRender({
@@ -698,6 +726,7 @@ PROGRESS_RELIABILITY_JS = r"""
             && method === 'POST'
             && PREPARATION_PATHS.has(target.path);
         let optimisticModelId = null;
+        let requestRevision = nextStatusRevision;
 
         if (isPreparation) {
             const body = await requestBody(input, init);
@@ -726,8 +755,9 @@ PROGRESS_RELIABILITY_JS = r"""
                 clearOptimistic(optimisticModelId);
             } else {
                 response.clone().json().then(payload => {
+                    const pending = optimistic.get(optimisticModelId);
                     optimistic.delete(optimisticModelId);
-                    mergeReturnedModel(payload);
+                    mergeReturnedModel(payload, requestRevision, pending?.baseline || null);
                 }).catch(() => {
                     clearOptimistic(optimisticModelId);
                 });

@@ -395,3 +395,90 @@ def test_expandable_queue_lists_all_active_operations_and_changes_primary(
     expect(page.locator("#model-select")).to_have_value(model_ids[2])
     expect(dock).to_have_attribute("data-operation-id", "convert-queue-3", timeout=10_000)
     expect(panel).to_be_visible()
+
+def test_retry_keeps_previous_failure_hidden_until_new_operation_and_ignores_late_ack(
+    page: Page, inferbridge_url: str
+) -> None:
+    baseline = _server_snapshot(inferbridge_url)
+    original_model = baseline["models"]["available"][0]
+    model_id = original_model["id"]
+    state = {"stage": "old"}
+
+    def handle_status(route: Route) -> None:
+        payload = copy.deepcopy(baseline)
+        models = list(payload["models"]["available"])
+        if state["stage"] == "old":
+            model = _apply_snapshot(
+                dict(original_model),
+                _operation_snapshot(
+                    "convert-previous-failure", 8, phase="error",
+                    percent=None, updated_at=2_000,
+                ),
+            )
+            model["progress"]["message"] = "Conversion failed on a previous attempt"
+        else:
+            model = _apply_snapshot(
+                dict(original_model),
+                _operation_snapshot(
+                    "load-new-success", 15, phase="ready",
+                    percent=100, updated_at=3_000,
+                ),
+            )
+            model.update(status="loaded", is_loaded=True, is_loading=False)
+            model["progress"]["message"] = "Model loaded on CPU"
+        models[0] = model
+        payload["models"] = {**payload["models"], "available": models}
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(payload))
+
+    page.route("**/v1/models/status", handle_status)
+    page.add_init_script("""
+        (() => {
+            const original = window.fetch.bind(window);
+            window.fetch = (input, init = {}) => {
+                const url = new URL(typeof input === 'string' ? input : input.url, location.href);
+                const method = String(init.method || input?.method || 'GET').toUpperCase();
+                if (url.pathname === '/v1/models/convert' && method === 'POST') {
+                    return new Promise(resolve => {
+                        window.__releaseConvert = () => resolve(new Response(
+                            JSON.stringify({model: window.__queuedModel}),
+                            {status: 200, headers: {'Content-Type': 'application/json'}}
+                        ));
+                    });
+                }
+                return original(input, init);
+            };
+        })();
+    """)
+    page.goto(inferbridge_url, wait_until="domcontentloaded")
+    page.locator("#model-select").select_option(model_id)
+    dock = page.locator("#ov-reliable-progress")
+    expect(dock).to_have_class(re.compile(r"\\berror\\b"), timeout=15_000)
+
+    queued = _apply_snapshot(
+        dict(original_model),
+        _operation_snapshot("convert-new-attempt", 9, phase="converting", percent=None),
+    )
+    page.evaluate(
+        """({id, queued}) => {
+            window.__queuedModel = queued;
+            window.__convertDone = false;
+            void fetch('/v1/models/convert', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({model: id, device: 'CPU'}),
+            }).then(response => response.json()).then(() => {window.__convertDone = true;});
+        }""",
+        {"id": model_id, "queued": queued},
+    )
+    page.wait_for_function("typeof window.__releaseConvert === 'function'")
+    _invalidate_and_fetch_status(page)  # old terminal response, not this retry
+    expect(dock).not_to_have_class(re.compile(r"\\berror\\b"))
+    expect(dock.locator(".ovrp-message")).to_contain_text("Queued")
+
+    state["stage"] = "loaded"
+    _invalidate_and_fetch_status(page)
+    expect(dock).to_be_hidden(timeout=10_000)
+
+    page.evaluate("window.__releaseConvert()")  # POST reply arrives after successful load
+    page.wait_for_function("window.__convertDone === true")
+    expect(dock).to_be_hidden()

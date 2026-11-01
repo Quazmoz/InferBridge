@@ -488,16 +488,20 @@ class ModelManager:
                                 # useful fixed deadline; the converter reports its own
                                 # progress and is bounded by the preparation watchdog.
                                 await self._convert_task(model_id, device, load_after=False)
+                                if not registry.is_downloaded(cfg, BASE_DIR):
+                                    # The converter owns its terminal failure and log tail.
+                                    # Do not relabel it as loading or replace its error.
+                                    if self.status_overrides.get(model_id, {}).get("status") == "error":
+                                        return
+                                    raise RuntimeError(
+                                        f"Auto-conversion did not produce a complete model for '{cfg.name}'."
+                                    )
                                 self._set_status(model_id, "loading")
                                 self._set_progress(
                                     model_id,
                                     "loading",
                                     f"Loading {cfg.name} on {device}…",
                                 )
-                                if not registry.is_downloaded(cfg, BASE_DIR):
-                                    raise RuntimeError(
-                                        f"Auto-conversion failed for '{cfg.name}'. Please check logs."
-                                    )
                             else:
                                 raise RuntimeError(
                                     errors.format_model_not_converted(
