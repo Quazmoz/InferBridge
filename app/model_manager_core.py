@@ -491,7 +491,10 @@ class ModelManager:
                                 if not registry.is_downloaded(cfg, BASE_DIR):
                                     # The converter owns its terminal failure and log tail.
                                     # Do not relabel it as loading or replace its error.
-                                    if self.status_overrides.get(model_id, {}).get("status") == "error":
+                                    if (
+                                        self.status_overrides.get(model_id, {}).get("status")
+                                        == "error"
+                                    ):
                                         return
                                     raise RuntimeError(
                                         f"Auto-conversion did not produce a complete model for '{cfg.name}'."

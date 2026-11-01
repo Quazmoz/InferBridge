@@ -396,6 +396,7 @@ def test_expandable_queue_lists_all_active_operations_and_changes_primary(
     expect(dock).to_have_attribute("data-operation-id", "convert-queue-3", timeout=10_000)
     expect(panel).to_be_visible()
 
+
 def test_retry_keeps_previous_failure_hidden_until_new_operation_and_ignores_late_ack(
     page: Page, inferbridge_url: str
 ) -> None:
@@ -411,8 +412,11 @@ def test_retry_keeps_previous_failure_hidden_until_new_operation_and_ignores_lat
             model = _apply_snapshot(
                 dict(original_model),
                 _operation_snapshot(
-                    "convert-previous-failure", 8, phase="error",
-                    percent=None, updated_at=2_000,
+                    "convert-previous-failure",
+                    8,
+                    phase="error",
+                    percent=None,
+                    updated_at=2_000,
                 ),
             )
             model["progress"]["message"] = "Conversion failed on a previous attempt"
@@ -420,8 +424,11 @@ def test_retry_keeps_previous_failure_hidden_until_new_operation_and_ignores_lat
             model = _apply_snapshot(
                 dict(original_model),
                 _operation_snapshot(
-                    "load-new-success", 15, phase="ready",
-                    percent=100, updated_at=3_000,
+                    "load-new-success",
+                    15,
+                    phase="ready",
+                    percent=100,
+                    updated_at=3_000,
                 ),
             )
             model.update(status="loaded", is_loaded=True, is_loading=False)
@@ -452,7 +459,7 @@ def test_retry_keeps_previous_failure_hidden_until_new_operation_and_ignores_lat
     page.goto(inferbridge_url, wait_until="domcontentloaded")
     page.locator("#model-select").select_option(model_id)
     dock = page.locator("#ov-reliable-progress")
-    expect(dock).to_have_class(re.compile(r"\\berror\\b"), timeout=15_000)
+    expect(dock).to_have_class(re.compile(r"\berror\b"), timeout=15_000)
 
     queued = _apply_snapshot(
         dict(original_model),
@@ -472,7 +479,7 @@ def test_retry_keeps_previous_failure_hidden_until_new_operation_and_ignores_lat
     )
     page.wait_for_function("typeof window.__releaseConvert === 'function'")
     _invalidate_and_fetch_status(page)  # old terminal response, not this retry
-    expect(dock).not_to_have_class(re.compile(r"\\berror\\b"))
+    expect(dock).not_to_have_class(re.compile(r"\berror\b"))
     expect(dock.locator(".ovrp-message")).to_contain_text("Queued")
 
     state["stage"] = "loaded"
