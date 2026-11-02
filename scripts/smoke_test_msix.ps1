@@ -92,6 +92,29 @@ function Get-PackageProcesses([string]$Name, [string]$Root) {
     })
 }
 
+function Test-PackagedSession($Session, [string]$InstallRoot) {
+    # A responding localhost API is not proof that this MSIX started its engine.
+    # Bind the session nonce to a newly started server process inside this package.
+    if (-not $Session -or [string]::IsNullOrWhiteSpace([string]$Session.nonce)) { return $false }
+    $ServerPid = 0
+    if (-not [int]::TryParse([string]$Session.pid, [ref]$ServerPid) -or $ServerPid -le 0) {
+        return $false
+    }
+    $StartedAt = [datetimeoffset]::MinValue
+    if (-not [datetimeoffset]::TryParse([string]$Session.started_at, [ref]$StartedAt)) {
+        return $false
+    }
+    if ($StartedAt.UtcDateTime -lt $TestStartedAt.ToUniversalTime()) { return $false }
+    $Server = Get-Process -Id $ServerPid -ErrorAction SilentlyContinue
+    if (-not $Server) { return $false }
+    try {
+        return [string]::Equals(
+            $Server.Path, (Join-Path $InstallRoot "InferBridge.exe"),
+            [StringComparison]::OrdinalIgnoreCase
+        )
+    } catch { return $false }
+}
+
 $Certificate = $null
 $Trusted = $null
 $Installed = $null
@@ -141,6 +164,7 @@ try {
         if (-not (Test-Path $Metadata)) { return $null }
         try {
             $Current = Get-Content $Metadata -Raw | ConvertFrom-Json
+            if (-not (Test-PackagedSession $Current $InstallRoot)) { return $null }
             $Identity = Invoke-RestMethod "http://127.0.0.1:$($Current.port)/desktop/instance" -TimeoutSec 3
             $Health = Invoke-RestMethod "http://127.0.0.1:$($Current.port)/health/live" -TimeoutSec 3
             if ($Identity.instance_nonce -eq $Current.nonce -and $Health.status -eq "ok") { return $Current }
@@ -148,8 +172,9 @@ try {
         return $null
     } "the bundled engine to report a verified, live session"
     Write-Host "Engine verified on 127.0.0.1:$($Session.port)"
-    $Engines = Get-PackageProcesses "InferBridge" $InstallRoot
-    if ($Engines.Count -lt 1) { throw "The verified engine is not the packaged InferBridge.exe." }
+    if (-not (Test-PackagedSession $Session $InstallRoot)) {
+        throw "The verified session is not owned by this freshly launched packaged InferBridge.exe."
+    }
 
     # Give the window time to poll and show the connected state before capturing it.
     Start-Sleep -Seconds 12
@@ -201,7 +226,10 @@ try {
     if ($Windows.Count -ne 1) { throw "Relaunch left $($Windows.Count) native client processes; expected 1." }
     if ($Windows[0].Id -ne $Window.Id) { throw "Relaunch replaced the original native window." }
     $Owners = Get-Content $Metadata -Raw | ConvertFrom-Json
-    if ($Owners.nonce -ne $Session.nonce) { throw "Relaunch replaced the authoritative engine session." }
+    if (-not (Test-PackagedSession $Owners $InstallRoot) -or $Owners.pid -ne $Session.pid -or
+        $Owners.nonce -ne $Session.nonce) {
+        throw "Relaunch replaced or lost the authoritative packaged engine session."
+    }
     Save-Screenshot "native-window-after-relaunch.png"
     Write-Host "MSIX smoke test passed: native window, engine handoff and single-instance relaunch."
 
