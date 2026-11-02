@@ -160,3 +160,38 @@ def test_installed_msix_smoke_fresh_profile_gate_preserves_existing_data():
     assert "$RequireFreshProfile -and (Test-Path -LiteralPath $StoreDataRoot)" in script
     assert "Use a new Windows test account" in script
     assert script.index("if ($RequireFreshProfile") < script.index("Add-AppxPackage -Path $Signed")
+
+
+
+def test_msix_smoke_does_not_replace_an_existing_package():
+    script = (ROOT / "scripts" / "smoke_test_msix.ps1").read_text(encoding="utf-8")
+    preflight = "Get-AppxPackage -Name $IdentityName -ErrorAction Stop"
+    assert preflight in script
+    assert script.index(preflight) < script.index("New-SelfSignedCertificate")
+    assert script.index(preflight) < script.index("Add-AppxPackage -Path $Signed")
+    assert "the smoke test will not replace an existing package" in script
+
+
+def test_msix_smoke_verifies_process_start_and_wack_cleanup():
+    script = (ROOT / "scripts" / "smoke_test_msix.ps1").read_text(encoding="utf-8")
+    session = script.split("function Test-PackagedSession", 1)[1].split(
+        "\n$Certificate = ", 1
+    )[0]
+    assert "$Server.StartTime.ToUniversalTime() -lt $TestStartedAt.ToUniversalTime()" in session
+    assert "$Server.Path" in session
+
+    finder = script.split("function Get-PackageProcesses", 1)[1].split(
+        "\nfunction Test-PackagedSession", 1
+    )[0]
+    assert "$Root.TrimEnd" in finder
+    assert "$_.Path.StartsWith($Prefix" in finder
+
+    wack = script.split("if ($RunCertificationKit)", 1)[1].split(
+        "} catch {", 1
+    )[0]
+    assert 'Get-PackageProcesses "InferBridge" $InstallRoot | Stop-Process' in wack
+    assert "$Installed = $null" not in wack
+    cleanup = script.split("} finally {", 1)[-1]
+    assert "Get-AppxPackage -Name $IdentityName" in cleanup
+    assert "$_.PackageFullName -eq $Installed.PackageFullName" in cleanup
+    assert "Remove-AppxPackage -Package $Copy.PackageFullName -ErrorAction Stop" in cleanup
