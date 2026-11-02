@@ -53,10 +53,12 @@ The MSIX version is `<major>.<minor>.<patch>.0`; the Store reserves the fourth f
    installed package identity, foreground window, engine handoff, and relaunch.
    The smoke gate now requires the live server PID to belong to the freshly
    started packaged executable, not merely a responding localhost API.
-   On a newly created Windows test account, add `-RequireFreshProfile` to
-   refuse any pre-existing `%USERPROFILE%\\InferBridgeStoreData` (it never
-   deletes user data). Add `-RunCertificationKit` to execute WACK and
-   review the evidence.
+   The smoke test refuses an existing package rather than upgrading or
+   uninstalling a user's installation. On a newly created Windows test account,
+   add `-RequireFreshProfile` to refuse pre-existing
+   `%USERPROFILE%\InferBridgeStoreData` (it never deletes user data).
+   Add `-RunCertificationKit` to execute WACK and review the evidence;
+   the script also removes its test installation if WACK registers it again.
 4. Only after a candidate passes installation and certification, upload the
    unsigned Store package through Partner Center. Complete the listing,
    age rating, and privacy policy URL; explain that first model download
@@ -76,12 +78,16 @@ version and registered Partner Center identity):
 ```powershell
 .\scripts\build_release.ps1 -Version <version> -Channel auto -Unsigned -SkipPortable -MockSmokeTest
 .\scripts\build_msix.ps1 -Version <version> -IdentityName <name> -Publisher "CN=..." -PublisherDisplayName "<name>"
-.\scripts\smoke_test_msix.ps1 -Package <path-to-candidate.msix> -EvidenceDirectory artifacts\msix-smoke -RunCertificationKit
+.\scripts\smoke_test_msix.ps1 -Package <path-to-candidate.msix> -EvidenceDirectory artifacts\msix-smoke -RequireFreshProfile -RunCertificationKit
 ```
 
 The sideload smoke test requires an elevated Windows PowerShell 5.1 session
-with InferBridge closed; it uses a temporary test certificate and removes
-the package and certificate afterward. The Store submission must stay unsigned.
+in an interactive desktop session with InferBridge closed. Run it from a
+**dedicated Windows test account**, not an account with an installed Store copy;
+it refuses existing same-identity packages and never deletes model data.
+It uses a temporary test certificate and removes the test package and
+certificate afterward. A signed smoke-test copy must **not** be submitted;
+the Store submission must stay unsigned.
 No GitHub Actions workflow builds a releasable package. On `dev`, the Windows
 source qualification workflow packs a *structural* MSIX from the real WinUI
 publish and a placeholder engine with the Windows SDK's MakePri and MakeAppx,
