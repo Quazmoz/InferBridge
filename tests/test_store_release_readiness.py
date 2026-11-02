@@ -133,3 +133,22 @@ def _menu_texts(packaged, monkeypatch):
 @pytest.mark.parametrize("packaged", [True, False])
 def test_tray_offers_update_checks_only_outside_the_store(packaged, monkeypatch):
     assert _menu_texts(packaged, monkeypatch)["Check for Updates"] is (not packaged)
+
+
+def test_installed_msix_smoke_rejects_unrelated_or_stale_engine_sessions():
+    script = (ROOT / "scripts" / "smoke_test_msix.ps1").read_text(encoding="utf-8")
+    identity_check = script.split("function Test-PackagedSession", 1)[1].split(
+        "\n$Certificate = ", 1
+    )[0]
+    assert "Get-Process -Id $ServerPid" in identity_check
+    assert 'Join-Path $InstallRoot "InferBridge.exe"' in identity_check
+    assert "$StartedAt.UtcDateTime -lt $TestStartedAt.ToUniversalTime()" in identity_check
+
+    readiness = script.split("$Session = Wait-Until", 1)[1].split(
+        '"the bundled engine to report a verified, live session"', 1
+    )[0]
+    assert readiness.index("Test-PackagedSession") < readiness.index("Invoke-RestMethod")
+
+    relaunch = script.split("# A second launch must focus", 1)[1]
+    assert "Test-PackagedSession $Owners $InstallRoot" in relaunch
+    assert "$Owners.pid -ne $Session.pid" in relaunch
