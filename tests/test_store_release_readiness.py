@@ -203,3 +203,16 @@ def test_msix_smoke_cleans_temporary_signed_copy_but_retains_evidence():
     cleanup = script.rsplit("} finally {", 1)[-1]
     assert "Remove-Item -LiteralPath $Work -Recurse -Force" in cleanup
     assert 'Write-Host "Evidence: $EvidenceDirectory"' in cleanup
+
+
+def test_msix_cleanup_continues_after_package_uninstall_failure():
+    script = (ROOT / "scripts" / "smoke_test_msix.ps1").read_text(encoding="utf-8")
+    cleanup = script.rsplit("} finally {", 1)[-1]
+    assert "$PackageCleanupFailure = $null" in cleanup
+    assert "$PackageCleanupFailure = " in cleanup
+    assert "Write-Warning $PackageCleanupFailure" in cleanup
+    assert cleanup.index("if ($Trusted)") < cleanup.index("if ($PackageCleanupFailure)")
+    assert cleanup.index("Remove-Item -LiteralPath $Work") < cleanup.index(
+        "if ($PackageCleanupFailure)"
+    )
+    assert "if ($PackageCleanupFailure) { throw $PackageCleanupFailure }" in cleanup
