@@ -51,7 +51,12 @@ The MSIX version is `<major>.<minor>.<patch>.0`; the Store reserves the fourth f
    The pipeline does **not** install the MSIX or sign it.
 3. Run `scripts/smoke_test_msix.ps1` against the real candidate to verify
    installed package identity, foreground window, engine handoff, and relaunch.
-   Add `-RunCertificationKit` to execute WACK and review the evidence.
+   The smoke gate now requires the live server PID to belong to the freshly
+   started packaged executable, not merely a responding localhost API.
+   On a newly created Windows test account, add `-RequireFreshProfile` to
+   refuse any pre-existing `%USERPROFILE%\\InferBridgeStoreData` (it never
+   deletes user data). Add `-RunCertificationKit` to execute WACK and
+   review the evidence.
 4. Only after a candidate passes installation and certification, upload the
    unsigned Store package through Partner Center. Complete the listing,
    age rating, and privacy policy URL; explain that first model download
