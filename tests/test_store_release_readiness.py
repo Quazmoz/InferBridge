@@ -152,3 +152,11 @@ def test_installed_msix_smoke_rejects_unrelated_or_stale_engine_sessions():
     relaunch = script.split("# A second launch must focus", 1)[1]
     assert "Test-PackagedSession $Owners $InstallRoot" in relaunch
     assert "$Owners.pid -ne $Session.pid" in relaunch
+
+
+def test_installed_msix_smoke_fresh_profile_gate_preserves_existing_data():
+    script = (ROOT / "scripts" / "smoke_test_msix.ps1").read_text(encoding="utf-8")
+    assert "[switch]$RequireFreshProfile" in script
+    assert "$RequireFreshProfile -and (Test-Path -LiteralPath $StoreDataRoot)" in script
+    assert "Use a new Windows test account" in script
+    assert script.index("if ($RequireFreshProfile") < script.index("Add-AppxPackage -Path $Signed")
