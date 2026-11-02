@@ -101,7 +101,7 @@ function Save-Screenshot([string]$Name) {
 function Get-PackageProcesses([string]$Name, [string]$Root) {
     # Compare whole directory paths, not an unbounded prefix that could match
     # a neighboring package whose installation folder begins with the same text.
-    $Prefix = $Root.TrimEnd([char]'\', [char]'/') + '\'
+    $Prefix = $Root.TrimEnd([char[]]@('\', '/')) + '\'
     @(Get-Process -Name $Name -ErrorAction SilentlyContinue | Where-Object {
         $_.Path -and $_.Path.StartsWith($Prefix, [StringComparison]::OrdinalIgnoreCase)
     })
