@@ -75,7 +75,7 @@ def test_progress_controller_handles_request_objects_and_failed_requests():
     assert "input?.method" in rendered
     assert "input instanceof Request" in rendered
     assert "input.clone().json()" in rendered
-    assert "clearOptimistic(optimisticModelId)" in rendered
+    assert "clearOptimistic(optimisticModelId, optimisticRequest)" in rendered
     assert "if (!response.ok)" in rendered
 
 
