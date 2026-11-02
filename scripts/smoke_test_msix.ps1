@@ -3,7 +3,8 @@ param(
     [Parameter(Mandatory = $true)][string]$Package,
     [string]$EvidenceDirectory = "",
     [int]$TimeoutSeconds = 300,
-    [switch]$RunCertificationKit
+    [switch]$RunCertificationKit,
+    [switch]$RequireFreshProfile
 )
 
 # Installed-package smoke test for the Store MSIX: signs a copy with a throwaway
@@ -13,11 +14,17 @@ param(
 # Certification Kit on the same signed copy. Requires an elevated Windows PowerShell 5.1
 # (the Appx cmdlets) and the Windows SDK. Close any running InferBridge first.
 # It never deletes user data; %USERPROFILE%\InferBridgeStoreData is only read.
+# -RequireFreshProfile fails closed before installation if the profile already
+# contains Store data, rather than reporting a reused profile as first-run evidence.
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 $TestStartedAt = (Get-Date).AddSeconds(-10)
 $Package = (Resolve-Path $Package).Path
+$StoreDataRoot = Join-Path $env:USERPROFILE "InferBridgeStoreData"
+if ($RequireFreshProfile -and (Test-Path -LiteralPath $StoreDataRoot)) {
+    throw "A fresh-profile Store test requires no existing InferBridgeStoreData. Use a new Windows test account; this test never deletes existing user data."
+}
 $Work = Join-Path ([IO.Path]::GetTempPath()) ("InferBridge-msix-smoke-" + [guid]::NewGuid().ToString("N"))
 New-Item $Work -ItemType Directory -Force | Out-Null
 if (-not $EvidenceDirectory) { $EvidenceDirectory = $Work }
