@@ -84,7 +84,7 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: InferBridge-linux-x86_64-development
           path: dist/linux
@@ -107,7 +107,7 @@ jobs:
       - name: Fedora runtime prerequisites
         run: dnf install -y git tar gzip python3 binutils libstdc++ libgomp numactl-libs tbb ocl-icd libxcrypt-compat desktop-file-utils shadow-utils
       - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: InferBridge-linux-x86_64-development
           path: dist/linux
@@ -129,7 +129,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: InferBridge-linux-x86_64-development
           path: dist/linux
