@@ -190,3 +190,17 @@ def test_msix_smoke_verifies_process_start_and_wack_cleanup():
     assert "Get-AppxPackage -Name $IdentityName" in cleanup
     assert "$_.PackageFullName -eq $Installed.PackageFullName" in cleanup
     assert "Remove-AppxPackage -Package $Copy.PackageFullName -ErrorAction Stop" in cleanup
+
+
+
+def test_msix_smoke_cleans_temporary_signed_copy_but_retains_evidence():
+    script = (ROOT / "scripts" / "smoke_test_msix.ps1").read_text(encoding="utf-8")
+    assert "if (-not $EvidenceDirectory) {" in script
+    assert '"artifacts\\msix-smoke-" + [guid]::NewGuid()' in script
+    assert "$EvidenceDirectory = $Work" not in script
+    assert script.index("Get-AppxPackage -Name $IdentityName -ErrorAction Stop") < script.index(
+        "New-Item $Work -ItemType Directory"
+    )
+    cleanup = script.rsplit("} finally {", 1)[-1]
+    assert "Remove-Item -LiteralPath $Work -Recurse -Force" in cleanup
+    assert "Write-Host \"Evidence: $EvidenceDirectory\"" in cleanup
