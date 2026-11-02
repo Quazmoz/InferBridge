@@ -2,7 +2,7 @@
 # Windows development candidate, not hardware-qualified. Previous Intel qualification
 # applies to the retained 2026.2.1 OpenVINO stack, not these updated Python packages.
 # Linux preserves its separately qualified hash-lock in linux.lock/linux-baseline.txt.
-pip==26.2.1
+pip==26.2.2
 setuptools==81.0.0
 wheel==0.48.0
 openvino==2026.2.1
