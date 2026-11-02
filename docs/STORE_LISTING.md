@@ -1,6 +1,6 @@
-# Microsoft Store listing — InferBridge 1.1.0
+# Microsoft Store listing — next submission draft
 
-Copy-ready text for Partner Center (*Apps and games > InferBridge > Submission > Store listings > English (United States)*), plus the submission answers that go with it. Everything here describes what the 1.1.0 Store build actually does. Re-check it against the app before each submission and keep it in step with the privacy policy.
+Copy-ready draft for Partner Center (*Apps and games > InferBridge > Submission > Store listings > English (United States)*), plus the related submission answers. This is **not** proof of a certified release: the 2026-10-30 submission of package version `1.1.1.0` failed launch certification, and current `dev` declares `1.1.1-dev.1`. Before submitting, replace version-specific claims with the exact tested stable candidate, verify the latest native features on a real packaged build, and reconcile the live privacy policy.
 
 - Product name: **InferBridge**
 - Store ID: `9PJ0NSD01070` · Package identity: `QuinnFavo.InferBridge` · Publisher display name: `Quinn Favo`
@@ -68,7 +68,7 @@ Copy-ready text for Partner Center (*Apps and games > InferBridge > Submission >
 
 (Up to 1,500 characters.)
 
-> InferBridge 1.1.0 is the first Microsoft Store release.
+> First Microsoft Store release of InferBridge (replace with the tested stable version before submission).
 > • New native Windows app: Chat, Model library, Hugging Face, Engine & devices, Benchmark Lab, System Doctor, Local API, Operations, Storage & cache and Settings.
 > • Chat with a per-conversation system prompt and sampling settings, image attachments for vision models, live speed and context stats, and optional saved conversations.
 > • Choose the CPU, GPU, NPU or an automatic device for each model.
