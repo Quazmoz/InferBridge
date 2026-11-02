@@ -43,6 +43,11 @@ try {
 $IdentityName = $Manifest.Package.Identity.Name
 $Publisher = $Manifest.Package.Identity.Publisher
 $Entrypoint = $Manifest.Package.Applications.Application.Executable
+# The smoke test uninstalls its test package during cleanup. Never silently
+# upgrade and then remove a user's pre-existing Store installation.
+if (@(Get-AppxPackage -Name $IdentityName -ErrorAction Stop).Count -gt 0) {
+    throw "InferBridge is already installed for this user. Use a dedicated Windows test account; the smoke test will not replace an existing package."
+}
 Write-Host "Package $IdentityName, entrypoint $Entrypoint"
 
 # Activate through the package identity, exactly like a Start-menu launch, and
@@ -94,8 +99,11 @@ function Save-Screenshot([string]$Name) {
 }
 
 function Get-PackageProcesses([string]$Name, [string]$Root) {
+    # Compare whole directory paths, not an unbounded prefix that could match
+    # a neighboring package whose installation folder begins with the same text.
+    $Prefix = $Root.TrimEnd([char]'\', [char]'/') + '\'
     @(Get-Process -Name $Name -ErrorAction SilentlyContinue | Where-Object {
-        $_.Path -and $_.Path.StartsWith($Root, [StringComparison]::OrdinalIgnoreCase)
+        $_.Path -and $_.Path.StartsWith($Prefix, [StringComparison]::OrdinalIgnoreCase)
     })
 }
 
@@ -115,6 +123,11 @@ function Test-PackagedSession($Session, [string]$InstallRoot) {
     $Server = Get-Process -Id $ServerPid -ErrorAction SilentlyContinue
     if (-not $Server) { return $false }
     try {
+        # Metadata alone can report an old start timestamp inaccurately. Check
+        # the OS-owned process creation time as well as its executable path.
+        if ($Server.StartTime.ToUniversalTime() -lt $TestStartedAt.ToUniversalTime()) {
+            return $false
+        }
         return [string]::Equals(
             $Server.Path, (Join-Path $InstallRoot "InferBridge.exe"),
             [StringComparison]::OrdinalIgnoreCase
@@ -245,8 +258,10 @@ try {
         if (-not (Test-Path $AppCert)) { throw "Windows App Certification Kit was not found at $AppCert." }
         # WACK installs and launches the package itself.
         Get-PackageProcesses "InferBridge.Native" $InstallRoot | Stop-Process -Force -ErrorAction SilentlyContinue
+        Get-PackageProcesses "InferBridge" $InstallRoot | Stop-Process -Force -ErrorAction SilentlyContinue
         Remove-AppxPackage -Package $Installed.PackageFullName
-        $Installed = $null
+        # Keep $Installed so finally can remove the test copy again if WACK
+        # reinstalls it. It must never leave an installed test package behind.
         $Report = Join-Path $EvidenceDirectory "wack-report.xml"
         & $AppCert reset | Out-Null
         & $AppCert test -appxpackagepath $Signed -reportoutputpath $Report | Out-Host
@@ -269,8 +284,17 @@ try {
     throw
 } finally {
     if ($Installed) {
-        Get-PackageProcesses "InferBridge.Native" $Installed.InstallLocation | Stop-Process -Force -ErrorAction SilentlyContinue
-        Remove-AppxPackage -Package $Installed.PackageFullName -ErrorAction SilentlyContinue
+        # WACK can register the package again. Only this test's family/version
+        # is eligible for cleanup, and preflight rejected existing installs.
+        $Residual = @(Get-AppxPackage -Name $IdentityName -ErrorAction SilentlyContinue |
+            Where-Object { $_.PackageFullName -eq $Installed.PackageFullName })
+        foreach ($Copy in $Residual) {
+            Get-PackageProcesses "InferBridge.Native" $Copy.InstallLocation |
+                Stop-Process -Force -ErrorAction SilentlyContinue
+            Get-PackageProcesses "InferBridge" $Copy.InstallLocation |
+                Stop-Process -Force -ErrorAction SilentlyContinue
+            Remove-AppxPackage -Package $Copy.PackageFullName -ErrorAction Stop
+        }
     }
     if ($Trusted) { Remove-Item $Trusted.PSPath -ErrorAction SilentlyContinue }
     if ($Certificate) { Remove-Item $Certificate.PSPath -ErrorAction SilentlyContinue }
