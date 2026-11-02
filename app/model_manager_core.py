@@ -24,6 +24,7 @@ from typing import Any
 
 from app import errors, model_registry as registry
 from app.config import BASE_DIR, Settings
+from app.model_roles import is_generation_backend, kind_phrase
 from app.quantization_policy import npu_known_issue
 from runtime import device_check
 from runtime.openvino_engine import BaseEngine, GenParams, GenResult, StreamHandle, create_engine
@@ -395,9 +396,9 @@ class ModelManager:
 
         draft_cfg = self.catalog.get(draft_model)
         if draft_cfg is not None:
-            if "embedding" in draft_cfg.backend.lower():
+            if not is_generation_backend(draft_cfg.backend):
                 raise ValueError(
-                    f"Draft model '{draft_model}' is an embedding model; "
+                    f"Draft model '{draft_model}' is {kind_phrase(draft_cfg.backend)}; "
                     "speculative decoding requires a text-generation model."
                 )
             if not self.force_mock and not registry.is_downloaded(draft_cfg, BASE_DIR):

@@ -7,6 +7,7 @@ from typing import Any
 
 from app.config import BASE_DIR
 from app.context_configuration import kv_cache_gib, model_metadata
+from app.model_roles import is_generation_backend
 
 from .common import base_device, infer_parameter_count_b, safe_float
 
@@ -23,7 +24,11 @@ class ModelEstimateMixin:
         converted_gb = actual_converted_gb or estimated_converted_gb
 
         context_len = max(int(getattr(cfg, "max_context_len", 2048) or 2048), 128)
-        kv_cache_gb = kv_cache_gib(model_metadata(cfg, BASE_DIR), context_len)
+        generation = is_generation_backend(getattr(cfg, "backend", ""))
+        # Embedding and reranker encoders keep no KV cache between requests.
+        kv_cache_gb = (
+            kv_cache_gib(model_metadata(cfg, BASE_DIR), context_len) if generation else 0.0
+        )
         # This is a system-RAM *lower bound* if architecture is incomplete.
         # Even with metadata, the FP16 KV assumption need not match device allocation.
         runtime_memory_gb = max(converted_gb * 1.22 + (kv_cache_gb or 0) + 0.35, 0.5)
@@ -46,7 +51,9 @@ class ModelEstimateMixin:
             "converted_size_source": "measured" if actual_converted_gb else "estimated",
             "runtime_memory_gb": round(runtime_memory_gb, 2),
             "kv_cache_gb": round(kv_cache_gb, 3) if kv_cache_gb is not None else None,
-            "kv_cache_source": "architectural-fp16-estimate"
+            "kv_cache_source": "not-applicable"
+            if not generation
+            else "architectural-fp16-estimate"
             if kv_cache_gb is not None
             else "unavailable",
             "runtime_memory_source": "estimated-lower-bound"

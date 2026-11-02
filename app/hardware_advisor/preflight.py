@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from app.model_roles import is_generation_backend
 from app.quantization_policy import recommend_quantization
 
 from .common import base_device, normalize_profile, safe_float
@@ -161,7 +162,7 @@ class PreflightMixin:
             recommended_context = min(recommended_context, 4096)
         if available_ram and available_ram < runtime_memory * 1.5:
             recommended_context = max(1024, min(recommended_context, max_context // 2))
-        if "embedding" in str(getattr(cfg, "backend", "")).lower():
+        if not is_generation_backend(getattr(cfg, "backend", "")):
             recommended_output = 0
         else:
             recommended_output = min(

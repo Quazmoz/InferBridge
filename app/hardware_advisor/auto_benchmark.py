@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app import chat_format
+from app.model_roles import is_generation_backend
 from runtime.openvino_engine import GenParams
 
 from .common import AUTOMATIC_PROMPT, utc_now
@@ -25,7 +26,7 @@ class AutoBenchmarkRunnerMixin:
         if self.force_mock or model_id not in manager.engines:
             return
         cfg = manager.catalog.get(model_id)
-        if cfg is None or "embedding" in str(getattr(cfg, "backend", "")).lower():
+        if cfg is None or not is_generation_backend(getattr(cfg, "backend", "")):
             return
         device = manager.devices.get(model_id) or getattr(
             manager.engines[model_id], "device", "CPU"

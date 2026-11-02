@@ -41,9 +41,31 @@ internal static class ChatTranscript
 /// <summary>Model lifecycle rules shared by Chat (Eject, picker loads) and Model library.</summary>
 internal static class ModelLifecycle
 {
-    /// <summary>Other models still in memory when <paramref name="targetId"/> loads (web "Load another model?").</summary>
-    public static IReadOnlyList<ModelInfo> LoadedPeers(IEnumerable<ModelInfo> models, string targetId) =>
-        models.Where(model => model.CanUnload && model.Id != targetId).ToList();
+    /// <summary>
+    /// The loaded model <paramref name="targetId"/> replaces: only one model per slot role
+    /// (chat, embedding, rerank) stays resident, so models in other slots are never peers.
+    /// </summary>
+    public static IReadOnlyList<ModelInfo> LoadedPeers(IEnumerable<ModelInfo> models, string targetId)
+    {
+        var all = models.ToList();
+        string role = all.FirstOrDefault(model => model.Id == targetId)?.Role ?? "chat";
+        return all.Where(model => model.CanUnload && model.Id != targetId && model.Role == role).ToList();
+    }
+
+    /// <summary>
+    /// Embedding and reranker models load beside chat on the CPU unless the user chose a
+    /// GPU: two resident engines on the Intel NPU are refused by the engine.
+    /// </summary>
+    public static string? SlotDevice(ModelInfo model, string? requested) =>
+        model.IsChatModel ? requested
+            : requested is null || requested.Contains("NPU", StringComparison.OrdinalIgnoreCase) ? "CPU"
+            : requested;
+
+    /// <summary>The engine's combined-memory / NPU coexistence refusal (HTTP 409).</summary>
+    public static bool IsResourceRefusal(Exception error) =>
+        error is EngineRequestException
+        && (error.Message.Contains("memory", StringComparison.OrdinalIgnoreCase)
+            || error.Message.Contains("NPU", StringComparison.Ordinal));
 
     /// <summary>The engine refuses to unload while a generation still holds the model lock (HTTP 409 "is busy").</summary>
     public static bool IsBusyRefusal(Exception error) =>

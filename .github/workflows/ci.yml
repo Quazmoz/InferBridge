@@ -181,6 +181,7 @@ jobs:
             --device CPU \
             --expect-mock \
             --include-embeddings \
+            --exercise-slots \
             --run-benchmark \
             --exercise-lifecycle \
             --load-timeout 60 \

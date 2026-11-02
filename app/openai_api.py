@@ -13,6 +13,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app import multimodal
+from app.model_roles import BACKEND_PATTERN, uses_output_budget
 from runtime import device_check
 
 # --- Chat messages ---------------------------------------------------------
@@ -374,6 +375,11 @@ class ModelLoadRequest(BaseModel):
     # Optional per-model KV-cache precision (auto/f16/u8/u4), persisted with the
     # context before the load. Sent to CPU/GPU only; the NPU ignores it.
     kv_cache_precision: Literal["auto", "f16", "u8", "u4"] | None = None
+    # Optional resident slot the caller expects ("Load as embedding model"). The role
+    # always comes from the catalog backend; a mismatch is rejected rather than coerced.
+    slot: Literal["chat", "embedding", "rerank"] | None = None
+    # Load even when the combined-memory or NPU coexistence preflight refuses.
+    allow_resource_risk: bool = False
 
 
 class ModelConvertRequest(BaseModel):
@@ -388,7 +394,15 @@ class ModelConvertRequest(BaseModel):
 
 
 class ModelUnloadRequest(BaseModel):
-    model: str
+    # Name the model, or the slot whose resident model should be unloaded.
+    model: str | None = None
+    slot: Literal["chat", "embedding", "rerank"] | None = None
+
+    @model_validator(mode="after")
+    def require_target(self):
+        if not self.model and not self.slot:
+            raise ValueError("Provide 'model' or 'slot' to unload.")
+        return self
 
 
 class ModelDeleteRequest(BaseModel):
@@ -406,7 +420,7 @@ class ModelRegisterRequest(BaseModel):
     source_model: str = Field(min_length=1, max_length=240)
     backend: str = Field(
         default="openvino-genai",
-        pattern=r"^(openvino-genai|openvino-embeddings|openvino-vlm)$",
+        pattern=BACKEND_PATTERN,
     )
     weight_format: str = Field(default="int4", pattern=r"^(int4|int8|fp16)$")
     recommended_device: str = Field(default="NPU", min_length=1, max_length=64)
@@ -425,9 +439,9 @@ class ModelRegisterRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_token_budget(self):
-        if self.backend == "openvino-embeddings":
+        if uses_output_budget(self.backend):
             if self.max_output_tokens != 0:
-                raise ValueError("Embedding models must use max_output_tokens=0.")
+                raise ValueError("Embedding and reranker models must use max_output_tokens=0.")
         elif self.max_output_tokens < 1 or self.max_output_tokens >= self.max_context_len:
             raise ValueError(
                 "Generation models require max_output_tokens between 1 and max_context_len - 1."
@@ -561,7 +575,7 @@ class DownloadCustomRequest(BaseModel):
     source_model: str = Field(min_length=1, max_length=240)
     backend: str = Field(
         default="openvino-genai",
-        pattern=r"^(openvino-genai|openvino-embeddings|openvino-vlm)$",
+        pattern=BACKEND_PATTERN,
     )
     weight_format: str = Field(default="int4", pattern=r"^(int4|int8|fp16)$")
     group_size: int | None = Field(default=None, ge=-1)
@@ -584,9 +598,9 @@ class DownloadCustomRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_token_budget(self):
-        if self.backend == "openvino-embeddings":
+        if uses_output_budget(self.backend):
             if self.max_output_tokens != 0:
-                raise ValueError("Embedding models must use max_output_tokens=0.")
+                raise ValueError("Embedding and reranker models must use max_output_tokens=0.")
         elif self.max_output_tokens < 1 or self.max_output_tokens >= self.max_context_len:
             raise ValueError(
                 "Generation models require max_output_tokens between 1 and max_context_len - 1."

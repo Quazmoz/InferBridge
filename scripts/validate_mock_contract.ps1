@@ -48,6 +48,7 @@ try {
         "--device", "CPU",
         "--expect-mock",
         "--include-embeddings",
+        "--exercise-slots",
         "--run-benchmark",
         "--exercise-lifecycle",
         "--output-json", $JsonReport,

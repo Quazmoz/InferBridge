@@ -1567,6 +1567,8 @@ public sealed partial class MainWindow : Window
             // Rebuild only on a real inventory change: replacing items every poll
             // steals keyboard and screen-reader focus from the lists and closes an
             // open model dropdown. While it is open, apply the change on close.
+            ApplyResidentSlots(status.Connected && !status.RequiresAuthentication
+                ? status.Slots : Array.Empty<ModelSlot>());
             switch (PickerRefresh.Decide(
                 _forceModelRebuild ? null : _shownModels, status.Models, ChatModelPicker.IsDropDownOpen))
             {
@@ -1759,15 +1761,23 @@ public sealed partial class MainWindow : Window
                     + LoadContextNote(model.Id, action, contextTokens),
                 InfoBarSeverity.Informational);
         }
+        string? device = ModelLifecycle.SlotDevice(model,
+            fromChat ? SelectedChatDevice : SelectedInferenceDevice);
         try
         {
             ShowModelsInfo(await _backend.ChangeModelAsync(
-                model, action, ApiKeyBox.Password, _closing.Token,
-                fromChat ? SelectedChatDevice : SelectedInferenceDevice,
+                model, action, ApiKeyBox.Password, _closing.Token, device,
                 action == ModelAction.Load ? contextTokens : null), InfoBarSeverity.Success);
         }
         catch (Exception) when (_closing.IsCancellationRequested)
         {
+        }
+        catch (Exception refusal) when (action == ModelAction.Load
+            && ModelLifecycle.IsResourceRefusal(refusal) && !_closing.IsCancellationRequested)
+        {
+            // The engine estimated the models cannot share memory (or the NPU). Explain
+            // it and let the user decide; never retry silently.
+            await OfferLoadAnywayAsync(model, device, contextTokens, refusal.Message);
         }
         catch (Exception error) when (!_closing.IsCancellationRequested)
         {

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from app.model_registry import ModelConfig
+from app.model_roles import is_generation_backend
 
 MAX_CONTEXT = 262_144
 MIN_CONTEXT = 128
@@ -70,8 +71,10 @@ def model_limit(metadata: dict[str, Any]) -> int | None:
 
 
 def validate_context(cfg: ModelConfig, requested: int, metadata: dict[str, Any]) -> None:
-    if cfg.backend == "openvino-embeddings":
-        raise ContextValidationError("Embedding models do not support chat context configuration.")
+    if not is_generation_backend(cfg.backend):
+        raise ContextValidationError(
+            "Embedding and reranker models do not support chat context configuration."
+        )
     if type(requested) is not int or not 128 <= requested <= MAX_CONTEXT:
         raise ContextValidationError("Context must be a whole number between 128 and 262144.")
     if requested <= cfg.max_output_tokens + 64:
@@ -206,7 +209,7 @@ def context_options(
                 **_kv_estimates(cfg, metadata, value, device),
             }
         )
-    if cfg.backend != "openvino-embeddings" and not any(
+    if is_generation_backend(cfg.backend) and not any(
         option["tokens"] == cfg.max_context_len for option in options
     ):
         # A legacy preference may exceed newly discovered architecture limits.
@@ -223,7 +226,7 @@ def context_options(
 
 
 def is_configurable(cfg: ModelConfig) -> bool:
-    return cfg.backend != "openvino-embeddings"
+    return is_generation_backend(cfg.backend)
 
 
 def context_bounds(cfg: ModelConfig, metadata: dict[str, Any]) -> tuple[int, int]:

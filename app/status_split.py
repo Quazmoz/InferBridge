@@ -238,6 +238,8 @@ def _model_snapshot(request: Request) -> dict[str, Any]:
             "loaded": list(manager.engines.keys()),
             "count": len(manager.engines),
             "loading_count": manager.loading_count(),
+            # Resident model per role (chat, embedding, rerank); additive field.
+            "slots": manager.slot_snapshot() if hasattr(manager, "slot_snapshot") else [],
             "available": entries,
         },
     }

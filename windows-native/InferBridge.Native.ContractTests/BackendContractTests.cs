@@ -50,7 +50,7 @@ internal static class BackendContractTests
                 new { instance_nonce = Nonce, port = Port })),
             "/health/live" => Json("""{"status":"ok"}"""),
             "/v1/models" => Json(
-                """{"data":[{"id":"model-a","name":"Model A","status":"ready_to_load"},{"id":"model-b","name":"Model B","status":"not_downloaded"},{"id":"gated","name":"Gated","status":"not_downloaded"}]}"""),
+                """{"data":[{"id":"model-a","name":"Model A","status":"ready_to_load","role":"chat"},{"id":"model-b","name":"Model B","status":"not_downloaded","role":"rerank"},{"id":"gated","name":"Gated","status":"not_downloaded","role":"bogus"}],"slots":[{"role":"chat","model":"model-z","name":"Model Z","device":"GPU.0","status":"loaded","can_unload":true,"memory_estimate_gib":2.5},{"role":"embedding","model":null,"status":"empty","can_unload":true},{"role":"rerank","model":"rank","device":"../../x","status":"loaded","can_unload":false,"memory_estimate_gib":-1},{"role":"chat","model":"dup","status":"loaded"},{"role":"vision","model":"v"}]}"""),
             "/v1/system/status" => Json("""{"memory":{"available_gb":8,"total_gb":16},"disk":{"free_gb":23,"models_gb":4,"models_dir":"C:\\private\\local-path"},"device":{"default":"GPU","loaded":{"model-a":"GPU.0"}},"models":{"available":[{"id":"model-a","name":"Model A","status":"loaded","is_loaded":true,"is_downloaded":true},{"id":"model-b","status":"not_downloaded","is_downloaded":false}]},"events":[{"message":"private prompt: hf_secret"}]}"""),
             "/v1/desktop/operations/status" => Json("""{"application_version":"1.0.0","installation_mode":"installed","server_status":"ready","server_port":18765,"controller_available":true,"mock":true,"start_with_windows":false,"benchmark_running":false,"benchmark":{"results":[{"model_id":"model-a","device":"GPU.0"}]},"last_diagnostics_export":"previous-diagnostics.zip","active_model":{"id":"model-a","actual_device":"GPU.0"}}"""),
             "/v1/desktop/operations/diagnostics/export" => Json("""{"status":"created","filename":"inferbridge-diagnostics.zip","collection_errors":["Optional sensor unavailable"]}"""),
@@ -95,6 +95,20 @@ internal static class BackendContractTests
                 "an undownloaded model must offer download, not load");
             Check(snapshot.Origin == "http://127.0.0.1:" + Port,
                 "origin must remain literal loopback");
+            Check(snapshot.Models[0].IsChatModel && snapshot.Models[1].Role == "rerank"
+                && snapshot.Models[1].RoleLabel == "Reranker" && snapshot.Models[2].Role == "chat",
+                "model roles must be allowlist-parsed, unknown roles fall back to chat");
+            Check(snapshot.Slots.Select(slot => slot.Role).SequenceEqual(["chat", "embedding", "rerank"]),
+                "slots must keep one row per known role and drop duplicates/unknown roles");
+            Check(snapshot.Slots[0].Resident && snapshot.Slots[0].CanUnload && snapshot.Slots[0].Device == "GPU.0"
+                && snapshot.Slots[0].Summary == "Chat: Model Z · GPU.0 · ≈2.5 GB",
+                "resident chat slot summary changed");
+            Check(!snapshot.Slots[1].Resident && !snapshot.Slots[1].CanUnload
+                && snapshot.Slots[1].Summary == "Embeddings: none",
+                "an empty slot must not offer unload");
+            Check(snapshot.Slots[2].Device is null && snapshot.Slots[2].MemoryEstimateGib is null
+                && !snapshot.Slots[2].CanUnload,
+                "unsafe device text or estimates must be dropped, never echoed");
         }
         Check(good.RequestPaths.SequenceEqual(
                 new[] { "/desktop/instance", "/health/live", "/v1/models" }),
@@ -1279,6 +1293,9 @@ internal static class BackendContractTests
         foreach (string state in new[] { "not_downloaded", "converting", "error", "unknown" })
             Check(!new ModelInfo("chat", "Chat", state).AvailableInChat,
                 "unavailable model offered in chat picker");
+        Check(!new ModelInfo("embed", "Embed", "loaded") { Role = "embedding" }.AvailableInChat
+            && !new ModelInfo("rank", "Rank", "ready_to_load") { Role = "rerank" }.AvailableInChat,
+            "embedding/reranker models offered in the chat picker");
 
         string lockFile = Path.Combine(directory, "desktop-instance.lock");
         string commandFile = Path.Combine(directory, "tray-command.json");

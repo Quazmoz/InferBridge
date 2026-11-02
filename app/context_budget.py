@@ -23,6 +23,7 @@ from app.local_request_security import (
     matches_any_secret,
     require_safe_browser_origin,
 )
+from app.model_roles import is_generation_backend, kind_phrase
 from app.openai_api import ChatCompletionRequest
 
 _ROUTE_INSTALL_FLAG = "_ovllm_context_budget_routes_installed"
@@ -241,10 +242,11 @@ def register_context_budget_routes(app: FastAPI) -> None:
     @router.post("/context-budget")
     async def inspect_context_budget(request: Request, body: ContextBudgetRequest):
         manager, engine = _resolve_engine(request, body.model)
-        if "embedding" in getattr(engine, "backend", "").lower():
+        if not is_generation_backend(getattr(engine, "backend", "")):
             raise HTTPException(
                 status_code=400,
-                detail=f"Model '{body.model}' is an embedding model and has no chat context budget.",
+                detail=f"Model '{body.model}' is {kind_phrase(getattr(engine, 'backend', ''))} "
+                "and has no chat context budget.",
             )
         has_images = (
             multimodal.contents_have_images(message.content for message in body.messages)

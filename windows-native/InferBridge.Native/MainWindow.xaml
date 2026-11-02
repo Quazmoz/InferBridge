@@ -881,6 +881,14 @@
                                      MaxWidth="420" MinWidth="240" HorizontalAlignment="Left" MaxLength="120"
                                      TextChanged="ModelsFilterBox_TextChanged"
                                      AutomationProperties.Name="Filter the model list on this PC" />
+                            <!-- One chat, one embedding and one reranker model can stay resident. -->
+                            <StackPanel x:Name="ResidentSlotsPanel" Spacing="4" Visibility="Collapsed">
+                                <TextBlock Text="Resident models" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <local:WrapRow x:Name="ResidentSlotsRow" Spacing="8"
+                                               AutomationProperties.LiveSetting="Polite"
+                                               AutomationProperties.Name="Resident models by role: chat, embeddings and reranker" />
+                            </StackPanel>
                             <InfoBar x:Name="ModelsInfo" Title="Model library" IsOpen="False"
                                      IsClosable="True" />
                         </StackPanel>

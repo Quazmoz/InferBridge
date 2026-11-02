@@ -122,7 +122,7 @@ MODEL_LIFECYCLE_EXTENSION_JS = r"""
   notice.setAttribute('role', 'status');
   notice.setAttribute('aria-live', 'polite');
   notice.innerHTML = `
-    <div class="ovllm-model-notice-title"><span aria-hidden="true">⚠</span><span>Multiple-model memory advisory</span></div>
+    <div class="ovllm-model-notice-title"><span aria-hidden="true">⚠</span><span>Model slot advisory</span></div>
     <p id="ovllm-model-notice-copy"></p>
     <div class="ovllm-model-notice-actions">
       <button type="button" id="ovllm-model-notice-hide">Hide</button>
@@ -139,15 +139,14 @@ MODEL_LIFECYCLE_EXTENSION_JS = r"""
   modal.setAttribute('aria-labelledby', 'ovllm-model-risk-title');
   modal.innerHTML = `
     <div id="ovllm-model-risk-card">
-      <h2 id="ovllm-model-risk-title">Load another model?</h2>
+      <h2 id="ovllm-model-risk-title">Replace the loaded model?</h2>
       <p id="ovllm-model-risk-copy"></p>
-      <div class="warning">Keeping multiple model pipelines loaded can increase system RAM and accelerator memory use, reduce generation speed, or make the app less responsive. High-memory systems may handle this, but capacity is not assumed.</div>
+      <div class="warning">InferBridge keeps one model per role resident: one chat model, one embedding model and one reranker. Embedding and reranker models stay loaded beside chat; a second model of the same role replaces the first so memory use stays predictable.</div>
       <ul id="ovllm-model-risk-list"></ul>
       <div id="ovllm-model-risk-error" role="alert"></div>
       <div class="ovllm-model-risk-actions">
         <button type="button" id="ovllm-model-risk-cancel">Cancel</button>
-        <button type="button" id="ovllm-model-risk-continue" class="advanced">Keep loaded and continue</button>
-        <button type="button" id="ovllm-model-risk-unload" class="recommended">Unload others and continue</button>
+        <button type="button" id="ovllm-model-risk-unload" class="recommended">Replace and continue</button>
       </div>
     </div>
   `;
@@ -161,7 +160,6 @@ MODEL_LIFECYCLE_EXTENSION_JS = r"""
   const modalList = modal.querySelector('#ovllm-model-risk-list');
   const modalError = modal.querySelector('#ovllm-model-risk-error');
   const modalCancelButton = modal.querySelector('#ovllm-model-risk-cancel');
-  const modalContinueButton = modal.querySelector('#ovllm-model-risk-continue');
   const modalUnloadButton = modal.querySelector('#ovllm-model-risk-unload');
 
   const modelState = (model) => {
@@ -174,8 +172,15 @@ MODEL_LIFECYCLE_EXTENSION_JS = r"""
     return 'unavailable';
   };
 
-  const loadedPeersFor = (modelId) => Array.from(availableModels.values())
-    .filter((model) => model.is_loaded && model.id !== modelId);
+  // Only a loaded model in the same slot role (chat, embedding, rerank) is replaced;
+  // models in the other slots stay resident.
+  const roleOf = (model) => (model && model.role) || 'chat';
+  const roleLabel = (role) => ({ chat: 'chat', embedding: 'embedding', rerank: 'reranker' }[role] || 'chat');
+  const loadedPeersFor = (modelId) => {
+    const target = availableModels.get(modelId);
+    return Array.from(availableModels.values())
+      .filter((model) => model.is_loaded && model.id !== modelId && roleOf(model) === roleOf(target));
+  };
 
   const cleanOptionLabel = (label) => String(label || '').replace(/^[●◐■]\s+/, '');
 
@@ -226,8 +231,8 @@ MODEL_LIFECYCLE_EXTENSION_JS = r"""
       return;
     }
     const names = peers.map((model) => model.name).join(', ');
-    const countLabel = peers.length === 1 ? 'One model is' : `${peers.length} models are`;
-    noticeCopy.innerHTML = `<strong>${countLabel} already loaded:</strong> ${escapeHtml(names)}. Loading ${escapeHtml(selectedModel.name)} too can reduce performance unless your hardware has enough memory for every active model.`;
+    const slot = roleLabel(roleOf(selectedModel));
+    noticeCopy.innerHTML = `<strong>The ${slot} slot holds</strong> ${escapeHtml(names)}. Loading ${escapeHtml(selectedModel.name)} replaces it; models in the other slots stay loaded.`;
     noticeUnloadButton.textContent = peers.length === 1
       ? 'Unload other model'
       : `Unload ${peers.length} other models`;
@@ -236,7 +241,6 @@ MODEL_LIFECYCLE_EXTENSION_JS = r"""
 
   const setDecisionBusy = (busy, errorMessage = '') => {
     modalCancelButton.disabled = busy;
-    modalContinueButton.disabled = busy;
     modalUnloadButton.disabled = busy;
     modalError.textContent = busy ? '' : errorMessage;
   };
@@ -260,19 +264,15 @@ MODEL_LIFECYCLE_EXTENSION_JS = r"""
       lastFocusedElement = document.activeElement;
       modalCopy.textContent = `${targetModel.name} will be ${
         actionKind === 'convert' ? 'converted and then loaded' : 'loaded'
-      } while ${
-        peers.length === 1 ? 'another model remains' : `${peers.length} other models remain`
-      } in memory. Unloading the other ${
-        peers.length === 1 ? 'model' : 'models'
-      } first is recommended for most systems.`;
+      } into the ${roleLabel(roleOf(targetModel))} slot, replacing ${
+        peers.map((peer) => peer.name).join(', ')
+      }. Your conversation is kept.`;
       modalList.replaceChildren(...peers.map((peer) => {
         const item = document.createElement('li');
         item.textContent = `${peer.name}${peer.device ? ` on ${peer.device}` : ''}`;
         return item;
       }));
-      modalUnloadButton.textContent = peers.length === 1
-        ? 'Unload other and continue'
-        : `Unload ${peers.length} others and continue`;
+      modalUnloadButton.textContent = 'Replace and continue';
       modal.hidden = false;
       document.body.style.overflow = 'hidden';
       setDecisionBusy(false);
@@ -395,7 +395,6 @@ MODEL_LIFECYCLE_EXTENSION_JS = r"""
   });
 
   modalCancelButton.addEventListener('click', () => closeDecision(undefined));
-  modalContinueButton.addEventListener('click', () => runPendingDecision(false));
   modalUnloadButton.addEventListener('click', () => runPendingDecision(true));
   modal.addEventListener('click', (event) => {
     if (

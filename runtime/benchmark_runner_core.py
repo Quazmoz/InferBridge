@@ -27,6 +27,7 @@ from typing import Any
 from app import __version__, chat_format, model_registry
 from app.config import BASE_DIR, Settings
 from app.model_manager import ModelManager
+from app.model_roles import is_generation_backend
 from runtime import device_check
 from runtime.openvino_engine import BaseEngine, GenParams
 
@@ -378,8 +379,10 @@ async def benchmark_model_device(
     try:
         if cfg is None:
             raise ValueError(f"Unknown model '{model_id}'.")
-        if "embedding" in str(getattr(cfg, "backend", "")).lower():
-            raise ValueError("Embedding models cannot be benchmarked as generation models.")
+        if not is_generation_backend(getattr(cfg, "backend", "")):
+            raise ValueError(
+                "Embedding and reranker models cannot be benchmarked as generation models."
+            )
         if not manager.force_mock and not model_registry.is_downloaded(cfg, BASE_DIR):
             raise ValueError(
                 "Model is not prepared locally. Prepare it explicitly before benchmarking."

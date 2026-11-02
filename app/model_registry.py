@@ -14,13 +14,19 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app import multimodal
+from app.model_roles import (
+    SUPPORTED_BACKENDS,
+    is_generation_backend,
+    role_for_backend,
+    uses_output_budget,
+)
 from runtime.device_check import DeviceValidationError, parse_device_expression
 from runtime.model_artifacts import is_openvino_model_dir as _is_openvino_model_dir
 
 logger = logging.getLogger("ov-llm.registry")
 
 _MODEL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
-_SUPPORTED_BACKENDS = frozenset({"openvino-genai", "openvino-embeddings", "openvino-vlm"})
+_SUPPORTED_BACKENDS = frozenset(SUPPORTED_BACKENDS)
 _SUPPORTED_WEIGHT_FORMATS = frozenset({"int4", "int8", "fp16"})
 _MAX_CONTEXT_LEN = 262_144
 _KV_PRECISIONS = frozenset({"f16", "u8", "u4"})
@@ -172,9 +178,9 @@ def _coerce_entry(model_id: str, raw: dict) -> ModelConfig:
         minimum=0,
         maximum=_MAX_OUTPUT_TOKENS,
     )
-    if backend == "openvino-embeddings":
+    if uses_output_budget(backend):
         if max_output_tokens != 0:
-            raise ValueError("embedding models must use max_output_tokens=0")
+            raise ValueError("embedding and reranker models must use max_output_tokens=0")
     elif max_output_tokens < 1 or max_output_tokens >= max_context_len:
         raise ValueError(
             "generation models require max_output_tokens between 1 and max_context_len - 1"
@@ -190,7 +196,7 @@ def _coerce_entry(model_id: str, raw: dict) -> ModelConfig:
                 minimum=128,
                 maximum=_MAX_CONTEXT_LEN,
             )
-            if backend != "openvino-embeddings" and recommended_context_len <= max_output_tokens:
+            if is_generation_backend(backend) and recommended_context_len <= max_output_tokens:
                 raise ValueError("recommended_context_len does not leave an output budget")
         except ValueError:
             # Optional legacy/new preference corruption must not make the model
@@ -387,6 +393,7 @@ def make_catalog_entry(
         "trust_remote_code": cfg.trust_remote_code,
         "backend": cfg.backend,
         "capabilities": capabilities,
+        "role": role_for_backend(cfg.backend),
         "supports_vision": cfg.supports_vision,
         "input_modalities": ["text", "image"] if cfg.supports_vision else ["text"],
         "can_load": (not loaded) and downloaded and not is_busy_state,

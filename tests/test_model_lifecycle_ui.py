@@ -34,16 +34,17 @@ def test_model_options_have_color_and_text_status_fallbacks():
     assert '[data-theme="light"] #model-select.ovllm-model-state-error' in script
 
 
-def test_loading_or_converting_a_second_model_requires_an_explicit_choice():
+def test_replacing_the_model_in_a_slot_requires_an_explicit_choice():
     script = MODEL_LIFECYCLE_EXTENSION_JS
 
     assert "requestModelLoad = function" in script
     assert "requestModelConvert = function" in script
     assert "loadedPeersFor" in script
-    assert "Keep loaded and continue" in script
-    assert "Unload others and continue" in script
-    assert "High-memory systems may handle this" in script
-    assert "reduce generation speed" in script
+    # Only same-role peers are replaced; embedding/reranker slots stay resident.
+    assert "roleOf(model) === roleOf(target)" in script
+    assert "Replace and continue" in script
+    assert "Keep loaded and continue" not in script
+    assert "one model per role resident" in script
     assert "guardBypass" in script
 
 

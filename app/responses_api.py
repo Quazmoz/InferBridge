@@ -25,6 +25,7 @@ from starlette.background import BackgroundTask
 
 from app import chat_format, multimodal, tools
 from app.engine_handoff_safety import count_tokens_with_current_engine
+from app.model_roles import is_generation_backend, kind_phrase
 from app.openai_api import (
     ResponseFunctionCall,
     ResponseObject,
@@ -587,11 +588,12 @@ def install_responses_api(
 
     async def create_response(request: ResponseRequest):
         engine = resolve_engine(request.model)
-        if "embedding" in getattr(engine, "backend", "").lower():
+        if not is_generation_backend(getattr(engine, "backend", "")):
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    f"Model '{request.model}' is an embedding model and cannot be used "
+                    f"Model '{request.model}' is {kind_phrase(getattr(engine, 'backend', ''))} "
+                    "and cannot be used "
                     "for response generation."
                 ),
             )

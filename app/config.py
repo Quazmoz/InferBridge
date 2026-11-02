@@ -135,6 +135,7 @@ class Settings:
         from app.model_recovery_cleanup import install_model_recovery_cleanup
         from app.model_recovery_status import install_model_recovery_status_extension
         from app.model_resolution_safety import install_model_resolution_safety
+        from app.model_slots import install_model_slots
         from app.status_split import install_status_manager_extension
         from app.structured_progress import install_structured_progress_protocol
 
@@ -159,6 +160,9 @@ class Settings:
         install_huggingface_metadata_safety()
         install_huggingface_access_manager_extension()
         install_huggingface_manager_safety()
+        # One resident model per role (chat, embedding, rerank). Wraps the composed
+        # scheduler so deferred post-conversion loads also replace their slot.
+        install_model_slots()
         # Install watchdogs last so late cancellation and recovery wrappers cannot
         # replace a stage-timeout error while native cleanup is still completing.
         install_model_preparation_timeouts()

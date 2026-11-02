@@ -7,6 +7,7 @@ from typing import Any
 
 from app import model_registry as registry
 from app.config import BASE_DIR
+from app.model_roles import is_generation_backend
 
 from .common import PROFILE_LABELS, PROFILE_ORDER, normalize_profile, utc_now
 
@@ -26,7 +27,7 @@ class ProfileRankingMixin:
         candidates = []
         for model_id, cfg in self.catalog.items():
             backend = str(getattr(cfg, "backend", "")).lower()
-            if "embedding" in backend:
+            if not is_generation_backend(backend):
                 continue
             if loaded_models is not None and model_id not in loaded_models:
                 continue

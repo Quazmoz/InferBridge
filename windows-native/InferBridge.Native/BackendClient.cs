@@ -10,6 +10,10 @@ internal enum ModelAction { Load, SwitchDevice, Unload, Download }
 
 internal sealed record ModelInfo(string Id, string Name, string Status)
 {
+    /// <summary>Resident slot role from the engine: "chat", "embedding" or "rerank".</summary>
+    public string Role { get; init; } = "chat";
+    public bool IsChatModel => Role == "chat";
+    public string RoleLabel => ModelSlot.Label(Role);
     public bool CanLoad => Status == "ready_to_load";
     public string? Device { get; init; } // Actual engine-reported device, never a selection preference.
     // Classified load failure (for example an NPU compile rejection) and the
@@ -19,7 +23,8 @@ internal sealed record ModelInfo(string Id, string Name, string Status)
     public IReadOnlyList<string> RecoveryActions { get; init; } = Array.Empty<string>();
     public bool CanUnload => Status == "loaded";
     public bool CanDelete => Status == "ready_to_load";
-    public bool AvailableInChat => CanLoad || CanUnload || Status is "queued" or "loading";
+    // Embedding and reranker models serve their own APIs, never the chat picker.
+    public bool AvailableInChat => IsChatModel && (CanLoad || CanUnload || Status is "queued" or "loading");
     // The engine's convert route downloads, converts, then loads; on a model whose
     // files already exist it simply retries the load after a failure/cancellation.
     public bool CanDownload => Status is "not_downloaded" or "error" or "cancelled";
@@ -196,6 +201,66 @@ internal sealed record DoctorReport(
 }
 
 
+/// <summary>
+/// One resident model slot from <c>GET /v1/models</c> "slots": at most one chat,
+/// one embedding and one reranker model stay loaded together.
+/// </summary>
+internal sealed record ModelSlot(string Role, string? ModelId, string? Name, string? Device,
+    string Status, bool CanUnload, double? MemoryEstimateGib)
+{
+    public static readonly string[] Roles = { "chat", "embedding", "rerank" };
+
+    public static string Label(string role) => role switch
+    {
+        "embedding" => "Embeddings",
+        "rerank" => "Reranker",
+        _ => "Chat",
+    };
+
+    public static string NormalizeRole(string? role) =>
+        role is "embedding" or "rerank" ? role : "chat";
+
+    public bool Resident => ModelId is not null;
+
+    /// <summary>Allowlist-parse the slots array; malformed rows are dropped, never echoed.</summary>
+    public static IReadOnlyList<ModelSlot> Parse(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("slots", out var rows)
+            || rows.ValueKind != JsonValueKind.Array) return Array.Empty<ModelSlot>();
+        var slots = new List<ModelSlot>();
+        foreach (var row in rows.EnumerateArray())
+        {
+            if (row.ValueKind != JsonValueKind.Object || slots.Count >= Roles.Length) continue;
+            string role = Read(row, "role", 16) ?? "";
+            if (!Roles.Contains(role) || slots.Any(slot => slot.Role == role)) continue;
+            string? device = Read(row, "device", 64);
+            if (device is not null && !device.All(ch => char.IsLetterOrDigit(ch) || ch is ':' or '.' or ','))
+                device = null;
+            double? estimate = row.TryGetProperty("memory_estimate_gib", out var value)
+                && value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out double gib)
+                && double.IsFinite(gib) && gib is > 0 and < 4096 ? gib : null;
+            string? model = Read(row, "model", 512);
+            slots.Add(new ModelSlot(role, model, Read(row, "name", 512) ?? model, device,
+                Read(row, "status", 32) ?? "empty",
+                model is not null && row.TryGetProperty("can_unload", out var unload)
+                    && unload.ValueKind == JsonValueKind.True,
+                estimate));
+        }
+        return slots;
+    }
+
+    private static string? Read(JsonElement row, string name, int maximum) =>
+        row.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            && value.GetString() is { Length: > 0 } text && text.Length <= maximum ? text : null;
+
+    /// <summary>Narrator/pill text: "Embeddings: BGE Small · CPU · ≈0.4 GB".</summary>
+    public string Summary => Label(Role) + ": " + (Resident
+        ? Name + (Device is { Length: > 0 } device ? " · " + device : "")
+            + (MemoryEstimateGib is double gib ? " · ≈" + gib.ToString("0.0") + " GB" : "")
+            + (Status == "switching" ? " · switching" : "")
+        : "none");
+}
+
 internal sealed record BackendSnapshot(
     bool Connected,
     string Message,
@@ -204,6 +269,8 @@ internal sealed record BackendSnapshot(
     bool RequiresAuthentication,
     string SessionNonce = "")
 {
+    public IReadOnlyList<ModelSlot> Slots { get; init; } = Array.Empty<ModelSlot>();
+
     public static BackendSnapshot Offline(string message) =>
         new(false, message, string.Empty, Array.Empty<ModelInfo>(), false);
 }
@@ -335,12 +402,14 @@ internal sealed partial class BackendClient : IDisposable
                         Error = ReadString(item, "error") is { Length: > 0 and <= 2000 } error ? error : null,
                         ErrorCode = ReadString(item, "error_code") is { Length: > 0 and <= 64 } code ? code : null,
                         RecoveryActions = ReadRecoveryActions(item),
+                        Role = ModelSlot.NormalizeRole(ReadString(item, "role")),
                     });
                 }
 
                 return new BackendSnapshot(
                     true, "Connected to the local InferBridge engine.", origin,
-                    models, false, nonce);
+                    models, false, nonce)
+                { Slots = ModelSlot.Parse(modelsPayload.RootElement) };
             }
             catch (UnauthorizedAccessException)
             {
@@ -681,7 +750,7 @@ internal sealed partial class BackendClient : IDisposable
 
     public async Task<string> ChangeModelAsync(
         ModelInfo model, ModelAction action, string? apiKey, CancellationToken cancellationToken,
-        string? device = null, int? contextTokens = null)
+        string? device = null, int? contextTokens = null, bool allowResourceRisk = false)
     {
         if (contextTokens is int chosen && (action != ModelAction.Load
             || chosen < ContextEditor.Minimum || chosen > ContextEditor.Maximum))
@@ -710,8 +779,17 @@ internal sealed partial class BackendClient : IDisposable
         {
             // A load-time context is persisted by the engine before it schedules the load.
             ModelAction.Load when contextTokens is int context => ("/v1/models/load",
-                JsonSerializer.Serialize(new { model = model.Id, device, context_tokens = context }),
-                TimeSpan.FromSeconds(60)),
+                JsonSerializer.Serialize(new
+                {
+                    model = model.Id, device, context_tokens = context, allow_resource_risk = allowResourceRisk,
+                }), TimeSpan.FromSeconds(60)),
+            // Embedding and reranker models name their slot; "Load anyway" after a
+            // combined-memory refusal is always an explicit user decision.
+            ModelAction.Load when !model.IsChatModel || allowResourceRisk => ("/v1/models/load",
+                JsonSerializer.Serialize(new
+                {
+                    model = model.Id, device, slot = model.Role, allow_resource_risk = allowResourceRisk,
+                }), TimeSpan.FromSeconds(20)),
             ModelAction.Load or ModelAction.SwitchDevice => ("/v1/models/load",
                 JsonSerializer.Serialize(new { model = model.Id, device }), TimeSpan.FromSeconds(20)),
             ModelAction.Unload => ("/v1/models/unload",
@@ -734,6 +812,20 @@ internal sealed partial class BackendClient : IDisposable
             ModelAction.Unload => "Model unload accepted. The library updates shortly.",
             _ => "Download started. Progress appears in the library, and the model loads when it is ready.",
         };
+    }
+
+    /// <summary>Unload whatever model is resident in one slot (<c>{"slot": role}</c>).</summary>
+    public async Task<string> UnloadSlotAsync(string role, string? apiKey, CancellationToken cancellationToken)
+    {
+        if (!ModelSlot.Roles.Contains(role))
+            throw new ArgumentException("Unknown model slot.", nameof(role));
+        string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
+        using var document = await PostJsonAsync(origin + "/v1/models/unload",
+            JsonSerializer.Serialize(new { slot = role }), apiKey, cancellationToken,
+            TimeSpan.FromSeconds(20), MaximumJsonBytes);
+        if (ReadString(document.RootElement, "status") != "unloaded")
+            throw new JsonException("The engine did not confirm the unload.");
+        return ModelSlot.Label(role) + " model unloaded. The library updates shortly.";
     }
 
     private static readonly string[] KnownRecoveryActions = { "load_gpu", "reconvert_npu" };

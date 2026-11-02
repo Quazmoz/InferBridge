@@ -43,14 +43,19 @@ def _state(engine: Any) -> _EmbeddingLifecycleState:
     return value
 
 
-def _install_engine_class_safety(engine_class: type[Any]) -> None:
-    """Install deferred-close coordination on one embedding-engine class."""
+def _install_engine_class_safety(
+    engine_class: type[Any], method_name: str = "embed", label: str = "Embedding"
+) -> None:
+    """Install deferred-close coordination on one embedding or rerank engine class.
 
-    if getattr(engine_class, _ENGINE_INSTALL_FLAG, False):
+    ``method_name`` is the native inference entry point (``embed`` or ``rerank``).
+    """
+
+    if engine_class.__dict__.get(_ENGINE_INSTALL_FLAG, False):
         return
 
     original_init = engine_class.__init__
-    original_embed = engine_class.embed
+    original_embed = getattr(engine_class, method_name)
     original_close = engine_class.close
     original_count_tokens = engine_class.count_tokens
 
@@ -58,12 +63,12 @@ def _install_engine_class_safety(engine_class: type[Any]) -> None:
         original_init(self, *args, **kwargs)
         _state(self)
 
-    def embed_with_lifecycle_safety(self, texts: list[str]):
+    def embed_with_lifecycle_safety(self, *args: Any, **kwargs: Any):
         lifecycle = _state(self)
         with lifecycle.guard:
             if lifecycle.close_pending or bool(getattr(self, "_closed", False)):
                 raise RuntimeError(
-                    f"Embedding engine for '{getattr(self, 'model_id', 'model')}' is unloading"
+                    f"{label} engine for '{getattr(self, 'model_id', 'model')}' is unloading"
                 )
             lifecycle.active += 1
             lifecycle.idle.clear()
@@ -73,7 +78,7 @@ def _install_engine_class_safety(engine_class: type[Any]) -> None:
             # native calls. Serialize requests even though FastAPI dispatches them to
             # separate executor threads.
             with lifecycle.operation:
-                return original_embed(self, texts)
+                return original_embed(self, *args, **kwargs)
         finally:
             close_now = False
             with lifecycle.guard:
@@ -126,7 +131,7 @@ def _install_engine_class_safety(engine_class: type[Any]) -> None:
             raise
 
     engine_class.__init__ = init_with_lifecycle_state
-    engine_class.embed = embed_with_lifecycle_safety
+    setattr(engine_class, method_name, embed_with_lifecycle_safety)
     engine_class.close = close_with_lifecycle_safety
     engine_class.count_tokens = count_tokens_after_deferred_close
     setattr(engine_class, _ENGINE_INSTALL_FLAG, True)
@@ -167,13 +172,22 @@ async def _wait_for_embedding_drain(
 
 
 def install_embedding_lifecycle_safety() -> None:
-    """Protect built-in embedding engines from concurrent inference/unload races."""
+    """Protect built-in embedding and rerank engines from inference/unload races."""
 
     from app import model_manager as manager_module
-    from runtime.openvino_engine import MockEmbeddingEngine, OpenVINOEmbeddingEngine
+    from runtime.openvino_engine import (
+        MockEmbeddingEngine,
+        MockRerankEngine,
+        OpenVINOEmbeddingEngine,
+        OpenVINORerankEngine,
+    )
 
     _install_engine_class_safety(MockEmbeddingEngine)
     _install_engine_class_safety(OpenVINOEmbeddingEngine)
+    # Rerankers share the same native-close hazard: serialize inference and defer
+    # close until an in-flight scoring call finishes.
+    _install_engine_class_safety(MockRerankEngine, "rerank", "Rerank")
+    _install_engine_class_safety(OpenVINORerankEngine, "rerank", "Rerank")
 
     manager_class = manager_module.ModelManager
     if getattr(manager_class, _MANAGER_INSTALL_FLAG, False):

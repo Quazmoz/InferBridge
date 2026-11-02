@@ -13,6 +13,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.model_roles import BACKEND_PATTERN
 from app.openai_api import ModelRegisterRequest
 from runtime import device_check
 
@@ -37,7 +38,7 @@ class ConvertedModelImportRequest(BaseModel):
     description: str = Field(default="Imported converted OpenVINO model.", max_length=2000)
     backend: str = Field(
         default="openvino-genai",
-        pattern=r"^(openvino-genai|openvino-embeddings|openvino-vlm)$",
+        pattern=BACKEND_PATTERN,
     )
     weight_format: str = Field(default="fp16", pattern=r"^(int4|int8|fp16)$")
     recommended_device: str = Field(default="CPU", min_length=1, max_length=64)
@@ -59,7 +60,7 @@ class ManagedModelAdoptRequest(BaseModel):
     description: str = Field(default="Adopted pre-converted OpenVINO model.", max_length=2000)
     backend: str = Field(
         default="openvino-genai",
-        pattern=r"^(openvino-genai|openvino-embeddings|openvino-vlm)$",
+        pattern=BACKEND_PATTERN,
     )
     weight_format: str = Field(default="fp16", pattern=r"^(int4|int8|fp16)$")
     recommended_device: str = Field(default="CPU", min_length=1, max_length=64)

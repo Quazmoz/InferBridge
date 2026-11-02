@@ -53,6 +53,8 @@ public sealed partial class MainWindow
         var pills = new WrapRow { Spacing = 6, Margin = new Thickness(0, 4, 0, 0) };
         pills.Children.Add(Ui.Pill(model.StatusLabel, StatusKind(model)));
         if (recommended) pills.Children.Add(Ui.Pill("Recommended for this PC", "accent"));
+        // Embedding and reranker models occupy their own resident slot beside chat.
+        if (!model.IsChatModel) pills.Children.Add(Ui.Pill(model.RoleLabel, "accent"));
         if (model.CanUnload)
             pills.Children.Add(Ui.Pill("Running on " + (model.Device is { Length: > 0 } device
                 ? device : "device not reported"), "neutral"));
@@ -123,8 +125,13 @@ public sealed partial class MainWindow
             actions.Children.Add(button);
             _modelRowButtons.Add((button, model, action));
         }
-        Add("load", "\uE768", "Load", model.CanLoad, accent: true);
-        Add("loadctx", "\uE768", "Load with context…", model.CanLoad);
+        Add("load", "\uE768", model.Role switch
+        {
+            "embedding" => "Load as embedding model",
+            "rerank" => "Load as reranker",
+            _ => "Load",
+        }, model.CanLoad, accent: true);
+        Add("loadctx", "\uE768", "Load with context…", model.CanLoad && model.IsChatModel);
         Add("download", "\uE896", "Download and load", model.CanDownload, accent: true);
         Add("unload", "\uE71A", "Unload", model.CanUnload);
         Add("revalidate", "\uE9D9", "Revalidate", true);
@@ -139,6 +146,7 @@ public sealed partial class MainWindow
     // Called from UpdateModelButtons: cheap property updates only.
     private void UpdateModelRowStates()
     {
+        UpdateResidentSlotButtons();
         bool idle = !_isManaging && !_chatBusy && !RefreshLocksControls && !_quitting;
         foreach (var (button, model, action) in _modelRowButtons)
         {
@@ -158,7 +166,7 @@ public sealed partial class MainWindow
             }
             if (action == "loadctx")
             {
-                button.IsEnabled = idle && model.CanLoad && !_contextOperationBusy;
+                button.IsEnabled = idle && model.CanLoad && model.IsChatModel && !_contextOperationBusy;
                 continue;
             }
             button.IsEnabled = idle && model.Permits(action switch

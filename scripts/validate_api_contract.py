@@ -387,6 +387,34 @@ class Validator:
         require(size > 0, "Embedding vector is empty")
         return f"dimensions={size}"
 
+    def slots(self) -> str | tuple[str, str]:
+        if not self.args.exercise_slots:
+            return "skip", "Not requested"
+        expected = {"chat": self.args.model}
+        if self.args.include_embeddings:
+            expected["embedding"] = self.args.embedding_model
+        data = self.client.json("GET", "/v1/models/slots")
+        resident = {row.get("role"): row.get("model") for row in data.get("slots") or []}
+        for role, model in expected.items():
+            require(resident.get(role) == model, f"{role} slot holds {resident.get(role)!r}")
+        listed = self.client.json("GET", "/v1/models")
+        roles = {item.get("id"): item.get("role") for item in listed.get("data", [])}
+        require(roles.get(self.args.model) == "chat", "Chat model is missing its role")
+        # A request to every resident slot still routes by the exact model id.
+        self.client.json(
+            "POST",
+            "/v1/chat/completions",
+            {"model": self.args.model, "messages": [{"role": "user", "content": "ok"}]},
+        )
+        if "embedding" in expected:
+            status, _, _ = self.client.request("POST", "/v1/models/unload", {"slot": "embedding"})
+            require(status == 200, f"Per-slot unload returned HTTP {status}")
+            after = self.client.json("GET", "/v1/models/slots")
+            still = {row.get("role"): row.get("model") for row in after.get("slots") or []}
+            require(still.get("chat") == self.args.model, "Unloading embeddings touched chat")
+            require(still.get("embedding") is None, "Embedding slot was not released")
+        return ", ".join(f"{role}={model}" for role, model in expected.items())
+
     def metrics(self) -> str:
         data = self.client.json("GET", "/v1/system/status")
         metrics = data.get("metrics", {}).get("per_model", {}).get(self.args.model, {})
@@ -445,6 +473,7 @@ class Validator:
         if self.args.profile in {"n8n", "full"}:
             self.check("n8n Responses API", self.responses)
         self.check("Embeddings", self.embeddings)
+        self.check("Resident model slots", self.slots)
         self.check("Benchmark", self.benchmark)
         self.check("Model lifecycle", self.lifecycle)
         summary = {
@@ -509,6 +538,7 @@ def parser() -> argparse.ArgumentParser:
     mode.add_argument("--expect-real", action="store_true")
     mode.add_argument("--expect-mock", action="store_true")
     result.add_argument("--include-embeddings", action="store_true")
+    result.add_argument("--exercise-slots", action="store_true")
     result.add_argument("--run-benchmark", action="store_true")
     result.add_argument("--exercise-lifecycle", action="store_true")
     result.add_argument("--output-json", type=Path)

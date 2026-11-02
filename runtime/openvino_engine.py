@@ -247,6 +247,43 @@ class MockEmbeddingEngine(BaseEngine):
         self._closed = True
 
 
+def _lexical_rerank_score(query: str, document: str) -> float:
+    """Deterministic 0..1 relevance proxy used by the mock reranker."""
+
+    query_terms = set(re.findall(r"\w+", query.lower()))
+    document_terms = set(re.findall(r"\w+", document.lower()))
+    overlap = len(query_terms & document_terms) / len(query_terms) if query_terms else 0.0
+    digest = hashlib.sha256(f"{query}\x00{document}".encode()).digest()
+    tie_breaker = int.from_bytes(digest[:2], "big") / 65535.0 * 0.01
+    return round(min(1.0, overlap * 0.98 + tie_breaker), 6)
+
+
+class MockRerankEngine(BaseEngine):
+    """Mock cross-encoder: scores by lexical overlap so ordering is testable."""
+
+    backend = "mock-rerank"
+
+    def __init__(self, model_id: str, model_path: str = "", device: str = "MOCK") -> None:
+        self.model_id = model_id
+        self.model_path = str(model_path)
+        self.device = device
+        self._closed = False
+
+    def count_tokens(self, text: str) -> int:
+        return max(1, len(text) // 4)
+
+    def rerank(self, query: str, documents: list[str]) -> list[tuple[int, float]]:
+        if self._closed:
+            raise RuntimeError(f"Mock rerank engine for '{self.model_id}' is closed")
+        scored = [
+            (index, _lexical_rerank_score(query, text)) for index, text in enumerate(documents)
+        ]
+        return sorted(scored, key=lambda item: (-item[1], item[0]))
+
+    def close(self) -> None:
+        self._closed = True
+
+
 # --- OpenVINO text and vision engines -------------------------------------
 
 
@@ -640,6 +677,70 @@ class OpenVINOEmbeddingEngine(BaseEngine):
         self._pipe = None
 
 
+# Documents are scored in bounded batches: TextRerankPipeline tokenizes one padded
+# [batch, max_length] tensor per call, so memory grows with the batch, not the request.
+RERANK_BATCH_SIZE = 32
+
+
+class OpenVINORerankEngine(BaseEngine):
+    """Wrap ``openvino_genai.TextRerankPipeline`` (cross-encoder relevance scoring)."""
+
+    backend = "openvino-rerank"
+
+    def __init__(
+        self,
+        model_id: str,
+        model_path: str,
+        device: str,
+        plugin_config: dict | None = None,
+        *,
+        max_length: int | None = None,
+    ) -> None:
+        import openvino_genai as ov_genai
+
+        self._ov = ov_genai
+        self.model_id = model_id
+        self.model_path = str(model_path)
+        self.device = normalize_device(device)
+        self._closed = False
+        self.max_length = int(max_length) if max_length else None
+
+        config_kwargs: dict[str, Any] = {"top_n": RERANK_BATCH_SIZE}
+        if self.max_length:
+            config_kwargs["max_length"] = self.max_length
+        rerank_config = ov_genai.TextRerankPipeline.Config(**config_kwargs)
+        logger.info("Loading reranker '%s' on %s from %s", model_id, self.device, self.model_path)
+        self._pipe = ov_genai.TextRerankPipeline(
+            self.model_path, self.device, rerank_config, **dict(plugin_config or {})
+        )
+        logger.info("Reranker '%s' ready on %s", model_id, self.device)
+
+    def count_tokens(self, text: str) -> int:
+        # An inexpensive estimate like the embedding engines; the tokenizer also
+        # truncates each query/document pair to ``max_length`` before scoring.
+        estimate = max(1, len(text) // 4)
+        return min(estimate, self.max_length) if self.max_length else estimate
+
+    def rerank(self, query: str, documents: list[str]) -> list[tuple[int, float]]:
+        if self._closed:
+            raise RuntimeError(f"Rerank engine for '{self.model_id}' is closed")
+        scored: list[tuple[int, float]] = []
+        for start in range(0, len(documents), RERANK_BATCH_SIZE):
+            batch = documents[start : start + RERANK_BATCH_SIZE]
+            for index, score in self._pipe.rerank(query, batch):
+                scored.append((start + int(index), float(score)))
+        if len(scored) != len(documents):
+            raise RuntimeError("The reranker did not score every document.")
+        return sorted(scored, key=lambda item: (-item[1], item[0]))
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        logger.info("Closing reranker for '%s'", self.model_id)
+        self._pipe = None
+
+
 # --- Factory ---------------------------------------------------------------
 
 
@@ -706,11 +807,15 @@ def create_engine(
 
     device = normalize_device(device)
     backend_lower = backend.lower()
+    is_rerank = "rerank" in backend_lower
     is_embedding = "embedding" in backend_lower
     is_vision = multimodal.backend_supports_vision(backend_lower)
 
     if force_mock or not is_openvino_available():
         reason = "forced" if force_mock else "OpenVINO not installed"
+        if is_rerank:
+            logger.info("Using MOCK rerank engine for '%s' (%s)", model_id, reason)
+            return MockRerankEngine(model_id, model_path, device if force_mock else "MOCK")
         if is_embedding:
             logger.info("Using MOCK embedding engine for '%s' (%s)", model_id, reason)
             return MockEmbeddingEngine(model_id, model_path, device if force_mock else "MOCK")
@@ -724,8 +829,15 @@ def create_engine(
         device,
         max_prompt_len,
         cache_dir,
-        kv_cache_precision=None if is_embedding else kv_cache_precision,
+        kv_cache_precision=None if is_embedding or is_rerank else kv_cache_precision,
     )
+    if is_rerank:
+        # MAX_PROMPT_LEN is an NPU LLM property; the reranker bounds each
+        # query/document pair through its tokenizer max_length instead.
+        plugin_config.pop("MAX_PROMPT_LEN", None)
+        return OpenVINORerankEngine(
+            model_id, model_path, device, plugin_config, max_length=max_prompt_len
+        )
     if is_embedding:
         return OpenVINOEmbeddingEngine(model_id, model_path, device, plugin_config)
     if is_vision:

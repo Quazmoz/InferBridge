@@ -4,7 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace InferBridge.Native;
 
-// Web-parity chat additions: Eject from the chat model bar, the "Load another
+// Web-parity chat additions: Eject from the chat model bar, the "Replace the loaded
 // model?" memory guard, Regenerate, starter prompts, the exact context budget,
 // saved chat defaults and theme, and the engine activity feed.
 public sealed partial class MainWindow
@@ -118,49 +118,40 @@ public sealed partial class MainWindow
         await RefreshAsync();
     }
 
-    // ── "Load another model?" (web model-lifecycle guard) ─────────────────
-
-    private enum PeerChoice { Cancel, KeepLoaded, UnloadOthers }
+    // ── "Replace the loaded model?" (web model-lifecycle guard) ──────────
 
     /// <summary>
-    /// Before a load (or download-then-load), mirror the browser: offer to unload
-    /// the other models still in memory. Returns false when the user cancels.
+    /// Before a load (or download-then-load), mirror the browser: one model per slot role
+    /// stays resident, so loading a chat model replaces the resident chat model while the
+    /// embedding and reranker slots stay loaded. Returns false when the user cancels.
     /// </summary>
     private async Task<bool> ResolveLoadedPeersAsync(ModelInfo model, ModelAction action)
     {
         if (action is not (ModelAction.Load or ModelAction.Download)) return true;
         IReadOnlyList<ModelInfo> peers = ModelLifecycle.LoadedPeers(_shownModels, model.Id);
         if (peers.Count == 0) return true;
+        string slot = model.RoleLabel.ToLowerInvariant();
         var list = new StackPanel { Spacing = 6 };
         list.Children.Add(Ui.Text(model.Name + " will be " + (action == ModelAction.Download
-            ? "downloaded and then loaded" : "loaded") + " while "
-            + (peers.Count == 1 ? "another model stays" : peers.Count + " other models stay")
-            + " in memory. Unloading the other " + (peers.Count == 1 ? "model" : "models")
-            + " first is recommended for most PCs."));
+            ? "downloaded and then loaded" : "loaded") + " into the " + slot + " slot, replacing "
+            + string.Join(", ", peers.Select(peer => peer.Name)) + ". Your conversation is kept, and "
+            + "models in the other slots stay loaded."));
         foreach (ModelInfo peer in peers.Take(8))
             list.Children.Add(Ui.Text("• " + peer.Name + (peer.Device is { Length: > 0 } device
                 ? " on " + device : ""), secondary: true));
         var dialog = new ContentDialog
         {
             XamlRoot = ((FrameworkElement)Content).XamlRoot,
-            Title = "Load another model?",
+            Title = "Replace the loaded model?",
             Content = list,
-            PrimaryButtonText = peers.Count == 1 ? "Unload other and continue"
-                : "Unload " + peers.Count + " others and continue",
-            SecondaryButtonText = "Keep loaded and continue",
+            PrimaryButtonText = "Replace and continue",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary,
         };
-        PeerChoice choice = await dialog.ShowAsync() switch
-        {
-            ContentDialogResult.Primary => PeerChoice.UnloadOthers,
-            ContentDialogResult.Secondary => PeerChoice.KeepLoaded,
-            _ => PeerChoice.Cancel,
-        };
-        if (choice == PeerChoice.Cancel || _closing.IsCancellationRequested) return false;
-        if (choice == PeerChoice.UnloadOthers)
-            foreach (ModelInfo peer in peers)
-                await _backend.UnloadModelAsync(peer, ApiKeyBox.Password, _closing.Token, busyRetries: 0);
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary
+            || _closing.IsCancellationRequested) return false;
+        foreach (ModelInfo peer in peers)
+            await _backend.UnloadModelAsync(peer, ApiKeyBox.Password, _closing.Token, busyRetries: 0);
         return true;
     }
 

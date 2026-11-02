@@ -35,6 +35,8 @@ _KNOWN_PARAMETER_COUNTS_B = {
     "phi-4-mini": 3.8,
     "phi4-mini": 3.8,
     "bge-small-en-v1.5": 0.033,
+    "bge-reranker-base": 0.278,
+    "bge-reranker-v2-m3": 0.568,
 }
 AUTO_BENCHMARK_TTL_SECONDS = 6 * 60 * 60
 SNAPSHOT_TTL_SECONDS = 30.0

@@ -147,7 +147,8 @@ def build_plugin_config(
 
     normalized = engine.normalize_device(device)
     backend_lower = str(backend or "").lower()
-    is_embedding = "embedding" in backend_lower
+    # Rerankers, like embedding pipelines, never receive generation-only properties.
+    is_embedding = "embedding" in backend_lower or "rerank" in backend_lower
     config: dict[str, Any] = {}
 
     if is_direct_npu(normalized) and not is_embedding and max_prompt_len:
@@ -235,7 +236,12 @@ def create_engine(
     """Create an engine, adding complete context configuration for direct NPUs."""
 
     normalized = engine.normalize_device(device)
-    if force_mock or not engine.is_openvino_available() or not is_direct_npu(normalized):
+    if (
+        force_mock
+        or not engine.is_openvino_available()
+        or not is_direct_npu(normalized)
+        or "rerank" in str(backend or "").lower()
+    ):
         return _ORIGINAL_CREATE_ENGINE(
             model_id=model_id,
             model_path=model_path,

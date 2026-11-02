@@ -79,7 +79,10 @@ def test_model_cards_show_editable_context_and_load_with_context() -> None:
     assert "_modelContextLines[model.Id] = (contextLine, contextEdit, contextBusy);" in cards
     assert "ContextLineText(ContextSummaryFor(model.Id))" in cards
     assert 'Tag = (model.Id, "context")' in cards
-    assert 'Add("loadctx", "\\uE768", "Load with context…", model.CanLoad);' in cards
+    assert (
+        'Add("loadctx", "\\uE768", "Load with context…", model.CanLoad && model.IsChatModel);'
+        in cards
+    )
     assert "OpenContextEditorAsync(modelId, ContextEditorMode.Edit, ReportContextToModels)" in cards
     assert (
         "OpenContextEditorAsync(modelId, ContextEditorMode.LoadWith, ReportContextToModels)"

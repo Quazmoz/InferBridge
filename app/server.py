@@ -39,6 +39,7 @@ from app import (
     context_configuration,
     errors,
     model_manager,
+    model_slots,
     multimodal,
     responses_api,
     tools,
@@ -47,6 +48,7 @@ from app.body_limit import RequestBodyLimitMiddleware
 from app.brand import DISPLAY_NAME
 from app.config import BASE_DIR, Settings
 from app.engine_handoff_safety import count_tokens_with_current_engine, current_engine_lease
+from app.model_roles import ROLE_LABELS, is_generation_backend, kind_phrase
 from app.openai_api import (
     BenchmarkRunRequest,
     ChatCompletionMessage,
@@ -590,6 +592,7 @@ def create_app(settings: Settings) -> FastAPI:
             "device": settings.device,
             "openvino": device_check.is_openvino_available(),
             "models_loaded": len(manager.engines),
+            "slots": {row["role"]: row["model"] for row in manager.slot_snapshot() if row["model"]},
             "loading_count": loading_count,
             "any_busy": manager.any_busy(),
         }
@@ -622,6 +625,10 @@ def create_app(settings: Settings) -> FastAPI:
                     "name": entry["name"],
                     "description": entry["description"],
                     "status": entry["status"],
+                    # Local extensions: resident slot role, loaded state and device.
+                    "role": entry["role"],
+                    "loaded": bool(entry["is_loaded"]),
+                    "device": entry.get("device"),
                     # Only failed rows carry the classified error and its one-click
                     # recoveries (load on GPU, reconvert for NPU); see errors.py.
                     **(
@@ -639,7 +646,21 @@ def create_app(settings: Settings) -> FastAPI:
                     ),
                 }
             )
-        return {"object": "list", "data": data}
+        return {"object": "list", "data": data, "slots": manager.slot_snapshot()}
+
+    @app.get("/v1/models/slots", dependencies=auth)
+    async def model_slots_status(
+        model: str | None = Query(default=None, max_length=128),
+        device: str | None = Query(default=None, max_length=64),
+    ):
+        """Resident model per role, plus an optional memory preflight for one model."""
+        body: dict = {"slots": manager.slot_snapshot()}
+        if model is not None:
+            if model not in manager.catalog:
+                raise HTTPException(status_code=404, detail=f"Unknown model '{model}'")
+            target = _normalize_device_or_400(device) or settings.device
+            body["plan"] = await asyncio.to_thread(manager.memory_plan, model, target)
+        return body
 
     @app.post("/v1/models/register", dependencies=auth)
     async def register_model(req: ModelRegisterRequest):
@@ -736,21 +757,59 @@ def create_app(settings: Settings) -> FastAPI:
                 except Exception as exc:  # noqa: BLE001 - mapped to safe public errors
                     raise _context_http_error(exc) from exc
 
+        role = model_slots.model_role(manager, req.model)
+        if req.slot is not None and req.slot != role:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model '{req.model}' is a {ROLE_LABELS[role].lower()} model and cannot "
+                f"be loaded into the {ROLE_LABELS[req.slot].lower()} slot.",
+            )
+        plan = None
+        loaded_engine = manager.engines.get(req.model)
+        same_target = loaded_engine is not None and (
+            device is None
+            or device_check.normalize_device(loaded_engine.device)
+            == device_check.normalize_device(device)
+        )
+        if not same_target:
+            try:
+                plan = model_slots.preflight_slot_load(
+                    manager,
+                    req.model,
+                    device or settings.device,
+                    allow_resource_risk=req.allow_resource_risk,
+                )
+            except model_slots.SlotResourceError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
         try:
             task = manager.schedule_load(req.model, device, draft_model=req.draft_model)
+        except model_slots.SlotConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         entry = manager.catalog_entry(req.model)
+        slot_fields: dict = {"slot": role}
+        if plan is not None:
+            slot_fields["memory"] = plan
+            if plan.get("replaces"):
+                slot_fields["replaced"] = plan["replaces"]
+        warning = (
+            f" {plan['message']}"
+            if plan is not None and plan.get("verdict") in {"warning", "unknown"}
+            else ""
+        )
         if task is None and entry["is_loaded"]:
             return {
                 "status": "loaded",
                 "message": f"{entry['name']} is already loaded.",
                 "model": entry,
+                **slot_fields,
             }
         return {
             "status": entry["status"],
-            "message": f"Loading {entry['name']}. First load can take a while.",
+            "message": f"Loading {entry['name']}. First load can take a while.{warning}",
             "model": entry,
+            **slot_fields,
         }
 
     @app.post("/v1/models/convert", dependencies=auth)
@@ -794,6 +853,24 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.post("/v1/models/unload", dependencies=auth)
     async def unload_model(req: ModelUnloadRequest):
+        if req.slot is not None:
+            resident = model_slots.resident_for_role(manager, req.slot)
+            if req.model is None:
+                if resident is None:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"No model is loaded in the {ROLE_LABELS[req.slot].lower()} slot.",
+                    )
+                req.model = resident
+            elif (
+                req.model in manager.catalog
+                and model_slots.model_role(manager, req.model) != req.slot
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Model '{req.model}' is not in the "
+                    f"{ROLE_LABELS[req.slot].lower()} slot.",
+                )
         if req.model not in manager.catalog:
             raise HTTPException(status_code=404, detail=f"Unknown model '{req.model}'")
         if req.model in manager._context_changes:
@@ -806,7 +883,12 @@ def create_app(settings: Settings) -> FastAPI:
 
         manager.unload(req.model)
         entry = manager.catalog_entry(req.model)
-        return {"status": "unloaded", "message": f"Unloaded {entry['name']}.", "model": entry}
+        return {
+            "status": "unloaded",
+            "message": f"Unloaded {entry['name']}.",
+            "model": entry,
+            "slot": model_slots.model_role(manager, req.model),
+        }
 
     @app.post("/v1/models/delete", dependencies=auth)
     async def delete_model(req: ModelDeleteRequest):
@@ -1038,6 +1120,7 @@ def create_app(settings: Settings) -> FastAPI:
                 "loaded": list(manager.engines.keys()),
                 "count": len(manager.engines),
                 "loading_count": manager.loading_count(),
+                "slots": manager.slot_snapshot(),
                 "available": entries,
             },
             "disk": {
@@ -1184,10 +1267,11 @@ def create_app(settings: Settings) -> FastAPI:
     @app.post("/v1/chat/completions", dependencies=auth)
     async def chat_completions(request: ChatCompletionRequest):
         engine = _resolve_or_400(manager, request.model)
-        if "embedding" in getattr(engine, "backend", "").lower():
+        if not is_generation_backend(getattr(engine, "backend", "")):
             raise HTTPException(
                 status_code=400,
-                detail=f"Model '{request.model}' is an embedding model and cannot be used for text completions.",
+                detail=f"Model '{request.model}' is {kind_phrase(getattr(engine, 'backend', ''))} "
+                "and cannot be used for text completions.",
             )
         _validate_generation_request(
             engine,

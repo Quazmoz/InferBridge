@@ -17,6 +17,7 @@ from typing import Any
 
 from app import __version__, model_registry as registry
 from app.config import BASE_DIR, Settings
+from app.model_roles import is_generation_backend
 from app.onboarding_hardware import build_system_scan, classify_npu_readiness
 from app.onboarding_models import (
     BenchmarkSummary,
@@ -208,7 +209,7 @@ class OnboardingService:
         snapshot = self.manager.advisor.hardware_snapshot(refresh=refresh)
         candidates: list[tuple[float, Any, dict[str, Any]]] = []
         for cfg in self.manager.catalog.values():
-            if "embedding" in str(cfg.backend).lower():
+            if not is_generation_backend(cfg.backend):
                 continue
             downloaded = registry.is_downloaded(cfg, BASE_DIR)
             evaluation = self.manager.advisor.evaluate_model(

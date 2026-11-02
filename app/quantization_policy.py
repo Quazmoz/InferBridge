@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 SUPPORTED_WEIGHT_FORMATS = frozenset({"int4", "int8", "fp16"})
 _GENERATION_BACKENDS = frozenset({"openvino-genai"})
-_QUALITY_SENSITIVE_BACKENDS = frozenset({"openvino-embeddings", "openvino-vlm"})
+_QUALITY_SENSITIVE_BACKENDS = frozenset({"openvino-embeddings", "openvino-vlm", "openvino-rerank"})
 _PROFILE_ALIASES = {
     "default": "balanced",
     "fast": "fastest",

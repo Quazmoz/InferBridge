@@ -71,6 +71,7 @@ SERVER_ORDER = (
     "ovllm-model-progress-extension",
     "ovllm-desktop-onboarding-extension",
     "ovllm-model-library-extension",
+    "ovllm-model-slots-extension",
     "inferbridge-huggingface-access-extension",
     "ovllm-desktop-operations-extension",
     "ovllm-connection-hub-extension",

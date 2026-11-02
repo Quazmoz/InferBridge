@@ -128,7 +128,7 @@ def test_eject_uses_the_existing_unload_api_and_retries_only_busy_refusals() -> 
     assert '("/v1/models/unload",' in backend
 
 
-def test_loading_with_other_models_in_memory_asks_like_the_web_guard() -> None:
+def test_loading_into_an_occupied_slot_asks_like_the_web_guard() -> None:
     window = _source("MainWindow.xaml.cs")
     manage = _body(window, "private async Task ManageModelAsync(")
     assert "await ResolveLoadedPeersAsync(model, action)" in manage
@@ -136,17 +136,38 @@ def test_loading_with_other_models_in_memory_asks_like_the_web_guard() -> None:
     code = _source("MainWindow.ChatModelBar.cs")
     guard = _body(code, "private async Task<bool> ResolveLoadedPeersAsync(")
     for text in (
-        '"Load another model?"',
-        '"Unload other and continue"',
-        '"Keep loaded and continue"',
+        '"Replace the loaded model?"',
+        '"Replace and continue"',
         '"Cancel"',
         "ModelLifecycle.LoadedPeers(_shownModels, model.Id)",
         "busyRetries: 0",
     ):
         assert text in guard, text
+    assert "Keep loaded and continue" not in guard
+    session = _source("ChatSession.cs")
+    peers = _body(session, "public static IReadOnlyList<ModelInfo> LoadedPeers(")
+    assert "model.Role == role" in peers
     web = (ROOT / "app" / "model_lifecycle_ui.py").read_text(encoding="utf-8")
-    for text in ("Load another model?", "Keep loaded and continue", "Unload other and continue"):
+    for text in (
+        "Replace the loaded model?",
+        "Replace and continue",
+        "roleOf(model) === roleOf(target)",
+    ):
         assert text in web
+    assert "Keep loaded and continue" not in web
+
+
+def test_resident_slots_panel_unloads_per_slot_without_poll_locking() -> None:
+    root = _xaml()
+    panel = _named(root, "ResidentSlotsPanel")
+    row = _named(panel, "ResidentSlotsRow")
+    assert row.get("AutomationProperties.LiveSetting") == "Polite"
+    slots = _source("MainWindow.ModelSlots.cs")
+    assert "_backend.UnloadSlotAsync(role, ApiKeyBox.Password, _closing.Token)" in slots
+    assert "allowResourceRisk: true" in slots
+    apply = _body(slots, "private void ApplyResidentSlots(")
+    assert "IsEnabled = false" not in apply
+    assert "ApplyResidentSlots(" in _source("MainWindow.xaml.cs")
 
 
 def test_regenerate_replaces_the_last_reply_only_after_it_completes() -> None:

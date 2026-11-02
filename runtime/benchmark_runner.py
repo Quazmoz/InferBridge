@@ -11,6 +11,7 @@ import time
 from typing import Any
 
 from app.file_locks import path_lock
+from app.model_roles import is_generation_backend
 from runtime import benchmark_runner_core as _core, device_check
 from runtime.benchmark_runner_core import *  # noqa: F401,F403 - preserve public API
 
@@ -326,8 +327,10 @@ async def _benchmark_loaded_model_device(
                 combination_index=combination_index,
                 combination_total=combination_total,
             )
-        if "embedding" in str(getattr(cfg, "backend", "")).lower():
-            raise ValueError("Embedding models cannot be benchmarked as generation models.")
+        if not is_generation_backend(getattr(cfg, "backend", "")):
+            raise ValueError(
+                "Embedding and reranker models cannot be benchmarked as generation models."
+            )
 
         loaded_device = str(manager.devices.get(model_id) or getattr(engine, "device", ""))
         requested_device = device_check.validate_device_expression(device)

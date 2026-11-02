@@ -6,6 +6,7 @@ import math
 from collections.abc import Mapping
 from typing import Any
 
+from app.model_roles import is_generation_backend
 from app.quantization_policy import estimated_quality_penalty, profile_precision_bonus
 
 from .common import base_device, clamp, infer_parameter_count_b, normalize_profile, safe_float
@@ -20,7 +21,7 @@ class DeviceProfileMixin:
             score += 7.0
         if "instruct" in text or "chat" in text:
             score += 3.0
-        if "embedding" in str(getattr(cfg, "backend", "")).lower():
+        if not is_generation_backend(getattr(cfg, "backend", "")):
             return 0.0
         score -= estimated_quality_penalty(getattr(cfg, "weight_format", "fp16"))
         return clamp(score / 100.0) * 100.0

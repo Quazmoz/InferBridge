@@ -48,6 +48,36 @@ Returns an OpenAI-style model list. InferBridge includes local lifecycle status 
 
 Exact model IDs are strict across Chat Completions, Responses, and embeddings. An unknown exact ID returns `404`; InferBridge never silently substitutes the configured default or another loaded engine. The documented `model=auto` and `model=auto:<profile>` advisor selectors remain explicit exceptions that intentionally choose among compatible loaded generation models.
 
+### Resident model slots (local extension)
+
+InferBridge keeps at most **one resident model per role**: one `chat` model (text generation or vision), one `embedding` model and one `rerank` model. The role always comes from the catalog `backend` (`openvino-embeddings` → `embedding`, `openvino-rerank` → `rerank`, everything else → `chat`); clients never choose it. Requests keep routing by their exact `model` id, each engine keeps its own lock, so slots serve concurrently while each slot is serialized.
+
+`GET /v1/models` adds three local fields per `data[]` item, `role`, `loaded` and `device` (engine-reported, `null` when not loaded), and a top-level `slots` array. `GET /v1/models/slots` returns the same array:
+
+```json
+{"slots": [
+  {"role": "chat", "label": "Chat", "model": "qwen2.5-1.5b-int4", "name": "Qwen2.5 1.5B Instruct INT4",
+   "device": "GPU.0", "status": "loaded", "busy": false, "can_unload": true,
+   "memory_estimate_gib": 1.6, "loading_model": null},
+  {"role": "embedding", "label": "Embeddings", "model": null, "name": null, "device": null,
+   "status": "empty", "busy": false, "can_unload": false, "memory_estimate_gib": null, "loading_model": null},
+  {"role": "rerank", "...": "..."}
+]}
+```
+
+`status` is `empty`, `loading`, `loaded` or `switching` (a device switch of the resident model). `memory_estimate_gib` is a hardware-advisor estimate, not measured memory. `GET /v1/models/slots?model=<id>&device=<device>` adds a `plan` object: the memory preflight for loading that model now (`verdict` `ok` / `warning` / `refuse` / `unknown`, `message`, `replaces`, `memory_estimate_gib`, `combined_estimate_gib`, `available_ram_gib`, `reserve_gib`, `freed_by_replacement_gib`, `resident[]`, and `npu_conflict` when relevant). Unknown models return `404`.
+
+`/health` reports `slots` as `{role: model}` for occupied slots; `/v1/system/status` reports the full array under `models.slots`, and `/v1/models/status` includes it too.
+
+`POST /v1/models/load` accepts two optional fields:
+
+- `slot`: `chat`, `embedding` or `rerank`. It must match the model's role; a mismatch returns `400` instead of being coerced.
+- `allow_resource_risk` (default `false`): load even when the preflight refuses.
+
+Loading a model **replaces only the resident model of the same role**; the other slots stay loaded. A device switch of the same model keeps the existing handoff (the old engine serves until the new one compiles). If the model being replaced is busy (serving, queued or switching) or applying a context change, the load returns `409`. Before a model joins *other* resident slots, the combined memory is estimated and the load returns `409` with a friendly `detail` when the new model clearly cannot fit in free RAM (plus what the replaced model frees), or when it would be a second engine on the Intel NPU; set `allow_resource_risk: true` to load anyway. Tight memory or GPU memory only warns (the warning is appended to `message`). The first model on an empty engine keeps the previous single-model behavior. The response adds `slot`, and when a plan was computed `memory` (the plan) and `replaced` (the model id it replaced). In mock mode the NPU rule only warns.
+
+`POST /v1/models/unload` accepts `{"model": "<id>"}` or `{"slot": "<role>"}` (or both, which must agree: a mismatch returns `400`). `{"slot": ...}` on an empty slot returns `409`. The response adds `slot`.
+
 ### `POST /v1/chat/completions`
 
 Supported request fields:
@@ -165,8 +195,9 @@ The selected model must use the `openvino-embeddings` backend. Text-generation m
 | `GET` | `/v1/models/search-hf` | Search Hugging Face metadata candidates; local hardware compatibility is not guaranteed. |
 | `POST` | `/v1/models/download-custom` | Register, convert, and optionally load a custom model. |
 | `POST` | `/v1/models/convert` | Convert a catalog model in the background. |
-| `POST` | `/v1/models/load` | Load a converted model on a selected device. |
-| `POST` | `/v1/models/unload` | Free a loaded engine. |
+| `GET` | `/v1/models/slots` | Resident model per role, plus an optional memory preflight (`?model=&device=`). |
+| `POST` | `/v1/models/load` | Load a converted model on a selected device into its role's slot (`slot`, `allow_resource_risk`). |
+| `POST` | `/v1/models/unload` | Free a loaded engine by `model` or by `slot`. |
 | `POST` | `/v1/models/delete` | Delete an unloaded model's local IR directory. |
 | `GET` | `/v1/devices` | Return OpenVINO discovery and device suggestions. |
 | `GET` | `/v1/system/status` | Return telemetry, lifecycle progress, metrics, and recent safe events. |

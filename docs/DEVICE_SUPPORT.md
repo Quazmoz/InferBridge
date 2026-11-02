@@ -55,6 +55,16 @@ HETERO:NPU,GPU,CPU
 
 `MULTI` and `HETERO` are experimental routing modes. They may help some workloads, but they do not promise faster single-prompt generation or additive multi-device performance.
 
+## Several Resident Models and the NPU
+
+InferBridge keeps one chat, one embedding and one reranker model loaded at the same time (see [API contract](API_CONTRACT.md#resident-model-slots-local-extension)). Device rules for that:
+
+- **One engine on the Intel NPU.** A load whose device names the NPU (`NPU`, `AUTO:NPU,GPU,CPU`, `MULTI:NPU,...`) is refused with `409` while another resident model already runs on a device that names the NPU. NPU contexts from two pipelines are not verified to coexist, so load the second model on CPU or GPU, or unload the other model first. `allow_resource_risk: true` overrides the refusal at your own risk.
+- **Plain `AUTO` is not checked.** The rule matches device strings, so plain `AUTO` is not treated as an NPU load even though OpenVINO may place it on the NPU. Choose `CPU` or `GPU` explicitly for embedding and reranker models when a chat model uses the NPU.
+- **Embedding and reranker models default to CPU.** The native app loads them on CPU unless you pick a GPU, and never sends an NPU device for them. They are small, and on CPU they leave the NPU or GPU to the chat model.
+- **Memory is estimated, not measured.** The preflight compares the hardware advisor's estimate for the new model with free RAM (keeping the larger of 2 GB or 15% in reserve before warning). GPU memory is only compared when the GPU reports its size. Watch memory after loading several models on a tight PC.
+- None of these combinations has been exercised on Intel NPU hardware yet.
+
 ## Hardware Benchmarking
 
 Use the benchmark feature to measure a converted catalog model on your own machine before choosing a default device:

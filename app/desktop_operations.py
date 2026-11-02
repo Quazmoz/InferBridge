@@ -11,6 +11,7 @@ from typing import Any
 
 from app import __version__
 from app.diagnostics import DiagnosticsCollector, DiagnosticsResult, redact_path
+from app.model_roles import is_generation_backend
 from app.onboarding_service import OnboardingService
 from app.paths import RuntimePaths
 from app.startup_registration import StartupRegistration
@@ -231,7 +232,7 @@ class DesktopOperationsService:
             raise RuntimeError("Load a generation model before running the short benchmark.")
         model_id = str(active.get("id") or "")
         cfg = self.manager.catalog.get(model_id)
-        if not model_id or cfg is None or "embedding" in str(getattr(cfg, "backend", "")).lower():
+        if not model_id or cfg is None or not is_generation_backend(getattr(cfg, "backend", "")):
             raise RuntimeError("The short benchmark requires a loaded generation model.")
         actual_device = str(active.get("actual_device") or "").strip()
         if not actual_device:

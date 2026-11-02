@@ -71,6 +71,26 @@ internal static class ChatParityContractTests
         Check(ModelLifecycle.LoadedPeers(models, "model-c").Select(m => m.Id).SequenceEqual(["model-a", "model-b"])
             && ModelLifecycle.LoadedPeers(models, "model-a").Single().Id == "model-b",
             "loaded peers were not the other loaded models");
+        // One resident model per slot role: other roles are never replaced.
+        ModelInfo[] mixed =
+        [
+            new("chat-a", "Chat A", "loaded"), new("embed-a", "Embed A", "loaded") { Role = "embedding" },
+            new("rank-a", "Rank A", "loaded") { Role = "rerank" }, new("chat-b", "Chat B", "ready_to_load"),
+            new("rank-b", "Rank B", "ready_to_load") { Role = "rerank" },
+        ];
+        Check(ModelLifecycle.LoadedPeers(mixed, "chat-b").Single().Id == "chat-a"
+            && ModelLifecycle.LoadedPeers(mixed, "rank-b").Single().Id == "rank-a"
+            && ModelLifecycle.LoadedPeers(mixed, "embed-a").Count == 0,
+            "a load replaced a model in another slot");
+        Check(ModelLifecycle.SlotDevice(mixed[0], "NPU") == "NPU"
+            && ModelLifecycle.SlotDevice(mixed[1], null) == "CPU"
+            && ModelLifecycle.SlotDevice(mixed[2], "NPU") == "CPU"
+            && ModelLifecycle.SlotDevice(mixed[2], "GPU") == "GPU",
+            "embedding/reranker slots must default to CPU and never coexist on the NPU");
+        Check(ModelLifecycle.IsResourceRefusal(new EngineRequestException("Not enough memory for both models"))
+            && ModelLifecycle.IsResourceRefusal(new EngineRequestException("Only one model can use the NPU"))
+            && !ModelLifecycle.IsResourceRefusal(new InvalidOperationException("memory")),
+            "resource refusal detection changed");
         Check(ModelLifecycle.PickerPlaceholder(models[2..]) == "No model loaded"
             && ModelLifecycle.PickerPlaceholder(models) == "Select a model", "picker placeholder changed");
         Check(ModelLifecycle.IsBusyRefusal(new EngineRequestException("Model 'model-a' is busy"))
@@ -92,8 +112,11 @@ internal static class ChatParityContractTests
                     JsonSerializer.Serialize(new { detail = unloadDetail }), HttpStatusCode.Conflict),
                 "/v1/models/unload" when busyLeft-- > 0 => FakeEngine.Json(
                     """{"detail":"Model 'model-a' is busy"}""", HttpStatusCode.Conflict),
+                "/v1/models/unload" when body.Contains("\"slot\"") => FakeEngine.Json(
+                    """{"status":"unloaded","message":"Unloaded E.","model":{"id":"embed-a"},"slot":"embedding"}"""),
                 "/v1/models/unload" => FakeEngine.Json(
                     """{"status":"unloaded","message":"Unloaded A.","model":{"id":"model-a"}}"""),
+                "/v1/models/load" => FakeEngine.Json("""{"status":"loading","slot":"rerank"}"""),
                 "/v1/chat/context-budget" => FakeEngine.Json(budgetBody),
                 "/v1/events" => FakeEngine.Json(eventsBody),
                 "/v1/system/telemetry" => FakeEngine.Json(telemetryBody),
@@ -127,6 +150,16 @@ internal static class ChatParityContractTests
         Check(unloads() == 5, "an unload for a model the engine does not report as loaded was sent");
         await RejectsAsync<UnauthorizedAccessException>(() => client.UnloadModelAsync(
             loaded, null, CancellationToken.None));
+
+        // --- Per-slot unload: POST /v1/models/unload {"slot": role} ---
+        string slotMessage = await client.UnloadSlotAsync("embedding", key, CancellationToken.None);
+        Check(slotMessage.StartsWith("Embeddings model unloaded"), "slot unload message changed");
+        using (var sent = JsonDocument.Parse(engine.Calls.Last().Body))
+            Check(sent.RootElement.GetProperty("slot").GetString() == "embedding"
+                && sent.RootElement.EnumerateObject().Count() == 1, "slot unload body was not just the slot");
+        int beforeBadSlot = unloads();
+        await RejectsAsync<ArgumentException>(() => client.UnloadSlotAsync("vision", key, CancellationToken.None));
+        Check(unloads() == beforeBadSlot, "an unknown slot was sent to the engine");
 
         // --- Context budget: POST /v1/chat/context-budget ---
         var turns = new List<ChatTurn> { new("user", "hello") };

@@ -87,6 +87,8 @@ def backend_supports_vision(backend: str | None) -> bool:
 
 def capabilities_for_backend(backend: str | None) -> tuple[str, ...]:
     value = str(backend or "").lower()
+    if "rerank" in value:
+        return ("rerank",)
     if "embedding" in value:
         return ("embeddings",)
     if backend_supports_vision(value):
