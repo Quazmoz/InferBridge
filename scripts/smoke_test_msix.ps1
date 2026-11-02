@@ -287,17 +287,23 @@ try {
     }
     throw
 } finally {
+    $PackageCleanupFailure = $null
     if ($Installed) {
-        # WACK can register the package again. Only this test's family/version
-        # is eligible for cleanup, and preflight rejected existing installs.
-        $Residual = @(Get-AppxPackage -Name $IdentityName -ErrorAction SilentlyContinue |
-            Where-Object { $_.PackageFullName -eq $Installed.PackageFullName })
-        foreach ($Copy in $Residual) {
-            Get-PackageProcesses "InferBridge.Native" $Copy.InstallLocation |
-                Stop-Process -Force -ErrorAction SilentlyContinue
-            Get-PackageProcesses "InferBridge" $Copy.InstallLocation |
-                Stop-Process -Force -ErrorAction SilentlyContinue
-            Remove-AppxPackage -Package $Copy.PackageFullName -ErrorAction Stop
+        try {
+            # WACK can register the package again. Only this test's family/version
+            # is eligible for cleanup, and preflight rejected existing installs.
+            $Residual = @(Get-AppxPackage -Name $IdentityName -ErrorAction Stop |
+                Where-Object { $_.PackageFullName -eq $Installed.PackageFullName })
+            foreach ($Copy in $Residual) {
+                Get-PackageProcesses "InferBridge.Native" $Copy.InstallLocation |
+                    Stop-Process -Force -ErrorAction SilentlyContinue
+                Get-PackageProcesses "InferBridge" $Copy.InstallLocation |
+                    Stop-Process -Force -ErrorAction SilentlyContinue
+                Remove-AppxPackage -Package $Copy.PackageFullName -ErrorAction Stop
+            }
+        } catch {
+            $PackageCleanupFailure = "Could not remove the test MSIX from this user: $($_.Exception.Message)"
+            Write-Warning $PackageCleanupFailure
         }
     }
     if ($Trusted) { Remove-Item $Trusted.PSPath -ErrorAction SilentlyContinue }
@@ -308,4 +314,6 @@ try {
         Write-Warning "Could not remove temporary signed MSIX artifacts from $($Work): $($_.Exception.Message)"
     }
     Write-Host "Evidence: $EvidenceDirectory"
+    # The smoke test must not report success when its own package remains.
+    if ($PackageCleanupFailure) { throw $PackageCleanupFailure }
 }
