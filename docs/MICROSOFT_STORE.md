@@ -82,8 +82,11 @@ version and registered Partner Center identity):
 ```
 
 The sideload smoke test requires an elevated Windows PowerShell 5.1 session
-in an interactive desktop session with InferBridge closed. Run it from a
-**dedicated Windows test account**, not an account with an installed Store copy;
+in an interactive desktop session with InferBridge closed. Use a **dedicated
+Windows test account with administrator rights**, and elevate within that same
+account: elevating with a different administrator's credentials tests that
+administrator's per-user MSIX registration instead. Do not run from an account
+with an installed Store copy;
 it refuses existing same-identity packages and never deletes model data.
 It uses a temporary test certificate and removes the test package and
 certificate afterward. A signed smoke-test copy must **not** be submitted;
