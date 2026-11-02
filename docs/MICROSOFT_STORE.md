@@ -88,9 +88,12 @@ account: elevating with a different administrator's credentials tests that
 administrator's per-user MSIX registration instead. Do not run from an account
 with an installed Store copy;
 it refuses existing same-identity packages and never deletes model data.
-It uses a temporary test certificate and removes the test package and
-certificate afterward. A signed smoke-test copy must **not** be submitted;
-the Store submission must stay unsigned.
+It uses a temporary test certificate and removes the test package,
+certificate, and temporary signed MSIX afterward. Diagnostic screenshots,
+activation events, and WACK reports are retained in the chosen evidence
+directory (by default a unique `artifacts/msix-smoke-*` folder).
+A signed smoke-test copy must **not** be submitted; the Store submission
+must stay unsigned.
 No GitHub Actions workflow builds a releasable package. On `dev`, the Windows
 source qualification workflow packs a *structural* MSIX from the real WinUI
 publish and a placeholder engine with the Windows SDK's MakePri and MakeAppx,
