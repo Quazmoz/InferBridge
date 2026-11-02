@@ -46,7 +46,7 @@ the requested OpenVINO runtime/device. See [Context budget](CONTEXT_BUDGET.md).
 
 Returns an OpenAI-style model list. InferBridge includes local lifecycle status as an additional field.
 
-Exact model IDs are strict across Chat Completions, Responses, and embeddings. An unknown exact ID returns `404`; InferBridge never silently substitutes the configured default or another loaded engine. The documented `model=auto` and `model=auto:<profile>` advisor selectors remain explicit exceptions that intentionally choose among compatible loaded generation models.
+Exact model IDs are strict across Chat Completions, Responses, embeddings and rerank. An unknown exact ID returns `404`; InferBridge never silently substitutes the configured default or another loaded engine. The documented `model=auto` and `model=auto:<profile>` advisor selectors remain explicit exceptions that intentionally choose among compatible loaded generation models.
 
 ### Resident model slots (local extension)
 
@@ -181,6 +181,21 @@ Supported fields and limits:
 - `user` is accepted for client compatibility
 
 The selected model must use the `openvino-embeddings` backend. Text-generation models are rejected, and embedding models are rejected by generation routes.
+
+### `POST /v1/rerank`
+
+Cohere/Jina-compatible document reranking on the resident reranker (backend `openvino-rerank`, OpenVINO GenAI `TextRerankPipeline`). `/rerank` and `/v2/rerank` are aliases with the same authentication and limits.
+
+Request fields and limits:
+
+- `query` (required): 1–32,000 characters, not blank.
+- `documents` (required): 1–512 items, each a string or `{"text": "..."}`; empty documents are rejected; at most 100,000 characters per document and 2,000,000 combined.
+- `model` (optional): exact reranker model ID. When omitted the model in the `rerank` slot is used; no resident reranker returns `503`.
+- `top_n` (optional, ≥ 1): return only the best *n* results.
+- `return_documents` (default `true`): include `document.text` in each result.
+- `user` is accepted for client compatibility.
+
+Response: `{"id", "object": "rerank", "model", "results": [{"index", "relevance_score", "document"?}], "usage": {"prompt_tokens", "total_tokens"}}`. Results are sorted by `relevance_score` descending (ties by original index); `index` refers to the request's `documents`. For single-logit cross-encoders the score is the sigmoid of the logit (0–1), comparable within one model and query only. Usage counts are estimates. A non-reranker model returns `400` and is equally rejected by generation and embedding routes; an unknown model returns `404`; native scoring failures return a generic `500`. Each query/document pair is truncated to the model's `max_context_len`. See [Reranking](RERANK.md).
 
 ## Local management routes
 

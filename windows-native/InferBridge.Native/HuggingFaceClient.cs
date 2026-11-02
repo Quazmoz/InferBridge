@@ -177,7 +177,7 @@ internal sealed partial class BackendClient
                 throw new JsonException("Invalid local model ID suggestion.");
             string backend = ReadString(entry, "backend");
             if (backend is not ("openvino-genai" or "openvino-embeddings"
-                or "openvino-vlm"))
+                or "openvino-vlm" or "openvino-rerank"))
                 throw new JsonException("Unexpected model backend.");
             string kind = SafeHubLabel(ReadString(entry, "pipeline_tag"), 80);
             static long Count(JsonElement row, string field)
@@ -214,14 +214,14 @@ internal sealed partial class BackendClient
             || selection.SourceModel.Length > 240
             || !HuggingFaceId.IsMatch(selection.SourceModel)
             || selection.Backend is not ("openvino-genai" or "openvino-embeddings"
-                or "openvino-vlm")
+                or "openvino-vlm" or "openvino-rerank")
             || selection.WeightFormat is not ("int4" or "int8" or "fp16")
             || selection.Device is not ("CPU" or "GPU" or "NPU" or "AUTO")
             || !selection.HasValidQuantization
             || selection.Description is { } description
                 && (description.Length > 500 || description.Any(char.IsControl))
             || selection.ContextTokens is < 128 or > 262144
-            || (selection.Backend == "openvino-embeddings"
+            || (selection.Backend is "openvino-embeddings" or "openvino-rerank"
                 ? selection.OutputTokens != 0
                 : selection.OutputTokens < 1
                     || selection.OutputTokens >= selection.ContextTokens))

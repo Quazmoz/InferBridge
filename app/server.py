@@ -41,6 +41,7 @@ from app import (
     model_manager,
     model_slots,
     multimodal,
+    rerank_api,
     responses_api,
     tools,
 )
@@ -1002,8 +1003,12 @@ def create_app(settings: Settings) -> FastAPI:
             raw_pipeline_tag = str(item.get("pipeline_tag") or "").lower()
             pipeline_tag = re.sub(r"[^a-z0-9_.-]", "-", raw_pipeline_tag)[:80].strip(".-")
             is_embedding = pipeline_tag in ("sentence-similarity", "feature-extraction")
+            # Cross-encoder rerankers are published as text-classification models.
+            is_rerank = pipeline_tag == "text-classification" and "rerank" in safe_id
             is_vision = task == "image-text-to-text" or pipeline_tag == "image-text-to-text"
-            if is_embedding:
+            if is_rerank:
+                backend = "openvino-rerank"
+            elif is_embedding:
                 backend = "openvino-embeddings"
             elif is_vision:
                 backend = "openvino-vlm"
@@ -1611,6 +1616,16 @@ def create_app(settings: Settings) -> FastAPI:
         params_for=_params_for,
         record_key_metrics=record_key_metrics,
         request_id_var=request_id_var,
+    )
+
+    # --- Rerank -------------------------------------------------------------
+
+    rerank_api.install_rerank_api(
+        app,
+        manager=manager,
+        dependencies=auth,
+        resolve_engine=lambda model_id: _resolve_or_400(manager, model_id),
+        record_key_metrics=record_key_metrics,
     )
 
     return app

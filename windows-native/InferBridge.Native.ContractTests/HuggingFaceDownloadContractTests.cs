@@ -120,6 +120,11 @@ internal static class HuggingFaceDownloadContractTests
                 client.QueueHuggingFaceModelAsync(
                     requested with { Backend = "openvino-embeddings" },
                     ApiKey, CancellationToken.None));
+            // Rerankers, like embeddings, must not ask for generated tokens.
+            await ExpectAsync<ArgumentException>(() =>
+                client.QueueHuggingFaceModelAsync(
+                    requested with { Backend = "openvino-rerank" },
+                    ApiKey, CancellationToken.None));
         }
         // Web-parity INT4 tuning, AUTO target and description are forwarded verbatim.
         var tuned = requested with

@@ -90,7 +90,7 @@ internal static class HuggingFaceContractTests
                 Assert(request.Method == HttpMethod.Get, "model search mutated state");
                 Assert(request.RequestUri.Query.Contains("query=Smol%20Model", StringComparison.Ordinal),
                     "model query not URL encoded");
-                return Json("""[{"id":"org/Smol-Model","suggested_local_id":"org-smol-model","backend":"openvino-genai","pipeline_tag":"text-generation","downloads":100,"likes":11}]""");
+                return Json("""[{"id":"org/Smol-Model","suggested_local_id":"org-smol-model","backend":"openvino-genai","pipeline_tag":"text-generation","downloads":100,"likes":11},{"id":"BAAI/bge-reranker-base","suggested_local_id":"baai-bge-reranker-base","backend":"openvino-rerank","pipeline_tag":"text-classification","downloads":5,"likes":1}]""");
             }
             return Common(request);
         });
@@ -108,7 +108,7 @@ internal static class HuggingFaceContractTests
                 .State == "connected", "account save response");
             var results = await client.SearchHuggingFaceAsync(
                 "Smol Model", "text-generation", ApiKey, CancellationToken.None);
-            Assert(results.Count == 1 && results[0].Downloads == 100
+            Assert(results.Count == 2 && results[1].Backend == "openvino-rerank" && results[0].Downloads == 100
                 && results[0].ModelUrl == "https://huggingface.co/org/Smol-Model",
                 "candidate metadata or safe link");
             await RejectsAsync<ArgumentException>(() =>

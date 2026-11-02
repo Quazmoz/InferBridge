@@ -29,7 +29,7 @@ internal sealed partial class BackendClient
     private static readonly Regex ModelIdPattern = new(@"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
         RegexOptions.CultureInvariant);
     private static readonly string[] LocalModelBackends =
-        { "openvino-genai", "openvino-vlm", "openvino-embeddings" };
+        { "openvino-genai", "openvino-vlm", "openvino-embeddings", "openvino-rerank" };
     private static readonly string[] LocalModelFormats = { "fp16", "int8", "int4" };
     private static readonly string[] LocalModelDevices = { "CPU", "GPU", "NPU", "AUTO" };
 
@@ -232,7 +232,8 @@ internal sealed partial class BackendClient
     {
         ValidateRegistration(registration);
         bool adopt = registration.DirectoryName is not null;
-        int output = registration.Backend == "openvino-embeddings"
+        // Embedding and reranker models score input only and never generate tokens.
+        int output = registration.Backend is "openvino-embeddings" or "openvino-rerank"
             ? 0 : Math.Min(512, registration.MaxContextTokens - 1);
         // Identical field set to the web import form; trust_remote_code is never sent.
         string body = adopt

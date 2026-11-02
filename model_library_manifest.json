@@ -339,7 +339,59 @@
         "maintainer_note": "Embedding-only model. It does not appear in chat-generation recommendations.",
         "certifications": {"CPU": [], "GPU": [], "NPU": []}
       }
+    },
+    "bge-reranker-base": {
+      "definition": {
+        "name": "BGE Reranker Base",
+        "description": "Compact cross-encoder reranker (about 278M parameters) for local RAG. Scores query/document pairs for POST /v1/rerank and loads into the reranker slot beside a chat model.",
+        "source_model": "BAAI/bge-reranker-base",
+        "backend": "openvino-rerank",
+        "weight_format": "fp16",
+        "recommended_device": "CPU",
+        "max_context_len": 512,
+        "max_output_tokens": 0,
+        "trust_remote_code": false
+      },
+      "metadata": {
+        "curated": true,
+        "profiles": ["lowest_memory"],
+        "minimum_ram_gb": 2,
+        "minimum_disk_gb": 2,
+        "license": "MIT",
+        "gated": false,
+        "quality_score": 72,
+        "speed_score": 85,
+        "max_tested_context": 0,
+        "maintainer_note": "Reranker-only model, not hardware-verified by InferBridge yet. Converted with the text-classification task; OpenVINO/bge-reranker-base-fp16-ov is an equivalent pre-converted import.",
+        "certifications": {"CPU": [], "GPU": [], "NPU": []}
+      }
+    },
+    "bge-reranker-v2-m3": {
+      "definition": {
+        "name": "BGE Reranker v2 M3",
+        "description": "Multilingual cross-encoder reranker (about 568M parameters) with higher relevance quality for POST /v1/rerank. Loads into the reranker slot beside a chat model.",
+        "source_model": "BAAI/bge-reranker-v2-m3",
+        "backend": "openvino-rerank",
+        "weight_format": "fp16",
+        "recommended_device": "CPU",
+        "max_context_len": 1024,
+        "max_output_tokens": 0,
+        "trust_remote_code": false
+      },
+      "metadata": {
+        "curated": true,
+        "profiles": ["best_quality"],
+        "minimum_ram_gb": 4,
+        "minimum_disk_gb": 4,
+        "license": "Apache-2.0",
+        "gated": false,
+        "quality_score": 82,
+        "speed_score": 65,
+        "max_tested_context": 0,
+        "maintainer_note": "Reranker-only model, not hardware-verified by InferBridge yet. Converted with the text-classification task.",
+        "certifications": {"CPU": [], "GPU": [], "NPU": []}
+      }
     }
   },
-  "catalog_sha256": "de7ceb211b5d6b15f236be6c298b5633ef53caa01d67902ec86711a341889460"
+  "catalog_sha256": "6457d6826469ccf23b5e8cae69593bbcd7226180ec8a488b1511bf0446ebd400"
 }

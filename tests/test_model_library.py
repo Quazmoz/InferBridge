@@ -188,7 +188,13 @@ def test_model_library_ui_is_composed_once():
 
 def test_bundled_manifest_and_release_wiring():
     manifest = parse_manifest_bytes((ROOT / "model_library_manifest.json").read_bytes())
-    assert len(manifest["catalog"]) == 10
+    assert len(manifest["catalog"]) == 12
+    rerankers = [
+        model_id
+        for model_id, entry in manifest["catalog"].items()
+        if entry["definition"]["backend"] == "openvino-rerank"
+    ]
+    assert rerankers == ["bge-reranker-base", "bge-reranker-v2-m3"]
     certified = [
         (model_id, device, record)
         for model_id, entry in manifest["catalog"].items()

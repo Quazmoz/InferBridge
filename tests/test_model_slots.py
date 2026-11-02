@@ -24,6 +24,10 @@ EMBED = "bge-small-en-v1.5"
 @pytest.fixture()
 def client(monkeypatch):
     monkeypatch.setattr(
+        "app.hardware_advisor.snapshot.memory_stats",
+        lambda: {"total_gb": 64.0, "available_gb": 48.0, "used_percent": 25.0},
+    )  # deterministic host RAM so slot memory checks never depend on the runner
+    monkeypatch.setattr(
         "app.huggingface_access.HuggingFaceAccessService.preflight",
         AsyncMock(return_value={"code": "hf_access_granted"}),
     )

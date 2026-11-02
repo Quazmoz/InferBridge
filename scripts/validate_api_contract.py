@@ -220,6 +220,8 @@ class Validator:
         require(self.args.model in ids, f"Missing model {self.args.model}")
         if self.args.include_embeddings:
             require(self.args.embedding_model in ids, "Embedding model is not cataloged")
+        if getattr(self.args, "include_rerank", False):
+            require(self.args.rerank_model in ids, "Reranker model is not cataloged")
         return f"catalog={len(ids)}"
 
     def load(self, model: str, device: str | None) -> str:
@@ -387,12 +389,52 @@ class Validator:
         require(size > 0, "Embedding vector is empty")
         return f"dimensions={size}"
 
+    def rerank(self) -> str | tuple[str, str]:
+        if not self.args.include_rerank:
+            return "skip", "Not requested"
+        self.load(self.args.rerank_model, "CPU")
+        documents = [
+            "The Eiffel Tower is in Berlin.",
+            {"text": "Paris is the capital of France."},
+            "Bananas are a good source of potassium.",
+        ]
+        data = self.client.json(
+            "POST",
+            "/v1/rerank",
+            {
+                "model": self.args.rerank_model,
+                "query": "What is the capital of France?",
+                "documents": documents,
+                "top_n": 2,
+                "return_documents": True,
+            },
+        )
+        results = data.get("results") or []
+        require(len(results) == 2, "top_n was not applied")
+        scores = [float(item.get("relevance_score")) for item in results]
+        require(scores == sorted(scores, reverse=True), "Results are not ordered by score")
+        require(all(isinstance(item.get("index"), int) for item in results), "Missing index")
+        require(
+            all(isinstance((item.get("document") or {}).get("text"), str) for item in results),
+            "return_documents did not echo document text",
+        )
+        require(int((data.get("usage") or {}).get("total_tokens") or 0) > 0, "Missing usage")
+        status, _, _ = self.client.request(
+            "POST", "/v1/rerank", {"model": self.args.rerank_model, "query": "q", "documents": []}
+        )
+        require(status == 422, f"Empty documents returned HTTP {status}")
+        if self.args.expect_mock:
+            require(results[0]["index"] == 1, "Mock reranker ordered the relevant document last")
+        return f"top={results[0]['index']} score={scores[0]:.3f}"
+
     def slots(self) -> str | tuple[str, str]:
         if not self.args.exercise_slots:
             return "skip", "Not requested"
         expected = {"chat": self.args.model}
         if self.args.include_embeddings:
             expected["embedding"] = self.args.embedding_model
+        if self.args.include_rerank:
+            expected["rerank"] = self.args.rerank_model
         data = self.client.json("GET", "/v1/models/slots")
         resident = {row.get("role"): row.get("model") for row in data.get("slots") or []}
         for role, model in expected.items():
@@ -473,6 +515,7 @@ class Validator:
         if self.args.profile in {"n8n", "full"}:
             self.check("n8n Responses API", self.responses)
         self.check("Embeddings", self.embeddings)
+        self.check("Rerank", self.rerank)
         self.check("Resident model slots", self.slots)
         self.check("Benchmark", self.benchmark)
         self.check("Model lifecycle", self.lifecycle)
@@ -486,6 +529,7 @@ class Validator:
             "profile": self.args.profile,
             "model": self.args.model,
             "embedding_model": self.args.embedding_model if self.args.include_embeddings else None,
+            "rerank_model": self.args.rerank_model if self.args.include_rerank else None,
             "requested_device": self.args.device,
             "server": self.server,
             "summary": summary,
@@ -529,6 +573,7 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--profile", choices=("core", "openwebui", "n8n", "full"), default="full")
     result.add_argument("--model", default="tinyllama-1.1b-chat-fp16")
     result.add_argument("--embedding-model", default="bge-small-en-v1.5")
+    result.add_argument("--rerank-model", default="bge-reranker-base")
     result.add_argument("--device")
     result.add_argument("--api-key", default=os.getenv("OV_LLM_API_KEY") or None)
     result.add_argument("--timeout", type=float, default=120)
@@ -538,6 +583,7 @@ def parser() -> argparse.ArgumentParser:
     mode.add_argument("--expect-real", action="store_true")
     mode.add_argument("--expect-mock", action="store_true")
     result.add_argument("--include-embeddings", action="store_true")
+    result.add_argument("--include-rerank", action="store_true")
     result.add_argument("--exercise-slots", action="store_true")
     result.add_argument("--run-benchmark", action="store_true")
     result.add_argument("--exercise-lifecycle", action="store_true")

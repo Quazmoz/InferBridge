@@ -123,7 +123,7 @@ VISION_EXTENSION_JS = r"""
         if (customBackend.value === 'openvino-vlm' && customRecommendedDevice?.value === 'NPU') {
             customRecommendedDevice.value = 'GPU';
         }
-        if (customBackend.value === 'openvino-embeddings') {
+        if (customBackend.value === 'openvino-embeddings' || customBackend.value === 'openvino-rerank') {
             if (customMaxContextLen) customMaxContextLen.value = '512';
             if (customMaxOutputTokens) customMaxOutputTokens.value = '0';
         } else if (customMaxOutputTokens?.value === '0') {

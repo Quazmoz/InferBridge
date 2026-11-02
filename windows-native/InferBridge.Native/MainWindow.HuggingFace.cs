@@ -342,9 +342,10 @@ public sealed partial class MainWindow
             };
             foreach (string weight in new[] { "int4", "int8", "fp16" })
                 format.Items.Add(new ComboBoxItem { Content = weight, Tag = weight });
-            format.SelectedIndex = model.Backend == "openvino-embeddings" ? 1 : 0;
+            // Embedding and reranker models score input only: FP16-leaning, no output budget.
+            bool embeddings = model.Backend is "openvino-embeddings" or "openvino-rerank";
+            format.SelectedIndex = embeddings ? 1 : 0;
 
-            bool embeddings = model.Backend == "openvino-embeddings";
             var context = new NumberBox
             {
                 Header = "Max context length (128–262,144 tokens)",
@@ -355,7 +356,7 @@ public sealed partial class MainWindow
             };
             var output = new NumberBox
             {
-                Header = embeddings ? "Max output tokens (embeddings use 0)" : "Max output tokens",
+                Header = embeddings ? "Max output tokens (embedding and reranker models use 0)" : "Max output tokens",
                 Value = embeddings ? 0 : 512, Minimum = embeddings ? 0 : 1, Maximum = 65536,
                 SmallChange = 64, IsEnabled = !embeddings,
                 SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact,
@@ -399,7 +400,7 @@ public sealed partial class MainWindow
             var loadAfter = new CheckBox
             {
                 Content = "Load automatically after preparation",
-                IsChecked = model.Backend != "openvino-embeddings",
+                IsChecked = !embeddings,
             };
             var layout = new StackPanel { Spacing = 12 };
             layout.Children.Add(new TextBlock

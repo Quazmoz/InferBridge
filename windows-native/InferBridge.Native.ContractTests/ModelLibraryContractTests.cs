@@ -172,6 +172,12 @@ internal static class ModelLibraryContractTests
                 && !body.TryGetProperty("directory_name", out _),
                 "converted import body differs from the web import-converted form");
         }
+        // A reranker import is accepted and, like embeddings, asks for no output tokens.
+        await client.RegisterLocalModelAsync(copy with { Backend = "openvino-rerank" }, key, CancellationToken.None);
+        using (var sent = JsonDocument.Parse(engine.Calls.Last().Body))
+            Check(sent.RootElement.GetProperty("backend").GetString() == "openvino-rerank"
+                && sent.RootElement.GetProperty("max_output_tokens").GetInt32() == 0,
+                "reranker import must send the openvino-rerank backend with zero output tokens");
         int registrations = Posts("/v1/model-library/adopt-managed") + Posts("/v1/model-library/import-converted");
         foreach (var invalid in new[]
         {

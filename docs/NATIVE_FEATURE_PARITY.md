@@ -44,6 +44,7 @@ passed Windows hardware certification.
 | App settings and startup | Partial native | native Settings, `app/startup_registration.py`: local runtime/UX controls; web controls some advanced preferences |
 | Onboarding wizard | Partial native | The browser has a step-by-step first-run wizard (`app/onboarding_ui.py`, Restart Onboarding). Native has no wizard; it covers the same ground with the engine onboarding recommendation and the **Best model for this PC** card on the Engine & devices page |
 | Hugging Face gated-model access | Partial native | Native stores and verifies the token and shows the publisher-license notice before a download (`MainWindow.HuggingFace.cs`); the browser's dedicated gated-access preflight dialog (`app/huggingface_access_ui.py`) has no native equivalent |
+| Reranker models and `POST /v1/rerank` | Web test panel; native for models only | Engine `app/rerank_api.py`, `runtime/openvino_engine.py` (`OpenVINORerankEngine`). Both sides can import (**Reranker** backend in the Model Library import form and native **Import / export**; Hugging Face search suggests it for `text-classification` reranker repos), download, load (**Load as reranker**) and unload rerankers in their own slot. The browser Connection Hub adds **Rerank for RAG** (curl snippet for the loaded reranker plus a query/documents → scored results form). Native has no rerank test panel yet (use the browser or curl). Guide: `docs/RERANK.md`. Not yet exercised on Windows hardware |
 | Embedding models | Native and web for models; no playground on either side | Both sides can download, convert, register and load embedding models (`openvino-embeddings`); the engine serves `/v1/embeddings`. Neither the browser nor native has an embedding playground or test UI |
 
 ### Remaining intentional gaps
@@ -52,6 +53,7 @@ passed Windows hardware certification.
 - Left out of native on purpose: per-message timestamps and per-message stats (native keeps the last-reply stats strip), queue-a-message-while-loading (native Send stays disabled while a model operation runs), and a jump-to-latest button.
 - Partial native: the onboarding wizard and the Hugging Face gated-access dialog (see rows above).
 - Neither side: full CommonMark, an embedding playground, automatic native↔browser conversation and preference sync.
+- Web-only for now: the rerank test form in the Connection Hub (native can load rerankers but has no test panel).
 
 ## Windows launch qualification inventory
 

@@ -74,7 +74,11 @@ class _TestClientAdapter:
         return _json.loads(body.decode())
 
 
-def test_mock_contract_exercises_resident_slots(monkeypatch):
+def test_mock_contract_exercises_rerank_and_resident_slots(monkeypatch):
+    monkeypatch.setattr(
+        "app.hardware_advisor.snapshot.memory_stats",
+        lambda: {"total_gb": 64.0, "available_gb": 48.0, "used_percent": 25.0},
+    )  # deterministic host RAM so slot memory checks never depend on the runner
     from unittest.mock import AsyncMock
 
     from fastapi.testclient import TestClient
@@ -103,6 +107,7 @@ def test_mock_contract_exercises_resident_slots(monkeypatch):
             "CPU",
             "--expect-mock",
             "--include-embeddings",
+            "--include-rerank",
             "--exercise-slots",
             "--exercise-lifecycle",
             "--load-timeout",
@@ -115,5 +120,6 @@ def test_mock_contract_exercises_resident_slots(monkeypatch):
         report = validator.run()
     checks = {check["name"]: check for check in report["checks"]}
     assert report["summary"]["fail"] == 0, report["checks"]
+    assert checks["Rerank"]["status"] == "pass"
     assert checks["Resident model slots"]["status"] == "pass"
-    assert "embedding=bge-small-en-v1.5" in checks["Resident model slots"]["detail"]
+    assert "rerank=bge-reranker-base" in checks["Resident model slots"]["detail"]

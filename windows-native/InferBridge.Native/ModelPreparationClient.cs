@@ -69,7 +69,7 @@ internal sealed partial class BackendClient
         }
         return new ModelLibraryDetails(
             Allowed(ReadString(item, "backend"),
-                ["openvino-genai", "openvino-embeddings", "openvino-vlm"]),
+                ["openvino-genai", "openvino-embeddings", "openvino-vlm", "openvino-rerank"]),
             Allowed(ReadString(item, "weight_format"), ["int4", "int8", "fp16"]),
             source, Device(ReadString(item, "recommended_device")),
             Device(ReadString(item, "device")),

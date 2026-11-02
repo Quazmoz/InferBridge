@@ -10,7 +10,7 @@ _EXTENSION_ID = "ovllm-connection-hub-extension"
 CONNECTION_HUB_CSS = r"""
 #connection-hub-entry{padding:12px;border:1px solid var(--border);border-radius:11px;background:color-mix(in srgb,var(--surface-2) 72%,transparent)}
 #connection-hub-entry h4{margin:0 0 5px;color:var(--text-1);font-size:11px}.ch-entry-copy{margin:0 0 9px;color:var(--text-3);font-size:10.5px;line-height:1.45}.ch-open-btn,.ch-btn{min-height:36px;padding:7px 11px;border:1px solid var(--border);border-radius:9px;background:var(--surface-2);color:var(--text-1);font:inherit;font-size:10px;font-weight:700;cursor:pointer}.ch-open-btn{width:100%}.ch-open-btn:hover,.ch-btn:hover:not(:disabled){border-color:var(--primary);background:var(--surface-3)}.ch-open-btn:focus-visible,.ch-btn:focus-visible,.ch-select:focus-visible,.ch-copy:focus-visible,.ch-details summary:focus-visible,.ch-lan summary:focus-visible{outline:2px solid var(--primary);outline-offset:2px}.ch-btn.primary{border-color:transparent;background:var(--primary);color:white}.ch-btn:disabled{opacity:.5;cursor:not-allowed}
-#connection-hub-modal .modal-card{width:min(900px,calc(100vw - 24px));max-height:min(880px,calc(100dvh - 24px));overflow:hidden}.ch-head p{margin-top:3px;color:var(--text-3);font-size:10px;text-transform:none;letter-spacing:0}.ch-body{min-height:0;overflow:auto;padding:16px 18px 20px;overscroll-behavior:contain}.ch-section{padding:13px;border:1px solid var(--border);border-radius:11px;background:color-mix(in srgb,var(--surface-2) 72%,transparent)}.ch-section+.ch-section{margin-top:10px}.ch-section h4{margin:0 0 9px;color:var(--text-1);font-size:11px}.ch-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.ch-field{min-width:0;padding:9px 10px;border:1px solid var(--border);border-radius:9px;background:var(--surface-1)}.ch-field-label{display:block;color:var(--text-3);font-size:8px;text-transform:uppercase;letter-spacing:.45px}.ch-field-row{display:flex;align-items:center;gap:7px;margin-top:4px}.ch-field-value{min-width:0;flex:1;color:var(--text-1);font-size:10px;line-height:1.4;overflow-wrap:anywhere}.ch-mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.ch-copy{flex:0 0 auto;min-width:31px;min-height:31px;padding:5px 7px;border:1px solid var(--border);border-radius:7px;background:var(--surface-2);color:var(--text-2);font:inherit;font-size:9px;cursor:pointer}.ch-copy:hover{border-color:var(--primary);color:var(--text-1)}.ch-model-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px;align-items:center;margin-top:8px}.ch-select{min-width:0;width:100%;min-height:36px;padding:7px 9px;border:1px solid var(--border);border-radius:9px;background:var(--surface-1);color:var(--text-1);font:inherit;font-size:10px}.ch-hint{margin-top:7px;color:var(--text-3);font-size:9px;line-height:1.45}.ch-runtime.unavailable{color:var(--amber)}
+#connection-hub-modal .modal-card{width:min(900px,calc(100vw - 24px));max-height:min(880px,calc(100dvh - 24px));overflow:hidden}.ch-head p{margin-top:3px;color:var(--text-3);font-size:10px;text-transform:none;letter-spacing:0}.ch-body{min-height:0;overflow:auto;padding:16px 18px 20px;overscroll-behavior:contain}.ch-section{padding:13px;border:1px solid var(--border);border-radius:11px;background:color-mix(in srgb,var(--surface-2) 72%,transparent)}.ch-section+.ch-section{margin-top:10px}.ch-section h4{margin:0 0 9px;color:var(--text-1);font-size:11px}.ch-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.ch-field{min-width:0;padding:9px 10px;border:1px solid var(--border);border-radius:9px;background:var(--surface-1)}.ch-field-label{display:block;color:var(--text-3);font-size:8px;text-transform:uppercase;letter-spacing:.45px}.ch-field-row{display:flex;align-items:center;gap:7px;margin-top:4px}.ch-field-value{min-width:0;flex:1;color:var(--text-1);font-size:10px;line-height:1.4;overflow-wrap:anywhere}.ch-mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.ch-copy{flex:0 0 auto;min-width:31px;min-height:31px;padding:5px 7px;border:1px solid var(--border);border-radius:7px;background:var(--surface-2);color:var(--text-2);font:inherit;font-size:9px;cursor:pointer}.ch-copy:hover{border-color:var(--primary);color:var(--text-1)}.ch-model-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px;align-items:center;margin-top:8px}.ch-select{min-width:0;width:100%;min-height:36px;padding:7px 9px;border:1px solid var(--border);border-radius:9px;background:var(--surface-1);color:var(--text-1);font:inherit;font-size:10px}.ch-hint{margin-top:7px;color:var(--text-3);font-size:9px;line-height:1.45}.ch-rerank-form{display:grid;gap:5px;margin-top:8px}.ch-rerank-docs{resize:vertical;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.ch-rerank-results{margin:8px 0 0;padding-left:18px;color:var(--text-1);font-size:10px;line-height:1.5;overflow-wrap:anywhere}.ch-runtime.unavailable{color:var(--amber)}
 .ch-details{border:1px solid var(--border);border-radius:9px;background:var(--surface-1)}.ch-details+.ch-details{margin-top:7px}.ch-details summary{padding:9px 10px;color:var(--text-2);font-size:10px;font-weight:700;cursor:pointer;user-select:none}.ch-details[open] summary{border-bottom:1px solid var(--border);color:var(--text-1)}.ch-code-wrap{position:relative;padding:10px}.ch-code{margin:0;padding:10px 44px 10px 10px;overflow:auto;border-radius:8px;background:var(--code-bg);color:var(--code-text);font:10px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre}.ch-code-wrap>.ch-copy{position:absolute;top:17px;right:17px}.ch-config{display:grid;gap:6px}.ch-config-row{display:grid;grid-template-columns:120px minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px 9px;border:1px solid var(--border);border-radius:8px;background:var(--surface-1)}.ch-config-row>span:first-child{color:var(--text-3);font-size:9px}.ch-config-value{min-width:0;overflow-wrap:anywhere;color:var(--text-1);font:9.5px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace}
 .ch-test-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px}.ch-test-head h4{margin:0}.ch-tests{display:grid;gap:6px}.ch-test-row{display:grid;grid-template-columns:minmax(145px,.8fr) 92px 74px minmax(0,1.6fr);gap:8px;align-items:center;padding:9px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface-1)}.ch-test-name{color:var(--text-1);font-size:9.5px;font-weight:700}.ch-test-status{font-size:9px;font-weight:750}.ch-test-status.passed{color:var(--green)}.ch-test-status.failed{color:var(--red)}.ch-test-status.running{color:var(--primary)}.ch-test-status.skipped{color:var(--amber)}.ch-test-duration{color:var(--text-3);font-size:8.5px;font-variant-numeric:tabular-nums}.ch-test-detail{color:var(--text-2);font-size:9px;line-height:1.4;overflow-wrap:anywhere}.ch-message{min-height:18px;margin-top:8px;color:var(--text-2);font-size:9.5px;line-height:1.4}.ch-message.error{color:var(--red)}
 .ch-lan{margin-top:10px}.ch-lan summary{color:var(--text-2);font-size:10px;font-weight:700;cursor:pointer}.ch-lan-body{margin-top:8px;padding:10px;border:1px solid var(--border);border-radius:9px;background:var(--surface-1)}.ch-lan-title{font-size:10px;font-weight:750;color:var(--text-1)}.ch-lan-detail{margin-top:5px;color:var(--text-2);font-size:9px;line-height:1.5}.ch-lan-body.warn{border-color:color-mix(in srgb,var(--amber) 42%,var(--border))}.ch-lan-body.warn .ch-lan-title{color:var(--amber)}
@@ -214,6 +214,23 @@ modal.innerHTML = `
       <div class="ch-tools" id="ch-tools" role="list" aria-label="Tool setup cards"></div>
     </section>
 
+    <section class="ch-section" aria-labelledby="ch-rerank-heading">
+      <h4 id="ch-rerank-heading">Rerank for RAG</h4>
+      <p class="ch-hint" id="ch-rerank-hint">POST /v1/rerank (Cohere/Jina compatible) scores documents against a query with the loaded reranker. Use it as the external reranker in Open WebUI, LlamaIndex or Dify.</p>
+      <details class="ch-details"><summary>curl</summary><div class="ch-code-wrap"><pre class="ch-code" id="ch-rerank-curl"></pre><button type="button" class="ch-copy" data-copy-target="rerank" aria-label="Copy rerank curl example">Copy</button></div></details>
+      <div class="ch-rerank-form">
+        <label class="ch-field-label" for="ch-rerank-query">Query</label>
+        <input class="ch-select" id="ch-rerank-query" type="text" maxlength="2000" value="What is the capital of France?">
+        <label class="ch-field-label" for="ch-rerank-docs">Documents (one per line)</label>
+        <textarea class="ch-select ch-rerank-docs" id="ch-rerank-docs" rows="4" maxlength="20000">The Eiffel Tower is in Paris.
+Paris is the capital of France.
+Bananas are a good source of potassium.</textarea>
+        <div class="ch-test-head"><span></span><button type="button" class="ch-btn" id="ch-rerank-run">Score documents</button></div>
+      </div>
+      <ol class="ch-rerank-results" id="ch-rerank-results" aria-label="Documents ordered by relevance"></ol>
+      <div class="ch-message" id="ch-rerank-message" role="status" aria-live="polite"></div>
+    </section>
+
     <section class="ch-section" aria-labelledby="ch-test-heading">
       <div class="ch-test-head"><h4 id="ch-test-heading">Connection self-test</h4><button type="button" class="ch-btn primary" id="ch-run-test">Run connection self-test</button></div>
       <div class="ch-tests" id="ch-tests"></div>
@@ -307,7 +324,54 @@ function curlSnippet() {
     const auth = metadata?.authentication?.required ? ' -H "Authorization: Bearer YOUR_INFERBRIDGE_API_KEY"' : '';
     return `curl.exe "${base}/models"${auth}`;
 }
+let rerankModel = '';
+function rerankSnippet() {
+    const base = metadata?.base_url || 'http://127.0.0.1:8000/v1';
+    const auth = metadata?.authentication?.required ? ' -H "Authorization: Bearer YOUR_INFERBRIDGE_API_KEY"' : '';
+    const body = JSON.stringify({model: rerankModel || 'bge-reranker-base', query: 'What is the capital of France?', documents: ['Paris is the capital of France.', 'Bananas are yellow.'], top_n: 2});
+    return `curl.exe "${base}/rerank" -H "Content-Type: application/json"${auth} -d '${body}'`;
+}
+async function loadRerankSlot() {
+    try {
+        const response = await fetch('/v1/models/slots', {headers: uiHeaders(false, true)});
+        const body = response.ok ? await response.json() : null;
+        const slot = (body?.slots || []).find(row => row?.role === 'rerank');
+        rerankModel = typeof slot?.model === 'string' ? slot.model : '';
+    } catch { rerankModel = ''; }
+    $('#ch-rerank-hint').textContent = rerankModel
+        ? `POST /v1/rerank scores documents with the loaded reranker ${rerankModel}. Use it as the external reranker in Open WebUI, LlamaIndex or Dify.`
+        : 'No reranker is loaded. Load one from the Model Library ("Load as reranker"), then score documents here or point Open WebUI, LlamaIndex or Dify at POST /v1/rerank.';
+    $('#ch-rerank-curl').textContent = rerankSnippet();
+}
+let rerankRunning = false;
+async function runRerank() {
+    if (rerankRunning) return;
+    const query = String($('#ch-rerank-query').value || '').trim();
+    const documents = String($('#ch-rerank-docs').value || '').split('\n').map(line => line.trim()).filter(Boolean).slice(0, 50);
+    const status = $('#ch-rerank-message');
+    const list = $('#ch-rerank-results');
+    status.classList.remove('error');
+    if (!query || !documents.length) { status.textContent = 'Enter a query and at least one document.'; status.classList.add('error'); return; }
+    rerankRunning = true; $('#ch-rerank-run').disabled = true; status.textContent = 'Scoring documents...'; list.replaceChildren();
+    try {
+        const response = await fetch('/v1/rerank', {method: 'POST', headers: uiHeaders(true, true), body: JSON.stringify({model: rerankModel || null, query, documents, return_documents: true})});
+        let body = null; try { body = await response.json(); } catch {}
+        if (!response.ok) throw new Error(apiError(body, response.status));
+        for (const row of body?.results || []) {
+            const item = document.createElement('li');
+            const score = Number(row?.relevance_score);
+            item.textContent = `${Number.isFinite(score) ? score.toFixed(3) : '?'} · ${safeText(row?.document?.text ?? documents[row?.index] ?? '')}`;
+            list.appendChild(item);
+        }
+        status.textContent = `Scored ${documents.length} document${documents.length === 1 ? '' : 's'} with ${safeText(body?.model || 'the reranker')}. Scores are 0–1 relevance, highest first.`;
+    } catch (error) {
+        status.textContent = error instanceof Error ? error.message : 'Rerank failed.'; status.classList.add('error');
+    } finally {
+        rerankRunning = false; $('#ch-rerank-run').disabled = false;
+    }
+}
 function copyValue(kind) {
+    if (kind === 'rerank') return rerankSnippet();
     if (kind === 'base') return metadata?.base_url || '';
     if (kind === 'key') return metadata?.authentication?.api_key_placeholder || '';
     if (kind === 'model') return selectedModel;
@@ -425,6 +489,7 @@ async function loadMetadata(preserveMessage = false) {
     try {
         metadata = await api(META_PATH, {signal: activeController.signal});
         renderMetadata();
+        void loadRerankSlot();
     } catch (error) {
         if (error?.name === 'AbortError') return;
         metadata = null; selectedModel = ''; renderMetadata();
@@ -478,7 +543,8 @@ modal.addEventListener('click', event => {
     if (toolCopy) { const [value, label] = toolCopies[Number(toolCopy.dataset.toolCopy)] || ['', 'Value']; void copy(null, label, value); return; }
     if (event.target.closest('[data-tool-test]')) { void runSelfTest(); return; }
 });
-modal.addEventListener('click', event => { const button = event.target.closest('[data-copy-target]'); if (button) { const kind = button.dataset.copyTarget; const labels = {base:'Base URL',key:'API key placeholder',model:'Model ID',python:'Python example',curl:'curl example'}; void copy(kind, labels[kind] || 'Value'); return; } if (event.target === modal) closeHub(); });
+modal.addEventListener('click', event => { const button = event.target.closest('[data-copy-target]'); if (button) { const kind = button.dataset.copyTarget; const labels = {base:'Base URL',key:'API key placeholder',model:'Model ID',python:'Python example',curl:'curl example',rerank:'Rerank curl example'}; void copy(kind, labels[kind] || 'Value'); return; } if (event.target === modal) closeHub(); });
+$('#ch-rerank-run').addEventListener('click', () => { void runRerank(); });
 modal.addEventListener('keydown', event => {
     if (event.key === 'Escape') { event.preventDefault(); closeHub(); return; }
     if (event.key !== 'Tab') return;

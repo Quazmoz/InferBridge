@@ -48,6 +48,7 @@ try {
         "--device", "CPU",
         "--expect-mock",
         "--include-embeddings",
+        "--include-rerank",
         "--exercise-slots",
         "--run-benchmark",
         "--exercise-lifecycle",

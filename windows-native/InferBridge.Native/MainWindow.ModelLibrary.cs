@@ -166,7 +166,8 @@ public sealed partial class MainWindow
             return box;
         }
         var backend = Choice("Model type", ("Text generation", "openvino-genai"),
-            ("Vision language", "openvino-vlm"), ("Embeddings", "openvino-embeddings"));
+            ("Vision language", "openvino-vlm"), ("Embeddings", "openvino-embeddings"),
+            ("Reranker", "openvino-rerank"));
         var format = Choice("Weight format", ("FP16", "fp16"), ("INT8", "int8"), ("INT4", "int4"));
         var device = Choice("Recommended device", ("CPU", "CPU"), ("GPU", "GPU"), ("NPU", "NPU"), ("AUTO", "AUTO"));
         var context = new NumberBox

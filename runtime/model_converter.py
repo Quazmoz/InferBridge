@@ -505,7 +505,11 @@ def _resolve_from_catalog(
         return result
 
     backend = cfg.backend.lower()
-    if "embedding" in backend:
+    if "rerank" in backend:
+        # Cross-encoder rerankers export as sequence classifiers; OpenVINO GenAI's
+        # TextRerankPipeline applies the sigmoid/softmax scoring head itself.
+        task = "text-classification"
+    elif "embedding" in backend:
         task = "feature-extraction"
     elif "vlm" in backend or "vision" in backend:
         task = "image-text-to-text"

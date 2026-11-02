@@ -51,8 +51,8 @@ HF_SEARCH_EXTENSION_JS = r"""
     }
 
     function allowedBackend(value) {
-        return value === 'openvino-embeddings'
-            ? 'openvino-embeddings'
+        return value === 'openvino-embeddings' || value === 'openvino-rerank'
+            ? value
             : 'openvino-genai';
     }
 
