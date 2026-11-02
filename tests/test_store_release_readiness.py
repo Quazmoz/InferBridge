@@ -192,7 +192,6 @@ def test_msix_smoke_verifies_process_start_and_wack_cleanup():
     assert "Remove-AppxPackage -Package $Copy.PackageFullName -ErrorAction Stop" in cleanup
 
 
-
 def test_msix_smoke_cleans_temporary_signed_copy_but_retains_evidence():
     script = (ROOT / "scripts" / "smoke_test_msix.ps1").read_text(encoding="utf-8")
     assert "if (-not $EvidenceDirectory) {" in script
@@ -203,4 +202,4 @@ def test_msix_smoke_cleans_temporary_signed_copy_but_retains_evidence():
     )
     cleanup = script.rsplit("} finally {", 1)[-1]
     assert "Remove-Item -LiteralPath $Work -Recurse -Force" in cleanup
-    assert "Write-Host \"Evidence: $EvidenceDirectory\"" in cleanup
+    assert 'Write-Host "Evidence: $EvidenceDirectory"' in cleanup
