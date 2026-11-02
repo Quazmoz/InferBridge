@@ -25,12 +25,6 @@ $StoreDataRoot = Join-Path $env:USERPROFILE "InferBridgeStoreData"
 if ($RequireFreshProfile -and (Test-Path -LiteralPath $StoreDataRoot)) {
     throw "A fresh-profile Store test requires no existing InferBridgeStoreData. Use a new Windows test account; this test never deletes existing user data."
 }
-$Work = Join-Path ([IO.Path]::GetTempPath()) ("InferBridge-msix-smoke-" + [guid]::NewGuid().ToString("N"))
-New-Item $Work -ItemType Directory -Force | Out-Null
-if (-not $EvidenceDirectory) { $EvidenceDirectory = $Work }
-New-Item $EvidenceDirectory -ItemType Directory -Force | Out-Null
-$EvidenceDirectory = (Resolve-Path $EvidenceDirectory).Path  # appcert.exe needs absolute paths
-
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $Archive = [IO.Compression.ZipFile]::OpenRead($Package)
 try {
@@ -49,6 +43,16 @@ if (@(Get-AppxPackage -Name $IdentityName -ErrorAction Stop).Count -gt 0) {
     throw "InferBridge is already installed for this user. Use a dedicated Windows test account; the smoke test will not replace an existing package."
 }
 Write-Host "Package $IdentityName, entrypoint $Entrypoint"
+
+# Keep evidence for review, but delete the temporary signed package and test
+# certificate afterward. A multi-GB MSIX must not be left in the temp folder.
+$Work = Join-Path ([IO.Path]::GetTempPath()) ("InferBridge-msix-smoke-" + [guid]::NewGuid().ToString("N"))
+if (-not $EvidenceDirectory) {
+    $EvidenceDirectory = Join-Path (Get-Location).Path ("artifacts\msix-smoke-" + [guid]::NewGuid().ToString("N"))
+}
+New-Item $EvidenceDirectory -ItemType Directory -Force | Out-Null
+$EvidenceDirectory = (Resolve-Path $EvidenceDirectory).Path  # appcert.exe needs absolute paths
+New-Item $Work -ItemType Directory -Force | Out-Null
 
 # Activate through the package identity, exactly like a Start-menu launch, and
 # get the started process ID back without depending on Explorer.
@@ -298,5 +302,6 @@ try {
     }
     if ($Trusted) { Remove-Item $Trusted.PSPath -ErrorAction SilentlyContinue }
     if ($Certificate) { Remove-Item $Certificate.PSPath -ErrorAction SilentlyContinue }
+    Remove-Item -LiteralPath $Work -Recurse -Force -ErrorAction SilentlyContinue
     Write-Host "Evidence: $EvidenceDirectory"
 }
