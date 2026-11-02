@@ -302,6 +302,10 @@ try {
     }
     if ($Trusted) { Remove-Item $Trusted.PSPath -ErrorAction SilentlyContinue }
     if ($Certificate) { Remove-Item $Certificate.PSPath -ErrorAction SilentlyContinue }
-    Remove-Item -LiteralPath $Work -Recurse -Force -ErrorAction SilentlyContinue
+    try {
+        Remove-Item -LiteralPath $Work -Recurse -Force -ErrorAction Stop
+    } catch {
+        Write-Warning "Could not remove temporary signed MSIX artifacts from $($Work): $($_.Exception.Message)"
+    }
     Write-Host "Evidence: $EvidenceDirectory"
 }
