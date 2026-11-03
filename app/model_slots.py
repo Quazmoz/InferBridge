@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+from app import device_modes
 from app.model_roles import ROLE_CHAT, ROLE_LABELS, ROLES, role_for_backend
 
 _INSTALL_FLAG = "_MODEL_SLOTS_INSTALLED"
@@ -49,8 +50,18 @@ def _active(task: asyncio.Task | None) -> bool:
     return bool(task is not None and not task.done())
 
 
-def _uses_npu(device: object) -> bool:
-    return "NPU" in str(device or "").upper()
+def _uses_npu(device: object, engine: object = None) -> bool:
+    """Whether a load or resident engine can occupy the NPU.
+
+    Resolved through app.device_modes: plain AUTO never selects the NPU (OpenVINO
+    excludes it from AUTO's default list), every expression naming NPU may, and an
+    engine that reports its execution devices is judged by where it actually runs.
+    """
+
+    executed = getattr(engine, "execution_devices", None)
+    if executed and getattr(engine, "execution_devices_source", None) == "openvino":
+        return any("NPU" in str(item).upper() for item in executed)
+    return device_modes.may_use_npu(device)
 
 
 def _simulated(manager: Any) -> bool:
@@ -143,6 +154,7 @@ def slot_snapshot(manager: Any) -> list[dict[str, Any]]:
             "can_unload": False,
             "memory_estimate_gib": None,
             "loading_model": pending[0] if pending else None,
+            **device_modes.placement(None),
         }
         if model_id is not None:
             device = manager.devices.get(model_id) or getattr(
@@ -157,6 +169,7 @@ def slot_snapshot(manager: Any) -> list[dict[str, Any]]:
                 busy=busy,
                 can_unload=not busy and not switching,
                 memory_estimate_gib=_estimate_gib(manager, model_id, device),
+                **device_modes.placement(device, manager.engines.get(model_id)),
             )
         elif pending:
             row["status"] = "loading"
@@ -218,7 +231,9 @@ def memory_plan(manager: Any, model_id: str, device: str | None) -> dict[str, An
         # reports fit warnings on the model card before the user loads it).
         return plan
 
-    npu_peer = next((r for r in residents if _uses_npu(r["device"])), None)
+    npu_peer = next(
+        (r for r in residents if _uses_npu(r["device"], manager.engines.get(r["model"]))), None
+    )
     if _uses_npu(target) and npu_peer is not None:
         plan["verdict"] = "warning" if _simulated(manager) else "refuse"
         plan["npu_conflict"] = npu_peer["model"]

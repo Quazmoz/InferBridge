@@ -138,6 +138,7 @@ def build_plugin_config(
     max_response_len: int | None = None,
     backend: str = "openvino-genai",
     kv_cache_precision: str | None = None,
+    extra_properties: dict | None = None,
 ) -> dict[str, Any]:
     """Build a complete, backend-aware OpenVINO plugin configuration.
 
@@ -149,7 +150,8 @@ def build_plugin_config(
     backend_lower = str(backend or "").lower()
     # Rerankers, like embedding pipelines, never receive generation-only properties.
     is_embedding = "embedding" in backend_lower or "rerank" in backend_lower
-    config: dict[str, Any] = {}
+    # Combined-device hints resolved by app.device_modes (PERFORMANCE_HINT, ...).
+    config: dict[str, Any] = dict(extra_properties or {})
 
     if is_direct_npu(normalized) and not is_embedding and max_prompt_len:
         config["MAX_PROMPT_LEN"] = int(max_prompt_len)
@@ -232,6 +234,7 @@ def create_engine(
     draft_model_path: str | None = None,
     max_response_len: int | None = None,
     kv_cache_precision: str | None = None,
+    extra_properties: dict | None = None,
 ) -> engine.BaseEngine:
     """Create an engine, adding complete context configuration for direct NPUs."""
 
@@ -252,6 +255,7 @@ def create_engine(
             backend=backend,
             draft_model_path=draft_model_path,
             kv_cache_precision=kv_cache_precision,
+            extra_properties=extra_properties,
         )
 
     backend_lower = backend.lower()

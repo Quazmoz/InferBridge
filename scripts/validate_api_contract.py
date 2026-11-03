@@ -212,7 +212,13 @@ class Validator:
         self.server["available_devices"] = available
         if self.args.device in {"CPU", "GPU", "NPU"} and not data.get("mock"):
             require(self.args.device in available, f"{self.args.device} is not visible")
-        return f"available={','.join(available) or '(none)'}"
+        modes = self.client.json("GET", "/v1/devices/modes")
+        require(isinstance(modes.get("modes"), list), "/v1/devices/modes did not return modes")
+        require(
+            all(row.get("backends", {}).get("chat", {}).get("support") for row in modes["modes"]),
+            "/v1/devices/modes rows lack a chat support level",
+        )
+        return f"available={','.join(available) or '(none)'} modes={len(modes['modes'])}"
 
     def models(self) -> str:
         data = self.client.json("GET", "/v1/models")

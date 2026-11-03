@@ -17,7 +17,7 @@ internal sealed record ModelInfo(string Id, string Name, string Status)
     public bool CanLoad => Status == "ready_to_load";
     public string? Device { get; init; } // Actual engine-reported device, never a selection preference.
     // Classified load failure (for example an NPU compile rejection) and the
-    // one-click recoveries the engine offers: "load_gpu", "reconvert_npu".
+    // one-click recoveries the engine offers: "load_gpu", "load_cpu", "reconvert_npu".
     public string? Error { get; init; }
     public string? ErrorCode { get; init; }
     public IReadOnlyList<string> RecoveryActions { get; init; } = Array.Empty<string>();
@@ -828,7 +828,7 @@ internal sealed partial class BackendClient : IDisposable
         return ModelSlot.Label(role) + " model unloaded. The library updates shortly.";
     }
 
-    private static readonly string[] KnownRecoveryActions = { "load_gpu", "reconvert_npu" };
+    private static readonly string[] KnownRecoveryActions = { "load_gpu", "load_cpu", "reconvert_npu" };
 
     private static IReadOnlyList<string> ReadRecoveryActions(JsonElement item)
     {
@@ -861,8 +861,11 @@ internal sealed partial class BackendClient : IDisposable
         if (!offered)
             throw new InvalidOperationException(
                 "The model state changed. Refresh the library before trying again.");
-        (string path, string body) = action == "load_gpu"
-            ? ("/v1/models/load", JsonSerializer.Serialize(new { model = model.Id, device = "GPU" }))
+        (string path, string body) = action is "load_gpu" or "load_cpu"
+            ? ("/v1/models/load", JsonSerializer.Serialize(new
+            {
+                model = model.Id, device = action == "load_gpu" ? "GPU" : "CPU",
+            }))
             : ("/v1/models/convert", JsonSerializer.Serialize(new
             {
                 model = model.Id, device = "NPU", load_after = true, weight_format = "int4",
@@ -872,8 +875,8 @@ internal sealed partial class BackendClient : IDisposable
             TimeSpan.FromSeconds(60), MaximumJsonBytes);
         if (ReadString(document.RootElement, "status").Length == 0)
             throw new JsonException("The engine did not confirm the model operation.");
-        return action == "load_gpu"
-            ? "Loading on GPU instead. The library updates as the model loads."
+        return action is "load_gpu" or "load_cpu"
+            ? $"Loading on {(action == "load_gpu" ? "GPU" : "CPU")} instead. The library updates as the model loads."
             : "Reconverting for NPU with channel-wise INT4. The model loads on NPU when it is ready.";
     }
 

@@ -76,6 +76,19 @@ InferBridge keeps at most **one resident model per role**: one `chat` model (tex
 
 Loading a model **replaces only the resident model of the same role**; the other slots stay loaded. A device switch of the same model keeps the existing handoff (the old engine serves until the new one compiles). If the model being replaced is busy (serving, queued or switching) or applying a context change, the load returns `409`. Before a model joins *other* resident slots, the combined memory is estimated and the load returns `409` with a friendly `detail` when the new model clearly cannot fit in free RAM (plus what the replaced model frees), or when it would be a second engine on the Intel NPU; set `allow_resource_risk: true` to load anyway. Tight memory or GPU memory only warns (the warning is appended to `message`). The first model on an empty engine keeps the previous single-model behavior. The response adds `slot`, and when a plan was computed `memory` (the plan) and `replaced` (the model id it replaced). In mock mode the NPU rule only warns.
 
+#### Combined devices on load (local extension)
+
+`POST /v1/models/load` also accepts:
+
+- `performance_hint`: `LATENCY`, `THROUGHPUT` or `CUMULATIVE_THROUGHPUT`, for `AUTO` devices only (chat defaults to `LATENCY`).
+- `model_distribution`: `pipeline_parallel`, for a chat model on `HETERO` with a GPU and at least one more non-NPU member (sends `MODEL_DISTRIBUTION_POLICY=PIPELINE_PARALLEL`, an OpenVINO preview).
+
+The device (or the server default) is resolved by `app/device_modes.py` before anything compiles. A member that is not available, a hint that does not fit the mode, or a combination classified `unsupported` for the model's backend returns `400` with a friendly `detail`; `allow_resource_risk: true` loads an unsupported combination anyway. `MULTI:<list>` is migrated to `AUTO:<list>` with cumulative throughput (OpenVINO deprecated MULTI). The response adds `device_mode` (`normalized`, `mode`, `members`, `support`, `reason`, `migrated_from`), and a migration notice or the reason for an experimental mode is appended to `message`.
+
+Model entries (`/v1/models/status`, `/v1/system/status`) and slot rows add `execution_devices` (where OpenVINO placed the engine, `null` when unknown; OpenVINO GenAI does not expose it today), `execution_devices_source` (`openvino`, `mock` or `null`), `resolved_device` (for example `AUTO:GPU,CPU → GPU`, otherwise the device) and `combined_device`. A failed combined load sets `error_code: "combined_device_failed"`, offers `load_gpu` or `load_cpu` in `recovery_actions`, and records `device_fallback` (`requested`, `offered`); the device is never switched automatically.
+
+`GET /v1/devices/modes` lists the combined modes worth offering on this PC (`modes[]`: `device`, `mode` (`auto`, `auto_cumulative`, `hetero`), `members`, `kv_cache_precision` (`auto_only`), `may_use_npu`, `backends.{chat,vlm,embedding,rerank}.{support,reason,recommended_hints,options}`, and `cumulative_throughput` for multi-member AUTO), plus `performance_hints`, `migrations`, `execution_devices_reported` and `notes`. In mock mode the list assumes CPU, GPU and NPU.
+
 `POST /v1/models/unload` accepts `{"model": "<id>"}` or `{"slot": "<role>"}` (or both, which must agree: a mismatch returns `400`). `{"slot": ...}` on an empty slot returns `409`. The response adds `slot`.
 
 ### `POST /v1/chat/completions`
@@ -211,10 +224,11 @@ Response: `{"id", "object": "rerank", "model", "results": [{"index", "relevance_
 | `POST` | `/v1/models/download-custom` | Register, convert, and optionally load a custom model. |
 | `POST` | `/v1/models/convert` | Convert a catalog model in the background. |
 | `GET` | `/v1/models/slots` | Resident model per role, plus an optional memory preflight (`?model=&device=`). |
-| `POST` | `/v1/models/load` | Load a converted model on a selected device into its role's slot (`slot`, `allow_resource_risk`). |
+| `POST` | `/v1/models/load` | Load a converted model on a selected device into its role's slot (`slot`, `allow_resource_risk`, `performance_hint`, `model_distribution`). |
 | `POST` | `/v1/models/unload` | Free a loaded engine by `model` or by `slot`. |
 | `POST` | `/v1/models/delete` | Delete an unloaded model's local IR directory. |
 | `GET` | `/v1/devices` | Return OpenVINO discovery and device suggestions. |
+| `GET` | `/v1/devices/modes` | Combined device modes (AUTO, HETERO, cumulative AUTO) classified per backend, with reasons and recommended hints. |
 | `GET` | `/v1/system/status` | Return telemetry, lifecycle progress, metrics, and recent safe events. |
 | `GET` | `/v1/keys/stats` | Return per-key usage counters without exposing keys. |
 | `POST` | `/v1/benchmarks/run` | Benchmark model and device combinations. |

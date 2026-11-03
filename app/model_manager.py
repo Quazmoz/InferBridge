@@ -212,11 +212,13 @@ class ModelManager(_CoreModelManager):
                                 "Current device is not eligible for this model profile."
                             )
                     draft = getattr(old_engine, "_ovllm_draft_model_path", None)
+                    device, mode_properties = self.device_mode_target(model_id, device)
                     build = partial(
                         create_engine,
                         model_id=model_id,
                         model_path=str(updated.abs_path(BASE_DIR)),
                         device=device,
+                        extra_properties=mode_properties,
                         max_prompt_len=updated.max_prompt_len,
                         force_mock=self.force_mock,
                         cache_dir=self.settings.cache_dir,
@@ -230,6 +232,7 @@ class ModelManager(_CoreModelManager):
                     if cancelled is not None:
                         raise cancelled
                     replacement._ovllm_draft_model_path = draft
+                    self.record_execution_devices(replacement)
 
                 # A short per-model handoff lock allows active generations to finish
                 # against their original engine. Other loaded models stay operational.

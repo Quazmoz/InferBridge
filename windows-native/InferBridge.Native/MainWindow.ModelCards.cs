@@ -137,6 +137,7 @@ public sealed partial class MainWindow
         Add("revalidate", "\uE9D9", "Revalidate", true);
         Add("delete", "\uE74D", "Delete files", model.CanDelete);
         Add("load_gpu", "\uE7F4", "Load on GPU instead", model.RecoveryActions.Contains("load_gpu"));
+        Add("load_cpu", "\uE7F4", "Load on CPU instead", model.RecoveryActions.Contains("load_cpu"));
         Add("reconvert_npu", "\uE895", "Reconvert for NPU (channel-wise INT4)",
             model.RecoveryActions.Contains("reconvert_npu"));
         card.Children.Add(actions);
@@ -159,7 +160,7 @@ public sealed partial class MainWindow
                 button.IsEnabled = offered && MaintenanceReady && !_modelHealthBusy && idle;
                 continue;
             }
-            if (action is "load_gpu" or "reconvert_npu")
+            if (action is "load_gpu" or "load_cpu" or "reconvert_npu")
             {
                 button.IsEnabled = idle && model.RecoveryActions.Contains(action);
                 continue;
@@ -219,7 +220,7 @@ public sealed partial class MainWindow
             case "download": DownloadButton_Click(sender, args); break;
             case "delete": DeleteButton_Click(sender, args); break;
             case "revalidate": ModelHealthAction_Click(sender, args); break;
-            case "load_gpu" or "reconvert_npu":
+            case "load_gpu" or "load_cpu" or "reconvert_npu":
                 if (item.Tag is ModelInfo failed) _ = RecoverModelAsync(failed, action);
                 break;
         }

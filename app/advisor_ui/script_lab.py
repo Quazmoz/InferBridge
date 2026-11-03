@@ -88,6 +88,16 @@ SCRIPT_LAB = r"""
         return [...direct.map(device => ({ value: device, label: device, routing: false })), { value: 'AUTO', label: 'AUTO', routing: true }];
     }
 
+    // "Compare combined modes": every direct device, AUTO, HETERO:GPU,CPU and AUTO
+    // cumulative throughput (sent as MULTI:GPU,CPU, which the engine migrates to
+    // AUTO:GPU,CPU with CUMULATIVE_THROUGHPUT). Bounded by BENCHMARK_MAX_COMBINATIONS.
+    function combinedModesPresetDevices(direct) {
+        const bases = (Array.isArray(direct) ? direct : []).map(item => item.value || item);
+        const devices = [...bases.filter(base => ['CPU', 'GPU', 'NPU'].includes(base)), 'AUTO'];
+        if (bases.includes('GPU') && bases.includes('CPU')) devices.push('HETERO:GPU,CPU', 'MULTI:GPU,CPU');
+        return devices;
+    }
+
     function ensureBenchmarkDefaults(data) {
         const models = benchmarkModels(data);
         const devices = benchmarkDevices(data);
@@ -214,6 +224,7 @@ SCRIPT_LAB = r"""
                     <div class="benchmark-config-section">
                         <div class="benchmark-section-head"><div><h3>2 · Devices</h3><p>Direct devices come from OpenVINO discovery. Requested and actual execution are always shown separately.</p></div><span>${benchmarkSelectedDevices.size} selected</span></div>
                         ${benchmarkDevicesHtml(data)}
+                        <p class="benchmark-wide"><button id="benchmark-combined-preset" type="button" class="advisor-secondary">Compare combined modes</button> <small>Experimental: CPU, GPU, NPU, AUTO, HETERO:GPU,CPU and AUTO cumulative (MULTI:GPU,CPU) on one model, Quick runs. Reports TTFT, tok/s, load time and peak process RAM.</small></p>
                     </div>
                     <div class="benchmark-config-section">
                         <div class="benchmark-section-head"><div><h3>3 · Thoroughness</h3><p>Warm-ups are excluded from measured statistics.</p></div><span>${escapeHtml(preset.label)}</span></div>
@@ -425,6 +436,18 @@ SCRIPT_LAB = r"""
             else benchmarkSelectedModels.delete(input.dataset.benchmarkModel);
             render();
         }));
+        body.querySelector('#benchmark-combined-preset')?.addEventListener('click', () => {
+            const devices = combinedModesPresetDevices(benchmarkDevices(data).filter(item => !item.routing));
+            devices.filter(value => value.includes(':') && !benchmarkAdvancedDevices.includes(value))
+                .forEach(value => benchmarkAdvancedDevices.push(value));
+            benchmarkSelectedDevices = new Set(devices);
+            const first = [...benchmarkSelectedModels][0];
+            benchmarkSelectedModels = new Set(first ? [first] : []);
+            benchmarkPreset = 'quick';
+            benchmarkCustomRuns = BENCHMARK_PRESETS.quick.runs;
+            benchmarkCustomTokens = BENCHMARK_PRESETS.quick.maxTokens;
+            render();
+        });
         body.querySelectorAll('[data-benchmark-device]').forEach(input => input.addEventListener('change', () => {
             if (input.checked) benchmarkSelectedDevices.add(input.dataset.benchmarkDevice);
             else benchmarkSelectedDevices.delete(input.dataset.benchmarkDevice);

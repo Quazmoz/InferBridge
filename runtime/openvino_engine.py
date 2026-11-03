@@ -744,6 +744,30 @@ class OpenVINORerankEngine(BaseEngine):
 # --- Factory ---------------------------------------------------------------
 
 
+def probe_execution_devices(pipe: object) -> list[str] | None:
+    """Where OpenVINO placed a pipeline, when the binding exposes it.
+
+    OpenVINO GenAI 2026.2's Python pipelines do not expose ``ov::execution_devices``
+    (GenAI queries it internally only), so this returns ``None`` today and starts
+    reporting automatically if a later binding adds ``get_property``.
+    """
+
+    getter = getattr(pipe, "get_property", None)
+    if not callable(getter):
+        return None
+    try:
+        value = getter("EXECUTION_DEVICES")
+    except Exception:  # noqa: BLE001 - optional diagnostics only
+        return None
+    if isinstance(value, str):
+        value = value.replace(",", " ").split()
+    try:
+        devices = [str(item) for item in value if str(item).strip()]
+    except TypeError:
+        return None
+    return devices or None
+
+
 KV_CACHE_PRECISION_VALUES = frozenset({"f16", "u8", "u4"})
 
 
@@ -771,11 +795,16 @@ def build_plugin_config(
     cache_dir: str | Path | None = None,
     *,
     kv_cache_precision: str | None = None,
+    extra_properties: dict | None = None,
 ) -> dict:
-    """Build device-specific OpenVINO plugin configuration."""
+    """Build device-specific OpenVINO plugin configuration.
+
+    ``extra_properties`` carries combined-device hints resolved by
+    ``app.device_modes`` (PERFORMANCE_HINT, MODEL_DISTRIBUTION_POLICY).
+    """
 
     device = normalize_device(device)
-    config: dict = {}
+    config: dict = dict(extra_properties or {})
     if device == "NPU" and max_prompt_len:
         config["MAX_PROMPT_LEN"] = int(max_prompt_len)
     config.update(kv_cache_precision_property(device, kv_cache_precision))
@@ -802,6 +831,7 @@ def create_engine(
     backend: str = "openvino-genai",
     draft_model_path: str | None = None,
     kv_cache_precision: str | None = None,
+    extra_properties: dict | None = None,
 ) -> BaseEngine:
     """Create the configured text, embedding, or vision engine."""
 
@@ -830,6 +860,7 @@ def create_engine(
         max_prompt_len,
         cache_dir,
         kv_cache_precision=None if is_embedding or is_rerank else kv_cache_precision,
+        extra_properties=extra_properties,
     )
     if is_rerank:
         # MAX_PROMPT_LEN is an NPU LLM property; the reranker bounds each

@@ -378,8 +378,13 @@ class ModelLoadRequest(BaseModel):
     # Optional resident slot the caller expects ("Load as embedding model"). The role
     # always comes from the catalog backend; a mismatch is rejected rather than coerced.
     slot: Literal["chat", "embedding", "rerank"] | None = None
-    # Load even when the combined-memory or NPU coexistence preflight refuses.
+    # Load even when the combined-memory or NPU coexistence preflight refuses, or
+    # when app.device_modes classifies a combined device as unsupported.
     allow_resource_risk: bool = False
+    # AUTO only: OpenVINO performance hint (chat defaults to LATENCY).
+    performance_hint: Literal["LATENCY", "THROUGHPUT", "CUMULATIVE_THROUGHPUT"] | None = None
+    # HETERO only: split a model too large for one device across its members.
+    model_distribution: Literal["pipeline_parallel"] | None = None
 
 
 class ModelConvertRequest(BaseModel):

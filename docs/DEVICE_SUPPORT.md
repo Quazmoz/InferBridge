@@ -40,27 +40,49 @@ If OpenVINO does not list a device, the app cannot use it. `lspci`, Device Manag
 
 ## Device Modes
 
-The server passes device strings to OpenVINO GenAI. Common examples:
+The server passes device strings to OpenVINO GenAI. Accepted forms:
 
 ```text
-CPU
-GPU
-NPU
-AUTO
-AUTO:NPU,GPU,CPU
-AUTO:GPU,NPU,CPU
-MULTI:NPU,GPU,CPU
-HETERO:NPU,GPU,CPU
+CPU   GPU   GPU.0   NPU
+AUTO                 AUTO:GPU,CPU        AUTO:NPU,GPU,CPU
+HETERO:GPU,CPU       MULTI:GPU,CPU  (deprecated, migrated to AUTO cumulative)
 ```
 
-`MULTI` and `HETERO` are experimental routing modes. They may help some workloads, but they do not promise faster single-prompt generation or additive multi-device performance.
+### Combined device modes (experimental)
+
+`app/device_modes.py` classifies every combined string per backend before a compile starts and `GET /v1/devices/modes` reports the result. An unsupported combination, an unavailable member or a hint that does not fit the mode is refused with `400` and a plain explanation; `allow_resource_risk: true` loads an *unsupported* combination anyway, at your own risk.
+
+| Mode | Chat LLM | Vision (VLM) | Embedding / rerank | Notes |
+|---|---|---|---|---|
+| `AUTO`, `AUTO:GPU,CPU` | Supported | Supported | Supported | Picks the first listed device that compiles; one device at a time. Chat gets `PERFORMANCE_HINT=LATENCY` (override with `performance_hint`). |
+| `AUTO:NPU,GPU,CPU` | Experimental | Unsupported | Supported | GenAI's NPU pipeline only runs for a direct `NPU` target (see facts). |
+| `AUTO:…` + `performance_hint: CUMULATIVE_THROUGHPUT` (and old `MULTI:…`) | Experimental, unsupported with NPU | Experimental, unsupported with NPU | Experimental | Copies the model to every member. InferBridge serves one request per model at a time, so single chats rarely get faster. |
+| `HETERO:GPU,CPU` | Experimental | Experimental | Experimental | Splits layers across devices. Chat may add `model_distribution: "pipeline_parallel"` for a model that does not fit GPU memory. |
+| `HETERO:` with `NPU` | Unsupported | Unsupported | Unsupported | Not verified. |
+
+KV cache precision stays **Auto only** for every combined mode (it is sent only to one direct CPU or GPU). The NPU coexistence rule for resident slots uses the resolved members: plain `AUTO` never counts as an NPU load, every expression that names `NPU` does, and an engine that reports its execution devices is judged by where it actually runs.
+
+When a combined mode fails to load, the model card offers **Load on GPU instead** (or **Load on CPU instead**) for the best single member, the error says InferBridge did not switch devices on its own, and the model's `device_fallback` field records the requested device and the offer for diagnostics.
+
+#### Verified facts (2026-11-03)
+
+Checked against the OpenVINO 2026 documentation, the OpenVINO / OpenVINO GenAI `releases/2026/2` sources, and the OpenVINO 2025.4.1 wheel (the newest one installable in the Linux/arm64 build sandbox; 2026.2.1 was not available there). Not yet re-run on Windows with 2026.2.1.
+
+1. **MULTI is deprecated, not removed.** The docs list Multi-Device Execution under *Legacy features* ("new solution: Automatic Device Selection", its behaviour "covered by the CUMULATIVE_THROUGHPUT option"). The `releases/2026/2` build still registers `MULTI` as a device of the AUTO plugin, and on 2025.4.1 `Core().get_versions("MULTI")` reports `openvino_auto_plugin` and `MULTI:CPU` compiles. InferBridge migrates `MULTI:<list>` to `AUTO:<list>` with `PERFORMANCE_HINT=CUMULATIVE_THROUGHPUT` and logs a one-time notice. Sources: <https://docs.openvino.ai/2026/documentation/legacy-features.html>, <https://github.com/openvinotoolkit/openvino/blob/releases/2026/2/src/plugins/auto/CMakeLists.txt>.
+2. **Plain AUTO never selects the NPU.** "NPU is currently excluded from the default priority list. To use it for inference, you need to specify it explicitly." Source: <https://docs.openvino.ai/2026/openvino-workflow/running-inference/inference-devices-and-modes/auto-device-selection.html>.
+3. **AUTO's CPU startup acceleration does not help LLMs.** "For the models with stateful operations, CPU acceleration feature will also be disabled during model compilation." GenAI LLMs are stateful, so `ENABLE_STARTUP_FALLBACK` is not sent and first tokens do not arrive early on CPU while the GPU compiles. Same source.
+4. **HETERO pipeline parallelism exists as a preview.** `MODEL_DISTRIBUTION_POLICY=PIPELINE_PARALLEL` is HETERO's only supported policy and splits a model that does not fit on the first device; the docs recommend at most one of iGPU or CPU, at the end of the list. Source: <https://docs.openvino.ai/2026/openvino-workflow/running-inference/inference-devices-and-modes/hetero-execution.html>.
+5. **GenAI and combined devices.** `LLMPipeline` builds its static NPU pipeline only when the device is exactly `"NPU"` (`utils::is_npu_requested`); other strings use the paged-attention backend, which asserts "execution device is expected to be single CPU / single GPU / multi GPUs" and otherwise falls back to the stateful SDPA backend. `VLMPipeline` enables its NPU code path whenever the device string contains `NPU`. So NPU members cannot share a chat model with other devices, and HETERO:GPU,CPU or cumulative CPU+GPU runs chat on the slower stateful backend. Sources: `src/cpp/src/llm/pipeline.cpp`, `src/cpp/src/utils.cpp`, `src/cpp/src/continuous_batching/pipeline_impl.cpp`, `src/cpp/src/visual_language/pipeline.cpp` at <https://github.com/openvinotoolkit/openvino.genai/tree/releases/2026/2>.
+6. **Where AUTO landed is not reported by GenAI.** `CompiledModel.get_property(ov::execution_devices)` works on a compiled model (verified on 2025.4.1), and GenAI reads it internally, but the Python `LLMPipeline` binding exposes no compiled model or `get_property` (`src/python/py_llm_pipeline.cpp`). InferBridge reports `execution_devices: null` today and fills it automatically if a future binding exposes the property; mock mode simulates it.
+
+None of the combined modes has been benchmarked on Intel Core Ultra hardware yet. Use Benchmark Lab's **Compare combined modes** preset to measure them.
 
 ## Several Resident Models and the NPU
 
 InferBridge keeps one chat, one embedding and one reranker model loaded at the same time (see [API contract](API_CONTRACT.md#resident-model-slots-local-extension)). Device rules for that:
 
-- **One engine on the Intel NPU.** A load whose device names the NPU (`NPU`, `AUTO:NPU,GPU,CPU`, `MULTI:NPU,...`) is refused with `409` while another resident model already runs on a device that names the NPU. NPU contexts from two pipelines are not verified to coexist, so load the second model on CPU or GPU, or unload the other model first. `allow_resource_risk: true` overrides the refusal at your own risk.
-- **Plain `AUTO` is not checked.** The rule matches device strings, so plain `AUTO` is not treated as an NPU load even though OpenVINO may place it on the NPU. Choose `CPU` or `GPU` explicitly for embedding and reranker models when a chat model uses the NPU.
+- **One engine on the Intel NPU.** A load whose resolved device can use the NPU (`NPU`, `AUTO:NPU,GPU,CPU`, `HETERO:NPU,...`) is refused with `409` while another resident model already runs on a device that names the NPU. NPU contexts from two pipelines are not verified to coexist, so load the second model on CPU or GPU, or unload the other model first. `allow_resource_risk: true` overrides the refusal at your own risk.
+- **Plain `AUTO` never uses the NPU.** OpenVINO excludes the NPU from AUTO's default list, so plain `AUTO` does not count as an NPU load. `AUTO:NPU,…`, `HETERO:NPU,…` and old `MULTI:NPU,…` do.
 - **Embedding and reranker models default to CPU.** The native app loads them on CPU unless you pick a GPU, and never sends an NPU device for them. They are small, and on CPU they leave the NPU or GPU to the chat model.
 - **Memory is estimated, not measured.** The preflight compares the hardware advisor's estimate for the new model with free RAM (keeping the larger of 2 GB or 15% in reserve before warning). GPU memory is only compared when the GPU reports its size. Watch memory after loading several models on a tight PC.
 - None of these combinations has been exercised on Intel NPU hardware yet.

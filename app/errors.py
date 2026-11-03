@@ -154,13 +154,37 @@ def is_npu_compile_rejection(exc: BaseException, *, device: str | None) -> bool:
     return level_zero or npuw
 
 
+COMBINED_DEVICE_FAILED = "combined_device_failed"
+
+
+def _is_combined_device(device: str | None) -> bool:
+    text = str(device or "").strip().upper()
+    return text == "AUTO" or text.split(":", 1)[0] in {"AUTO", "MULTI", "HETERO"}
+
+
 def model_load_error_code(exc: BaseException, *, device: str | None) -> str | None:
     """A stable code for load failures that have one-click recovery actions."""
     if is_npu_compile_rejection(exc, device=device):
         return NPU_COMPILE_REJECTED
     if format_kv_cache_precision_error(exc) is not None:
         return KV_CACHE_PRECISION_REJECTED
+    if _is_combined_device(device):
+        return COMBINED_DEVICE_FAILED
     return None
+
+
+def _combined_fallback_actions(
+    device: str | None, available_devices: list[str] | tuple[str, ...]
+) -> list[dict[str, object]]:
+    """Offer the best single member of a failed combined device; never switch silently."""
+    from app.device_modes import best_single_device
+
+    single = best_single_device(str(device or ""), list(available_devices) or None)
+    if single == "GPU":
+        return [{"id": "load_gpu", "label": "Load on GPU instead", "device": "GPU"}]
+    if single == "CPU":
+        return [{"id": "load_cpu", "label": "Load on CPU instead", "device": "CPU"}]
+    return []
 
 
 def load_recovery_actions(
@@ -169,8 +193,11 @@ def load_recovery_actions(
     weight_format: str,
     has_source_model: bool,
     available_devices: list[str] | tuple[str, ...],
+    device: str | None = None,
 ) -> list[dict[str, object]]:
     """One-click next steps the UI can offer for a classified load failure."""
+    if code == COMBINED_DEVICE_FAILED:
+        return _combined_fallback_actions(device, available_devices)
     if code != NPU_COMPILE_REJECTED:
         return []
     actions: list[dict[str, object]] = [

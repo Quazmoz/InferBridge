@@ -22,12 +22,19 @@ import time
 from pathlib import Path
 from typing import Any
 
-from app import errors, model_registry as registry
+from app import device_modes, errors, model_registry as registry
 from app.config import BASE_DIR, Settings
 from app.model_roles import is_generation_backend, kind_phrase
 from app.quantization_policy import npu_known_issue
 from runtime import device_check
-from runtime.openvino_engine import BaseEngine, GenParams, GenResult, StreamHandle, create_engine
+from runtime.openvino_engine import (
+    BaseEngine,
+    GenParams,
+    GenResult,
+    StreamHandle,
+    create_engine,
+    probe_execution_devices,
+)
 
 logger = logging.getLogger("ov-llm.manager")
 
@@ -79,6 +86,9 @@ class ModelManager:
         self.engines: dict[str, BaseEngine] = {}
         self.locks: dict[str, asyncio.Lock] = {}
         self.devices: dict[str, str] = {}
+        # Per-model combined-device options from the last load request
+        # (performance_hint, model_distribution); see app.device_modes.
+        self.device_mode_options: dict[str, dict] = {}
         self.load_tasks: dict[str, asyncio.Task] = {}
         self.convert_tasks: dict[str, asyncio.Task] = {}
         self.status_overrides: dict[str, dict] = {}
@@ -143,7 +153,22 @@ class ModelManager:
                 weight_format=cfg.weight_format,
                 has_source_model=bool(cfg.source_model),
                 available_devices=available,
+                device=device,
             )
+            if code == errors.COMBINED_DEVICE_FAILED:
+                fallback = self.status_overrides[model_id]["recovery_actions"]
+                hint = f" {fallback[0]['label']} is available." if fallback else ""
+                message = (
+                    f"{message} The combined device {device} could not load this model; "
+                    f"InferBridge did not switch devices on its own.{hint}"
+                )
+                self.status_overrides[model_id]["error"] = message
+                self.status_overrides[model_id]["combined_device_fallback"] = {
+                    "requested": device,
+                    "offered": fallback[0]["device"] if fallback else None,
+                }
+                with contextlib.suppress(Exception):
+                    self.emit_event("warning", message)
         return message
 
     def _clear_status(self, model_id: str) -> None:
@@ -380,7 +405,9 @@ class ModelManager:
         # reconvert for NPU, update the NPU driver); see errors.load_recovery_actions.
         entry["error_code"] = override.get("error_code") if error else None
         entry["recovery_actions"] = list(override.get("recovery_actions") or []) if error else []
+        entry["device_fallback"] = override.get("combined_device_fallback") if error else None
         entry["npu_note"] = npu_known_issue(cfg.source_model)
+        entry.update(device_modes.placement(self.devices.get(model_id), self.engines.get(model_id)))
         return entry
 
     def catalog_entries(self) -> list[dict]:
@@ -417,7 +444,8 @@ class ModelManager:
         self, model_id: str, device: str, draft_model_path: str | None = None
     ) -> BaseEngine:
         cfg = self.catalog[model_id]
-        return create_engine(
+        device, properties = self.device_mode_target(model_id, device)
+        engine = create_engine(
             model_id=model_id,
             model_path=str(cfg.abs_path(BASE_DIR)),
             device=device,
@@ -427,7 +455,34 @@ class ModelManager:
             backend=cfg.backend,
             draft_model_path=draft_model_path,
             kv_cache_precision=cfg.kv_cache_precision,
+            extra_properties=properties,
         )
+        self.record_execution_devices(engine)
+        return engine
+
+    def device_mode_target(self, model_id: str, device: str) -> tuple[str, dict]:
+        """Migrate MULTI and add combined-device hints (see app.device_modes)."""
+
+        cfg = self.catalog[model_id]
+        options = getattr(self, "device_mode_options", {}).get(model_id)
+        target, properties, notice = device_modes.engine_properties(
+            device, backend=cfg.backend, options=options
+        )
+        device_modes.notify_once(notice, getattr(self, "emit_event", None))
+        return target, properties
+
+    def record_execution_devices(self, engine: BaseEngine) -> None:
+        """Store where OpenVINO placed the engine, when that can be known."""
+
+        reported = probe_execution_devices(getattr(engine, "_pipe", None))
+        source = "openvino" if reported else None
+        if reported is None and self.force_mock:
+            # Mock engines simulate AUTO landing on its first non-NPU member so the
+            # UI and API flows can be exercised without hardware.
+            single = device_modes.best_single_device(engine.device, ["CPU", "GPU", "NPU"])
+            reported, source = ([single], "mock") if single else (None, None)
+        engine.execution_devices = reported  # type: ignore[attr-defined]
+        engine.execution_devices_source = source  # type: ignore[attr-defined]
 
     def _engine_build_timeout_seconds(self) -> float:
         """Return the backstop deadline for one native engine build.

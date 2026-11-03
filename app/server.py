@@ -37,6 +37,7 @@ from app import (
     __version__,
     chat_format,
     context_configuration,
+    device_modes,
     errors,
     model_manager,
     model_slots,
@@ -639,7 +640,7 @@ def create_app(settings: Settings) -> FastAPI:
                             "recovery_actions": [
                                 action["id"]
                                 for action in entry.get("recovery_actions") or []
-                                if action.get("id") in {"load_gpu", "reconvert_npu"}
+                                if action.get("id") in {"load_gpu", "load_cpu", "reconvert_npu"}
                             ],
                         }
                         if entry["status"] == "error"
@@ -728,6 +729,25 @@ def create_app(settings: Settings) -> FastAPI:
         if req.model in manager._context_changes:
             raise HTTPException(status_code=409, detail="Context configuration is in progress.")
         device = _normalize_device_or_400(req.device)
+        try:
+            mode = device_modes.resolve_or_400(
+                device or settings.device,
+                backend=manager.catalog[req.model].backend,
+                available=None
+                if manager.force_mock
+                else (device_check.available_devices() or None),
+                performance_hint=req.performance_hint,
+                model_distribution=req.model_distribution,
+                allow_unsupported=req.allow_resource_risk,
+            )
+        except device_modes.DeviceModeError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if device is not None and mode["migrated_from"]:
+            device = mode["normalized"]
+        manager.device_mode_options[req.model] = {
+            "performance_hint": req.performance_hint,
+            "model_distribution": req.model_distribution,
+        }
         if req.context_tokens is not None or req.kv_cache_precision is not None:
             saved = manager.catalog[req.model]
             current = saved.max_context_len
@@ -799,6 +819,14 @@ def create_app(settings: Settings) -> FastAPI:
             if plan is not None and plan.get("verdict") in {"warning", "unknown"}
             else ""
         )
+        slot_fields["device_mode"] = {
+            key: mode[key]
+            for key in ("normalized", "mode", "members", "support", "reason", "migrated_from")
+        }
+        if mode["notice"]:
+            warning += f" {mode['notice']}"
+        elif mode["support"] != "supported":
+            warning += f" {mode['normalized']} is {mode['support']}: {mode['reason']}"
         if task is None and entry["is_loaded"]:
             return {
                 "status": "loaded",
@@ -1100,6 +1128,14 @@ def create_app(settings: Settings) -> FastAPI:
             "suggestions": device_check.suggested_device_targets(available),
             "supported_examples": device_check.supported_device_examples(),
         }
+
+    @app.get("/v1/devices/modes", dependencies=auth)
+    async def device_modes_report():
+        """Combined-device modes for this PC, classified per backend (app.device_modes)."""
+        available = (
+            ["CPU", "GPU", "NPU"] if manager.force_mock else device_check.available_devices()
+        )
+        return device_modes.modes_report(available, mock=manager.force_mock)
 
     @app.get("/v1/system/status", dependencies=auth)
     async def system_status():
