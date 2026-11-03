@@ -28,7 +28,6 @@ SUPPORTED_DEVICE_EXAMPLES = (
     "AUTO",
     "AUTO:NPU,GPU,CPU",
     "AUTO:GPU,NPU,CPU",
-    "MULTI:GPU,CPU",
     "HETERO:GPU,CPU",
 )
 
@@ -272,34 +271,39 @@ def suggested_device_targets(available: list[str] | None = None) -> list[dict[st
         if is_device_available(device, available):
             suggestions.append({"device": device, "experimental": experimental, "note": note})
 
+    # MULTI is deprecated (served by the AUTO plugin) and an NPU cannot share a chat
+    # model with other devices inside HETERO, so neither is suggested; see
+    # app/device_modes.py and docs/DEVICE_SUPPORT.md#combined-device-modes-experimental.
     if {"NPU", "GPU", "CPU"}.issubset(bases):
         add(
             "AUTO:NPU,GPU,CPU",
-            experimental=False,
-            note="Auto-select best device (prefers NPU > GPU > CPU). Actual device chosen by model compatibility.",
+            experimental=True,
+            note="Tries NPU, then GPU, then CPU; uses one device. Chat models only get the "
+            "NPU-optimised pipeline when NPU is chosen directly.",
         )
         add(
             "AUTO:GPU,NPU,CPU",
-            experimental=False,
-            note="Auto-select best device (prefers GPU > NPU > CPU). Actual device chosen by model compatibility.",
+            experimental=True,
+            note="Tries GPU, then NPU, then CPU; uses one device.",
         )
-        add("MULTI:NPU,GPU,CPU", experimental=True, note="Experimental throughput routing.")
-        add("HETERO:NPU,GPU,CPU", experimental=True, note="Experimental graph partitioning.")
-    elif {"GPU", "CPU"}.issubset(bases):
-        add(
-            "AUTO:GPU,CPU",
-            experimental=False,
-            note="Auto-select best device (prefers GPU > CPU). Actual device chosen by model compatibility.",
-        )
-        add("MULTI:GPU,CPU", experimental=True, note="Experimental throughput routing.")
-        add("HETERO:GPU,CPU", experimental=True, note="Experimental graph partitioning.")
     elif {"NPU", "CPU"}.issubset(bases):
         add(
             "AUTO:NPU,CPU",
-            experimental=False,
-            note="Auto-select best device (prefers NPU > CPU). Actual device chosen by model compatibility.",
+            experimental=True,
+            note="Tries NPU, then CPU; uses one device.",
         )
-        add("MULTI:NPU,CPU", experimental=True, note="Experimental throughput routing.")
+    if {"GPU", "CPU"}.issubset(bases):
+        add(
+            "AUTO:GPU,CPU",
+            experimental=False,
+            note="Tries GPU, then CPU; uses one device.",
+        )
+        add(
+            "HETERO:GPU,CPU",
+            experimental=True,
+            note="Splits the model between GPU and CPU. For models too large for GPU memory; "
+            "usually slower than GPU alone.",
+        )
     return suggestions
 
 

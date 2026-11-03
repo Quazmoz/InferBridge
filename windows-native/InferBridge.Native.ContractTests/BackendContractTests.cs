@@ -110,6 +110,15 @@ internal static class BackendContractTests
                 && !snapshot.Slots[2].CanUnload,
                 "unsafe device text or estimates must be dropped, never echoed");
         }
+        using (var placed = System.Text.Json.JsonDocument.Parse(
+            """{"slots":[{"role":"chat","model":"m","name":"M","device":"AUTO:GPU,CPU","status":"loaded","execution_devices":["GPU.0","<b>"]},{"role":"embedding","model":"e","name":"E","device":"CPU","status":"loaded","execution_devices":["CPU"]}]}"""))
+        {
+            var slots = ModelSlot.Parse(placed.RootElement);
+            Check(slots[0].ExecutionDevice == "GPU.0" && slots[0].Summary == "Chat: M · AUTO:GPU,CPU → GPU.0",
+                "a combined slot must show where OpenVINO placed it and drop unsafe names");
+            Check(slots[1].ExecutionDevice is null && slots[1].Summary == "Embeddings: E · CPU",
+                "a direct device needs no placement suffix");
+        }
         Check(good.RequestPaths.SequenceEqual(
                 new[] { "/desktop/instance", "/health/live", "/v1/models" }),
             "read-only inspection requested an unexpected route");

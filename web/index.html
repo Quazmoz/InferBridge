@@ -3684,17 +3684,46 @@
             });
             return { direct, advanced };
         }
+        // Combined-mode support from GET /v1/devices/modes (app/device_modes.py): unsupported
+        // options stay visible but disabled with the engine's reason.
+        let deviceModeSupport = new Map();
+        let deviceModesState = 'idle';
+        async function loadDeviceModes() {
+            if (deviceModesState !== 'idle') return;
+            deviceModesState = 'loading';
+            try {
+                const res = await fetch('/v1/devices/modes', { headers: authHeaders() });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const body = await res.json();
+                deviceModeSupport = new Map((Array.isArray(body.modes) ? body.modes : []).slice(0, 32)
+                    .filter(row => row && typeof row.device === 'string')
+                    .map(row => [row.device.toUpperCase(), row.backends || {}]));
+                deviceModesState = 'loaded';
+                renderedDeviceSignature = '';
+            } catch (err) {
+                deviceModesState = 'idle';
+            }
+        }
+        function deviceModeFor(value) {
+            const model = availableModels.get(modelSelect.value);
+            const kind = /vlm|vision/i.test(String(model?.backend || '')) ? 'vlm'
+                : /rerank/i.test(String(model?.backend || '')) ? 'rerank'
+                : /embedding/i.test(String(model?.backend || '')) ? 'embedding' : 'chat';
+            return deviceModeSupport.get(String(value || '').toUpperCase())?.[kind] || null;
+        }
         let renderedDeviceSignature = '';
         function renderDeviceOptions(dev = {}) {
+            loadDeviceModes();
             const { direct, advanced } = deviceRoutingOptions(dev);
-            const offered = new Set([...direct, 'AUTO', ...advanced.keys()]);
+            const unsupported = new Set([...advanced.keys()].filter(value => deviceModeFor(value)?.support === 'unsupported'));
+            const offered = new Set([...direct, 'AUTO', ...[...advanced.keys()].filter(value => !unsupported.has(value))]);
             let selected = modelLoadDevice();
             if (!offered.has(selected)) {
                 // A stored target the engine no longer offers must not be sent silently.
                 selected = offered.has(defaultDevice) ? defaultDevice : 'AUTO';
                 selectedDevice = selected;
             }
-            const signature = JSON.stringify([direct, [...advanced]]);
+            const signature = JSON.stringify([direct, [...advanced], [...unsupported], deviceModesState]);
             if (signature !== renderedDeviceSignature) {
                 // Rebuild only when the inventory changes so polling never steals keyboard focus.
                 renderedDeviceSignature = signature;
@@ -3705,8 +3734,11 @@
                     const group = document.createElement('optgroup');
                     group.label = 'Advanced / Experimental';
                     advanced.forEach((meta, value) => {
-                        const suffix = meta.experimental ? ' · experimental' : '';
-                        appendDeviceOption(group, value, `${value}${suffix}`, meta.note || 'OpenVINO advanced routing.');
+                        const mode = deviceModeFor(value);
+                        const level = mode?.support || (meta.experimental ? 'experimental' : '');
+                        const suffix = level === 'unsupported' ? ' · unsupported' : level === 'experimental' ? ' · experimental' : '';
+                        appendDeviceOption(group, value, `${value}${suffix}`, mode?.reason || meta.note || 'OpenVINO advanced routing.');
+                        if (level === 'unsupported') group.lastElementChild.disabled = true;
                     });
                     deviceSelect.appendChild(group);
                 }
@@ -3717,10 +3749,10 @@
         // Requested target and engine-reported active device are deliberately separate facts.
         function updateDeviceRoutingSummary(model) {
             const target = modelLoadDevice();
-            const active = model?.is_loaded ? (model.device || 'not reported') : 'not loaded';
-            const routingNote = /^(MULTI|HETERO):/.test(target)
+            const active = model?.is_loaded ? (model.resolved_device || model.device || 'not reported') : 'not loaded';
+            const routingNote = deviceModeFor(target)?.reason || (/^(MULTI|HETERO):/.test(target)
                 ? 'Experimental: multi-device support depends on the model and OpenVINO runtime.'
-                : 'AUTO routes to one compatible device; it does not combine processors.';
+                : 'AUTO routes to one compatible device; it does not combine processors.');
             const text = `Next load target: ${target} · Reported active device: ${active}`;
             if (deviceRoutingSummary.textContent !== text) deviceRoutingSummary.textContent = text;
             deviceRoutingSummary.title = `${text}. ${routingNote}`;

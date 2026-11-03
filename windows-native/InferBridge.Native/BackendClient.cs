@@ -210,6 +210,9 @@ internal sealed record ModelSlot(string Role, string? ModelId, string? Name, str
 {
     public static readonly string[] Roles = { "chat", "embedding", "rerank" };
 
+    /// <summary>Where OpenVINO placed a combined device ("GPU" for AUTO), when reported.</summary>
+    public string? ExecutionDevice { get; init; }
+
     public static string Label(string role) => role switch
     {
         "embedding" => "Embeddings",
@@ -244,9 +247,22 @@ internal sealed record ModelSlot(string Role, string? ModelId, string? Name, str
                 Read(row, "status", 32) ?? "empty",
                 model is not null && row.TryGetProperty("can_unload", out var unload)
                     && unload.ValueKind == JsonValueKind.True,
-                estimate));
+                estimate) { ExecutionDevice = ReadExecutionDevice(row, device) });
         }
         return slots;
+    }
+
+    // Engine execution_devices for a combined target (AUTO, AUTO:..., HETERO:...), else null.
+    private static string? ReadExecutionDevice(JsonElement row, string? device)
+    {
+        if (device is null || !(device.Contains(':') || device == "AUTO")
+            || !row.TryGetProperty("execution_devices", out var rows) || rows.ValueKind != JsonValueKind.Array)
+            return null;
+        string[] names = rows.EnumerateArray().Take(4)
+            .Select(item => item.ValueKind == JsonValueKind.String ? item.GetString() ?? "" : "")
+            .Where(name => name.Length is > 0 and <= 16 && name.All(ch => char.IsLetterOrDigit(ch) || ch == '.'))
+            .ToArray();
+        return names.Length > 0 ? string.Join(", ", names) : null;
     }
 
     private static string? Read(JsonElement row, string name, int maximum) =>
@@ -255,7 +271,9 @@ internal sealed record ModelSlot(string Role, string? ModelId, string? Name, str
 
     /// <summary>Narrator/pill text: "Embeddings: BGE Small · CPU · ≈0.4 GB".</summary>
     public string Summary => Label(Role) + ": " + (Resident
-        ? Name + (Device is { Length: > 0 } device ? " · " + device : "")
+        ? Name + (Device is { Length: > 0 } device
+                ? " · " + device + (ExecutionDevice is { Length: > 0 } ran ? " → " + ran : "")
+                : "")
             + (MemoryEstimateGib is double gib ? " · ≈" + gib.ToString("0.0") + " GB" : "")
             + (Status == "switching" ? " · switching" : "")
         : "none");

@@ -100,12 +100,9 @@ def test_validate_device_expression_reports_examples():
 def test_suggested_device_targets_from_available_devices():
     suggestions = device_check.suggested_device_targets(["CPU", "GPU.0", "NPU"])
     devices = [item["device"] for item in suggestions]
-    assert "AUTO:NPU,GPU,CPU" in devices
-    assert "AUTO:GPU,NPU,CPU" in devices
-    assert "MULTI:NPU,GPU,CPU" in devices
-    assert any(
-        item["device"] == "MULTI:NPU,GPU,CPU" and item["experimental"] for item in suggestions
-    )
+    assert devices == ["AUTO:NPU,GPU,CPU", "AUTO:GPU,NPU,CPU", "AUTO:GPU,CPU", "HETERO:GPU,CPU"]
+    assert not any(device.startswith("MULTI") or "HETERO:NPU" in device for device in devices)
+    assert all(item["experimental"] for item in suggestions if item["device"] != "AUTO:GPU,CPU")
 
 
 def test_cached_discovery_results_cannot_be_mutated_by_callers(monkeypatch):
