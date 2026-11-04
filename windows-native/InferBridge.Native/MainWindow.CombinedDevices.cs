@@ -92,6 +92,7 @@ public sealed partial class MainWindow
             CombinedTarget? chosen = await RunCombinedBuilderDialogAsync(initial, kinds, model);
             if (chosen is null || _closing.IsCancellationRequested) return;
             _combinedTarget = chosen;
+            TrySavePreferences(_preferences with { CombinedTarget = chosen }, out _); // ovllm.device-builder.v1
             if (_shownDevices is { } shown) ApplyDeviceOptions(shown);
             ComboBox picker = fromChat ? ChatDevicePicker : LibraryDevicePicker;
             picker.SelectedItem = picker.Items.Cast<ComboBoxItem>()

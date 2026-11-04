@@ -376,3 +376,31 @@ def test_native_onboarding_wizard_matches_the_browser_wizard():
     assert sent == set(onboarding_models.PrepareModelRequest.model_fields)
     # Native never enables reviewed repository code and opens itself only once.
     assert "trust_remote_code = false" in client and "OnboardingAutoOpened = true" in page
+
+
+def test_native_keeps_the_browser_app_preferences():
+    web = (INDEX.parents[1] / "app" / "conversation_management_ui.py").read_text(encoding="utf-8")
+    xaml = (NATIVE / "MainWindow.xaml").read_text(encoding="utf-8")
+    prefs = (NATIVE / "NativePreferences.cs").read_text(encoding="utf-8")
+    store = (NATIVE / "NativeConversationStore.cs").read_text(encoding="utf-8")
+    # Same retention choices, labels and day counts as the browser select.
+    web_options = re.findall(r'<option value="(\w+)">([^<]+)</option>', web)
+    native_options = re.findall(r'<ComboBoxItem Content="([^"]+)" Tag="(\d+)" />', xaml)
+    assert len(web_options) == len(native_options) == 5
+    for (value, label), (native_label, days) in zip(web_options, native_options, strict=True):
+        assert label == native_label and days == ("0" if value == "forever" else value)
+    days = re.search(r"RETENTION_DAYS = new Map\(\[(.+?)\]\);", web, re.S).group(1)
+    native_days = re.search(r"RetentionDays = \[([^\]]+)\]", prefs).group(1)
+    assert re.findall(r",\s*(\d+)\]", days) == re.findall(r"\d+", native_days)
+    assert "chat.Id != activeId && !chat.Pinned" in store
+    # Every browser advisor profile id is accepted by the native preference check.
+    script = (INDEX.parents[1] / "app" / "advisor_ui" / "script_1.py").read_text(encoding="utf-8")
+    profiles = re.findall(
+        r"'([a-z-]+)'", re.search(r"PROFILE_ORDER = \[([^\]]+)\]", script).group(1)
+    )
+    pattern = re.search(r'Regex\.IsMatch\(profile, "([^"]+)"\)', prefs).group(1)
+    assert len(profiles) == 5 and all(re.fullmatch(pattern, p) for p in profiles)
+    # Device and Combine devices targets are remembered, as ovllm.device.v1 / ovllm.device-builder.v1.
+    assert "ovllm.device.v1" in INDEX.read_text(encoding="utf-8")
+    for field in ("ChatDevice", "CombinedTarget", "AdvisorProfile", "ConversationRetentionDays"):
+        assert f"valid.{field}" in prefs, field

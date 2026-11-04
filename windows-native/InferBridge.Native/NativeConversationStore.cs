@@ -121,7 +121,27 @@ internal sealed class NativeConversationStore
         return new SavedChat(id, modelId, title, DateTimeOffset.UtcNow, turns.ToList());
     }
 
-    internal void Save(SavedChat chat)
+    /// <summary>
+    /// Browser age retention: chats not updated for more than <paramref name="days"/> days
+    /// (0 keeps everything). The open chat and pinned chats are never candidates.
+    /// </summary>
+    internal static List<SavedChat> RetentionCandidates(
+        IEnumerable<SavedChat> chats, int days, string? activeId, DateTimeOffset now) =>
+        days <= 0 ? [] : chats.Where(chat => chat.Id != activeId && !chat.Pinned
+            && chat.UpdatedUtc < now.AddDays(-days)).ToList();
+
+    /// <summary>Remove the retention candidates now; returns how many were removed.</summary>
+    internal int RemoveInactive(int days, string? activeId, DateTimeOffset now)
+    {
+        if (!File.Exists(_path)) return 0;
+        var chats = ReadAll().ToList();
+        var expired = RetentionCandidates(chats, days, activeId, now).Select(chat => chat.Id).ToHashSet();
+        if (expired.Count > 0) Write(chats.Where(chat => !expired.Contains(chat.Id)).ToList());
+        return expired.Count;
+    }
+
+    /// <summary>Saves the chat and applies retention; returns how many old chats retention removed.</summary>
+    internal int Save(SavedChat chat, int retentionDays = 0)
     {
         var chats = ReadAll().ToList();
         var existing = chats.FirstOrDefault(row => row.Id == chat.Id);
@@ -129,8 +149,12 @@ internal sealed class NativeConversationStore
         if (existing is not null)
             chat = chat with { Title = existing.Title, Pinned = existing.Pinned, Archived = existing.Archived };
         chats.RemoveAll(row => row.Id == chat.Id);
+        var expired = RetentionCandidates(chats, retentionDays, chat.Id, DateTimeOffset.UtcNow)
+            .Select(row => row.Id).ToHashSet();
+        chats.RemoveAll(row => expired.Contains(row.Id));
         chats.Insert(0, chat);
         Write(Retain(chats));
+        return expired.Count;
     }
 
     // Drop the oldest unpinned chats beyond the limit; the chat being written

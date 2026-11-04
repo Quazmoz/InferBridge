@@ -28,7 +28,9 @@ public sealed partial class MainWindow
             HardwareAdvisor advisor = await _backend.GetHardwareAdvisorAsync(ApiKeyBox.Password, _closing.Token);
             if (_closing.IsCancellationRequested) return;
             _advisor = advisor;
-            string? chosen = (AdvisorProfilePicker.SelectedItem as ComboBoxItem)?.Tag as string;
+            // The current choice, else the remembered one (browser ovllm.advisor.profile.v1).
+            string? chosen = (AdvisorProfilePicker.SelectedItem as ComboBoxItem)?.Tag as string
+                ?? _preferences.AdvisorProfile;
             bool changed = AdvisorProfilePicker.Items.Count != advisor.Profiles.Count
                 || !AdvisorProfilePicker.Items.Cast<ComboBoxItem>().Select(i => (string?)i.Tag)
                     .SequenceEqual(advisor.Profiles.Select(p => p.Id));
@@ -69,7 +71,11 @@ public sealed partial class MainWindow
 
     private void AdvisorProfilePicker_SelectionChanged(object sender, SelectionChangedEventArgs args)
     {
-        if (!_updatingAdvisorProfiles) ShowAdvisorRecommendation();
+        if (_updatingAdvisorProfiles) return;
+        ShowAdvisorRecommendation();
+        if ((AdvisorProfilePicker.SelectedItem as ComboBoxItem)?.Tag is string profile
+            && profile != _preferences.AdvisorProfile)
+            TrySavePreferences(_preferences with { AdvisorProfile = profile }, out _);
     }
 
     private AdvisorRecommendation? CurrentAdvisorRecommendation =>

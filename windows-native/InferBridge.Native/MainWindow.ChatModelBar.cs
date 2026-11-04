@@ -300,6 +300,9 @@ public sealed partial class MainWindow
         {
             AppThemePicker.SelectedItem = AppThemePicker.Items.Cast<ComboBoxItem>()
                 .FirstOrDefault(item => (string?)item.Tag == _preferences.Theme);
+            ConversationRetentionPicker.SelectedItem = ConversationRetentionPicker.Items.Cast<ComboBoxItem>()
+                .FirstOrDefault(item => (string?)item.Tag == _preferences.ConversationRetentionDays.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture));
         }
         finally { _applyingTheme = false; }
     }

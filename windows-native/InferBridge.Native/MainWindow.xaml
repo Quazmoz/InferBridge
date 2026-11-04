@@ -1104,6 +1104,25 @@
                                                Style="{StaticResource InferBridgeHelpTextStyle}" />
                                 </StackPanel>
                             </Border>
+                            <!-- Browser "Conversation storage" retention (app/conversation_management_ui.py). -->
+                            <Border Style="{StaticResource InferBridgeCardStyle}">
+                                <StackPanel Spacing="12">
+                                    <TextBlock Text="Conversation storage" Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />
+                                    <ComboBox x:Name="ConversationRetentionPicker" Header="Retention" MinWidth="200"
+                                              SelectionChanged="ConversationRetentionPicker_SelectionChanged"
+                                              AutomationProperties.Name="Conversation retention">
+                                        <ComboBoxItem Content="Keep until I delete them" Tag="0" />
+                                        <ComboBoxItem Content="Delete inactive chats after 30 days" Tag="30" />
+                                        <ComboBoxItem Content="Delete inactive chats after 90 days" Tag="90" />
+                                        <ComboBoxItem Content="Delete inactive chats after 180 days" Tag="180" />
+                                        <ComboBoxItem Content="Delete inactive chats after 1 year" Tag="365" />
+                                    </ComboBox>
+                                    <TextBlock x:Name="ConversationRetentionStatus" TextWrapping="Wrap"
+                                               AutomationProperties.LiveSetting="Polite"
+                                               Text="Saved chats are stored only on this PC. Pinned chats and the open chat are never removed by retention."
+                                               Style="{StaticResource InferBridgeHelpTextStyle}" />
+                                </StackPanel>
+                            </Border>
                             <Border Style="{StaticResource InferBridgeCardStyle}">
                                 <StackPanel Spacing="12">
                                     <TextBlock Text="Per-model context window" Style="{StaticResource InferBridgeSectionHeaderStyle}" Margin="0" />

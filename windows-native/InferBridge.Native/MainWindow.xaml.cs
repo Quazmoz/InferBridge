@@ -866,9 +866,11 @@ public sealed partial class MainWindow : Window
             return true;
         try
         {
-            _conversationStore.Save(NativeConversationStore.Create(
-                _currentConversationId, _conversationModelId, _turns));
+            int expired = _conversationStore.Save(NativeConversationStore.Create(
+                _currentConversationId, _conversationModelId, _turns), _preferences.ConversationRetentionDays);
             RefreshSavedChats(_currentConversationId);
+            if (expired > 0)
+                ShowChatInfo("Old chats removed", RetentionRemovedMessage(expired), InfoBarSeverity.Informational);
             return true;
         }
         catch (NativeConversationStore.HistoryFullException error)
@@ -1201,6 +1203,14 @@ public sealed partial class MainWindow : Window
 
     private void ChatDevicePicker_SelectionChanged(object sender, SelectionChangedEventArgs args)
     {
+        // A user choice is remembered like the browser's ovllm.device.v1; rebuilds are not choices.
+        if (!_applyingDeviceOptions && _devicesAvailable
+            && ChatDevicePicker.SelectedItem is ComboBoxItem { Tag: var choice })
+            TrySavePreferences(_preferences with
+            {
+                ChatDevice = choice switch { CombinedTarget combined => combined.Device, string { Length: > 0 } d => d, _ => null },
+                CombinedTarget = _combinedTarget,
+            }, out _);
         if (ChatDeviceSummary is not null && ApplyChatDeviceButton is not null)
             UpdateChatDeviceSummary();
     }
@@ -1484,27 +1494,40 @@ public sealed partial class MainWindow : Window
         // Tags are a device string or the builder's CombinedTarget (value equality).
         object selectedLibrary = (LibraryDevicePicker.SelectedItem as ComboBoxItem)?.Tag ?? string.Empty;
         object selectedChat = (ChatDevicePicker.SelectedItem as ComboBoxItem)?.Tag ?? string.Empty;
-        LibraryDevicePicker.Items.Clear();
-        ChatDevicePicker.Items.Clear();
-        var entries = devices.Select(device => (device.Label, (object)device.Target, device.Note)).ToList();
-        if (_combinedTarget is { } combined)
-            entries.Add((combined.PickerLabel, combined,
-                "Built with Combine devices. Experimental; the engine reports where the model actually runs."));
-        foreach (var (label, target, note) in entries)
+        if (!_chatDeviceRestored)
         {
-            foreach (ComboBox picker in new[] { LibraryDevicePicker, ChatDevicePicker })
-            {
-                var option = new ComboBoxItem { Content = label, Tag = target };
-                ToolTipService.SetToolTip(option, note);
-                picker.Items.Add(option);
-            }
+            // First detected list: restore the saved target if it is still offered.
+            _chatDeviceRestored = true;
+            _combinedTarget ??= _preferences.CombinedTarget;
+            if (_preferences.ChatDevice is { } saved)
+                selectedChat = _combinedTarget is { } restored && restored.Device == saved ? restored : saved;
         }
-        LibraryDevicePicker.SelectedItem = LibraryDevicePicker.Items
-            .Cast<ComboBoxItem>().FirstOrDefault(item => Equals(item.Tag, selectedLibrary))
-            ?? (ComboBoxItem)LibraryDevicePicker.Items[0];
-        ChatDevicePicker.SelectedItem = ChatDevicePicker.Items
-            .Cast<ComboBoxItem>().FirstOrDefault(item => Equals(item.Tag, selectedChat))
-            ?? (ComboBoxItem)ChatDevicePicker.Items[0];
+        _applyingDeviceOptions = true;
+        try
+        {
+            LibraryDevicePicker.Items.Clear();
+            ChatDevicePicker.Items.Clear();
+            var entries = devices.Select(device => (device.Label, (object)device.Target, device.Note)).ToList();
+            if (_combinedTarget is { } combined)
+                entries.Add((combined.PickerLabel, combined,
+                    "Built with Combine devices. Experimental; the engine reports where the model actually runs."));
+            foreach (var (label, target, note) in entries)
+            {
+                foreach (ComboBox picker in new[] { LibraryDevicePicker, ChatDevicePicker })
+                {
+                    var option = new ComboBoxItem { Content = label, Tag = target };
+                    ToolTipService.SetToolTip(option, note);
+                    picker.Items.Add(option);
+                }
+            }
+            LibraryDevicePicker.SelectedItem = LibraryDevicePicker.Items
+                .Cast<ComboBoxItem>().FirstOrDefault(item => Equals(item.Tag, selectedLibrary))
+                ?? (ComboBoxItem)LibraryDevicePicker.Items[0];
+            ChatDevicePicker.SelectedItem = ChatDevicePicker.Items
+                .Cast<ComboBoxItem>().FirstOrDefault(item => Equals(item.Tag, selectedChat))
+                ?? (ComboBoxItem)ChatDevicePicker.Items[0];
+        }
+        finally { _applyingDeviceOptions = false; }
     }
 
     private async Task RefreshAsync(bool background = false)
