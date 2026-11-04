@@ -12,6 +12,27 @@ namespace InferBridge.Native;
 public sealed partial class MainWindow
 {
     private CombinedTarget? _combinedTarget;
+    private IReadOnlyDictionary<string, DeviceSplitSuggestion> _deviceSplitSuggestions =
+        new Dictionary<string, DeviceSplitSuggestion>();
+
+    /// <summary>Refreshes the advisor's VRAM-aware suggestions; shown, never selected.</summary>
+    private async Task RefreshDeviceSplitSuggestionsAsync()
+    {
+        try
+        {
+            _deviceSplitSuggestions = await _backend.GetDeviceSplitSuggestionsAsync(
+                ApiKeyBox.Password, _closing.Token);
+        }
+        catch (Exception) when (!_closing.IsCancellationRequested)
+        {
+            _deviceSplitSuggestions = new Dictionary<string, DeviceSplitSuggestion>();
+        }
+        catch (Exception) { return; }
+        if (!_closing.IsCancellationRequested) UpdateChatDeviceSummary();
+    }
+
+    private DeviceSplitSuggestion? SplitSuggestionFor(ModelInfo? model) =>
+        model is not null && _deviceSplitSuggestions.TryGetValue(model.Id, out var hint) ? hint : null;
     private bool _combinedBuilderOpen;
 
     private CombinedTarget? SelectedLibraryTarget =>
@@ -115,6 +136,9 @@ public sealed partial class MainWindow
         body.Children.Add(Ui.Text("Pick the devices to combine and their order. AUTO tries the first device first; "
             + "HETERO gives the first device the layers it supports. The engine marks each mode for "
             + (model is null ? "this kind of model" : model.Name) + ".", secondary: true));
+        if (SplitSuggestionFor(model) is { } split)
+            body.Children.Add(Ui.Text("Suggested for " + model!.Name + ": HETERO pipeline-parallel on GPU, CPU. "
+                + split.Reason));
         body.Children.Add(Ui.Text("Devices, in order", "BodyStrongTextBlockStyle"));
         body.Children.Add(membersPanel);
         body.Children.Add(Ui.Text("Mode", "BodyStrongTextBlockStyle"));

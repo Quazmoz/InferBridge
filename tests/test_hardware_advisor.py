@@ -281,3 +281,34 @@ def test_small_model_has_no_spurious_conversion_memory_warning(tmp_path, monkeyp
         cfg, snapshot=make_snapshot(ram=32, available=28, disk=700, devices=("CPU",))
     )
     assert "conversion-memory-risk" not in {w["code"] for w in assessment["warnings"]}
+
+
+def test_vram_aware_split_is_suggested_only_when_gpu_plus_ram_fits(tmp_path, monkeypatch):
+    cfg = make_cfg("qwen2.5-14b-fp16", device="GPU")
+    advisor = make_advisor(tmp_path, {cfg.id: cfg})
+    monkeypatch.setattr(advisor, "_actual_converted_size_gb", lambda _cfg: None)
+    monkeypatch.setattr(advisor, "_latest_benchmark", lambda *_args, **_kwargs: None)
+    needed = advisor.estimate_model(cfg, device="GPU")["runtime_memory_gb"]
+
+    def evaluate(gpu_gb, available_gb, devices=("CPU", "GPU")):
+        snapshot = make_snapshot(ram=128, available=available_gb, devices=devices)
+        snapshot["gpu"] = {"total_gb": gpu_gb}
+        return advisor.evaluate_model(cfg, snapshot=snapshot)
+
+    split = evaluate(needed * 0.6, needed)
+    suggestion = split["device_suggestion"]
+    assert suggestion["device"] == "HETERO:GPU,CPU"
+    assert suggestion["model_distribution"] == "pipeline_parallel"
+    assert suggestion["experimental"] is True and "only a suggestion" in suggestion["reason"]
+    assert any(
+        w["code"] == "gpu-memory-split" and w["severity"] == "info" for w in split["warnings"]
+    )
+    # Never auto-selected: the recommendation stays a direct device.
+    assert ":" not in split["recommended_device"]
+    assert evaluate(needed * 2, needed)["device_suggestion"] is None  # fits the GPU
+    assert evaluate(needed * 0.3, needed * 0.3)["device_suggestion"] is None  # GPU+RAM too small
+    assert evaluate(needed * 0.6, needed, devices=("CPU",))["device_suggestion"] is None
+    embed = make_cfg("bge-small-en-v1.5", backend="openvino-embeddings", device="CPU")
+    snapshot = make_snapshot(available=64)
+    snapshot["gpu"] = {"total_gb": 0.01}
+    assert advisor.evaluate_model(embed, snapshot=snapshot)["device_suggestion"] is None

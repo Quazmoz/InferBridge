@@ -162,8 +162,50 @@ internal static class CombinedModes
     }
 }
 
+/// <summary>The advisor's VRAM-aware split suggestion for one model (never auto-selected).</summary>
+internal sealed record DeviceSplitSuggestion(string ModelId, string Device, string Reason)
+{
+    /// <summary>
+    /// Reads <c>models.available[].advisor.device_suggestion</c> from <c>/v1/system/status</c>;
+    /// only the one shape the engine emits (HETERO:GPU,CPU + pipeline_parallel) is accepted.
+    /// </summary>
+    public static IReadOnlyDictionary<string, DeviceSplitSuggestion> Parse(JsonElement root)
+    {
+        var found = new Dictionary<string, DeviceSplitSuggestion>(StringComparer.Ordinal);
+        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("models", out var models)
+            || models.ValueKind != JsonValueKind.Object || !models.TryGetProperty("available", out var rows)
+            || rows.ValueKind != JsonValueKind.Array) return found;
+        foreach (var row in rows.EnumerateArray())
+        {
+            if (found.Count >= 200) break;
+            if (row.ValueKind != JsonValueKind.Object
+                || !row.TryGetProperty("id", out var id) || id.ValueKind != JsonValueKind.String
+                || !row.TryGetProperty("advisor", out var advisor) || advisor.ValueKind != JsonValueKind.Object
+                || !advisor.TryGetProperty("device_suggestion", out var hint) || hint.ValueKind != JsonValueKind.Object)
+                continue;
+            string model = id.GetString() ?? "";
+            string device = hint.TryGetProperty("device", out var d) && d.ValueKind == JsonValueKind.String ? d.GetString() ?? "" : "";
+            string distribution = hint.TryGetProperty("model_distribution", out var m) && m.ValueKind == JsonValueKind.String ? m.GetString() ?? "" : "";
+            string reason = hint.TryGetProperty("reason", out var r) && r.ValueKind == JsonValueKind.String ? (r.GetString() ?? "").Trim() : "";
+            if (model.Length is < 1 or > 512 || device != "HETERO:GPU,CPU"
+                || distribution != CombinedModes.PipelineParallel) continue;
+            found[model] = new DeviceSplitSuggestion(model, device, reason.Length <= 400 ? reason : reason[..400] + "…");
+        }
+        return found;
+    }
+}
+
 internal sealed partial class BackendClient
 {
+    public async Task<IReadOnlyDictionary<string, DeviceSplitSuggestion>> GetDeviceSplitSuggestionsAsync(
+        string? apiKey, CancellationToken cancellationToken)
+    {
+        string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
+        using var document = await GetJsonAsync(origin + "/v1/system/status", apiKey,
+            cancellationToken, TimeSpan.FromSeconds(10), MaximumChatBytes);
+        return DeviceSplitSuggestion.Parse(document.RootElement);
+    }
+
     /// <summary>
     /// The engine's builder evaluation for an ordered member list (or its default list
     /// when <paramref name="members"/> is null).

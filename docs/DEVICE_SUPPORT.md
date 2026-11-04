@@ -45,8 +45,11 @@ The server passes device strings to OpenVINO GenAI. Accepted forms:
 ```text
 CPU   GPU   GPU.0   NPU
 AUTO                 AUTO:GPU,CPU        AUTO:NPU,GPU,CPU
+AUTO:-CPU            AUTO:-GPU           (exclusions only; AUTO's default candidates minus these)
 HETERO:GPU,CPU       MULTI:GPU,CPU  (deprecated, migrated to AUTO cumulative)
 ```
+
+`AUTO:-<device>` (API and Benchmark Lab advanced expressions) excludes devices from AUTO's default candidates. It cannot be mixed with a priority list (`AUTO:GPU,-CPU` is refused) and only AUTO accepts it. Like plain AUTO it never uses the NPU, and excluding every candidate (for example `AUTO:-GPU,-CPU`) is classified unsupported.
 
 ### Combined device modes (experimental)
 
@@ -72,6 +75,10 @@ Both clients ask `GET /v1/devices/modes?members=GPU,CPU` (two or three distinct 
 
 KV cache precision stays **Auto only** for every combined mode (it is sent only to one direct CPU or GPU). The NPU coexistence rule for resident slots uses the resolved members: plain `AUTO` never counts as an NPU load, every expression that names `NPU` does, and an engine that reports its execution devices is judged by where it actually runs.
 
+#### GPU memory suggestion
+
+When the hardware advisor estimates that a chat model needs more memory than the GPU reports, but no more than the GPU plus free RAM, its evaluation carries `device_suggestion: {"device": "HETERO:GPU,CPU", "model_distribution": "pipeline_parallel", "experimental": true, "reason": …}` and an `info` warning (`gpu-memory-split`). The browser and native device summaries show "Suggested: HETERO:GPU,CPU pipeline-parallel (experimental)" and the Combine builder repeats it. It is never selected for you: choose HETERO pipeline-parallel in the builder to use it. No suggestion is made when the GPU does not report its memory.
+
 When a combined mode fails to load, the model card offers **Load on GPU instead** (or **Load on CPU instead**) for the best single member, the error says InferBridge did not switch devices on its own, and the model's `device_fallback` field records the requested device and the offer for diagnostics.
 
 #### Verified facts (2026-11-03)
@@ -84,6 +91,8 @@ Checked against the OpenVINO 2026 documentation, the OpenVINO / OpenVINO GenAI `
 4. **HETERO pipeline parallelism exists as a preview.** `MODEL_DISTRIBUTION_POLICY=PIPELINE_PARALLEL` is HETERO's only supported policy and splits a model that does not fit on the first device; the docs recommend at most one of iGPU or CPU, at the end of the list. Source: <https://docs.openvino.ai/2026/openvino-workflow/running-inference/inference-devices-and-modes/hetero-execution.html>.
 5. **GenAI and combined devices.** `LLMPipeline` builds its static NPU pipeline only when the device is exactly `"NPU"` (`utils::is_npu_requested`); other strings use the paged-attention backend, which asserts "execution device is expected to be single CPU / single GPU / multi GPUs" and otherwise falls back to the stateful SDPA backend. `VLMPipeline` enables its NPU code path whenever the device string contains `NPU`. So NPU members cannot share a chat model with other devices, and HETERO:GPU,CPU or cumulative CPU+GPU runs chat on the slower stateful backend. Sources: `src/cpp/src/llm/pipeline.cpp`, `src/cpp/src/utils.cpp`, `src/cpp/src/continuous_batching/pipeline_impl.cpp`, `src/cpp/src/visual_language/pipeline.cpp` at <https://github.com/openvinotoolkit/openvino.genai/tree/releases/2026/2>.
 6. **Where AUTO landed is not reported by GenAI.** `CompiledModel.get_property(ov::execution_devices)` works on a compiled model (verified on 2025.4.1), and GenAI reads it internally, but the Python `LLMPipeline` binding exposes no compiled model or `get_property` (`src/python/py_llm_pipeline.cpp`). InferBridge reports `execution_devices: null` today and fills it automatically if a future binding exposes the property; mock mode simulates it.
+
+7. **AUTO exclusions.** The 2026 AUTO guide documents `AUTO:-CPU` ("Excluding Devices from Device Candidate List"). In the `releases/2026/2` auto plugin, an exclusion-only list starts from every available device, drops the excluded ones and skips the plugin's block list (`NPU` and non-Intel GPUs), so exclusions never add the NPU. Sources: the AUTO guide above, <https://github.com/openvinotoolkit/openvino/blob/releases/2026/2/src/plugins/auto/src/plugin.cpp> and `plugin_config.cpp` (`device_block_list`).
 
 None of the combined modes has been benchmarked on Intel Core Ultra hardware yet. Use Benchmark Lab's **Compare combined modes** preset to measure them.
 

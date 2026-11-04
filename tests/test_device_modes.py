@@ -288,3 +288,34 @@ def test_native_builder_fixture_matches_engine():
     report = device_modes.modes_report(["CPU", "GPU", "NPU"], mock=True)
     expected = {"builder_members": report["builder_members"], "builder": report["builder"]}
     assert json.loads(fixture.read_text(encoding="utf-8")) == expected
+
+
+def test_auto_exclusion_syntax():
+    """``AUTO:-CPU`` (OpenVINO 2026 docs, "Excluding Devices from Device Candidate List")."""
+    from runtime import device_check
+
+    parsed = device_check.parse_device_expression("auto:-cpu")
+    assert parsed.normalized == "AUTO:-CPU" and parsed.devices == () and parsed.excluded == ("CPU",)
+    for bad in ("HETERO:-CPU", "AUTO:GPU,-CPU", "AUTO:-CPU,-CPU", "AUTO:-TPU", "MULTI:-GPU"):
+        with pytest.raises(device_check.DeviceValidationError):
+            device_check.parse_device_expression(bad)
+    info = device_modes.describe("AUTO:-CPU", kind="chat", available=ULTRA)
+    # The auto plugin's block list keeps the NPU out of exclusion-only lists too.
+    assert info["members"] == ["GPU"] and info["may_use_npu"] is False
+    assert info["support"] == "supported" and "except CPU" in info["reason"]
+    assert info["excluded"] == ["CPU"]
+    assert device_modes.may_use_npu("AUTO:-CPU") is False
+    assert device_modes.best_single_device("AUTO:-GPU", ULTRA) == "CPU"
+    empty = device_modes.describe("AUTO:-GPU,-CPU", kind="chat", available=ULTRA)
+    assert empty["support"] == "unsupported" and "leaves AUTO no device" in empty["reason"]
+    with pytest.raises(device_modes.DeviceModeError, match="not supported"):
+        device_modes.resolve_or_400("AUTO:-GPU,-CPU", backend="openvino-genai", available=ULTRA)
+    assert device_modes.engine_properties("AUTO:-CPU", backend="openvino-genai")[1] == {
+        "PERFORMANCE_HINT": "LATENCY"
+    }
+
+
+def test_auto_exclusion_loads_in_mock(client):
+    ok = client.post("/v1/models/load", json={"model": CHAT, "device": "auto:-cpu"})
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["device_mode"]["normalized"] == "AUTO:-CPU"

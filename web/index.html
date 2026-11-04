@@ -2667,6 +2667,7 @@
                             <span class="device-combine-badge">Experimental</span></div>
                         <p class="device-combine-help">Pick devices and their order. AUTO tries the first device
                             first; HETERO gives the first device the layers it supports.</p>
+                        <p class="device-combine-help" id="device-combine-suggestion" hidden></p>
                         <ol class="device-combine-members" id="device-combine-members" aria-label="Devices, in order"></ol>
                         <fieldset class="device-combine-modes" id="device-combine-modes">
                             <legend>Mode</legend>
@@ -3879,6 +3880,11 @@
                 if (mine === combineVersion) setCombineStatus(`The engine could not check these devices: ${err.message}`);
             }
         }
+        function deviceSplitSuggestion(model) {
+            const value = model?.advisor?.device_suggestion;
+            return value && value.device === 'HETERO:GPU,CPU' && value.model_distribution === 'pipeline_parallel'
+                ? { device: value.device, reason: String(value.reason || '').slice(0, 400) } : null;
+        }
         function combineMembers() { return combineOrder.filter(item => combineIncluded.has(item)); }
         function renderCombineMembers(focusDevice = '', focusDelta = 0) {
             deviceCombineMembers.replaceChildren();
@@ -3925,7 +3931,15 @@
                 (focusDelta && preferred ? preferred : fallback)?.focus();
             }
         }
-        deviceCombine?.addEventListener('toggle', () => { if (deviceCombine.open) { combineSelectedId = ''; reloadCombine(null); } });
+        deviceCombine?.addEventListener('toggle', () => {
+            if (!deviceCombine.open) return;
+            combineSelectedId = '';
+            const split = deviceSplitSuggestion(availableModels.get(modelSelect.value));
+            const note = document.getElementById('device-combine-suggestion');
+            note.textContent = split ? `Suggested for this model: HETERO pipeline-parallel on GPU, CPU. ${split.reason}` : '';
+            note.hidden = !split;
+            reloadCombine(null);
+        });
         deviceCombineUse?.addEventListener('click', () => {
             const option = combineSelected();
             if (!option) return;
@@ -3996,10 +4010,13 @@
                 : 'AUTO routes to one compatible device; it does not combine processors.');
             const built = builderTarget?.device === target ? builderTarget : null;
             const options = built?.performance_hint ? ` (${built.performance_hint})` : built?.model_distribution ? ' (pipeline-parallel)' : '';
+            // VRAM-aware advisor suggestion (app/hardware_advisor/preflight.py): shown, never selected.
+            const split = deviceSplitSuggestion(model);
             const text = `Next load target: ${target} · Reported active device: ${active}`
-                + (built ? ` · ${built.label}${options}, experimental` : '');
+                + (built ? ` · ${built.label}${options}, experimental` : '')
+                + (split && target !== split.device ? ` · Suggested: ${split.device} pipeline-parallel (experimental)` : '');
             if (deviceRoutingSummary.textContent !== text) deviceRoutingSummary.textContent = text;
-            deviceRoutingSummary.title = `${text}. ${routingNote}`;
+            deviceRoutingSummary.title = `${text}. ${routingNote}${split ? ` ${split.reason}` : ''}`;
         }
         function deviceSwitchNeeded(model) {
             return Boolean(model?.is_loaded && !model.is_loading && model.device && model.device !== modelLoadDevice());

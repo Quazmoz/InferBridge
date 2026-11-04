@@ -95,13 +95,24 @@ def notify_once(notice: str | None, emit: Any = None) -> bool:
     return True
 
 
-def _members(kind: str, devices: tuple[str, ...], available: list[str] | None) -> list[str]:
+def _members(
+    kind: str,
+    devices: tuple[str, ...],
+    available: list[str] | None,
+    excluded: tuple[str, ...] = (),
+) -> list[str]:
     if devices:
         return list(devices)
     if kind != "AUTO":
         return [kind]
-    bases = {_base(item) for item in available or []} or {"CPU"}
-    return [base for base in _AUTO_DEFAULT_ORDER if base in bases]
+    # Plain AUTO and AUTO:-<device>: OpenVINO's default candidates (never the NPU)
+    # minus the exclusions (auto plugin get_device_list / device_block_list).
+    if excluded and available is None:  # inventory unknown (mock): assume every default
+        bases = set(_AUTO_DEFAULT_ORDER)
+    else:
+        bases = {_base(item) for item in available or []} or {"CPU"}
+    dropped = {_base(item) for item in excluded}
+    return [base for base in _AUTO_DEFAULT_ORDER if base in bases and base not in dropped]
 
 
 def describe(
@@ -121,7 +132,7 @@ def describe(
     normalized, migrated_hint, notice = migrate(original)
     parsed = device_check.parse_device_expression(normalized)
     hint = (performance_hint or migrated_hint or "").upper() or None
-    members = _members(parsed.kind, parsed.devices, available)
+    members = _members(parsed.kind, parsed.devices, available, parsed.excluded)
     bases = [_base(item) for item in members]
     has_npu = "NPU" in bases
     has_cpu_and_gpu = "CPU" in bases and "GPU" in bases
@@ -141,6 +152,17 @@ def describe(
         mode = "auto"
 
     support, reason = _classify(mode, kind, bases, has_npu, has_cpu_and_gpu)
+    if parsed.excluded and not members:
+        support = UNSUPPORTED
+        reason = (
+            f"Excluding {', '.join(parsed.excluded)} leaves AUTO no device on this PC "
+            "(AUTO never picks the NPU unless it is named)."
+        )
+    elif parsed.excluded and support == SUPPORTED:
+        reason = (
+            f"OpenVINO picks from every available device except {', '.join(parsed.excluded)} "
+            "(and the NPU, which AUTO only uses when named). One device at a time."
+        )
     if missing:
         support = UNSUPPORTED
         reason = f"{', '.join(missing)} is not available on this PC."
@@ -164,8 +186,9 @@ def describe(
         "recommended_hints": recommended,
         "options": options,
         "kv_cache_precision": "configurable"
-        if mode == "single" and bases[0] in ("CPU", "GPU")
+        if mode == "single" and bases and bases[0] in ("CPU", "GPU")
         else "auto_only",
+        "excluded": list(parsed.excluded),
         "may_use_npu": has_npu,
         "migrated_from": original if notice else None,
         "notice": notice,
@@ -301,7 +324,7 @@ def best_single_device(device: str, available: list[str] | None) -> str | None:
         return None
     if not parsed.devices and parsed.kind != "AUTO":
         return None
-    for member in _members(parsed.kind, parsed.devices, available):
+    for member in _members(parsed.kind, parsed.devices, available, parsed.excluded):
         base = _base(member)
         if base != "NPU" and (
             available is None or device_check.is_device_available(base, available)

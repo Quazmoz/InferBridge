@@ -303,3 +303,13 @@ def test_native_rerank_panel_matches_the_browser_connection_hub():
     assert "'\\r', '\\n'" in client
     assert 'x:Name="RerankResults"' in xaml and "Documents ordered by relevance" in xaml
     assert "AutomationEvents.LiveRegionChanged" in panel
+
+
+def test_vram_split_suggestion_is_shown_never_selected():
+    html = INDEX.read_text(encoding="utf-8")
+    native = (NATIVE / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    client = (NATIVE / "DeviceModesClient.cs").read_text(encoding="utf-8")
+    assert "model?.advisor?.device_suggestion" in html and "Suggested: ${split.device}" in html
+    assert '"device_suggestion"' in client and '" · Suggested: "' in native
+    # Neither client assigns the suggestion to the selection.
+    assert "selectedDevice = split" not in html and "_combinedTarget = split" not in native

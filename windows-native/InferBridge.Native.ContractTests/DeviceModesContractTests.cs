@@ -203,6 +203,19 @@ internal static class DeviceModesContractTests
             catch (ArgumentException) { }
         }
 
+        // VRAM-aware advisor suggestion: only the engine's exact shape is shown.
+        using (var status = JsonDocument.Parse("""
+            {"models":{"available":[
+              {"id":"big","advisor":{"device_suggestion":{"device":"HETERO:GPU,CPU","model_distribution":"pipeline_parallel","reason":"Fits GPU plus RAM."}}},
+              {"id":"odd","advisor":{"device_suggestion":{"device":"HETERO:NPU,CPU","model_distribution":"pipeline_parallel"}}},
+              {"id":"none","advisor":{"device_suggestion":null}}]}}
+            """))
+        {
+            var hints = DeviceSplitSuggestion.Parse(status.RootElement);
+            Check(hints.Count == 1 && hints["big"].Reason == "Fits GPU plus RAM.",
+                "an unexpected split suggestion was accepted or the real one dropped");
+        }
+
         Console.WriteLine("Native combined-device builder contracts: all cases passed.");
     }
 }

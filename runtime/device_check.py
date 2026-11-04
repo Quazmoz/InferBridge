@@ -29,6 +29,7 @@ SUPPORTED_DEVICE_EXAMPLES = (
     "AUTO:NPU,GPU,CPU",
     "AUTO:GPU,NPU,CPU",
     "HETERO:GPU,CPU",
+    "AUTO:-CPU",
 )
 
 _PHYSICAL_RE = re.compile(r"^(CPU|GPU|NPU)(?:\.\d+)?$")
@@ -44,11 +45,16 @@ class DeviceExpression:
 
     kind: str
     devices: tuple[str, ...] = ()
+    # AUTO exclusion syntax (``AUTO:-CPU``): OpenVINO starts from every available
+    # device except its block list (NPU, non-Intel GPU) and drops these.
+    excluded: tuple[str, ...] = ()
 
     @property
     def normalized(self) -> str:
         if self.devices:
             return f"{self.kind}:{','.join(self.devices)}"
+        if self.excluded:
+            return f"{self.kind}:{','.join('-' + device for device in self.excluded)}"
         return self.kind
 
     @property
@@ -104,6 +110,27 @@ def parse_device_expression(device: str | None, *, default: str | None = None) -
     devices = tuple(part.strip() for part in priorities.split(","))
     if any(not part for part in devices):
         raise DeviceValidationError(f"Device '{raw}' contains an empty priority entry.")
+
+    negative = [token.startswith("-") for token in devices]
+    if any(negative):
+        if meta != "AUTO":
+            raise DeviceValidationError(
+                f"Only AUTO can exclude devices ('{raw}'); list the devices {meta} should use."
+            )
+        if not all(negative):
+            raise DeviceValidationError(
+                f"Device '{raw}' mixes a priority list with exclusions; use one or the other, "
+                "for example AUTO:GPU,CPU or AUTO:-CPU."
+            )
+        excluded = tuple(token[1:].strip() for token in devices)
+        for token in excluded:
+            if not _is_physical_token(token):
+                raise DeviceValidationError(
+                    f"Unsupported OpenVINO physical device '{token}' in '{raw}'."
+                )
+        if len(set(excluded)) != len(excluded):
+            raise DeviceValidationError(f"Device '{raw}' excludes the same device twice.")
+        return DeviceExpression(meta, (), excluded)
 
     for token in devices:
         if not _is_physical_token(token):

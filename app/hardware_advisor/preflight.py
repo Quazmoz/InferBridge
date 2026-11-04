@@ -96,6 +96,9 @@ class PreflightMixin:
                     "warning",
                     f"Reported GPU memory is {gpu_total:.1f} GB versus a {runtime_memory:.1f} GB runtime estimate; shared memory may be required.",
                 )
+        device_suggestion = self._split_suggestion(cfg, snapshot, available_bases, available_ram)
+        if device_suggestion:
+            warn("gpu-memory-split", "info", device_suggestion["reason"])
         if base == "NPU" and estimates["parameter_count_b"] > 4.5:
             warn(
                 "npu-large-model",
@@ -196,8 +199,46 @@ class PreflightMixin:
                 "sym": quantization.sym,
             },
             "warnings": warnings,
+            "device_suggestion": device_suggestion,
             "requires_confirmation": bool(blocking or caution),
             "downloaded": bool(downloaded),
             "loaded": bool(loaded),
             "benchmark": benchmark,
+        }
+
+    def _split_suggestion(
+        self,
+        cfg: Any,
+        snapshot: Mapping[str, Any],
+        available_bases: set[str],
+        available_ram: float,
+    ) -> dict[str, Any] | None:
+        """HETERO:GPU,CPU pipeline-parallel when a chat model fits GPU+RAM but not the GPU.
+
+        A suggestion only: nothing selects it. ``app.device_modes`` offers pipeline-parallel
+        for chat models only, and only when GPU memory is reported can a fit be judged.
+        """
+        from app.device_modes import PIPELINE_PARALLEL, backend_kind
+
+        if backend_kind(getattr(cfg, "backend", "")) != "chat" or "GPU" not in available_bases:
+            return None
+        gpu_total = self._gpu_total_gb(snapshot)
+        if not gpu_total or gpu_total <= 0 or available_ram <= 0:
+            return None
+        needed = safe_float(self.estimate_model(cfg, device="GPU").get("runtime_memory_gb"))
+        if not needed or needed <= gpu_total or needed > gpu_total + available_ram:
+            return None
+        return {
+            "device": "HETERO:GPU,CPU",
+            "model_distribution": PIPELINE_PARALLEL,
+            "experimental": True,
+            "estimate_gb": round(needed, 1),
+            "gpu_memory_gb": round(gpu_total, 1),
+            "reason": (
+                f"About {needed:.1f} GB is estimated, more than the GPU's reported "
+                f"{gpu_total:.1f} GB but within GPU plus free RAM ({gpu_total + available_ram:.1f} GB). "
+                "HETERO:GPU,CPU with pipeline-parallel (an experimental OpenVINO preview) can split "
+                "it across the GPU and CPU. This is only a suggestion; the device does not change "
+                "unless you choose it."
+            ),
         }

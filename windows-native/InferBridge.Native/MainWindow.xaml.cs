@@ -1219,7 +1219,11 @@ public sealed partial class MainWindow : Window
                 && (choice.StartsWith("MULTI:", StringComparison.Ordinal)
                     || choice.StartsWith("HETERO:", StringComparison.Ordinal))
                 ? " · Experimental: multi-device support depends on the model and OpenVINO runtime."
-                : ". AUTO routes to one compatible device; it does not combine processors.");
+                : ". AUTO routes to one compatible device; it does not combine processors.")
+            // VRAM-aware advisor suggestion: shown here, selected only through Combine devices.
+            + (SplitSuggestionFor(model) is { } split && SelectedChatDevice != split.Device
+                ? " · Suggested: " + split.Device + " pipeline-parallel (experimental). " + split.Reason
+                : "");
         ApplyChatDeviceButton.IsEnabled = _devicesAvailable && _engineConnected
             && !_scanningDevices && !_chatBusy && !_isManaging && !RefreshLocksControls
             && !_quitting && !_closing.IsCancellationRequested
@@ -1277,6 +1281,7 @@ public sealed partial class MainWindow : Window
             _devicesScanned = true;
             string loadedSummary = await _backend.GetRuntimeSummaryAsync(
                 ApiKeyBox.Password, _closing.Token);
+            _ = RefreshDeviceSplitSuggestionsAsync();
             if (_closing.IsCancellationRequested) return;
             DevicePills.Children.Clear();
             foreach (string device in inventory.Available)
