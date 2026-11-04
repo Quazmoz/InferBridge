@@ -37,11 +37,80 @@ internal sealed record HuggingFaceDownloadRequest(
 
 internal sealed class HuggingFaceCredentialException(string message) : Exception(message);
 
+/// <summary>
+/// The engine's structured Hugging Face refusal (409 <c>{"detail": {"code": "hf_…"}}</c>)
+/// from the conversion preflight, presented like the browser access dialog
+/// (<c>issuePresentation</c> in app/huggingface_access_ui.py).
+/// </summary>
+internal sealed record HuggingFaceAccessIssue(string Code, string Message, string SourceModel, string AccessType)
+{
+    // Built from the validated repository ID, never from an engine-supplied URL.
+    public string ModelUrl => SourceModel.Length > 0 ? "https://huggingface.co/" + SourceModel : "";
+
+    public (string Title, string Guidance, bool Configure, bool OpenPage) Presentation => Code switch
+    {
+        "hf_approval_required" => ("Publisher approval required",
+            "InferBridge cannot accept the publisher agreement for you. Open the model page, complete approval, then check access again.",
+            true, ModelUrl.Length > 0),
+        "hf_token_missing" or "hf_token_invalid" => ("Hugging Face access required",
+            "Configure a valid read token. For gated models, also complete the publisher approval on the model page.",
+            true, ModelUrl.Length > 0),
+        "hf_model_not_found" => ("Model could not be found",
+            "Review the repository ID and confirm the model contains a config.json file that Optimum can convert.",
+            false, ModelUrl.Length > 0),
+        "hf_rate_limited" or "hf_network_error" => ("Hugging Face check unavailable",
+            "The conversion was not queued. Check the connection and try the access check again.",
+            false, false),
+        _ => ("Hugging Face access check failed",
+            "Review the model page or token, then check access again.",
+            true, ModelUrl.Length > 0),
+    };
+}
+
 internal sealed partial class BackendClient
 {
     private static readonly Regex HuggingFaceId = new(
         @"^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}/[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$",
         RegexOptions.CultureInvariant);
+
+    private static readonly Regex HuggingFaceAccessCode = new(
+        @"^hf_[a-z_]{1,60}$", RegexOptions.CultureInvariant);
+
+    /// <summary>Validated access issue from a refusal detail object, or null for any other refusal.</summary>
+    private static HuggingFaceAccessIssue? ReadHuggingFaceAccess(JsonElement detail)
+    {
+        string code = ReadString(detail, "code");
+        if (!HuggingFaceAccessCode.IsMatch(code) || code == "hf_access_granted") return null;
+        string message = SafeHubLabel(ReadString(detail, "message"), 400);
+        string source = ReadString(detail, "source_model");
+        string access = ReadString(detail, "access_type");
+        return new HuggingFaceAccessIssue(code,
+            message.Length > 0 ? message : "Hugging Face access must be checked before this model can be downloaded.",
+            HuggingFaceId.IsMatch(source) ? source : "",
+            access is "public" or "gated" ? access : "unknown");
+    }
+
+    /// <summary>
+    /// "Check access again" (<c>POST /v1/huggingface/preflight</c>). A catalog model is
+    /// checked by its ID so the engine uses its own access metadata, as the browser does;
+    /// a custom download is checked by repository. Throws <see cref="EngineRequestException"/>
+    /// with the new issue while access is still not ready.
+    /// </summary>
+    public async Task CheckHuggingFaceAccessAsync(
+        HuggingFaceAccessIssue issue, string? catalogModelId, string? apiKey,
+        CancellationToken cancellationToken)
+    {
+        if (catalogModelId is null && issue.SourceModel.Length == 0)
+            throw new EngineRequestException("A Hugging Face source model is required.");
+        string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
+        string body = catalogModelId is not null
+            ? JsonSerializer.Serialize(new { model_id = catalogModelId })
+            : JsonSerializer.Serialize(new { source_model = issue.SourceModel, access_type = issue.AccessType });
+        using var result = await PostJsonAsync(origin + "/v1/huggingface/preflight",
+            body, apiKey, cancellationToken, TimeSpan.FromSeconds(30), 16384);
+        if (ReadString(result.RootElement, "code") != "hf_access_granted")
+            throw new JsonException("Hugging Face access was not confirmed.");
+    }
 
     private static string SafeHubLabel(string text, int limit = 120) =>
         new(text.Where(c => !char.IsControl(c)).Take(limit).ToArray());

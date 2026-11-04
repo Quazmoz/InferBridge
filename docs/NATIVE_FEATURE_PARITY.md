@@ -44,7 +44,7 @@ passed Windows hardware certification.
 | Update settings and checks | Full native | `ReleaseUpdateClient.cs`: reads/saves `/desktop/release/settings`, checks and skips releases; release links are restricted to official release URLs (`IsOfficialReleaseUrl`). Installing an update is still handed to the official installer/package |
 | App settings and startup | Partial native | native Settings, `app/startup_registration.py`: local runtime/UX controls; web controls some advanced preferences |
 | Onboarding wizard | Partial native | The browser has a step-by-step first-run wizard (`app/onboarding_ui.py`, Restart Onboarding). Native has no wizard; it covers the same ground with the engine onboarding recommendation and the **Best model for this PC** card on the Engine & devices page |
-| Hugging Face gated-model access | Partial native | Native stores and verifies the token and shows the publisher-license notice before a download (`MainWindow.HuggingFace.cs`); the browser's dedicated gated-access preflight dialog (`app/huggingface_access_ui.py`) has no native equivalent |
+| Hugging Face gated-model access | Native and web | Engine `HuggingFacePreflightMiddleware` (`app/huggingface_access.py`) refuses an inaccessible `/v1/models/convert` or `/v1/models/download-custom` with `409 {"detail": {"code": "hf_…"}}` before anything is queued. Browser: the access dialog in `app/huggingface_access_ui.py`. Native: `EngineRequestException.HuggingFaceAccess` keeps the validated issue (unknown codes fall back to a generic presentation, the repository ID must match the engine pattern, and the model page link is rebuilt from it rather than taken from the engine), and `MainWindow.HuggingFace.cs` shows the same titles and guidance with **Configure token** (verify and save, then re-check), **Open model page** and **Check access again** (`POST /v1/huggingface/preflight`, catalog models by `model_id`, custom downloads by `source_model` and `access_type`, as in the browser). The original catalog download, Hugging Face custom download or NPU reconvert is sent again only after the engine confirms access; Cancel queues nothing. Model cards show a **Gated** pill from `is_gated`. Covered by `HuggingFaceAccessContractTests.cs` and `tests/test_web_native_parity.py`; not yet exercised against a real gated repository on Windows |
 | Reranker models and `POST /v1/rerank` | Native and web | Engine `app/rerank_api.py`, `runtime/openvino_engine.py` (`OpenVINORerankEngine`). Both sides can import (**Reranker** backend in the Model Library import form and native **Import / export**; Hugging Face search suggests it for `text-classification` reranker repos), download, load (**Load as reranker**) and unload rerankers in their own slot. Both Connection Hubs have **Rerank for RAG**: the browser modal (`app/connection_hub_ui.py`) and the native Local API page (`MainWindow.Rerank.cs`, `RerankClient.cs`) send the same request (reranker slot model, query up to 2,000 characters, up to 50 documents one per line, `return_documents: true`), list documents best first as rank · score · text, and offer a copyable curl example. Native disables **Score documents** with load guidance while the reranker slot is empty (`GET /v1/models/slots`) and turns a `503` into the same guidance. Covered by `tests/test_rerank.py`, `tests/test_web_native_parity.py` and `RerankContractTests.cs`. Guide: `docs/RERANK.md`. Not yet exercised on Windows hardware |
 | Embedding models | Native and web for models; no playground on either side | Both sides can download, convert, register and load embedding models (`openvino-embeddings`); the engine serves `/v1/embeddings`. Neither the browser nor native has an embedding playground or test UI |
 
@@ -52,7 +52,7 @@ passed Windows hardware certification.
 
 - Web-only: `trust_remote_code` Hugging Face conversions and model definitions that enable it (deliberate, for security: native never enables remote repository code).
 - Left out of native on purpose: per-message timestamps and per-message stats (native keeps the last-reply stats strip), queue-a-message-while-loading (native Send stays disabled while a model operation runs), and a jump-to-latest button.
-- Partial native: the onboarding wizard and the Hugging Face gated-access dialog (see rows above).
+- Partial native: the onboarding wizard (see row above).
 - Neither side: full CommonMark, an embedding playground, automatic native↔browser conversation and preference sync.
 
 ## Windows launch qualification inventory
@@ -97,7 +97,7 @@ definition export/import, detected-folder adoption and converted-directory impor
 against real OpenVINO IR folders, and the 2026-10 chat parity surfaces (Eject,
 the load guard, Regenerate, the context budget chip, saved defaults, theme,
 starter prompts, Esc/Ctrl+L, the engine activity feed, the hardware advisor and
-Check for newly verified models). These
+Check for newly verified models), and the Hugging Face access dialog against a real gated repository (missing token, unapproved account, then approval and retry). These
 are covered by source and mocked-HTTP contract tests only; none of them has
 been qualified on Windows hardware or in an installed package.
 

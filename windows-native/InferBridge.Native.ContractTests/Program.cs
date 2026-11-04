@@ -104,6 +104,7 @@ try
     await NpuRecoveryContractTests.RunAsync(root);
     await DeviceModesContractTests.RunAsync(root);
     await RerankContractTests.RunAsync(root);
+    await HuggingFaceAccessContractTests.RunAsync(root);
     return 0;
 }
 finally

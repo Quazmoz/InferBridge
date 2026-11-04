@@ -313,3 +313,26 @@ def test_vram_split_suggestion_is_shown_never_selected():
     assert '"device_suggestion"' in client and '" · Suggested: "' in native
     # Neither client assigns the suggestion to the selection.
     assert "selectedDevice = split" not in html and "_combinedTarget = split" not in native
+
+
+def test_native_huggingface_access_dialog_matches_the_browser():
+    web = (INDEX.parents[1] / "app" / "huggingface_access_ui.py").read_text(encoding="utf-8")
+    client = (NATIVE / "HuggingFaceClient.cs").read_text(encoding="utf-8")
+    page = (NATIVE / "MainWindow.HuggingFace.cs").read_text(encoding="utf-8")
+    presentation = web[
+        web.index("function issuePresentation") : web.index("function showAccessIssue")
+    ]
+    copy = re.findall(r"(?:title|guidance): '([^']+)'", presentation)
+    assert len(copy) == 10
+    for text in copy:
+        assert f'"{text}"' in client, text
+    for code in re.findall(r"code === '(hf_\w+)'", presentation):
+        assert f'"{code}"' in client, code
+    # Same actions and the same re-check endpoint; the original request is replayed only after it passes.
+    for label in ("Configure token", "Open model page", "Check access again"):
+        assert label in web and f'"{label}"' in page
+    assert "/v1/huggingface/preflight" in web and '"/v1/huggingface/preflight"' in client
+    assert "await replayPreparation()" in web and "return await request();" in page
+    assert "model?.is_gated" in web and '"is_gated"' in (NATIVE / "BackendClient.cs").read_text(
+        encoding="utf-8"
+    )

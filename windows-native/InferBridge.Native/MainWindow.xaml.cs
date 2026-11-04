@@ -1777,10 +1777,10 @@ public sealed partial class MainWindow : Window
             ? TargetOptions(combinedTarget, device) : (null, null);
         try
         {
-            ShowModelsInfo(await _backend.ChangeModelAsync(
+            ShowModelsInfo(await WithHuggingFaceAccessAsync(() => _backend.ChangeModelAsync(
                 model, action, ApiKeyBox.Password, _closing.Token, device,
                 action == ModelAction.Load ? contextTokens : null,
-                performanceHint: hint, modelDistribution: distribution), InfoBarSeverity.Success);
+                performanceHint: hint, modelDistribution: distribution), model.Id), InfoBarSeverity.Success);
         }
         catch (Exception) when (_closing.IsCancellationRequested)
         {

@@ -128,6 +128,32 @@ public sealed partial class MainWindow
             return;
         _hfBusy = true;
         UpdateHuggingFaceButtons();
+        try
+        {
+            if (await PromptHuggingFaceTokenAsync() is not { } token
+                || _closing.IsCancellationRequested) return;
+            _hfBusy = false;
+            await ChangeHuggingFaceAsync(
+                () => _backend.SaveHuggingFaceTokenAsync(
+                    token, ApiKeyBox.Password, _closing.Token),
+                "Hugging Face token verified and stored by the local engine.");
+        }
+        catch (Exception) when (_closing.IsCancellationRequested) { }
+        catch (Exception error) when (!_closing.IsCancellationRequested)
+        {
+            HfInfo.Severity = InfoBarSeverity.Warning;
+            HfInfo.Message = SafeHuggingFaceError(error);
+        }
+        finally
+        {
+            _hfBusy = false;
+            if (!_closing.IsCancellationRequested) UpdateHuggingFaceButtons();
+        }
+    }
+
+    /// <summary>Asks for a read-scoped token; null when cancelled. The secret is never kept in the box.</summary>
+    private async Task<string?> PromptHuggingFaceTokenAsync()
+    {
         var secretBox = new PasswordBox
         {
             Header = "Read-scoped Hugging Face token",
@@ -146,28 +172,101 @@ public sealed partial class MainWindow
                 CloseButtonText = "Cancel",
                 DefaultButton = ContentDialogButton.Close,
             };
-            if (await dialog.ShowAsync() != ContentDialogResult.Primary
-                || _closing.IsCancellationRequested) return;
-            string token = secretBox.Password;
-            secretBox.Password = string.Empty;
-            _hfBusy = false;
-            await ChangeHuggingFaceAsync(
-                () => _backend.SaveHuggingFaceTokenAsync(
-                    token, ApiKeyBox.Password, _closing.Token),
-                "Hugging Face token verified and stored by the local engine.");
-        }
-        catch (Exception) when (_closing.IsCancellationRequested) { }
-        catch (Exception error) when (!_closing.IsCancellationRequested)
-        {
-            HfInfo.Severity = InfoBarSeverity.Warning;
-            HfInfo.Message = SafeHuggingFaceError(error);
+            return await dialog.ShowAsync() == ContentDialogResult.Primary ? secretBox.Password : null;
         }
         finally
         {
             secretBox.Password = string.Empty;
-            _hfBusy = false;
-            if (!_closing.IsCancellationRequested) UpdateHuggingFaceButtons();
         }
+    }
+
+    /// <summary>
+    /// Sends a download/conversion request; when the engine's Hugging Face preflight refuses
+    /// it, shows the access dialog and repeats the request once access is confirmed (the
+    /// browser replays it the same way). Cancel rethrows the refusal, so nothing is queued.
+    /// </summary>
+    private async Task<string> WithHuggingFaceAccessAsync(Func<Task<string>> request, string? catalogModelId)
+    {
+        while (true)
+        {
+            try
+            {
+                return await request();
+            }
+            catch (EngineRequestException refusal)
+                when (refusal.HuggingFaceAccess is not null && !_closing.IsCancellationRequested)
+            {
+                if (!await ResolveHuggingFaceAccessAsync(refusal.HuggingFaceAccess, catalogModelId)) throw;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Native "Hugging Face access check" dialog (web: app/huggingface_access_ui.py): explains
+    /// a gated, missing-token, not-found or network refusal and offers Configure token, Open
+    /// model page and Check access again. True only after the engine confirms access.
+    /// </summary>
+    private async Task<bool> ResolveHuggingFaceAccessAsync(HuggingFaceAccessIssue issue, string? catalogModelId)
+    {
+        string problem = "";
+        while (!_closing.IsCancellationRequested)
+        {
+            var (title, guidance, configure, openPage) = issue.Presentation;
+            var layout = new StackPanel { Spacing = 10, MaxWidth = 460 };
+            layout.Children.Add(Ui.Text(issue.Message));
+            var repository = Ui.Text(issue.SourceModel.Length > 0 ? issue.SourceModel
+                : catalogModelId ?? "Hugging Face model");
+            repository.FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas");
+            repository.IsTextSelectionEnabled = true;
+            layout.Children.Add(repository);
+            layout.Children.Add(Ui.Text(guidance, secondary: true));
+            if (openPage)
+            {
+                var open = new HyperlinkButton { Content = "Open model page", Tag = issue.ModelUrl };
+                open.Click += HfOpenModel_Click;
+                layout.Children.Add(open);
+            }
+            if (problem.Length > 0)
+                layout.Children.Add(new InfoBar
+                {
+                    IsOpen = true, IsClosable = false, Severity = InfoBarSeverity.Warning, Message = problem,
+                });
+            var dialog = new ContentDialog
+            {
+                XamlRoot = ((FrameworkElement)Content).XamlRoot,
+                Title = title,
+                Content = layout,
+                PrimaryButtonText = "Check access again",
+                SecondaryButtonText = configure ? "Configure token" : "",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Primary,
+            };
+            ContentDialogResult choice = await dialog.ShowAsync();
+            if (choice == ContentDialogResult.None || _closing.IsCancellationRequested) return false;
+            try
+            {
+                if (choice == ContentDialogResult.Secondary)
+                {
+                    if (await PromptHuggingFaceTokenAsync() is not { } token) continue;
+                    ShowHuggingFaceStatus(await _backend.SaveHuggingFaceTokenAsync(
+                        token, ApiKeyBox.Password, _closing.Token));
+                }
+                await _backend.CheckHuggingFaceAccessAsync(
+                    issue, catalogModelId, ApiKeyBox.Password, _closing.Token);
+                return true;
+            }
+            catch (Exception) when (_closing.IsCancellationRequested) { return false; }
+            catch (EngineRequestException refusal) when (refusal.HuggingFaceAccess is not null)
+            {
+                issue = refusal.HuggingFaceAccess;
+                problem = issue.Message;
+            }
+            catch (Exception error)
+            {
+                problem = SafeHuggingFaceError(error);
+            }
+        }
+        return false;
     }
 
     private async void HfRemoveButton_Click(object sender, RoutedEventArgs args)
@@ -457,8 +556,8 @@ public sealed partial class MainWindow
             };
 
             HfSearchSummary.Text = "Rechecking local catalog and device, then requesting preparation…";
-            string result = await _backend.QueueHuggingFaceModelAsync(
-                request, ApiKeyBox.Password, _closing.Token);
+            string result = await WithHuggingFaceAccessAsync(() => _backend.QueueHuggingFaceModelAsync(
+                request, ApiKeyBox.Password, _closing.Token), catalogModelId: null);
             if (_closing.IsCancellationRequested) return;
             HfSearchSummary.Text = result;
             HfInfo.Severity = InfoBarSeverity.Success;

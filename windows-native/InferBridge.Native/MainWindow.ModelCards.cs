@@ -55,6 +55,8 @@ public sealed partial class MainWindow
         if (recommended) pills.Children.Add(Ui.Pill("Recommended for this PC", "accent"));
         // Embedding and reranker models occupy their own resident slot beside chat.
         if (!model.IsChatModel) pills.Children.Add(Ui.Pill(model.RoleLabel, "accent"));
+        // Same "Gated" hint as the browser model picker: publisher approval and a token are needed.
+        if (model.IsGated) pills.Children.Add(Ui.Pill("Gated", "warning"));
         if (model.CanUnload)
             pills.Children.Add(Ui.Pill("Running on " + (model.Device is { Length: > 0 } device
                 ? device : "device not reported"), "neutral"));
@@ -234,8 +236,8 @@ public sealed partial class MainWindow
         UpdateChatButtons();
         try
         {
-            ShowModelsInfo(await _backend.RecoverModelAsync(model, action, ApiKeyBox.Password,
-                _closing.Token), InfoBarSeverity.Success);
+            ShowModelsInfo(await WithHuggingFaceAccessAsync(() => _backend.RecoverModelAsync(model, action,
+                ApiKeyBox.Password, _closing.Token), model.Id), InfoBarSeverity.Success);
             if (model.Id == SelectedModelId) _chatLoadError = null;
         }
         catch (Exception) when (_closing.IsCancellationRequested) { }

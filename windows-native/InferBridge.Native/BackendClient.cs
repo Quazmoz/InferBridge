@@ -21,6 +21,8 @@ internal sealed record ModelInfo(string Id, string Name, string Status)
     public string? Error { get; init; }
     public string? ErrorCode { get; init; }
     public IReadOnlyList<string> RecoveryActions { get; init; } = Array.Empty<string>();
+    // Engine access metadata: downloading needs publisher approval and a Hugging Face token.
+    public bool IsGated { get; init; }
     public bool CanUnload => Status == "loaded";
     public bool CanDelete => Status == "ready_to_load";
     // Embedding and reranker models serve their own APIs, never the chat picker.
@@ -52,8 +54,15 @@ internal sealed record ModelInfo(string Id, string Name, string Status)
     };
 }
 
-/// <summary>The engine refused a request and explained why in plain text.</summary>
-internal sealed class EngineRequestException(string message) : InvalidOperationException(message);
+/// <summary>
+/// The engine refused a request and explained why in plain text. A Hugging Face
+/// preflight refusal also carries the structured issue for the access dialog.
+/// </summary>
+internal sealed class EngineRequestException(string message, HuggingFaceAccessIssue? huggingFaceAccess = null)
+    : InvalidOperationException(message)
+{
+    public HuggingFaceAccessIssue? HuggingFaceAccess { get; } = huggingFaceAccess;
+}
 
 internal sealed record ChatTurn(string Role, string Content);
 
@@ -421,6 +430,8 @@ internal sealed partial class BackendClient : IDisposable
                         ErrorCode = ReadString(item, "error_code") is { Length: > 0 and <= 64 } code ? code : null,
                         RecoveryActions = ReadRecoveryActions(item),
                         Role = ModelSlot.NormalizeRole(ReadString(item, "role")),
+                        IsGated = item.TryGetProperty("is_gated", out var gated)
+                            && gated.ValueKind == JsonValueKind.True,
                     });
                 }
 
@@ -632,7 +643,7 @@ internal sealed partial class BackendClient : IDisposable
             throw new UnauthorizedAccessException("The engine rejected the API key.");
         if (response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.NotFound
             or HttpStatusCode.Conflict)
-            throw new EngineRequestException(await ReadRefusalAsync(response, limit.Token));
+            throw await ReadRefusalAsync(response, limit.Token);
         response.EnsureSuccessStatusCode();
         if (!string.Equals(response.Content.Headers.ContentType?.MediaType,
             "text/event-stream", StringComparison.OrdinalIgnoreCase))
@@ -1826,7 +1837,7 @@ internal sealed partial class BackendClient : IDisposable
             throw new UnauthorizedAccessException("The engine rejected the API key.");
         if (response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.NotFound
             or HttpStatusCode.Conflict)
-            throw new EngineRequestException(await ReadRefusalAsync(response, limit.Token));
+            throw await ReadRefusalAsync(response, limit.Token);
         response.EnsureSuccessStatusCode();
         byte[] body = await ReadBoundedAsync(response, maximumBytes, limit.Token);
         return JsonDocument.Parse(body, new JsonDocumentOptions { MaxDepth = 24 });
@@ -1854,7 +1865,8 @@ internal sealed partial class BackendClient : IDisposable
 
     // FastAPI reports refusals as {"detail": "text"} or {"detail": {"message": "text"}}.
     // Only a bounded plain-text reason is shown; anything else gets a generic message.
-    private static async Task<string> ReadRefusalAsync(
+    // A {"detail": {"code": "hf_…"}} refusal also keeps its validated access issue.
+    private static async Task<EngineRequestException> ReadRefusalAsync(
         HttpResponseMessage response, CancellationToken cancellationToken)
     {
         const string fallback = "The engine is busy or the model state changed. Refresh and retry.";
@@ -1864,16 +1876,20 @@ internal sealed partial class BackendClient : IDisposable
             using var document = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 8 });
             var root = document.RootElement;
             string message = ReadString(root, "detail");
+            HuggingFaceAccessIssue? access = null;
             if (message.Length == 0 && root.ValueKind == JsonValueKind.Object
                 && root.TryGetProperty("detail", out var detail))
+            {
                 message = ReadString(detail, "message");
+                access = ReadHuggingFaceAccess(detail);
+            }
             message = string.Join(' ', message.Split((char[]?)null,
                 StringSplitOptions.RemoveEmptyEntries));
-            return message.Length is > 0 and <= 400 ? message : fallback;
+            return new EngineRequestException(message.Length is > 0 and <= 400 ? message : fallback, access);
         }
         catch (Exception error) when (error is JsonException or IOException)
         {
-            return fallback;
+            return new EngineRequestException(fallback);
         }
     }
 
