@@ -1612,6 +1612,11 @@ public sealed partial class MainWindow : Window
                 _recommendationRequested = true;
                 _ = LoadRecommendationAsync();
             }
+            if (status.Connected && !status.RequiresAuthentication && !_onboardingChecked)
+            {
+                _onboardingChecked = true;
+                _ = CheckOnboardingAsync();
+            }
 
             if (SelectedChatModel?.Status == "loaded") _chatLoadError = null;
             if (!status.Connected || status.RequiresAuthentication)

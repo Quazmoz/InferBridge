@@ -206,6 +206,10 @@
                                     <Button x:Name="AdvisorShowModelButton" Content="Show in Model library" IsEnabled="False"
                                             Click="AdvisorShowModelButton_Click"
                                             AutomationProperties.Name="Show the recommended model in Model library" />
+                                    <!-- The browser's first-run wizard (app/onboarding_ui.py); see MainWindow.Onboarding.cs. -->
+                                    <Button x:Name="OnboardingButton" Content="Setup and onboarding" IsEnabled="False"
+                                            Click="OnboardingButton_Click"
+                                            ToolTipService.ToolTip="Open setup, connection details, or run onboarding again" />
                                 </local:WrapRow>
                                 <Expander Header="Model compatibility" HorizontalAlignment="Stretch"
                                           HorizontalContentAlignment="Stretch"

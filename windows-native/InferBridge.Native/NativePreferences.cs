@@ -4,19 +4,20 @@ namespace InferBridge.Native;
 
 /// <summary>
 /// Small per-installation preferences the browser keeps in localStorage: the app
-/// theme and the chat defaults (system prompt, temperature, top-p, maximum
-/// tokens). Plain JSON beside the conversation history; never an API key. A
+/// theme, the chat defaults (system prompt, temperature, top-p, maximum
+/// tokens) and whether the first-run wizard has opened by itself once. Plain JSON beside the conversation history; never an API key. A
 /// missing or invalid file means defaults, and the original file is left alone.
 /// </summary>
 internal sealed record NativePreferences(
-    string Theme, string? DefaultSystemPrompt, GenerationOptions DefaultGeneration)
+    string Theme, string? DefaultSystemPrompt, GenerationOptions DefaultGeneration,
+    bool OnboardingAutoOpened = false)
 {
     public const int MaximumFileBytes = 64 * 1024;
     public static readonly string[] Themes = ["system", "light", "dark"];
     public static NativePreferences Default { get; } = new("system", null, GenerationOptions.Default);
 
     private sealed record Envelope(int Version, string? Theme, string? SystemPrompt,
-        int? MaxTokens, double? Temperature, double? TopP);
+        int? MaxTokens, double? Temperature, double? TopP, bool? OnboardingAutoOpened = null);
 
     public static string PathForCurrentInstallation() =>
         Path.Combine(Path.GetDirectoryName(NativeDataPaths.ResolveMetadataFile())
@@ -49,7 +50,8 @@ internal sealed record NativePreferences(
                 envelope.MaxTokens ?? GenerationOptions.Default.MaxTokens,
                 envelope.Temperature ?? GenerationOptions.Default.Temperature,
                 envelope.TopP ?? GenerationOptions.Default.TopP);
-            return new NativePreferences(envelope.Theme ?? "system", envelope.SystemPrompt, generation)
+            return new NativePreferences(envelope.Theme ?? "system", envelope.SystemPrompt, generation,
+                envelope.OnboardingAutoOpened == true)
                 .Validated();
         }
         catch (Exception error) when (error is JsonException or ArgumentException
@@ -65,7 +67,7 @@ internal sealed record NativePreferences(
         NativePreferences valid = Validated();
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(new Envelope(1, valid.Theme,
             valid.DefaultSystemPrompt, valid.DefaultGeneration.MaxTokens,
-            valid.DefaultGeneration.Temperature, valid.DefaultGeneration.TopP));
+            valid.DefaultGeneration.Temperature, valid.DefaultGeneration.TopP, valid.OnboardingAutoOpened));
         if (bytes.Length > MaximumFileBytes) throw new InvalidDataException("Preferences are too large.");
         string folder = Path.GetDirectoryName(path) ?? throw new IOException("Invalid preferences folder.");
         Directory.CreateDirectory(folder);

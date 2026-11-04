@@ -336,3 +336,43 @@ def test_native_huggingface_access_dialog_matches_the_browser():
     assert "model?.is_gated" in web and '"is_gated"' in (NATIVE / "BackendClient.cs").read_text(
         encoding="utf-8"
     )
+
+
+def test_native_onboarding_wizard_matches_the_browser_wizard():
+    from app import onboarding_models
+    from app.onboarding_ui import ONBOARDING_JS
+
+    client = (NATIVE / "OnboardingClient.cs").read_text(encoding="utf-8")
+    page = (NATIVE / "MainWindow.Onboarding.cs").read_text(encoding="utf-8")
+    # Same seven steps, in order.
+    web_steps = re.findall(
+        r"'([^']+)'", re.search(r"const labels=\[([^\]]+)\]", ONBOARDING_JS).group(1)
+    )
+    native_steps = re.findall(r'"([^"]+)"', re.search(r"Steps =\s*\[([^\]]+)\]", client).group(1))
+    assert native_steps == web_steps
+    # Every browser action, stat, benchmark and snippet label exists natively.
+    labels = set(re.findall(r"label:'([^']+)'", ONBOARDING_JS))
+    labels |= set(re.findall(r"<span>([^<$]+)</span>", ONBOARDING_JS))
+    labels |= set(re.findall(r"code\('([^']+)'", ONBOARDING_JS))
+    assert len(labels) > 30
+    for label in labels:
+        assert f'"{label}"' in client + page, label
+    # Same endpoints, and only fields the engine's models define.
+    for endpoint in set(re.findall(r"\$\{API\}/([a-z-]+)", ONBOARDING_JS)) - {"documentation"}:
+        assert f"/{endpoint}" in client, endpoint
+    # Native opens the page the engine's /documentation redirect points to.
+    routes = (INDEX.parents[1] / "app" / "onboarding_routes.py").read_text(encoding="utf-8")
+    docs = re.search(r'DocumentationUrl = "([^"]+)"', client).group(1)
+    assert f'"{docs}"' in routes
+    fields = {"base_url", "api_key", "note"}
+    for model in vars(onboarding_models).values():
+        if isinstance(model, type) and issubclass(model, onboarding_models.BaseModel):
+            fields |= set(model.model_fields)
+    read = set(re.findall(r'(?:Text|Flag|Number|Gb|Metric|Array)\(\w+, "(\w+)"', client))
+    assert read and read <= fields, read - fields
+    sent = set(
+        re.findall(r"^\s+(\w+)(?: = [^,]+)?,$", client.split("/prepare")[1].split("}")[0], re.M)
+    )
+    assert sent == set(onboarding_models.PrepareModelRequest.model_fields)
+    # Native never enables reviewed repository code and opens itself only once.
+    assert "trust_remote_code = false" in client and "OnboardingAutoOpened = true" in page

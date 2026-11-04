@@ -105,6 +105,7 @@ try
     await DeviceModesContractTests.RunAsync(root);
     await RerankContractTests.RunAsync(root);
     await HuggingFaceAccessContractTests.RunAsync(root);
+    await OnboardingContractTests.RunAsync(root);
     return 0;
 }
 finally
