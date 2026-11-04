@@ -1,0 +1,127 @@
+{
+ "builder_members": [
+  "GPU",
+  "CPU",
+  "NPU"
+ ],
+ "builder": {
+  "members": [
+   "GPU",
+   "CPU"
+  ],
+  "options": [
+   {
+    "id": "auto",
+    "label": "AUTO priority",
+    "prefix": "AUTO",
+    "performance_hint": null,
+    "model_distribution": null,
+    "summary": "OpenVINO tries your devices in order and runs the model on the first one that can compile it. It uses one device at a time.",
+    "device": "AUTO:GPU,CPU",
+    "experimental": true,
+    "backends": {
+     "chat": {
+      "support": "supported",
+      "reason": "OpenVINO picks the first listed device that can compile the model. It does not use several devices at once."
+     },
+     "vlm": {
+      "support": "supported",
+      "reason": "OpenVINO picks the first listed device that can compile the model. It does not use several devices at once."
+     },
+     "embedding": {
+      "support": "supported",
+      "reason": "OpenVINO picks the first listed device that can compile the model. It does not use several devices at once."
+     },
+     "rerank": {
+      "support": "supported",
+      "reason": "OpenVINO picks the first listed device that can compile the model. It does not use several devices at once."
+     }
+    }
+   },
+   {
+    "id": "auto_cumulative",
+    "label": "AUTO cumulative throughput",
+    "prefix": "AUTO",
+    "performance_hint": "CUMULATIVE_THROUGHPUT",
+    "model_distribution": null,
+    "summary": "Loads a copy of the model on every listed device and spreads requests across them. It helps many parallel requests, rarely a single chat.",
+    "device": "AUTO:GPU,CPU",
+    "experimental": true,
+    "backends": {
+     "chat": {
+      "support": "experimental",
+      "reason": "Runs copies of the model on every listed device for throughput. InferBridge serves one request at a time per model, so single chats rarely get faster. Mixed CPU and GPU execution also makes GenAI fall back from paged attention."
+     },
+     "vlm": {
+      "support": "experimental",
+      "reason": "Runs copies of the model on every listed device for throughput. InferBridge serves one request at a time per model, so single chats rarely get faster. Mixed CPU and GPU execution also makes GenAI fall back from paged attention."
+     },
+     "embedding": {
+      "support": "experimental",
+      "reason": "Runs copies of the model on every listed device for throughput. InferBridge serves one request at a time per model, so single chats rarely get faster."
+     },
+     "rerank": {
+      "support": "experimental",
+      "reason": "Runs copies of the model on every listed device for throughput. InferBridge serves one request at a time per model, so single chats rarely get faster."
+     }
+    }
+   },
+   {
+    "id": "hetero",
+    "label": "HETERO",
+    "prefix": "HETERO",
+    "performance_hint": null,
+    "model_distribution": null,
+    "summary": "Splits the model's layers across the devices: the first device runs what it supports and the next one takes the rest.",
+    "device": "HETERO:GPU,CPU",
+    "experimental": true,
+    "backends": {
+     "chat": {
+      "support": "experimental",
+      "reason": "Splits the model's layers across devices. Useful when a model does not fit in GPU memory (turn on pipeline-parallel); otherwise usually slower than the GPU alone."
+     },
+     "vlm": {
+      "support": "experimental",
+      "reason": "Splits the model's layers across devices. Useful when a model does not fit in GPU memory (turn on pipeline-parallel); otherwise usually slower than the GPU alone."
+     },
+     "embedding": {
+      "support": "experimental",
+      "reason": "Splits the model's layers across devices; rarely faster for small models."
+     },
+     "rerank": {
+      "support": "experimental",
+      "reason": "Splits the model's layers across devices; rarely faster for small models."
+     }
+    }
+   },
+   {
+    "id": "hetero_pipeline",
+    "label": "HETERO pipeline-parallel",
+    "prefix": "HETERO",
+    "performance_hint": null,
+    "model_distribution": "pipeline_parallel",
+    "summary": "Splits a model that is too large for the first device's memory into stages across the devices (an OpenVINO preview).",
+    "device": "HETERO:GPU,CPU",
+    "experimental": true,
+    "backends": {
+     "chat": {
+      "support": "experimental",
+      "reason": "Splits the model's layers across devices. Useful when a model does not fit in GPU memory (turn on pipeline-parallel); otherwise usually slower than the GPU alone."
+     },
+     "vlm": {
+      "support": "unsupported",
+      "reason": "Pipeline-parallel needs a chat model on HETERO with a GPU and at least one more device that is not the NPU."
+     },
+     "embedding": {
+      "support": "unsupported",
+      "reason": "Pipeline-parallel needs a chat model on HETERO with a GPU and at least one more device that is not the NPU."
+     },
+     "rerank": {
+      "support": "unsupported",
+      "reason": "Pipeline-parallel needs a chat model on HETERO with a GPU and at least one more device that is not the NPU."
+     }
+    }
+   }
+  ]
+ }
+}

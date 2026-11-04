@@ -60,6 +60,16 @@ HETERO:GPU,CPU       MULTI:GPU,CPU  (deprecated, migrated to AUTO cumulative)
 | `HETERO:GPU,CPU` | Experimental | Experimental | Experimental | Splits layers across devices. Chat may add `model_distribution: "pipeline_parallel"` for a model that does not fit GPU memory. |
 | `HETERO:` with `NPU` | Unsupported | Unsupported | Unsupported | Not verified. |
 
+#### Combine devices (builder)
+
+The browser (**Combine** beside the Chat device picker) and the native app (**Combine devices…** under the Chat and Model library device pickers) build a combined target without typing an expression:
+
+1. Tick the detected devices to use (two or three of CPU, GPU, NPU) and put them in order with **Move up / Move down**. AUTO tries the first device first; HETERO gives the first device the layers it supports.
+2. Choose a mode: **AUTO priority**, **AUTO cumulative throughput** (`performance_hint: CUMULATIVE_THROUGHPUT`), **HETERO** or **HETERO pipeline-parallel** (`model_distribution: pipeline_parallel`). Every mode carries an Experimental badge and the engine's explanation.
+3. **Use this target** adds it to the device picker; **Load** (or **Load / switch**) sends the device with its option.
+
+Both clients ask `GET /v1/devices/modes?members=GPU,CPU` (two or three distinct members, `400` otherwise), which returns `builder.options[]` with `id`, `label`, `summary`, `device`, `performance_hint`, `model_distribution`, `experimental` and a `{support, reason}` verdict per backend kind. Modes the engine marks unsupported for the selected model stay visible but disabled with that reason; the clients never decide support themselves. Without `members` the report includes `builder_members` (detected devices) and a default builder for GPU,CPU.
+
 KV cache precision stays **Auto only** for every combined mode (it is sent only to one direct CPU or GPU). The NPU coexistence rule for resident slots uses the resolved members: plain `AUTO` never counts as an NPU load, every expression that names `NPU` does, and an engine that reports its execution devices is judged by where it actually runs.
 
 When a combined mode fails to load, the model card offers **Load on GPU instead** (or **Load on CPU instead**) for the best single member, the error says InferBridge did not switch devices on its own, and the model's `device_fallback` field records the requested device and the offer for diagnostics.

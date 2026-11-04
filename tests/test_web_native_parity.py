@@ -256,3 +256,32 @@ def test_web_chat_device_selector_mirrors_native_get_devices():
     assert out[0] == {"direct": ["GPU", "CPU"], "advanced": ["AUTO:GPU,CPU", "MULTI:GPU,CPU"]}
     assert out[1] == {"direct": ["NPU", "GPU", "CPU"], "advanced": []}
     assert out[2] == {"direct": [], "advanced": []}
+
+
+def test_combined_device_builder_consumes_the_engine_on_both_sides():
+    html = INDEX.read_text(encoding="utf-8")
+    ui_quality = (INDEX.parents[1] / "app" / "ui_quality.py").read_text(encoding="utf-8")
+    native = (NATIVE / "MainWindow.CombinedDevices.cs").read_text(encoding="utf-8")
+    client = (NATIVE / "DeviceModesClient.cs").read_text(encoding="utf-8")
+    xaml = (NATIVE / "MainWindow.xaml").read_text(encoding="utf-8")
+    main = (NATIVE / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    # Web: compact builder beside the picker, engine-classified modes, keyboard ordering.
+    assert 'id="device-combine"' in html and "device-combine-badge" in html
+    assert "fetch(`/v1/devices/modes${query}`" in html
+    assert "Move ${device} ${verb}" in html and "Use ${device}" in html
+    assert "input.disabled = verdict.support === 'unsupported'" in html
+    assert "...modelLoadOptions(modelLoadDevice())" in html
+    assert "modelLoadOptions(nextDevice)" in ui_quality  # in-place device switch
+    # Native: same endpoint, same four modes, up/down buttons, disabled unsupported radios.
+    assert '"/v1/devices/modes" + query' in client and '"?members="' in client
+    assert "GetCombinedModesAsync" in native and 'Ui.Pill("Experimental", "warning")' in native
+    assert '"Move " + device + " " + verb' in native
+    assert "IsEnabled = !support.Unsupported" in native
+    assert "AutomationEvents.LiveRegionChanged" in native
+    assert "performanceHint: hint, modelDistribution: distribution" in main
+    assert 'x:Name="ChatCombineDevicesButton"' in xaml
+    assert 'x:Name="LibraryCombineDevicesButton"' in xaml
+    assert 'x:Name="BenchmarkCombinedPresetButton"' in xaml
+    # Rules stay in app/device_modes.py: neither client hard-codes NPU/HETERO verdicts.
+    for source in (native, client):
+        assert "cannot share" not in source and "pipeline_parallel needs" not in source

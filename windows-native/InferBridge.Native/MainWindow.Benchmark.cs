@@ -46,7 +46,7 @@ public sealed partial class MainWindow
             }
             _benchmarkCatalog = latest;
             _benchmarkSelectedModels.IntersectWith(latest.Models.Where(m => m.Prepared).Select(m => m.Id));
-            _benchmarkSelectedDevices.IntersectWith(latest.Devices);
+            _benchmarkSelectedDevices.IntersectWith(latest.Devices.Concat(latest.CombinedTargets));
             if (!sameSession)
             {
                 string? first = latest.Models.FirstOrDefault(m => m.Loaded && m.Prepared)?.Id
@@ -84,15 +84,19 @@ public sealed partial class MainWindow
                     BenchmarkModelChoices.Children.Add(choice);
                 }
                 BenchmarkDeviceChoices.Children.Clear();
-                foreach (string device in latest.Devices)
+                foreach (string device in latest.Devices.Concat(latest.CombinedTargets))
                 {
                     var choice = new CheckBox
                     {
-                        Content = device == "AUTO" ? "AUTO · routing target; actual device reported in results" : device,
+                        Content = new TextBlock
+                        {
+                            Text = BenchmarkDeviceLabel(device),
+                            TextWrapping = TextWrapping.Wrap,
+                        },
                         Tag = device,
                         IsChecked = _benchmarkSelectedDevices.Contains(device),
                     };
-                    AutomationProperties.SetName(choice, "Benchmark requested device " + device);
+                    AutomationProperties.SetName(choice, "Benchmark requested device " + BenchmarkDeviceLabel(device));
                     choice.Checked += BenchmarkDeviceChoice_Changed;
                     choice.Unchecked += BenchmarkDeviceChoice_Changed;
                     BenchmarkDeviceChoices.Children.Add(choice);
@@ -125,6 +129,47 @@ public sealed partial class MainWindow
                 BenchmarkConfigurationRefreshButton.IsEnabled = !_benchmarkGate.Active && !_quitting;
             UpdateBenchmarkWorkload();
         }
+    }
+
+    private static string BenchmarkDeviceLabel(string device) => device switch
+    {
+        "AUTO" => "AUTO · routing target; actual device reported in results",
+        "HETERO:GPU,CPU" => "HETERO:GPU,CPU · experimental · layers split across the GPU and CPU",
+        "MULTI:GPU,CPU" => "MULTI:GPU,CPU · experimental · AUTO cumulative throughput (runs as AUTO:GPU,CPU)",
+        _ => device,
+    };
+
+    /// <summary>
+    /// Same preset as the web Benchmark Lab: one prepared model, Quick, and every
+    /// direct device, AUTO, HETERO:GPU,CPU and AUTO cumulative (MULTI:GPU,CPU).
+    /// </summary>
+    private void BenchmarkCombinedPresetButton_Click(object sender, RoutedEventArgs args)
+    {
+        if (_benchmarkCatalog is not { } catalog || _benchmarkGate.Active || _benchmarkGate.OutcomeUnknown
+            || _operationsBusy || _benchmarkRefreshing) return;
+        string? model = _benchmarkSelectedModels.FirstOrDefault(id => catalog.Models.Any(m => m.Id == id && m.Prepared))
+            ?? catalog.Models.FirstOrDefault(m => m.Loaded && m.Prepared)?.Id
+            ?? catalog.Models.FirstOrDefault(m => m.Prepared)?.Id;
+        _benchmarkSelectedModels.Clear();
+        if (model is not null) _benchmarkSelectedModels.Add(model);
+        _benchmarkSelectedDevices.Clear();
+        _benchmarkSelectedDevices.UnionWith(BenchmarkLab.CombinedModesPreset(catalog));
+        _benchmarkUpdating = true;
+        try
+        {
+            foreach (var choice in BenchmarkModelChoices.Children.OfType<CheckBox>())
+                choice.IsChecked = _benchmarkSelectedModels.Contains((string?)choice.Tag ?? "");
+            foreach (var choice in BenchmarkDeviceChoices.Children.OfType<CheckBox>())
+                choice.IsChecked = _benchmarkSelectedDevices.Contains((string?)choice.Tag ?? "");
+            BenchmarkPresetPicker.SelectedItem = BenchmarkPresetPicker.Items.Cast<ComboBoxItem>()
+                .First(item => (string?)item.Tag == "quick");
+        }
+        finally { _benchmarkUpdating = false; }
+        UpdateBenchmarkWorkload();
+        BenchmarkConfigurationInfo.Severity = InfoBarSeverity.Informational;
+        BenchmarkConfigurationInfo.Message = catalog.CombinedTargets.Count == 0
+            ? "Compare combined modes: only one direct device plus AUTO is available here; HETERO and cumulative AUTO need both a GPU and a CPU."
+            : "Compare combined modes (experimental): one model, Quick preset, direct devices, AUTO, HETERO:GPU,CPU and AUTO cumulative. Results report TTFT, tok/s, load time and peak process RAM.";
     }
 
     private void BenchmarkModelChoice_Changed(object sender, RoutedEventArgs args)
@@ -172,6 +217,8 @@ public sealed partial class MainWindow
                 m.Id == (string?)choice.Tag && m.Prepared) == true;
         foreach (var choice in BenchmarkDeviceChoices.Children.OfType<CheckBox>())
             choice.IsEnabled = idle;
+        BenchmarkCombinedPresetButton.IsEnabled = idle && !_benchmarkRefreshing && _benchmarkCatalog is not null
+            && _benchmarkCatalog.Models.Any(m => m.Prepared);
         if (_benchmarkGate.OutcomeUnknown)
         {
             BenchmarkWorkload.Text = "The previous request's outcome is uncertain. Check engine history before restarting InferBridge; no automatic retry is permitted.";

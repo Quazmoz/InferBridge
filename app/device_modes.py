@@ -328,7 +328,118 @@ def candidate_modes(available: list[str] | None) -> list[str]:
     return list(dict.fromkeys(modes))
 
 
-def modes_report(available: list[str] | None, *, mock: bool = False) -> dict[str, Any]:
+# The combined-device builder (web and native) composes ``<prefix>:<members>`` from
+# these four modes. Explanations live here so both clients show the same words.
+BUILDER_MODES: tuple[dict[str, Any], ...] = (
+    {
+        "id": "auto",
+        "label": "AUTO priority",
+        "prefix": "AUTO",
+        "performance_hint": None,
+        "model_distribution": None,
+        "summary": "OpenVINO tries your devices in order and runs the model on the first one "
+        "that can compile it. It uses one device at a time.",
+    },
+    {
+        "id": "auto_cumulative",
+        "label": "AUTO cumulative throughput",
+        "prefix": "AUTO",
+        "performance_hint": "CUMULATIVE_THROUGHPUT",
+        "model_distribution": None,
+        "summary": "Loads a copy of the model on every listed device and spreads requests "
+        "across them. It helps many parallel requests, rarely a single chat.",
+    },
+    {
+        "id": "hetero",
+        "label": "HETERO",
+        "prefix": "HETERO",
+        "performance_hint": None,
+        "model_distribution": None,
+        "summary": "Splits the model's layers across the devices: the first device runs what "
+        "it supports and the next one takes the rest.",
+    },
+    {
+        "id": "hetero_pipeline",
+        "label": "HETERO pipeline-parallel",
+        "prefix": "HETERO",
+        "performance_hint": None,
+        "model_distribution": PIPELINE_PARALLEL,
+        "summary": "Splits a model that is too large for the first device's memory into "
+        "stages across the devices (an OpenVINO preview).",
+    },
+)
+_BUILDER_BASES = ("GPU", "CPU", "NPU")
+
+
+def builder_members(available: list[str] | None) -> list[str]:
+    """Direct devices the builder may combine, in a sensible default order."""
+
+    bases = {_base(item) for item in available or []}
+    return [base for base in _BUILDER_BASES if base in bases]
+
+
+def parse_members(raw: str) -> list[str]:
+    """Validate ``GPU,CPU``-style builder input: 2-3 distinct CPU/GPU/NPU members."""
+
+    members = [part.strip().upper() for part in str(raw or "").split(",") if part.strip()]
+    if not 2 <= len(members) <= 3 or len(set(members)) != len(members):
+        raise DeviceModeError("Choose two or three different devices to combine.")
+    if any(member not in _BUILDER_BASES for member in members):
+        raise DeviceModeError("Only CPU, GPU and NPU can be combined.")
+    return members
+
+
+def evaluate(
+    device: str,
+    *,
+    kind: str,
+    available: list[str] | None,
+    performance_hint: str | None = None,
+    model_distribution: str | None = None,
+) -> dict[str, str]:
+    """``{support, reason}`` for one fully specified target, using the load rules."""
+
+    info = describe(device, kind=kind, available=available, performance_hint=performance_hint)
+    if model_distribution and "model_distribution" not in info["options"]:
+        return {
+            "support": UNSUPPORTED,
+            "reason": "Pipeline-parallel needs a chat model on HETERO with a GPU and at "
+            "least one more device that is not the NPU.",
+        }
+    if info["missing"]:
+        return {"support": UNSUPPORTED, "reason": info["reason"]}
+    return {"support": info["support"], "reason": info["reason"]}
+
+
+def builder_report(members: list[str], available: list[str] | None) -> dict[str, Any]:
+    """Every builder mode for ``members`` (in order), classified per backend kind."""
+
+    options = []
+    for spec in BUILDER_MODES:
+        device = f"{spec['prefix']}:{','.join(members)}"
+        options.append(
+            {
+                **spec,
+                "device": device,
+                "experimental": True,
+                "backends": {
+                    kind: evaluate(
+                        device,
+                        kind=kind,
+                        available=available,
+                        performance_hint=spec["performance_hint"],
+                        model_distribution=spec["model_distribution"],
+                    )
+                    for kind in KINDS
+                },
+            }
+        )
+    return {"members": list(members), "options": options}
+
+
+def modes_report(
+    available: list[str] | None, *, mock: bool = False, members: list[str] | None = None
+) -> dict[str, Any]:
     """Payload for ``GET /v1/devices/modes``."""
 
     check = None if mock else available
@@ -369,10 +480,17 @@ def modes_report(available: list[str] | None, *, mock: bool = False) -> dict[str
                 "cumulative_throughput": cumulative,
             }
         )
+    choices = builder_members(available)
+    default_members = [base for base in choices if base != "NPU"]
+    if len(default_members) < 2:
+        default_members = choices[:3]
+    chosen = members or (default_members if len(default_members) >= 2 else None)
     return {
         "available": list(available or []),
         "mock": mock,
         "modes": rows,
+        "builder_members": choices,
+        "builder": builder_report(chosen, check) if chosen else None,
         "performance_hints": list(PERFORMANCE_HINTS),
         "migrations": {"MULTI": "AUTO with PERFORMANCE_HINT=CUMULATIVE_THROUGHPUT"},
         "execution_devices_reported": False,

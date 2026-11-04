@@ -102,6 +102,7 @@ try
     await ContextEditorContractTests.RunAsync(root);
     await ChatParityContractTests.RunAsync(root);
     await NpuRecoveryContractTests.RunAsync(root);
+    await DeviceModesContractTests.RunAsync(root);
     return 0;
 }
 finally

@@ -82,8 +82,10 @@ public sealed partial class MainWindow
     }
 
     /// <summary>After a combined-memory / NPU refusal, ask before loading anyway.</summary>
-    private async Task OfferLoadAnywayAsync(ModelInfo model, string? device, int? contextTokens, string reason)
+    private async Task OfferLoadAnywayAsync(ModelInfo model, string? device, int? contextTokens, string reason,
+        CombinedTarget? combinedTarget = null)
     {
+        (string? hint, string? distribution) = TargetOptions(combinedTarget, device);
         var body = Ui.Text(reason + "\n\nLoading anyway may slow this PC or fail to compile.");
         body.TextWrapping = TextWrapping.Wrap;
         var dialog = new ContentDialog
@@ -103,7 +105,8 @@ public sealed partial class MainWindow
         try
         {
             ShowModelsInfo(await _backend.ChangeModelAsync(model, ModelAction.Load, ApiKeyBox.Password,
-                _closing.Token, device, contextTokens, allowResourceRisk: true), InfoBarSeverity.Success);
+                _closing.Token, device, contextTokens, allowResourceRisk: true,
+                performanceHint: hint, modelDistribution: distribution), InfoBarSeverity.Success);
         }
         catch (Exception) when (_closing.IsCancellationRequested) { }
         catch (Exception error)

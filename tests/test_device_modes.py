@@ -209,3 +209,82 @@ def test_load_validates_and_reports_resolved_device(client):
     assert slot["resolved_device"] == "AUTO:GPU,CPU \u2192 GPU"
     model = next(m for m in client.get("/v1/models").json()["data"] if m["id"] == CHAT)
     assert model["device"] == "AUTO:GPU,CPU"
+
+
+def test_builder_modes_follow_the_load_rules():
+    report = device_modes.builder_report(["GPU", "CPU"], ULTRA)
+    options = {row["id"]: row for row in report["options"]}
+    assert list(options) == ["auto", "auto_cumulative", "hetero", "hetero_pipeline"]
+    assert options["auto"]["device"] == "AUTO:GPU,CPU"
+    assert options["auto_cumulative"]["performance_hint"] == "CUMULATIVE_THROUGHPUT"
+    assert options["hetero_pipeline"]["model_distribution"] == "pipeline_parallel"
+    assert all(row["experimental"] and row["summary"] for row in options.values())
+    assert options["auto"]["backends"]["chat"]["support"] == "supported"
+    assert options["hetero_pipeline"]["backends"]["chat"]["support"] == "experimental"
+    # Pipeline-parallel is a chat-only option; the endpoint says so instead of the client.
+    assert options["hetero_pipeline"]["backends"]["embedding"]["support"] == "unsupported"
+    npu = {row["id"]: row for row in device_modes.builder_report(["NPU", "CPU"], ULTRA)["options"]}
+    assert npu["auto"]["backends"]["chat"]["support"] == "experimental"
+    assert npu["auto_cumulative"]["backends"]["chat"]["support"] == "unsupported"
+    assert npu["hetero"]["backends"]["chat"]["support"] == "unsupported"
+    assert npu["hetero_pipeline"]["backends"]["chat"]["support"] == "unsupported"
+    missing = device_modes.builder_report(["GPU", "CPU"], ["CPU"])["options"][0]
+    assert missing["backends"]["chat"] == {
+        "support": "unsupported",
+        "reason": "GPU is not available on this PC.",
+    }
+    # Every option a client can send is accepted (or refused) exactly as the load route does.
+    for row in options.values():
+        if row["backends"]["chat"]["support"] != "unsupported":
+            device_modes.resolve_or_400(
+                row["device"],
+                backend="openvino-genai",
+                available=ULTRA,
+                performance_hint=row["performance_hint"],
+                model_distribution=row["model_distribution"],
+            )
+
+
+@pytest.mark.parametrize("raw", ["GPU", "GPU,GPU", "GPU,CPU,NPU,CPU", "GPU,TPU", ""])
+def test_builder_members_are_validated(raw):
+    with pytest.raises(device_modes.DeviceModeError):
+        device_modes.parse_members(raw)
+
+
+def test_modes_endpoint_builder(client):
+    body = client.get("/v1/devices/modes").json()
+    assert body["builder_members"] == ["GPU", "CPU", "NPU"]
+    assert body["builder"]["members"] == ["GPU", "CPU"]
+    chosen = client.get("/v1/devices/modes", params={"members": "cpu,npu"}).json()["builder"]
+    assert chosen["members"] == ["CPU", "NPU"]
+    assert chosen["options"][2]["device"] == "HETERO:CPU,NPU"
+    assert chosen["options"][2]["backends"]["chat"]["support"] == "unsupported"
+    bad = client.get("/v1/devices/modes", params={"members": "GPU"})
+    assert bad.status_code == 400 and "two or three" in bad.json()["detail"]
+    pipeline = client.get("/v1/devices/modes", params={"members": "GPU,CPU"}).json()
+    row = pipeline["builder"]["options"][3]
+    ok = client.post(
+        "/v1/models/load",
+        json={
+            "model": CHAT,
+            "device": row["device"],
+            "model_distribution": row["model_distribution"],
+        },
+    )
+    assert ok.status_code == 200, ok.text
+
+
+def test_native_builder_fixture_matches_engine():
+    """The native contract tests parse this fixture; regenerate it when the builder changes."""
+    import json
+
+    fixture = (
+        BASE_DIR
+        / "windows-native"
+        / "InferBridge.Native.ContractTests"
+        / "Fixtures"
+        / "device-modes-builder.json"
+    )
+    report = device_modes.modes_report(["CPU", "GPU", "NPU"], mock=True)
+    expected = {"builder_members": report["builder_members"], "builder": report["builder"]}
+    assert json.loads(fixture.read_text(encoding="utf-8")) == expected

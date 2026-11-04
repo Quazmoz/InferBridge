@@ -1195,13 +1195,9 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private string? SelectedInferenceDevice =>
-        (LibraryDevicePicker.SelectedItem as ComboBoxItem)?.Tag as string is { Length: > 0 } device
-            ? device : null;
+    private string? SelectedInferenceDevice => DeviceTag(LibraryDevicePicker.SelectedItem);
 
-    private string? SelectedChatDevice =>
-        (ChatDevicePicker.SelectedItem as ComboBoxItem)?.Tag as string is { Length: > 0 } device
-            ? device : null;
+    private string? SelectedChatDevice => DeviceTag(ChatDevicePicker.SelectedItem);
 
     private void ChatDevicePicker_SelectionChanged(object sender, SelectionChangedEventArgs args)
     {
@@ -1216,7 +1212,10 @@ public sealed partial class MainWindow : Window
         string actual = model?.Device is { Length: > 0 } device ? device
             : model?.Status == "loaded" ? "not reported" : "not loaded";
         ChatDeviceSummary.Text = "Next load target: " + target + " · Reported active device: " + actual
-            + (SelectedChatDevice is { } choice
+            + (SelectedChatTarget is { } combined
+                ? " · Experimental: " + combined.Label + (combined.PerformanceHint is { } hint
+                    ? " (" + hint + ")" : "") + "; the engine reports where it actually runs."
+                : SelectedChatDevice is { } choice
                 && (choice.StartsWith("MULTI:", StringComparison.Ordinal)
                     || choice.StartsWith("HETERO:", StringComparison.Ordinal))
                 ? " · Experimental: multi-device support depends on the model and OpenVINO runtime."
@@ -1331,6 +1330,7 @@ public sealed partial class MainWindow : Window
         DownloadButton.IsEnabled = idle && model?.CanDownload == true;
         RecoverButton.IsEnabled = idle && _engineConnected && model is not null;
         LibraryDevicePicker.IsEnabled = idle && _devicesAvailable;
+        LibraryCombineDevicesButton.IsEnabled = idle && CombineDevicesReady;
         ModelLibraryToolsButton.IsEnabled = ModelLibraryToolsReady;
         UpdateModelPreparationUi();
     }
@@ -1372,6 +1372,7 @@ public sealed partial class MainWindow : Window
         ChatModelPicker.IsEnabled = !_chatBusy && !_isManaging && !RefreshLocksControls && !_quitting;
         ChatDevicePicker.IsEnabled = _devicesAvailable && !_chatBusy && !_isManaging
             && !RefreshLocksControls && !_quitting;
+        ChatCombineDevicesButton.IsEnabled = CombineDevicesReady;
         UpdateChatDeviceSummary();
         WebUiButton.IsEnabled = _engineConnected && !_quitting && !_openingWebUi;
         ScanHardwareButton.IsEnabled = _engineConnected && !_quitting && !_scanningDevices;
@@ -1475,11 +1476,16 @@ public sealed partial class MainWindow : Window
     {
         _pendingDevices = null;
         _shownDevices = devices;
-        string? selectedLibrary = SelectedInferenceDevice;
-        string? selectedChat = SelectedChatDevice;
+        // Tags are a device string or the builder's CombinedTarget (value equality).
+        object selectedLibrary = (LibraryDevicePicker.SelectedItem as ComboBoxItem)?.Tag ?? string.Empty;
+        object selectedChat = (ChatDevicePicker.SelectedItem as ComboBoxItem)?.Tag ?? string.Empty;
         LibraryDevicePicker.Items.Clear();
         ChatDevicePicker.Items.Clear();
-        foreach (var (label, target, note) in devices)
+        var entries = devices.Select(device => (device.Label, (object)device.Target, device.Note)).ToList();
+        if (_combinedTarget is { } combined)
+            entries.Add((combined.PickerLabel, combined,
+                "Built with Combine devices. Experimental; the engine reports where the model actually runs."));
+        foreach (var (label, target, note) in entries)
         {
             foreach (ComboBox picker in new[] { LibraryDevicePicker, ChatDevicePicker })
             {
@@ -1489,12 +1495,10 @@ public sealed partial class MainWindow : Window
             }
         }
         LibraryDevicePicker.SelectedItem = LibraryDevicePicker.Items
-            .Cast<ComboBoxItem>().FirstOrDefault(item =>
-                (string?)item.Tag == (selectedLibrary ?? string.Empty))
+            .Cast<ComboBoxItem>().FirstOrDefault(item => Equals(item.Tag, selectedLibrary))
             ?? (ComboBoxItem)LibraryDevicePicker.Items[0];
         ChatDevicePicker.SelectedItem = ChatDevicePicker.Items
-            .Cast<ComboBoxItem>().FirstOrDefault(item =>
-                (string?)item.Tag == (selectedChat ?? string.Empty))
+            .Cast<ComboBoxItem>().FirstOrDefault(item => Equals(item.Tag, selectedChat))
             ?? (ComboBoxItem)ChatDevicePicker.Items[0];
     }
 
@@ -1763,11 +1767,15 @@ public sealed partial class MainWindow : Window
         }
         string? device = ModelLifecycle.SlotDevice(model,
             fromChat ? SelectedChatDevice : SelectedInferenceDevice);
+        CombinedTarget? combinedTarget = fromChat ? SelectedChatTarget : SelectedLibraryTarget;
+        (string? hint, string? distribution) = action is ModelAction.Load or ModelAction.SwitchDevice
+            ? TargetOptions(combinedTarget, device) : (null, null);
         try
         {
             ShowModelsInfo(await _backend.ChangeModelAsync(
                 model, action, ApiKeyBox.Password, _closing.Token, device,
-                action == ModelAction.Load ? contextTokens : null), InfoBarSeverity.Success);
+                action == ModelAction.Load ? contextTokens : null,
+                performanceHint: hint, modelDistribution: distribution), InfoBarSeverity.Success);
         }
         catch (Exception) when (_closing.IsCancellationRequested)
         {
@@ -1777,7 +1785,8 @@ public sealed partial class MainWindow : Window
         {
             // The engine estimated the models cannot share memory (or the NPU). Explain
             // it and let the user decide; never retry silently.
-            await OfferLoadAnywayAsync(model, device, contextTokens, refusal.Message);
+            await OfferLoadAnywayAsync(model, device, contextTokens, refusal.Message,
+                hint is null && distribution is null ? null : combinedTarget);
         }
         catch (Exception error) when (!_closing.IsCancellationRequested)
         {

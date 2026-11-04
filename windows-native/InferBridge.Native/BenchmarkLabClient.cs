@@ -8,7 +8,15 @@ internal sealed record BenchmarkModelChoice(
 
 internal sealed record BenchmarkCatalog(
     string SessionId, bool Synthetic, IReadOnlyList<BenchmarkModelChoice> Models,
-    IReadOnlyList<string> Devices);
+    IReadOnlyList<string> Devices)
+{
+    /// <summary>
+    /// Experimental combined targets offered when the GPU and CPU are both detected:
+    /// HETERO:GPU,CPU and MULTI:GPU,CPU (the engine runs it as AUTO:GPU,CPU with
+    /// CUMULATIVE_THROUGHPUT). Same targets as the web "Compare combined modes".
+    /// </summary>
+    public IReadOnlyList<string> CombinedTargets { get; init; } = Array.Empty<string>();
+}
 
 internal sealed record BenchmarkPlan(
     IReadOnlyList<string> Models, IReadOnlyList<string> Devices,
@@ -101,8 +109,19 @@ internal static class BenchmarkLab
         if (mock && targets.Count == 0) targets.Add("CPU");
         // AUTO is a routing request, not a claim about the actual execution device.
         if (targets.Count > 0) targets.Add("AUTO");
-        return new BenchmarkCatalog(sessionId, mock, choices, targets);
+        return new BenchmarkCatalog(sessionId, mock, choices, targets)
+        {
+            CombinedTargets = targets.Contains("GPU") && targets.Contains("CPU")
+                ? new[] { "HETERO:GPU,CPU", "MULTI:GPU,CPU" } : Array.Empty<string>(),
+        };
     }
+
+    /// <summary>
+    /// "Compare combined modes": every direct device, AUTO and the combined targets,
+    /// at most five or six combinations for one model, inside the 8-combination ceiling.
+    /// </summary>
+    public static IReadOnlyList<string> CombinedModesPreset(BenchmarkCatalog catalog) =>
+        catalog.Devices.Concat(catalog.CombinedTargets).Distinct(StringComparer.Ordinal).ToArray();
 
     public static BenchmarkPlan CreatePlan(
         BenchmarkCatalog catalog, IEnumerable<string> models,
@@ -123,7 +142,7 @@ internal static class BenchmarkLab
             || (long)modelIds.Length * deviceIds.Length > MaximumCombinations)
             throw new ArgumentException("Select at most 8 model/device combinations.");
         if (modelIds.Any(id => !catalog.Models.Any(m => m.Id == id && m.Prepared))
-            || deviceIds.Any(id => !catalog.Devices.Contains(id)))
+            || deviceIds.Any(id => !catalog.Devices.Contains(id) && !catalog.CombinedTargets.Contains(id)))
             throw new ArgumentException("Model preparation or device availability changed. Refresh.");
         return new BenchmarkPlan(modelIds, deviceIds, preset, runs, warmups, tokens);
     }

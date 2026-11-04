@@ -638,6 +638,15 @@
                                     <StackPanel x:Name="BenchmarkDeviceChoices" Spacing="4">
                                         <TextBlock Text="No devices found yet. Select Refresh models and devices." TextWrapping="Wrap" />
                                     </StackPanel>
+                                    <Button x:Name="BenchmarkCombinedPresetButton" IsEnabled="False"
+                                            Click="BenchmarkCombinedPresetButton_Click"
+                                            AutomationProperties.Name="Compare combined modes, experimental preset"
+                                            ToolTipService.ToolTip="One model, Quick preset: CPU, GPU, NPU, AUTO, HETERO:GPU,CPU and AUTO cumulative (MULTI:GPU,CPU)">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <FontIcon Glyph="&#xE9D2;" FontSize="14" />
+                                            <TextBlock Text="Compare combined modes" />
+                                        </StackPanel>
+                                    </Button>
                                     <ComboBox x:Name="BenchmarkPresetPicker" Header="Benchmark thoroughness"
                                               HorizontalAlignment="Stretch"
                                               AutomationProperties.Name="Benchmark workload preset"
@@ -917,6 +926,15 @@
                                 <ComboBoxItem Content="GPU" Tag="GPU" />
                                 <ComboBoxItem Content="CPU" Tag="CPU" />
                             </ComboBox>
+                            <Button x:Name="LibraryCombineDevicesButton" IsEnabled="False"
+                                    Click="CombineDevicesButton_Click"
+                                    AutomationProperties.Name="Combine devices for the selected model, experimental"
+                                    ToolTipService.ToolTip="Build an experimental AUTO or HETERO target from detected devices">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE950;" FontSize="14" />
+                                    <TextBlock Text="Combine devices…" />
+                                </StackPanel>
+                            </Button>
                             <Grid RowSpacing="8" ColumnSpacing="8">
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
@@ -1285,6 +1303,7 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -1303,15 +1322,25 @@
                                 Content="Load / switch" VerticalAlignment="Bottom"
                                 IsEnabled="False" Click="ApplyChatDeviceButton_Click"
                                 AutomationProperties.Name="Load or switch selected chat model to chosen device" />
-                        <TextBlock x:Name="ChatDeviceSummary" Grid.Row="1" Grid.ColumnSpan="2"
+                        <!-- Combined CPU/GPU/NPU target: members, order and mode come from GET /v1/devices/modes. -->
+                        <Button x:Name="ChatCombineDevicesButton" Grid.Row="1" Grid.ColumnSpan="2"
+                                IsEnabled="False" Click="CombineDevicesButton_Click"
+                                AutomationProperties.Name="Combine devices for the selected chat model, experimental"
+                                ToolTipService.ToolTip="Build an experimental AUTO or HETERO target from detected devices">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon Glyph="&#xE950;" FontSize="14" />
+                                <TextBlock Text="Combine devices…" />
+                            </StackPanel>
+                        </Button>
+                        <TextBlock x:Name="ChatDeviceSummary" Grid.Row="2" Grid.ColumnSpan="2"
                                    Text="Connect to inspect available devices."
                                    TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    AutomationProperties.LiveSetting="Polite" />
-                        <TextBlock x:Name="ChatGenerationSummary" Grid.Row="2" Grid.ColumnSpan="2"
+                        <TextBlock x:Name="ChatGenerationSummary" Grid.Row="3" Grid.ColumnSpan="2"
                                    TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    AutomationProperties.Name="Current inference settings" />
-                        <Grid Grid.Row="3" Grid.Column="0" ColumnSpacing="6">
+                        <Grid Grid.Row="4" Grid.Column="0" ColumnSpacing="6">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
@@ -1328,7 +1357,7 @@
                                        AutomationProperties.LiveSetting="Polite"
                                        AutomationProperties.Name="Context window for the selected chat model" />
                         </Grid>
-                        <Button x:Name="ChatLoadWithContextButton" Grid.Row="3" Grid.Column="1"
+                        <Button x:Name="ChatLoadWithContextButton" Grid.Row="4" Grid.Column="1"
                                 Content="Context…" IsEnabled="False"
                                 Click="ChatLoadWithContextButton_Click"
                                 AutomationProperties.Name="Choose the context window for the selected chat model"

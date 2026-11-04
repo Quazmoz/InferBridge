@@ -1130,12 +1130,21 @@ def create_app(settings: Settings) -> FastAPI:
         }
 
     @app.get("/v1/devices/modes", dependencies=auth)
-    async def device_modes_report():
-        """Combined-device modes for this PC, classified per backend (app.device_modes)."""
+    async def device_modes_report(members: str | None = Query(default=None, max_length=32)):
+        """Combined-device modes for this PC, classified per backend (app.device_modes).
+
+        ``members=GPU,CPU`` evaluates the builder's four modes for that ordered list.
+        """
         available = (
             ["CPU", "GPU", "NPU"] if manager.force_mock else device_check.available_devices()
         )
-        return device_modes.modes_report(available, mock=manager.force_mock)
+        chosen = None
+        if members is not None:
+            try:
+                chosen = device_modes.parse_members(members)
+            except device_modes.DeviceModeError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return device_modes.modes_report(available, mock=manager.force_mock, members=chosen)
 
     @app.get("/v1/system/status", dependencies=auth)
     async def system_status():

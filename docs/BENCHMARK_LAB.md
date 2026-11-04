@@ -80,7 +80,7 @@ The browser Benchmark Lab's **Compare combined modes** button selects one prepar
 | `HETERO:GPU,CPU` | Layers split across the GPU and CPU. |
 | `MULTI:GPU,CPU` | AUTO cumulative throughput: the engine migrates it to `AUTO:GPU,CPU` with `PERFORMANCE_HINT=CUMULATIVE_THROUGHPUT`. |
 
-Each row reports TTFT, tok/s, load time and peak InferBridge process RAM (RSS, not GPU or NPU memory). That is at most six combinations, inside the eight-combination ceiling. The native Benchmark Lab has no button for this yet; add the same targets there through **Advanced OpenVINO device expression**. Combined-mode results have not been recorded on Core Ultra hardware yet.
+Each row reports TTFT, tok/s, load time and peak InferBridge process RAM (RSS, not GPU or NPU memory). That is at most six combinations, inside the eight-combination ceiling. The native Benchmark Lab has the same **Compare combined modes** button (beside **Benchmark thoroughness**); it lists `HETERO:GPU,CPU` and `MULTI:GPU,CPU` as experimental device choices only when both a GPU and a CPU are detected. Combined-mode results have not been recorded on Core Ultra hardware yet.
 
 ## Metric definitions
 

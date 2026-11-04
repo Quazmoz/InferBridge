@@ -476,7 +476,7 @@ try {
 const loadResponse = await fetch('/v1/models/load', {
 method: 'POST',
 headers: authHeaders({ 'Content-Type': 'application/json' }),
-body: JSON.stringify({ model: model.id, device: nextDevice }),
+body: JSON.stringify({ model: model.id, device: nextDevice, ...(typeof modelLoadOptions === 'function' ? modelLoadOptions(nextDevice) : {}) }),
 });
 const loadData = await loadResponse.json().catch(() => ({}));
 if (loadResponse.status === 401) {

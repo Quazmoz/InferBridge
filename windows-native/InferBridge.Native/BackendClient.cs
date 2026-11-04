@@ -768,8 +768,20 @@ internal sealed partial class BackendClient : IDisposable
 
     public async Task<string> ChangeModelAsync(
         ModelInfo model, ModelAction action, string? apiKey, CancellationToken cancellationToken,
-        string? device = null, int? contextTokens = null, bool allowResourceRisk = false)
+        string? device = null, int? contextTokens = null, bool allowResourceRisk = false,
+        string? performanceHint = null, string? modelDistribution = null)
     {
+        // Builder options (CombinedTarget) are only meaningful on a load of the matching
+        // meta device; the engine still decides whether the combination is supported.
+        if ((performanceHint is not null || modelDistribution is not null)
+            && action is not (ModelAction.Load or ModelAction.SwitchDevice))
+            throw new ArgumentException("Device options only apply to loads.", nameof(performanceHint));
+        if (performanceHint is not null && (!CombinedModes.PerformanceHints.Contains(performanceHint)
+            || device?.StartsWith("AUTO", StringComparison.Ordinal) != true))
+            throw new ArgumentException("A performance hint needs an AUTO device.", nameof(performanceHint));
+        if (modelDistribution is not null && (modelDistribution != CombinedModes.PipelineParallel
+            || device?.StartsWith("HETERO:", StringComparison.Ordinal) != true))
+            throw new ArgumentException("Pipeline-parallel needs a HETERO device.", nameof(modelDistribution));
         if (contextTokens is int chosen && (action != ModelAction.Load
             || chosen < ContextEditor.Minimum || chosen > ContextEditor.Maximum))
             throw new ArgumentException("Context can only be chosen when loading an unloaded model.",
@@ -816,6 +828,13 @@ internal sealed partial class BackendClient : IDisposable
                 JsonSerializer.Serialize(new { model = model.Id, load_after = true, device }),
                 TimeSpan.FromSeconds(60)),
         };
+        if (performanceHint is not null || modelDistribution is not null)
+        {
+            var load = System.Text.Json.Nodes.JsonNode.Parse(body)!.AsObject();
+            if (performanceHint is not null) load["performance_hint"] = performanceHint;
+            if (modelDistribution is not null) load["model_distribution"] = modelDistribution;
+            body = load.ToJsonString();
+        }
         using var document = await PostJsonAsync(
             origin + path, body, apiKey, cancellationToken, deadline, MaximumJsonBytes);
         string status = ReadString(document.RootElement, "status");

@@ -249,6 +249,35 @@
             min-width: 0;
         }
 
+        .device-combine { position: relative; flex-shrink: 0; }
+        .device-combine > summary { list-style: none; cursor: pointer; padding: 6px 9px; min-height: 32px;
+            box-sizing: border-box; display: flex; align-items: center; border: 1px solid var(--border);
+            border-radius: 8px; background: var(--surface-2); color: var(--text-1); font-size: 12px; }
+        .device-combine > summary::-webkit-details-marker { display: none; }
+        .device-combine > summary:focus-visible, .device-combine button:focus-visible,
+        .device-combine input:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+        .device-combine-panel { position: absolute; right: 0; top: calc(100% + 6px); z-index: 60;
+            width: min(380px, calc(100vw - 24px)); max-height: 70vh; overflow: auto; padding: 12px;
+            border: 1px solid var(--border); border-radius: 10px; background: var(--surface-1);
+            color: var(--text-1); font-size: 12px; box-shadow: 0 12px 32px rgba(0, 0, 0, .28); }
+        .device-combine-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .device-combine-badge { padding: 1px 7px; border: 1px solid var(--amber); border-radius: 999px;
+            color: var(--amber); font-size: 10px; }
+        .device-combine-help, .device-combine-status, .device-combine-mode small { color: var(--text-3);
+            line-height: 1.45; overflow-wrap: anywhere; }
+        .device-combine-members { margin: 8px 0; padding-left: 0; list-style: none; display: grid; gap: 4px; }
+        .device-combine-members li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 4px;
+            align-items: center; }
+        .device-combine button { min-height: 28px; min-width: 28px; border: 1px solid var(--border);
+            border-radius: 7px; background: var(--surface-2); color: var(--text-1); font: inherit; cursor: pointer; }
+        .device-combine button:disabled { opacity: .5; cursor: not-allowed; }
+        .device-combine-modes { margin: 8px 0 0; padding: 8px; border: 1px solid var(--border); border-radius: 8px;
+            display: grid; gap: 8px; }
+        .device-combine-mode { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px; }
+        .device-combine-mode.unsupported { opacity: .6; }
+        .device-combine-mode span { display: grid; gap: 2px; }
+        .device-combine-use { margin-top: 8px; padding: 5px 10px; }
+
         /* Fixed-width device control; the model select absorbs header squeeze instead. */
         .device-select-wrap {
             flex-shrink: 0;
@@ -2629,6 +2658,23 @@
                         capabilities. NPU may be chosen first for INT4 models even when GPU is listed higher.
                     </span>
                 </div>
+                <!-- Combined-device builder: members, order and mode; support from GET /v1/devices/modes. -->
+                <details class="device-combine" id="device-combine">
+                    <summary id="device-combine-toggle" title="Combine devices (experimental)"
+                        aria-label="Combine devices, experimental">Combine</summary>
+                    <div class="device-combine-panel" role="group" aria-labelledby="device-combine-title">
+                        <div class="device-combine-head"><strong id="device-combine-title">Combine devices</strong>
+                            <span class="device-combine-badge">Experimental</span></div>
+                        <p class="device-combine-help">Pick devices and their order. AUTO tries the first device
+                            first; HETERO gives the first device the layers it supports.</p>
+                        <ol class="device-combine-members" id="device-combine-members" aria-label="Devices, in order"></ol>
+                        <fieldset class="device-combine-modes" id="device-combine-modes">
+                            <legend>Mode</legend>
+                        </fieldset>
+                        <p class="device-combine-status" id="device-combine-status" role="status" aria-live="polite"></p>
+                        <button type="button" class="device-combine-use" id="device-combine-use" disabled>Use this target</button>
+                    </div>
+                </details>
                 <div class="btn-group">
                     <button class="icon-btn" id="load-model-btn" title="Load selected model"
                         aria-label="Load selected model">
@@ -3711,19 +3757,207 @@
                 : /embedding/i.test(String(model?.backend || '')) ? 'embedding' : 'chat';
             return deviceModeSupport.get(String(value || '').toUpperCase())?.[kind] || null;
         }
+        // ── Combined-device builder ───────────────────────────────
+        // Members, order (Move up / Move down, no drag) and mode come from the engine's
+        // GET /v1/devices/modes?members=… (app/device_modes.py BUILDER_MODES); the browser
+        // never re-derives which combination is supported. Same contract as native.
+        const deviceCombine = document.getElementById('device-combine');
+        const deviceCombineMembers = document.getElementById('device-combine-members');
+        const deviceCombineModes = document.getElementById('device-combine-modes');
+        const deviceCombineStatus = document.getElementById('device-combine-status');
+        const deviceCombineUse = document.getElementById('device-combine-use');
+        const BUILDER_TARGET_KEY = 'ovllm.device-builder.v1';
+        const BUILDER_HINTS = ['LATENCY', 'THROUGHPUT', 'CUMULATIVE_THROUGHPUT'];
+        let builderTarget = readBuilderTarget();
+        let combineOrder = [];
+        let combineIncluded = new Set();
+        let combineBuilder = null;
+        let combineSelectedId = '';
+        let combineVersion = 0;
+        let lastDeviceInventory = {};
+        function readBuilderTarget() {
+            try {
+                const value = JSON.parse(localStorage.getItem(BUILDER_TARGET_KEY) || 'null');
+                if (!value || !isSupportedRoutingTarget(String(value.device || ''))) return null;
+                const hint = BUILDER_HINTS.includes(value.performance_hint) ? value.performance_hint : null;
+                const distribution = value.model_distribution === 'pipeline_parallel' ? 'pipeline_parallel' : null;
+                if ((hint && !value.device.startsWith('AUTO:')) || (distribution && !value.device.startsWith('HETERO:'))) return null;
+                return { device: value.device, performance_hint: hint, model_distribution: distribution,
+                    label: String(value.label || value.device).slice(0, 80) };
+            } catch { return null; }
+        }
+        // Extra /v1/models/load fields for the builder's target; nothing for any other device.
+        function modelLoadOptions(device) {
+            if (!builderTarget || builderTarget.device !== normalizeUiDevice(device)) return {};
+            const extra = {};
+            if (builderTarget.performance_hint) extra.performance_hint = builderTarget.performance_hint;
+            if (builderTarget.model_distribution) extra.model_distribution = builderTarget.model_distribution;
+            return extra;
+        }
+        function selectedModelKinds() {
+            const backend = String(availableModels.get(modelSelect.value)?.backend || '');
+            return /vlm|vision/i.test(backend) ? ['vlm'] : /rerank/i.test(backend) ? ['rerank']
+                : /embedding/i.test(backend) ? ['embedding'] : ['chat'];
+        }
+        const SUPPORT_RANK = { supported: 0, experimental: 1 };
+        function combineSupport(option) {
+            let worst = null;
+            selectedModelKinds().forEach(kind => {
+                const verdict = option?.backends?.[kind];
+                const current = verdict && ['supported', 'experimental', 'unsupported'].includes(verdict.support)
+                    ? verdict : { support: 'unsupported', reason: 'The engine did not classify this mode for this model.' };
+                if (!worst || (SUPPORT_RANK[current.support] ?? 2) > (SUPPORT_RANK[worst.support] ?? 2)) worst = current;
+            });
+            return worst;
+        }
+        function combineSelected() {
+            const option = (combineBuilder?.options || []).find(item => item.id === combineSelectedId);
+            return option && combineSupport(option).support !== 'unsupported' ? option : null;
+        }
+        function setCombineStatus(text) {
+            const option = combineSelected();
+            deviceCombineUse.disabled = !option;
+            deviceCombineStatus.textContent = text || (option
+                ? `Next load target: ${option.device}${option.performance_hint ? ` with ${option.performance_hint}` : ''}${option.model_distribution ? ' with pipeline-parallel' : ''}.`
+                : 'Choose an available mode.');
+        }
+        function renderCombineModes() {
+            deviceCombineModes.querySelectorAll('.device-combine-mode').forEach(node => node.remove());
+            (combineBuilder?.options || []).slice(0, 4).forEach(option => {
+                const verdict = combineSupport(option);
+                const row = document.createElement('label');
+                row.className = `device-combine-mode ${verdict.support}`;
+                const input = document.createElement('input');
+                input.type = 'radio';
+                input.name = 'device-combine-mode';
+                input.value = option.id;
+                input.disabled = verdict.support === 'unsupported';
+                input.checked = option.id === combineSelectedId && !input.disabled;
+                input.addEventListener('change', () => { combineSelectedId = option.id; setCombineStatus(); });
+                const text = document.createElement('span');
+                const title = document.createElement('strong');
+                title.textContent = `${option.label} · ${option.device}${option.experimental ? ' · Experimental' : ''}`;
+                const summary = document.createElement('small');
+                summary.textContent = String(option.summary || '');
+                const reason = document.createElement('small');
+                reason.textContent = `${verdict.support === 'unsupported' ? 'Not available' : verdict.support === 'experimental' ? 'Experimental' : 'Supported'}: ${verdict.reason || ''}`;
+                text.append(title, summary, reason);
+                row.append(input, text);
+                deviceCombineModes.appendChild(row);
+            });
+            setCombineStatus();
+        }
+        async function reloadCombine(members) {
+            const mine = ++combineVersion;
+            combineBuilder = null;
+            renderCombineModes();
+            if (members && members.length < 2) { setCombineStatus('Choose at least two devices to combine.'); return; }
+            setCombineStatus('Checking these devices with the engine…');
+            try {
+                const query = members ? `?members=${encodeURIComponent(members.join(','))}` : '';
+                const res = await fetch(`/v1/devices/modes${query}`, { headers: authHeaders() });
+                const body = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(body.detail || `HTTP ${res.status}`);
+                if (mine !== combineVersion) return;
+                if (!members) {
+                    const choices = (Array.isArray(body.builder_members) ? body.builder_members : [])
+                        .filter(item => ['GPU', 'CPU', 'NPU'].includes(item)).slice(0, 3);
+                    const chosen = (body.builder?.members || []).filter(item => choices.includes(item));
+                    combineOrder = [...chosen, ...choices.filter(item => !chosen.includes(item))];
+                    combineIncluded = new Set(chosen);
+                    renderCombineMembers();
+                    if (choices.length < 2) { setCombineStatus('Combining devices needs at least two detected devices.'); return; }
+                }
+                combineBuilder = body.builder || null;
+                if (!combineSelectedId && builderTarget) {
+                    combineSelectedId = (combineBuilder?.options || []).find(item => item.device === builderTarget.device
+                        && (item.performance_hint || null) === builderTarget.performance_hint
+                        && (item.model_distribution || null) === builderTarget.model_distribution)?.id || '';
+                }
+                renderCombineModes();
+            } catch (err) {
+                if (mine === combineVersion) setCombineStatus(`The engine could not check these devices: ${err.message}`);
+            }
+        }
+        function combineMembers() { return combineOrder.filter(item => combineIncluded.has(item)); }
+        function renderCombineMembers(focusDevice = '', focusDelta = 0) {
+            deviceCombineMembers.replaceChildren();
+            let position = 0;
+            combineOrder.forEach((device, index) => {
+                const member = combineIncluded.has(device);
+                if (member) position += 1;
+                const item = document.createElement('li');
+                const label = document.createElement('label');
+                const box = document.createElement('input');
+                box.type = 'checkbox';
+                box.checked = member;
+                box.setAttribute('aria-label', `Use ${device}${member ? `, position ${position}` : ''}`);
+                box.addEventListener('change', () => {
+                    if (box.checked) combineIncluded.add(device); else combineIncluded.delete(device);
+                    renderCombineMembers(device);
+                    reloadCombine(combineMembers());
+                });
+                label.append(box, document.createTextNode(member ? ` ${position}. ${device}` : ` ${device} (not used)`));
+                const mover = (delta, glyph, verb) => {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.textContent = glyph;
+                    button.title = `Move ${device} ${verb}`;
+                    button.setAttribute('aria-label', `Move ${device} ${verb}`);
+                    button.disabled = delta < 0 ? index === 0 : index === combineOrder.length - 1;
+                    button.dataset.combineMove = `${device}:${delta}`;
+                    button.addEventListener('click', () => {
+                        const target = index + delta;
+                        if (target < 0 || target >= combineOrder.length) return;
+                        [combineOrder[index], combineOrder[target]] = [combineOrder[target], combineOrder[index]];
+                        renderCombineMembers(device, delta);
+                        if (combineIncluded.has(device)) reloadCombine(combineMembers());
+                    });
+                    return button;
+                };
+                item.append(label, mover(-1, '↑', 'up'), mover(1, '↓', 'down'));
+                deviceCombineMembers.appendChild(item);
+            });
+            if (focusDevice) {
+                // Keep keyboard focus on the moved device so repeated presses keep moving it.
+                const preferred = deviceCombineMembers.querySelector(`[data-combine-move="${focusDevice}:${focusDelta}"]:not(:disabled)`);
+                const fallback = [...deviceCombineMembers.querySelectorAll('input')].find(box => box.getAttribute('aria-label').startsWith(`Use ${focusDevice}`));
+                (focusDelta && preferred ? preferred : fallback)?.focus();
+            }
+        }
+        deviceCombine?.addEventListener('toggle', () => { if (deviceCombine.open) { combineSelectedId = ''; reloadCombine(null); } });
+        deviceCombineUse?.addEventListener('click', () => {
+            const option = combineSelected();
+            if (!option) return;
+            builderTarget = { device: option.device, performance_hint: option.performance_hint || null,
+                model_distribution: option.model_distribution || null, label: String(option.label || option.device).slice(0, 80) };
+            try { localStorage.setItem(BUILDER_TARGET_KEY, JSON.stringify(builderTarget)); } catch { }
+            selectedDevice = option.device;
+            try { localStorage.setItem('ovllm.device.v1', selectedDevice); } catch { }
+            renderedDeviceSignature = '';
+            renderDeviceOptions(lastDeviceInventory);
+            updateModelUi();
+            deviceCombine.open = false;
+            deviceCombine.querySelector('summary')?.focus();
+            showToast(`${option.label} (${option.device}) is the next load target. Select Load to use it.`);
+        });
+
         let renderedDeviceSignature = '';
         function renderDeviceOptions(dev = {}) {
+            lastDeviceInventory = dev;
             loadDeviceModes();
             const { direct, advanced } = deviceRoutingOptions(dev);
+            if (builderTarget) advanced.delete(builderTarget.device);
             const unsupported = new Set([...advanced.keys()].filter(value => deviceModeFor(value)?.support === 'unsupported'));
-            const offered = new Set([...direct, 'AUTO', ...[...advanced.keys()].filter(value => !unsupported.has(value))]);
+            const offered = new Set([...direct, 'AUTO', ...[...advanced.keys()].filter(value => !unsupported.has(value)),
+                ...(builderTarget ? [builderTarget.device] : [])]);
             let selected = modelLoadDevice();
             if (!offered.has(selected)) {
                 // A stored target the engine no longer offers must not be sent silently.
                 selected = offered.has(defaultDevice) ? defaultDevice : 'AUTO';
                 selectedDevice = selected;
             }
-            const signature = JSON.stringify([direct, [...advanced], [...unsupported], deviceModesState]);
+            const signature = JSON.stringify([direct, [...advanced], [...unsupported], deviceModesState, builderTarget]);
             if (signature !== renderedDeviceSignature) {
                 // Rebuild only when the inventory changes so polling never steals keyboard focus.
                 renderedDeviceSignature = signature;
@@ -3742,6 +3976,13 @@
                     });
                     deviceSelect.appendChild(group);
                 }
+                if (builderTarget) {
+                    const group = document.createElement('optgroup');
+                    group.label = 'Combined (built) · Experimental';
+                    appendDeviceOption(group, builderTarget.device, `${builderTarget.label}: ${builderTarget.device} · experimental`,
+                        'Built with Combine. The engine reports where the model actually runs.');
+                    deviceSelect.appendChild(group);
+                }
             }
             deviceSelect.value = selected;
             updateDeviceWarning();
@@ -3753,7 +3994,10 @@
             const routingNote = deviceModeFor(target)?.reason || (/^(MULTI|HETERO):/.test(target)
                 ? 'Experimental: multi-device support depends on the model and OpenVINO runtime.'
                 : 'AUTO routes to one compatible device; it does not combine processors.');
-            const text = `Next load target: ${target} · Reported active device: ${active}`;
+            const built = builderTarget?.device === target ? builderTarget : null;
+            const options = built?.performance_hint ? ` (${built.performance_hint})` : built?.model_distribution ? ' (pipeline-parallel)' : '';
+            const text = `Next load target: ${target} · Reported active device: ${active}`
+                + (built ? ` · ${built.label}${options}, experimental` : '');
             if (deviceRoutingSummary.textContent !== text) deviceRoutingSummary.textContent = text;
             deviceRoutingSummary.title = `${text}. ${routingNote}`;
         }
@@ -3900,7 +4144,7 @@
             try {
                 const res = await fetch('/v1/models/load', {
                     method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }),
-                    body: JSON.stringify({ model: modelId, device: modelLoadDevice() })
+                    body: JSON.stringify({ model: modelId, device: modelLoadDevice(), ...modelLoadOptions(modelLoadDevice()) })
                 });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
