@@ -119,4 +119,4 @@ Other Cohere- or Jina-compatible clients that accept a custom base URL can point
 
 ## Try it in InferBridge
 
-The browser **Connection Hub** has a **Rerank for RAG** section: a copyable curl example that names the loaded reranker, and a small form that scores documents (one per line) against a query and lists them by relevance. The native app does not have a rerank test panel yet; use the browser or curl.
+The browser **Connection Hub** and the native app's **Local API** page both have a **Rerank for RAG** section: a copyable curl example that names the loaded reranker, and a small form that scores documents (one per line, up to 50) against a query and lists them by relevance, best first. In the native app **Score documents** stays disabled until a reranker is loaded; load one with **Load as reranker** in the Model library, then select **Check reranker**.

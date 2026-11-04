@@ -28,6 +28,7 @@
     <Compile Include="../InferBridge.Native/NativePreferences.cs" Link="NativePreferences.cs" />
     <Compile Include="../InferBridge.Native/HardwareAdvisorClient.cs" Link="HardwareAdvisorClient.cs" />
     <Compile Include="../InferBridge.Native/DeviceModesClient.cs" Link="DeviceModesClient.cs" />
+    <Compile Include="../InferBridge.Native/RerankClient.cs" Link="RerankClient.cs" />
     <!-- Generated from app/device_modes.py; tests/test_device_modes.py fails when it drifts. -->
     <None Include="Fixtures/*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

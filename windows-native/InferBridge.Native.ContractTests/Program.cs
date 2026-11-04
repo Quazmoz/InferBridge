@@ -103,6 +103,7 @@ try
     await ChatParityContractTests.RunAsync(root);
     await NpuRecoveryContractTests.RunAsync(root);
     await DeviceModesContractTests.RunAsync(root);
+    await RerankContractTests.RunAsync(root);
     return 0;
 }
 finally

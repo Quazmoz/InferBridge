@@ -28,6 +28,7 @@ public sealed partial class MainWindow
         HubCurlExample.Text = "";
         HubTestResults.Items.Clear();
         HubTestSummary.Text = "No self-test run for this engine session.";
+        InvalidateRerankPanel();
         UpdateHubButtons();
         RenderToolCards();
     }
@@ -46,6 +47,7 @@ public sealed partial class MainWindow
             && (!_hubMetadata!.AuthenticationRequired || !string.IsNullOrWhiteSpace(ApiKeyBox.Password))
             && (_hubMetadata.UsableModels.Count < 2 || SelectedHubModelId is not null);
         UpdateToolButtons();
+        UpdateRerankButtons();
     }
 
     private async Task RefreshConnectionHubAsync()
@@ -56,6 +58,7 @@ public sealed partial class MainWindow
         UpdateHubButtons();
         HubInfo.Severity = InfoBarSeverity.Informational;
         HubInfo.Message = "Verifying the running engine and reading connection details…";
+        bool refreshRerank = false;
         try
         {
             LocalApiMetadata metadata = await _backend.GetLocalApiMetadataAsync(
@@ -94,6 +97,7 @@ public sealed partial class MainWindow
             HubTestSummary.Text = "No self-test run for this engine session.";
             HubInfo.Severity = InfoBarSeverity.Success;
             HubInfo.Message = "Connection information is current. No API key is displayed or copied.";
+            refreshRerank = true;
         }
         catch (Exception error) when (!_closing.IsCancellationRequested)
         {
@@ -109,6 +113,7 @@ public sealed partial class MainWindow
         {
             _hubBusy = false;
             if (!_closing.IsCancellationRequested) UpdateHubButtons();
+            if (refreshRerank) _ = RefreshRerankSlotAsync();
         }
     }
 

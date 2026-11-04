@@ -285,3 +285,21 @@ def test_combined_device_builder_consumes_the_engine_on_both_sides():
     # Rules stay in app/device_modes.py: neither client hard-codes NPU/HETERO verdicts.
     for source in (native, client):
         assert "cannot share" not in source and "pipeline_parallel needs" not in source
+
+
+def test_native_rerank_panel_matches_the_browser_connection_hub():
+    hub = (INDEX.parents[1] / "app" / "connection_hub_ui.py").read_text(encoding="utf-8")
+    panel = (NATIVE / "MainWindow.Rerank.cs").read_text(encoding="utf-8")
+    client = (NATIVE / "RerankClient.cs").read_text(encoding="utf-8")
+    xaml = (NATIVE / "MainWindow.xaml").read_text(encoding="utf-8")
+    # Same heading, endpoint, request body and limits as the browser form.
+    assert "Rerank for RAG" in hub and 'Text="Rerank for RAG"' in xaml
+    assert "return_documents: true" in hub and "return_documents = true" in client
+    assert ".slice(0, 50)" in hub and "MaximumDocuments = 50" in client
+    assert 'maxlength="2000"' in hub and 'MaxLength="2000"' in xaml
+    assert '"/v1/rerank"' in client and '"/v1/models/slots"' in client
+    # Disabled with guidance while no reranker is resident; WinUI "\r" lines are split.
+    assert "_rerankSlot is not null" in panel and "Load as reranker" in panel
+    assert "'\\r', '\\n'" in client
+    assert 'x:Name="RerankResults"' in xaml and "Documents ordered by relevance" in xaml
+    assert "AutomationEvents.LiveRegionChanged" in panel
