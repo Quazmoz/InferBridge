@@ -44,7 +44,9 @@ RESPONSIVE_EXTENSION_JS = r"""
     #ovllm-panel-scrim{position:absolute;inset:0;z-index:3;border:0;background:rgba(2,6,23,.56);backdrop-filter:blur(2px);cursor:pointer;opacity:1;transition:opacity .18s ease}
     #ovllm-panel-scrim[hidden]{display:none!important;opacity:0;pointer-events:none}
 
-    @media (min-width:951px) and (max-width:1240px){
+    /* Two-row header up to 1480px: a single row there leaves the model select no width
+       once the device builder, import and advisor controls are all in the header. */
+    @media (min-width:951px) and (max-width:1480px){
       header{flex-wrap:wrap;align-content:center}
       .header-left{flex:0 0 auto}
       .header-right{flex:1 1 680px;flex-wrap:wrap;justify-content:flex-end}

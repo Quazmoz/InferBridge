@@ -86,9 +86,10 @@ def test_crowded_header_selects_never_cover_neighboring_buttons(
     page: Page,
     inferbridge_url: str,
 ) -> None:
-    # Between the 1240px wrap breakpoint and roomy desktop widths the select wrappers
-    # shrink; the selects must shrink with them instead of painting over the buttons.
-    for width in (1280, 1366):
+    # Up to the 1480px wrap breakpoint the header uses two rows; above it the select
+    # wrappers shrink. Either way the selects must shrink with their wrappers instead of
+    # painting over the buttons, and the model select must keep a usable width.
+    for width in (1280, 1366, 1440, 1536, 1600):
         page.set_viewport_size({"width": width, "height": 900})
         page.goto(inferbridge_url, wait_until="networkidle")
         overlaps = page.evaluate(
@@ -101,3 +102,7 @@ def test_crowded_header_selects_never_cover_neighboring_buttons(
             """
         )
         assert all(px <= 0 for px in overlaps), (width, overlaps)
+        model_width = page.evaluate(
+            "document.querySelector('#model-select').getBoundingClientRect().width"
+        )
+        assert model_width >= 140, (width, model_width)
