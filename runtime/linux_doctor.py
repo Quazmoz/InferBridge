@@ -248,8 +248,12 @@ def diagnose(
     kernel = kernel_release or platform.release()
     major_minor = kernel_version(kernel)
     machine = machine or platform.machine()
+    posix_accounts = hasattr(os, "getgroups") and hasattr(os, "getuid")
     if session_groups is None:
-        session_groups = {_group_name(gid) for gid in os.getgroups()}
+        # Group membership is unknowable off POSIX (a Windows test faking sys.platform).
+        session_groups = {_group_name(gid) for gid in os.getgroups()} if posix_accounts else set()
+    if account_groups is None and not posix_accounts:
+        account_groups = set(session_groups)
     if account_groups is None:
         import pwd
 

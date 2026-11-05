@@ -152,7 +152,9 @@ def exercise_running_app(user: FreshUser, evidence: Path, python: Path) -> dict:
         "except urllib.error.HTTPError as error:\n    print(error.code)\n"
         "else:\n    print(200)\n"
     )
-    unauthorized = user.run(str(python), "-I", "-c", probe, f"{base}/v1/models")
+    # -B: these checks run the bundled interpreter directly (no launcher, so no
+    # PYTHONDONTWRITEBYTECODE); they must not write __pycache__ into a user-owned bundle.
+    unauthorized = user.run(str(python), "-I", "-B", "-c", probe, f"{base}/v1/models")
     assert unauthorized.stdout.strip() == "401", "Unauthenticated API access was accepted"
     # A second start is a no-op that reports the same instance.
     user.run("inferbridge", "start", "--mock")
@@ -168,6 +170,7 @@ def exercise_running_app(user: FreshUser, evidence: Path, python: Path) -> dict:
     user.run(
         str(python),
         "-I",
+        "-B",
         str(contract),
         "--base-url",
         base,
@@ -337,7 +340,11 @@ def qualify_archive(args: argparse.Namespace, user: FreshUser) -> dict:
     if args.systemd:
         exercise_service(user)
         report["systemd_user_service"] = "passed"
-    assert tree_signature(bundle) == before, "The application wrote inside its bundle"
+    after = tree_signature(bundle)
+    changed = sorted(
+        name for name in before.keys() | after.keys() if before.get(name) != after.get(name)
+    )
+    assert not changed, f"The application wrote inside its bundle: {changed[:20]}"
     user.run("inferbridge", "autostart", "enable")
     user.run(str(bundle / "InferBridge"), "uninstall", "--remove-app")
     leftovers = user.leftovers()

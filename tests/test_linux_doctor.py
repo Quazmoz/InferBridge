@@ -165,3 +165,11 @@ def test_shared_data_directory_and_missing_keyring_are_reported(tmp_path):
 
 def test_non_x86_machine_is_an_error(tmp_path):
     assert _by_id(_diagnose(_tree(tmp_path), machine="aarch64"))["platform"]["status"] == "error"
+
+
+def test_diagnose_tolerates_a_host_without_posix_accounts(monkeypatch, tmp_path):
+    # Windows CI fakes sys.platform == "linux" for --check-devices; os.getgroups is absent.
+    monkeypatch.delattr(os, "getgroups")
+    monkeypatch.delattr(os, "getuid")
+    report = linux_doctor.diagnose(root=_tree(tmp_path), openvino_devices=["CPU"])
+    assert report["findings"]

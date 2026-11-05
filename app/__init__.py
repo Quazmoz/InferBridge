@@ -5,10 +5,13 @@ GenAI. Pure request/response logic remains importable in mock mode without an
 OpenVINO runtime.
 """
 
+from app.openvino_privacy import decline_openvino_telemetry
 from app.request_logging import install_request_log_filter
 from app.version import __version__
 
 install_request_log_filter()
+# Before optimum-intel, NNCF or OVC can import openvino_telemetry and phone home.
+decline_openvino_telemetry()
 
 __all__ = [
     "__version__",

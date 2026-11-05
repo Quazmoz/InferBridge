@@ -69,3 +69,15 @@ directory; see the [Linux upgrade/uninstall procedure](LINUX.md#update).
 Repository-development mode retains the existing repository-relative paths unless `OV_LLM_DESKTOP=1` is set.
 
 The writable catalog is initialized from the bundled catalog. Existing entries are retained verbatim during upgrades. New bundled entries are appended with paths under the writable model directory. Existing models are never silently moved or deleted.
+
+## Files outside the data root: OpenVINO usage telemetry
+
+OpenVINO's `openvino-telemetry` package (used by OVC and NNCF during conversion) treats
+a missing consent file as consent and would otherwise write a client ID and counters
+to `~/intel` on Linux or `%LOCALAPPDATA%\Intel Corporation` on Windows and send usage
+events. Every InferBridge process reads a missing consent file as **declined**
+(`app/openvino_privacy.py`), so nothing is written there and nothing is sent. A choice
+made with OpenVINO's own `opt_in_out --opt_in` is respected, and
+`OV_LLM_ALLOW_OPENVINO_TELEMETRY=1` restores the library default. Running
+`optimum-cli` yourself from a source checkout is outside InferBridge and keeps
+OpenVINO's default behavior.
