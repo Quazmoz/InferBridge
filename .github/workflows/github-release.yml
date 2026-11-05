@@ -10,6 +10,12 @@
 #
 # Artifacts are UNSIGNED (Windows SmartScreen will warn) and are not hardware-qualified.
 # The tag must equal "v" + app/version.py at the tagged commit or the run fails.
+#
+# The linux job builds the Linux x86_64 portable archive, .deb and .rpm, an SPDX SBOM and
+# InferBridge-<version>-linux-SHA256SUMS.txt, qualifies them, and hands them to the
+# release job, which attaches them beside the Windows assets. A workflow_dispatch with
+# dry_run=true builds and verifies the Linux assets from the selected branch and stops:
+# it never creates a tag, a release or an attestation, and the Windows job is skipped.
 name: GitHub Release (tag)
 
 on:
@@ -19,20 +25,92 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing version tag to build and publish, e.g. v1.1.1-beta.1"
+        description: "Existing version tag to build and publish, e.g. v1.1.1-beta.1 (ignored for dry runs)"
         type: string
-        required: true
+        required: false
+      dry_run:
+        description: "Only build and verify the Linux release assets from the selected branch; publish nothing"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
 concurrency:
-  group: github-release-${{ inputs.tag || github.ref_name }}
+  group: github-release-${{ inputs.dry_run && format('dry-run-{0}', github.ref_name) || inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
+  linux:
+    name: Build and verify Linux release assets${{ inputs.dry_run && ' (dry run, nothing published)' || '' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 75
+    permissions:
+      contents: read
+      id-token: write      # build-provenance attestation (real tag runs only)
+      attestations: write
+    env:
+      DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.dry_run && github.ref || format('refs/tags/{0}', inputs.tag || github.ref_name) }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Guard version, tag and release notes
+        id: version
+        run: |
+          set -euo pipefail
+          version="$(python -c 'from app.version import __version__; print(__version__)')"
+          if [ "$DRY_RUN" != true ]; then
+            [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "Not a version tag: $RELEASE_TAG"; exit 1; }
+            [ "$RELEASE_TAG" = "v$version" ] || { echo "Tag $RELEASE_TAG does not match app/version.py (v$version)"; exit 1; }
+            [ "$(git rev-parse HEAD)" = "$(git rev-list -n 1 "refs/tags/$RELEASE_TAG")" ] || { echo 'Checkout is not the tagged commit'; exit 1; }
+          fi
+          [ -f "docs/releases/$version.md" ] || { echo "Release notes are required at docs/releases/$version.md"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Linux release $version from $(git rev-parse HEAD) (dry run: $DRY_RUN)"
+      - name: Build tools and host libraries
+        run: |
+          python -m pip install uv==0.11.21
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends desktop-file-utils libnuma1 libtbb12 libgomp1 libatomic1 ocl-icd-libopencl1 rpm
+      - name: Build the portable archive
+        env:
+          HF_HUB_OFFLINE: '1'
+          HF_HUB_DISABLE_TELEMETRY: '1'
+          DO_NOT_TRACK: '1'
+        run: python scripts/build_linux_distribution.py --output dist/linux-release
+      - name: Qualify the archive (lifecycle, authentication, mock API)
+        run: python scripts/validate_linux_bundle.py --archive dist/linux-release/*-portable.tar.gz --evidence build/linux-release-evidence
+      - name: Build .deb, .rpm, SBOM and SHA256SUMS, then verify the whole set
+        run: |
+          python scripts/build_linux_packages.py --archive dist/linux-release/*-portable.tar.gz --output dist/linux-release --finalize
+          (cd dist/linux-release && sha256sum -c *-linux-SHA256SUMS.txt)
+          python scripts/verify_linux_release.py --directory dist/linux-release --version "${{ steps.version.outputs.version }}" --commit "$(git rev-parse HEAD)"
+      - name: Attest build provenance
+        if: ${{ !inputs.dry_run }}
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/linux-release/*
+      - uses: actions/upload-artifact@v7
+        with:
+          name: inferbridge-${{ steps.version.outputs.version }}-linux-x86_64${{ inputs.dry_run && '-dry-run' || '' }}
+          path: dist/linux-release/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
   release:
     name: Build, verify and publish unsigned Windows release
+    needs: linux
+    if: ${{ !inputs.dry_run }}
     # Matches the Azure DevOps release agent image (azure-pipelines.yml vmImage).
     runs-on: windows-2022
     timeout-minutes: 180
@@ -131,6 +209,12 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Download the verified Linux release assets
+        uses: actions/download-artifact@v7
+        with:
+          name: inferbridge-${{ needs.linux.outputs.version }}-linux-x86_64
+          path: artifacts/linux-release
+
       - name: Create GitHub Release on the tagged commit
         env:
           RELEASE_VERSION: ${{ steps.guard.outputs.version }}
@@ -154,11 +238,26 @@ jobs:
             "InferBridge-$version-release-timings.json",
             "model-library-manifest.json"
           )
-          $upload = foreach ($name in $expected) {
+          $upload = @(foreach ($name in $expected) {
             $path = Join-Path $env:RELEASE_OUTPUT $name
             if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing release artifact: $name" }
             $path
+          })
+          # Linux assets were built and verified by the linux job (verify_linux_release.py).
+          $linuxDirectory = Join-Path $env:GITHUB_WORKSPACE 'artifacts/linux-release'
+          $linuxExpected = @(
+            "InferBridge-$version-linux-x86_64-portable.tar.gz",
+            "InferBridge-$version-linux-x86_64.deb",
+            "InferBridge-$version-linux-x86_64.rpm",
+            "InferBridge-$version-linux-SHA256SUMS.txt",
+            "InferBridge-$version-linux-sbom.spdx.json"
+          )
+          foreach ($name in $linuxExpected) {
+            $path = Join-Path $linuxDirectory $name
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing Linux release artifact: $name" }
+            $upload += $path
           }
+          $expected += $linuxExpected
           $arguments = @('release', 'create', $tag, '--verify-tag', '--title', "InferBridge $version", '--notes-file', "docs/releases/$version.md")
           if ($env:RELEASE_CHANNEL -ne 'stable') { $arguments += '--prerelease' }
           $arguments += $upload

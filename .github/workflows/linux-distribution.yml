@@ -11,12 +11,13 @@ on:
       - 'requirements/linux.*'
       - 'requirements/release.txt'
       - 'scripts/*linux*.py'
-      - 'tests/test_linux_distribution.py'
+      - 'tests/test_linux_*.py'
       - '.github/workflows/linux-distribution.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
+  actions: read  # the previous dev build, for the upgrade check
 
 concurrency:
   group: linux-distribution-${{ github.ref }}
@@ -25,7 +26,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-22.04
-    timeout-minutes: 35
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -35,13 +36,13 @@ jobs:
         run: |
           python -m pip install uv==0.11.21 ruff==0.16.10 pytest==9.1.1 fastapi==0.143.0 psutil==7.2.2 httpx==0.28.1 pillow==12.3.0 python-dotenv==1.2.4
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends desktop-file-utils libnuma1 libtbb12 libgomp1 libatomic1 ocl-icd-libopencl1
+          sudo apt-get install -y --no-install-recommends desktop-file-utils libnuma1 libtbb12 libgomp1 libatomic1 ocl-icd-libopencl1 rpm
       - name: Source gates
         run: |
           ruff check .
           ruff format --check .
           bash -n setup.sh start_server.sh setup/linux/*.sh packaging/linux/InferBridge
-          python -m pytest tests/test_linux_distribution.py tests/test_desktop_http.py
+          python -m pytest tests/test_linux_distribution.py tests/test_linux_cli.py tests/test_linux_doctor.py tests/test_linux_packages.py tests/test_desktop_http.py
       - name: Build private runtime and portable archive without models
         env:
           HF_HUB_OFFLINE: '1'
@@ -57,6 +58,13 @@ jobs:
           ldd build/linux/InferBridge-*/python/bin/python3.12
       - name: Qualify relocated application on Ubuntu 22.04 x86_64
         run: python scripts/validate_linux_bundle.py --archive dist/linux/*-portable.tar.gz --evidence build/linux/evidence
+      - name: Build .deb and .rpm, SPDX SBOM and SHA256SUMS from the qualified archive
+        run: |
+          python scripts/build_linux_packages.py --archive dist/linux/*-portable.tar.gz --output dist/linux --finalize
+          # Same payload, lower package version: lets install jobs exercise a real package upgrade.
+          python scripts/build_linux_packages.py --archive dist/linux/*-portable.tar.gz --output build/linux/upgrade-fixtures --version-override 1.1.0
+          cd dist/linux && sha256sum -c *-linux-SHA256SUMS.txt && ls -l && cd ../..
+          python scripts/verify_linux_release.py --directory dist/linux --version "$(python -c 'from app.version import __version__; print(__version__)')" --commit "$GITHUB_SHA"
       - name: Upload development downloads
         uses: actions/upload-artifact@v7
         with:
@@ -74,11 +82,18 @@ jobs:
             build/linux/native-libraries.txt
           if-no-files-found: ignore
           retention-days: 7
+      - name: Upload package upgrade fixtures
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-upgrade-fixtures
+          path: build/linux/upgrade-fixtures/*
+          compression-level: 0
+          retention-days: 2
 
   ubuntu24:
     needs: build
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -90,11 +105,29 @@ jobs:
           path: dist/linux
       - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends desktop-file-utils libnuma1 libtbb12 libgomp1 libatomic1 ocl-icd-libopencl1
       - run: python scripts/validate_linux_bundle.py --archive dist/linux/*-portable.tar.gz --evidence build/linux/evidence
+      - name: Previous successful dev build (upgrade source)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run_id="$(gh run list -R "$GITHUB_REPOSITORY" -w linux-distribution.yml -b dev -s success -L 30 --json databaseId,headSha -q "[.[] | select(.headSha != \"$GITHUB_SHA\")][0].databaseId")"
+          if [ -n "$run_id" ] && gh run download "$run_id" -R "$GITHUB_REPOSITORY" -n InferBridge-linux-x86_64-development -D build/previous; then
+            echo "Previous build from run $run_id"; ls -l build/previous
+          else
+            echo "::warning::No previous dev build artifact is available; the upgrade step is skipped."
+          fi
+      - name: Fresh-user tarball install, upgrade, systemd user service and uninstall
+        run: |
+          previous=(build/previous/*-portable.tar.gz)
+          args=()
+          [ -f "${previous[0]}" ] && args=(--previous "${previous[0]}")
+          sudo /usr/bin/python3 scripts/validate_linux_install.py --package dist/linux/*-portable.tar.gz "${args[@]}" --systemd --evidence "$RUNNER_TEMP/install-evidence"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: linux-ubuntu24-evidence
-          path: build/linux/evidence/
+          path: |
+            build/linux/evidence/
+            ${{ runner.temp }}/install-evidence/
           if-no-files-found: ignore
           retention-days: 7
 
@@ -123,10 +156,87 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  packages-vm:
+    name: .deb on ${{ matrix.os }} (fresh user, upgrade, systemd --user, uninstall)
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: InferBridge-linux-x86_64-development
+          path: dist/linux
+      - uses: actions/download-artifact@v7
+        with:
+          name: linux-upgrade-fixtures
+          path: build/upgrade
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends desktop-file-utils
+      - name: Install the 1.1.0-numbered package, upgrade to this build, run, remove
+        run: sudo /usr/bin/python3 scripts/validate_linux_install.py --package "$(ls dist/linux/*.deb)" --previous "$(ls build/upgrade/*.deb)" --systemd --evidence "$RUNNER_TEMP/install-evidence"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: linux-deb-${{ matrix.os }}-evidence
+          path: ${{ runner.temp }}/install-evidence/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  packages-container:
+    name: ${{ matrix.format }} on ${{ matrix.image }} (minimal image, fresh user)
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: ubuntu:22.04
+            format: deb
+          - image: ubuntu:24.04
+            format: deb
+          - image: debian:12
+            format: deb
+          - image: fedora:44
+            format: rpm
+    runs-on: ubuntu-24.04
+    container: ${{ matrix.image }}
+    timeout-minutes: 30
+    steps:
+      - name: Minimal prerequisites of the check itself (not of InferBridge)
+        run: |
+          if command -v apt-get >/dev/null; then
+            apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends python3 tar gzip desktop-file-utils ca-certificates
+          else
+            dnf install -y python3 tar gzip desktop-file-utils util-linux shadow-utils
+          fi
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: InferBridge-linux-x86_64-development
+          path: dist/linux
+      - uses: actions/download-artifact@v7
+        with:
+          name: linux-upgrade-fixtures
+          path: build/upgrade
+      - name: Install with dependency resolution, upgrade, run as a new user, remove
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: python3 scripts/validate_linux_install.py --package "$(ls dist/linux/*.${{ matrix.format }})" --previous "$(ls build/upgrade/*.${{ matrix.format }})" --evidence /tmp/install-evidence
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: linux-${{ matrix.format }}-${{ strategy.job-index }}-evidence
+          path: /tmp/install-evidence/
+          if-no-files-found: ignore
+          retention-days: 7
+
   cpu-probe:
     needs: build
     runs-on: ubuntu-22.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v7
@@ -142,7 +252,7 @@ jobs:
       - name: Real CPU conversion and generation with bounded random test weights
         run: |
           bundles=(build/cpu/InferBridge-*)
-          timeout --signal=TERM --kill-after=15s 10m "${bundles[0]}/python/bin/python3.12" -I -B scripts/validate_linux_cpu.py --bundle "${bundles[0]}" --output build/cpu-evidence.json
+          timeout --signal=TERM --kill-after=15s 14m "${bundles[0]}/python/bin/python3.12" -I -B scripts/validate_linux_cpu.py --bundle "${bundles[0]}" --output build/cpu-evidence.json
       - uses: actions/upload-artifact@v7
         if: always()
         with:

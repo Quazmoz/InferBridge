@@ -269,6 +269,26 @@ def test_tag_release_workflow_builds_verifies_and_publishes_through_release_buil
     assert '"docs/releases/$version.md"' in workflow
     for suffix in ("windows-x64-installer.exe", "windows-x64-portable.zip", "checksums.txt"):
         assert f'"InferBridge-$version-{suffix}"' in workflow
+    # Linux assets: built, qualified and verified by their own job, attached beside Windows.
+    assert "\n  linux:\n" in workflow and "needs: linux" in workflow
+    for script in (
+        "build_linux_distribution.py",
+        "validate_linux_bundle.py",
+        "build_linux_packages.py",
+        "verify_linux_release.py",
+    ):
+        assert f"scripts/{script}" in workflow
+    for suffix in (
+        "linux-x86_64-portable.tar.gz",
+        "linux-x86_64.deb",
+        "linux-x86_64.rpm",
+        "linux-SHA256SUMS.txt",
+        "linux-sbom.spdx.json",
+    ):
+        assert f'"InferBridge-$version-{suffix}"' in workflow
+    # A dry run builds and verifies Linux assets only: no release, tag or attestation.
+    assert "dry_run:" in workflow and "type: boolean" in workflow
+    assert workflow.count("if: ${{ !inputs.dry_run }}") == 2  # attestation + publishing job
 
 
 def test_conversion_cli_preflight_is_required_before_windows_package_freeze() -> None:
