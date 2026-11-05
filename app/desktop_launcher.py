@@ -166,7 +166,8 @@ def wait_for_readiness(
 
 
 def _write_metadata(path: Path, metadata: InstanceMetadata) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    # The data root may be created here first; 0700 keeps a new one private (POSIX).
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(asdict(metadata), indent=2) + "\n", encoding="utf-8")
     temporary.replace(path)
@@ -185,7 +186,8 @@ class InstanceLock:
         self.handle: BinaryIO | None = None
 
     def acquire(self) -> bool:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        # Usually the first write to the data root: create a new one private (POSIX).
+        self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         handle = open(self.path, "a+b")  # noqa: SIM115
         try:
             # Ensure the file has a byte to lock. When another instance already

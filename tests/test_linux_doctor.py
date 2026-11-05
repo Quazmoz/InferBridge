@@ -11,6 +11,8 @@ import pytest
 from runtime import linux_doctor
 
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux doctor")
+# os.geteuid does not exist on Windows, where this module is still collected.
+IS_ROOT = hasattr(os, "geteuid") and os.geteuid() == 0
 
 
 def _tree(root: Path, *, os_id="ubuntu", like="debian") -> Path:
@@ -110,7 +112,7 @@ def test_unbound_gpu_and_old_kernel_point_at_a_kernel_upgrade(tmp_path):
     assert findings["gpu-kernel-version"]["status"] == "warning"
 
 
-@pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses device permissions")
+@pytest.mark.skipif(IS_ROOT, reason="root bypasses device permissions")
 def test_group_added_but_session_not_refreshed_says_log_out(tmp_path):
     root = _tree(tmp_path)
     _pci(root, "0000:00:02.0", device="0x7d55", pci_class="0x030000", driver="i915")
@@ -141,7 +143,7 @@ def test_npu_present_without_user_mode_driver_on_fedora(tmp_path):
     assert findings["npu-runtime"]["status"] == "ok" and "npu-openvino" not in findings
 
 
-@pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses device permissions")
+@pytest.mark.skipif(IS_ROOT, reason="root bypasses device permissions")
 def test_root_only_accel_node_suggests_the_udev_rule(tmp_path):
     root = _tree(tmp_path)
     _pci(root, "0000:00:0b.0", device="0x7d1d", pci_class="0x120000", driver="intel_vpu")

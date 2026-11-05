@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import tempfile
 import time
 from pathlib import Path
 
@@ -156,10 +157,12 @@ def exercise_running_app(user: FreshUser, evidence: Path, python: Path) -> dict:
     # A second start is a no-op that reports the same instance.
     user.run("inferbridge", "start", "--mock")
     assert status(user)["server_pid"] == current["server_pid"], "A second server was started"
-    evidence.mkdir(parents=True, exist_ok=True)
-    os.chmod(evidence, 0o777)
-    # The checkout may sit in a home directory the fresh user cannot read.
-    contract = Path("/tmp/inferbridge-validate_api_contract.py")
+    # The checkout and the evidence directory may sit under a home directory the fresh
+    # user cannot traverse (/home/runner is 0750): give the user its own scratch
+    # directory in /tmp and copy the reports into the evidence as root afterwards.
+    scratch = Path(tempfile.mkdtemp(prefix="inferbridge-contract-", dir="/tmp"))
+    os.chown(scratch, user.account.pw_uid, user.account.pw_gid)
+    contract = scratch / "validate_api_contract.py"
     shutil.copyfile(ROOT / "scripts/validate_api_contract.py", contract)
     os.chmod(contract, 0o644)
     user.run(
@@ -182,11 +185,15 @@ def exercise_running_app(user: FreshUser, evidence: Path, python: Path) -> dict:
         "--timeout",
         "60",
         "--output-json",
-        str(evidence / "contract.json"),
+        str(scratch / "contract.json"),
         "--output-markdown",
-        str(evidence / "contract.md"),
+        str(scratch / "contract.md"),
         timeout=600,
     )
+    evidence.mkdir(parents=True, exist_ok=True)
+    for name in ("contract.json", "contract.md"):
+        shutil.copyfile(scratch / name, evidence / name)
+    shutil.rmtree(scratch, ignore_errors=True)
     user.run("inferbridge", "logs", "-n", "5")
     user.run("inferbridge", "stop", timeout=120)
     assert not status(user)["running"], "inferbridge stop left the instance running"
@@ -342,6 +349,19 @@ def qualify_archive(args: argparse.Namespace, user: FreshUser) -> dict:
     return report
 
 
+def hand_over(evidence: Path) -> None:
+    """Make root-written evidence (copied 0700/0600 user logs) readable by the uploader."""
+    if not evidence.is_dir():
+        return
+    owner = os.environ.get("SUDO_UID"), os.environ.get("SUDO_GID")
+    for path in [evidence, *evidence.rglob("*")]:
+        if path.is_symlink():
+            continue
+        if all(owner):
+            os.chown(path, int(owner[0]), int(owner[1]))
+        os.chmod(path, 0o755 if path.is_dir() else 0o644)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--package", type=Path, required=True, help=".deb, .rpm or .tar.gz")
@@ -364,9 +384,11 @@ def main() -> int:
         logs = user.home / ".local/share/InferBridge/logs"
         if logs.is_dir():
             shutil.copytree(logs, args.evidence / "application-logs", dirs_exist_ok=True)
+        hand_over(args.evidence)
     report["passed"] = True
     args.evidence.mkdir(parents=True, exist_ok=True)
     (args.evidence / "install-checks.json").write_text(json.dumps(report, indent=2) + "\n")
+    hand_over(args.evidence)
     log(json.dumps(report, indent=2))
     return 0
 

@@ -273,6 +273,26 @@ def test_new_data_root_is_private(monkeypatch, tmp_path):
     assert paths.logs_dir.stat().st_mode & 0o777 == 0o700
 
 
+def test_default_data_root_from_an_older_build_becomes_private(monkeypatch, tmp_path):
+    from app.desktop_launcher import InstanceLock
+    from app.paths import ensure_runtime_directories, resolve_runtime_paths
+
+    monkeypatch.delenv("OV_LLM_DATA_DIR", raising=False)
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
+    paths = resolve_runtime_paths(desktop=True, portable=False)
+    paths.data_root.mkdir(parents=True)
+    paths.data_root.chmod(0o755)  # Created by an earlier build or by hand.
+    ensure_runtime_directories(paths)
+    assert paths.data_root.stat().st_mode & 0o777 == 0o700
+    # The launcher lock is often the first write; a new explicit root starts private too.
+    fresh = tmp_path / "explicit" / "root"
+    lock = InstanceLock(fresh / "desktop-instance.lock")
+    assert lock.acquire()
+    lock.release()
+    assert fresh.stat().st_mode & 0o777 == 0o700
+
+
 def test_host_environment_restores_the_users_runtime():
     from app.desktop_shell import host_environment
 

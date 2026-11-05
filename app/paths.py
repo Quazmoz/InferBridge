@@ -197,14 +197,17 @@ def resolve_runtime_paths(
 def _restrict_private_directories(paths: RuntimePaths, *, created_root: bool) -> None:
     """POSIX: keep per-user application state private to the user (0700).
 
-    A data root InferBridge creates is private. Configuration, onboarding state and logs
-    are always private, but an existing explicit data root (perhaps shared on purpose)
-    keeps its mode. Directories owned by another user are never changed.
+    The default per-user data root (XDG or portable) is always private, including one an
+    older build created 0755, and so is any data root InferBridge creates. Configuration,
+    onboarding state and logs are always private. Only an existing root chosen with
+    ``OV_LLM_DATA_DIR`` (perhaps shared on purpose) keeps its mode. Directories owned by
+    another user are never changed.
     """
     if os.name != "posix" or paths.config_dir == paths.resource_root:
         return  # Windows ACLs, or a source checkout writing beside the code.
     private = [paths.config_dir, paths.onboarding_dir, paths.logs_dir]
-    if created_root:
+    explicit_root = bool(str(os.environ.get("OV_LLM_DATA_DIR") or "").strip())
+    if created_root or not explicit_root:
         private.insert(0, paths.data_root)
     for directory in private:
         with contextlib.suppress(OSError):
