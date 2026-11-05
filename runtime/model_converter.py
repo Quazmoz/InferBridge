@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import codecs
+import importlib.util
 import io
 import logging
 import os
@@ -337,6 +338,43 @@ class _ProgressLineEmitter:
         )
 
 
+# Runs ``optimum-cli`` in a child interpreter after declining OpenVINO/NNCF usage
+# telemetry (app/openvino_privacy.py, loaded by path so the child needs no sys.path).
+# argv: [-c, <openvino_privacy.py>, <optimum-cli arguments>...]
+_PRIVATE_OPTIMUM_CLI = (
+    "import importlib.util, sys\n"
+    "spec = importlib.util.spec_from_file_location('_inferbridge_openvino_privacy', sys.argv[1])\n"
+    "privacy = importlib.util.module_from_spec(spec)\n"
+    "spec.loader.exec_module(privacy)\n"
+    "privacy.decline_openvino_telemetry()\n"
+    "from optimum.commands.optimum_cli import main\n"
+    "sys.argv = ['optimum-cli', *sys.argv[2:]]\n"
+    "sys.exit(main())\n"
+)
+
+
+def _private_optimum_command(command: list[str]) -> list[str]:
+    """Launch a source/Linux ``optimum-cli`` export with telemetry declined.
+
+    The frozen Windows helper (MSIX, installer, portable) runs Optimum in process after
+    ``app`` has declined telemetry, so it never reaches this subprocess path. A plain
+    ``optimum-cli`` child would not import ``app`` and would keep OpenVINO's default
+    (a missing consent file counts as consent). When this interpreter cannot run Optimum
+    itself, the original command is used unchanged.
+    """
+
+    if not command or command[0] != "optimum-cli" or getattr(sys, "frozen", False):
+        return command
+    privacy = Path(__file__).resolve().parents[1] / "app" / "openvino_privacy.py"
+    try:
+        has_optimum = importlib.util.find_spec("optimum") is not None
+    except (ImportError, ValueError):
+        has_optimum = False
+    if not privacy.is_file() or not has_optimum:
+        return command
+    return [sys.executable, "-c", _PRIVATE_OPTIMUM_CLI, str(privacy), *command[1:]]
+
+
 def _run_streaming_command(
     command: list[str],
     *,
@@ -355,7 +393,7 @@ def _run_streaming_command(
     environment["TQDM_POSITION"] = "-1"
 
     process = subprocess.Popen(
-        command,
+        _private_optimum_command(command),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         env=environment,

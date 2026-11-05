@@ -76,7 +76,10 @@ OpenVINO's `openvino-telemetry` package (used by OVC and NNCF during conversion)
 a missing consent file as consent and would otherwise write a client ID and counters
 to `~/intel` on Linux or `%LOCALAPPDATA%\Intel Corporation` on Windows and send usage
 events. Every InferBridge process reads a missing consent file as **declined**
-(`app/openvino_privacy.py`), so nothing is written there and nothing is sent. A choice
+(`app/openvino_privacy.py`), so nothing is written there and nothing is sent. That
+includes the conversion child: packaged Windows builds run Optimum inside the helper
+process, and source and Linux builds start `optimum-cli` through the same interpreter
+with the decline applied first (`runtime/model_converter.py`). A choice
 made with OpenVINO's own `opt_in_out --opt_in` is respected, and
 `OV_LLM_ALLOW_OPENVINO_TELEMETRY=1` restores the library default. Running
 `optimum-cli` yourself from a source checkout is outside InferBridge and keeps

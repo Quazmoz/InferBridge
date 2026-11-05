@@ -463,3 +463,60 @@ def test_resolve_from_catalog_unknown_id_exits(monkeypatch, tmp_path):
 
     with pytest.raises(SystemExit):
         mc._resolve_from_catalog("does-not-exist")
+
+
+def test_private_optimum_command_only_wraps_a_source_optimum_cli(monkeypatch):
+    command = ["optimum-cli", "export", "openvino", "--model", "m", "out"]
+    monkeypatch.setattr(mc.importlib.util, "find_spec", lambda name: object())
+    wrapped = mc._private_optimum_command(command)
+    assert wrapped[:2] == [sys.executable, "-c"]
+    assert wrapped[3].endswith("openvino_privacy.py")
+    assert wrapped[4:] == command[1:]
+    assert mc._private_optimum_command([sys.executable, "-c", "pass"]) == [
+        sys.executable,
+        "-c",
+        "pass",
+    ]
+    monkeypatch.setattr(mc.sys, "frozen", True, raising=False)
+    assert mc._private_optimum_command(command) == command  # Frozen helper: in process.
+    monkeypatch.delattr(mc.sys, "frozen")
+    monkeypatch.setattr(mc.importlib.util, "find_spec", lambda name: None)
+    assert mc._private_optimum_command(command) == command  # No Optimum here.
+
+
+def test_source_optimum_cli_child_declines_openvino_telemetry(monkeypatch, tmp_path):
+    """The conversion child reads a missing consent file as declined, before Optimum runs."""
+
+    checker = tmp_path / "openvino_telemetry" / "utils"
+    checker.mkdir(parents=True)
+    (tmp_path / "openvino_telemetry" / "__init__.py").write_text("", encoding="utf-8")
+    (checker / "__init__.py").write_text("", encoding="utf-8")
+    (checker / "opt_in_checker.py").write_text(
+        "from enum import Enum\n"
+        "class ConsentCheckResult(Enum):\n"
+        "    DECLINED = 0\n    ACCEPTED = 1\n    NO_FILE = 2\n"
+        "class OptInChecker:\n"
+        "    def check(self, enable_opt_in_dialog, disable_in_ci=False):\n"
+        "        return ConsentCheckResult.NO_FILE\n",
+        encoding="utf-8",
+    )
+    commands = tmp_path / "optimum" / "commands"
+    commands.mkdir(parents=True)
+    (tmp_path / "optimum" / "__init__.py").write_text("", encoding="utf-8")
+    (commands / "__init__.py").write_text("", encoding="utf-8")
+    (commands / "optimum_cli.py").write_text(
+        "import sys\n"
+        "from openvino_telemetry.utils.opt_in_checker import OptInChecker\n"
+        "def main():\n"
+        "    print('consent=' + OptInChecker().check(False).name + ' argv=' + ' '.join(sys.argv))\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path))
+    monkeypatch.delenv("OV_LLM_ALLOW_OPENVINO_TELEMETRY", raising=False)
+    monkeypatch.setattr(mc.importlib.util, "find_spec", lambda name: object())
+    human_stream = io.StringIO()
+    monkeypatch.setattr(mc.sys, "stderr", human_stream)
+
+    mc._run_streaming_command(["optimum-cli", "export", "openvino", "out"])
+
+    assert "consent=DECLINED argv=optimum-cli export openvino out" in human_stream.getvalue()
