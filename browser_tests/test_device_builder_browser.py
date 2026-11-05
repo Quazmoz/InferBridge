@@ -24,11 +24,16 @@ def test_combined_device_builder_orders_members_and_sends_engine_options(
     expect(page.get_by_role("button", name="Move CPU up")).to_be_disabled()
 
     # Adding the NPU: the engine (not the browser) marks NPU-in-HETERO unavailable.
-    page.get_by_role("checkbox", name="Use NPU").check()
+    # Each toggle re-renders the list and renames the box ("Use NPU" <-> "Use NPU,
+    # position 3"), so click and assert on the new element rather than check()/uncheck(),
+    # which re-resolve the old name and wait for a state change on a detached node.
+    page.get_by_role("checkbox", name="Use NPU", exact=True).click()
+    expect(page.get_by_role("checkbox", name="Use NPU, position 3", exact=True)).to_be_checked()
     expect(modes.nth(2)).to_contain_text("HETERO:CPU,GPU,NPU")
     expect(modes.nth(2).locator("input")).to_be_disabled()
     expect(modes.nth(2)).to_contain_text("Not available")
-    page.get_by_role("checkbox", name="Use NPU, position 3").uncheck()
+    page.get_by_role("checkbox", name="Use NPU, position 3", exact=True).click()
+    expect(page.get_by_role("checkbox", name="Use NPU", exact=True)).not_to_be_checked()
     expect(modes.nth(1)).to_contain_text("AUTO:CPU,GPU")
 
     modes.nth(1).locator("input").check()
