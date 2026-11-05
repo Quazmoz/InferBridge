@@ -329,7 +329,9 @@ function rerankSnippet() {
     const base = metadata?.base_url || 'http://127.0.0.1:8000/v1';
     const auth = metadata?.authentication?.required ? ' -H "Authorization: Bearer YOUR_INFERBRIDGE_API_KEY"' : '';
     const body = JSON.stringify({model: rerankModel || 'bge-reranker-base', query: 'What is the capital of France?', documents: ['Paris is the capital of France.', 'Bananas are yellow.'], top_n: 2});
-    return `curl.exe "${base}/rerank" -H "Content-Type: application/json"${auth} -d '${body}'`;
+    // Pipe the JSON on stdin: Windows PowerShell 5.1 strips the inner double quotes
+    // from a JSON argument passed to a native program (curl.exe -d '{"a":1}' sends {a:1}).
+    return `'${body.replace(/'/g, "''")}' | curl.exe -sS "${base}/rerank" -H "Content-Type: application/json"${auth} --data-binary '@-'`;
 }
 async function loadRerankSlot() {
     try {

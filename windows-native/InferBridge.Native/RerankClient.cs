@@ -53,16 +53,18 @@ internal static class Rerank
         rank + ". " + result.Score.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture)
         + " · " + result.Text;
 
+    // The JSON body goes on stdin: Windows PowerShell 5.1 strips the inner double quotes
+    // from a JSON argument passed to a native program (curl.exe -d '{"a":1}' sends {a:1}).
     public static string CurlExample(string baseUrl, bool authenticationRequired, string? model) =>
-        "curl.exe -sS \"" + baseUrl + "/rerank\" -H \"Content-Type: application/json\""
-        + (authenticationRequired ? " -H \"Authorization: Bearer YOUR_INFERBRIDGE_API_KEY\"" : "")
-        + " -d '" + JsonSerializer.Serialize(new
+        "'" + JsonSerializer.Serialize(new
         {
             model = model ?? "bge-reranker-base",
             query = "What is the capital of France?",
             documents = new[] { "Paris is the capital of France.", "Bananas are yellow." },
             top_n = 2,
-        }) + "'\n";
+        }).Replace("'", "''", StringComparison.Ordinal) + "' | curl.exe -sS \"" + baseUrl + "/rerank\" -H \"Content-Type: application/json\""
+        + (authenticationRequired ? " -H \"Authorization: Bearer YOUR_INFERBRIDGE_API_KEY\"" : "")
+        + " --data-binary '@-'\n";
 }
 
 internal sealed partial class BackendClient

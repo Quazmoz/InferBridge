@@ -120,8 +120,12 @@ internal static class RerankContractTests
         slots = """{"slots":[{"role":"rerank","model":null,"status":"empty"}]}""";
         Check(await client.GetRerankSlotAsync(Key, CancellationToken.None) is null,
             "an empty reranker slot enabled the panel");
-        Check(Rerank.CurlExample("http://127.0.0.1:8000/v1", true, "bge-reranker-base")
-                .StartsWith("curl.exe -sS \"http://127.0.0.1:8000/v1/rerank\"", StringComparison.Ordinal)
+        string curl = Rerank.CurlExample("http://127.0.0.1:8000/v1", true, "bge-reranker-base");
+        Check(curl.StartsWith("'{\"model\":\"bge-reranker-base\"", StringComparison.Ordinal)
+            && curl.Contains("' | curl.exe -sS \"http://127.0.0.1:8000/v1/rerank\"", StringComparison.Ordinal)
+            && curl.TrimEnd().EndsWith("--data-binary '@-'", StringComparison.Ordinal)
+            && !curl.Contains(" -d '", StringComparison.Ordinal)
+            && !Rerank.CurlExample("http://127.0.0.1:8000/v1", false, "it's").Contains("it's", StringComparison.Ordinal)
             && Rerank.CurlExample("http://127.0.0.1:8000/v1", true, null).Contains("YOUR_INFERBRIDGE_API_KEY", StringComparison.Ordinal),
             "the curl example is wrong or could carry a real key");
 
