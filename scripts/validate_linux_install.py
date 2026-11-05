@@ -312,15 +312,27 @@ def qualify_archive(args: argparse.Namespace, user: FreshUser) -> dict:
         old = extract(args.previous)
         # Previous builds predate `install`; register them the way their docs said.
         user.run(str(old / "InferBridge"), "--install-desktop")
-        user.run(
-            str(old / "InferBridge"),
-            "--mock",
-            "--headless",
-            "--headless-seconds",
-            "20",
-            "--no-browser",
-            timeout=300,
-        )
+        # The previous build is the *upgrade source*, not the code under test. Dev builds
+        # before 575121d fail about 1 launch in 64 (a dash-leading instance nonce made the
+        # server child exit 2), so the old build gets up to three attempts; the build
+        # under test never does.
+        for attempt in range(1, 4):
+            result = user.run(
+                str(old / "InferBridge"),
+                "--mock",
+                "--headless",
+                "--headless-seconds",
+                "20",
+                "--no-browser",
+                check=False,
+                timeout=300,
+            )
+            if result.returncode == 0:
+                break
+            log(f"Previous build launch {attempt} exited {result.returncode}")
+        else:
+            raise RuntimeError("The previous build could not run three times in a row.")
+        report["previous_launch_attempts"] = attempt
         sentinel = seed_user_data(user)
         user.run(str(old / "InferBridge"), "--uninstall-desktop")
         user.run("rm", "-rf", str(old))

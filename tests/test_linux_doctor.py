@@ -171,5 +171,6 @@ def test_diagnose_tolerates_a_host_without_posix_accounts(monkeypatch, tmp_path)
     # Windows CI fakes sys.platform == "linux" for --check-devices; os.getgroups is absent.
     monkeypatch.delattr(os, "getgroups")
     monkeypatch.delattr(os, "getuid")
+    monkeypatch.delattr(os, "confstr")
     report = linux_doctor.diagnose(root=_tree(tmp_path), openvino_devices=["CPU"])
     assert report["findings"]

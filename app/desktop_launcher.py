@@ -610,10 +610,12 @@ def main(argv: list[str] | None = None) -> int:
                     "details": device_check.device_details(),
                     "linux_device_nodes": device_check.linux_device_nodes() if linux else {},
                     # Driver, library, group and kernel checks with per-distro fix commands.
+                    # os.name: a test may fake sys.platform on Windows; the doctor reads
+                    # POSIX accounts and /sys, so it only runs on a real Linux host.
                     "linux_diagnostics": linux_doctor.diagnose(
                         openvino_devices=device_check.available_devices()
                     )["findings"]
-                    if linux
+                    if linux and os.name == "posix"
                     else [],
                     "note": "Device nodes are hints. GPU requires render-node access and Intel drivers; NPU requires accel-node access, a compatible driver and OpenVINO plugin. Only OpenVINO-visible devices can be selected.",
                 },

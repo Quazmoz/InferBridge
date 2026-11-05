@@ -285,7 +285,7 @@ def diagnose(
         )
     try:
         glibc = os.confstr("CS_GNU_LIBC_VERSION") or ""
-    except (ValueError, OSError):
+    except (AttributeError, ValueError, OSError):  # AttributeError: not POSIX
         glibc = ""
     if glibc:
         parts = glibc.split()[-1].split(".")
