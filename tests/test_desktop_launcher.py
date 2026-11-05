@@ -91,7 +91,25 @@ def test_legacy_child_command_excludes_control_token():
 
     assert "--control-token" not in command
     assert "desktop-secret" not in command
-    assert command[-4:] == ["--port", "8123", "--instance-nonce", "nonce"]
+    assert command[-2:] == ["--port=8123", "--instance-nonce=nonce"]
+
+
+def test_child_commands_keep_dash_leading_nonce_and_data_dir_as_values(monkeypatch):
+    """A token_urlsafe nonce starts with "-" 1 time in 64; it must never become an option."""
+
+    captured = {}
+    monkeypatch.setattr(
+        desktop_launcher, "_server_child", lambda args: captured.setdefault("args", args) and 0
+    )
+    monkeypatch.setenv("OV_LLM_DESKTOP_CONTROL_TOKEN", "control")
+    metadata = desktop_launcher.InstanceMetadata(1, 8123, "-dash-nonce", "app.exe", "now")
+    command = desktop_launcher._child_command(_launcher_args(data_dir="-data"), metadata)
+
+    desktop_launcher.main(command[command.index("--server-child") :])
+
+    assert captured["args"].instance_nonce == "-dash-nonce"
+    assert captured["args"].data_dir == "-data"
+    assert captured["args"].port == 8123
 
 
 def test_legacy_spawn_passes_control_token_only_in_child_environment(monkeypatch, tmp_path):

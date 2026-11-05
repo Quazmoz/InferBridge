@@ -21,14 +21,28 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def wait_for(predicate, *, timeout: float = 60):
+def wait_for(predicate, *, timeout: float = 60, process=None):
+    """Poll until ``predicate`` holds; fail at once when the watched launcher has exited."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         value = predicate()
         if value:
             return value
+        if process is not None and process.poll() is not None:
+            raise RuntimeError(
+                f"The packaged launcher exited with code {process.returncode} before the check "
+                "passed; see launcher.log and the copied application logs in the evidence."
+            )
         time.sleep(0.1)
     raise RuntimeError("Packaged application check exceeded its deadline.")
+
+
+def preserve_application_logs(data: Path, evidence: Path) -> None:
+    """Copy the data-directory logs (sanitized by the application) into the evidence."""
+    target = evidence / "application-logs"
+    for log in sorted((data / "logs").glob("*.log*")):
+        target.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(log, target / log.name)
 
 
 def validate(bundle: Path, evidence: Path) -> None:
@@ -176,7 +190,7 @@ def validate(bundle: Path, evidence: Path) -> None:
                     command, cwd=work, env=launch_environment, stdout=log, stderr=log
                 )
                 processes.append(owner)
-                metadata = wait_for(ready)
+                metadata = wait_for(ready, process=owner)
                 run("--mock", "--headless", "--no-browser", "--data-dir", str(data))
                 assert run(*command[1:], check=False).returncode == 6
                 assert ready()["pid"] == metadata["pid"], (
@@ -223,7 +237,7 @@ def validate(bundle: Path, evidence: Path) -> None:
                     current = ready()
                     return current if current and current["nonce"] != metadata["nonce"] else None
 
-                wait_for(restarted)
+                wait_for(restarted, process=owner)
                 assert owner.poll() is None
                 run("--quit", "--data-dir", str(data))
                 assert owner.wait(timeout=45) == 0
@@ -233,7 +247,7 @@ def validate(bundle: Path, evidence: Path) -> None:
                         command, cwd=work, env=launch_environment, stdout=log, stderr=log
                     )
                     processes.append(owner)
-                    wait_for(ready)
+                    wait_for(ready, process=owner)
                     owner.send_signal(signum)
                     assert owner.wait(timeout=45) == 0
                     assert sentinel.read_text(encoding="utf-8") == "preserve me"
@@ -242,7 +256,7 @@ def validate(bundle: Path, evidence: Path) -> None:
                     command, cwd=work, env=launch_environment, stdout=log, stderr=log
                 )
                 processes.append(owner)
-                crashed = wait_for(ready)
+                crashed = wait_for(ready, process=owner)
                 os.kill(crashed["pid"], signal.SIGKILL)
                 assert owner.wait(timeout=45) == 6
                 assert not metadata_file.exists()
@@ -252,7 +266,7 @@ def validate(bundle: Path, evidence: Path) -> None:
                     command, cwd=work, env=launch_environment, stdout=log, stderr=log
                 )
                 processes.append(owner)
-                stale = wait_for(ready)
+                stale = wait_for(ready, process=owner)
                 owner.kill()
                 owner.wait(timeout=10)
 
@@ -268,12 +282,13 @@ def validate(bundle: Path, evidence: Path) -> None:
                     command, cwd=work, env=launch_environment, stdout=log, stderr=log
                 )
                 processes.append(owner)
-                recovered = wait_for(ready)
+                recovered = wait_for(ready, process=owner)
                 assert recovered["nonce"] != stale["nonce"]
                 run("--quit", "--data-dir", str(data))
                 assert owner.wait(timeout=45) == 0
                 assert sentinel.read_text(encoding="utf-8") == "preserve me"
             finally:
+                preserve_application_logs(data, evidence)
                 for process in processes:
                     if process.poll() is None:
                         process.terminate()

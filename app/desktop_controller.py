@@ -142,22 +142,20 @@ class DesktopServerController:
             command = [sys.executable, "--server-child"]
         else:
             command = [sys.executable, "-m", "app.desktop_launcher", "--server-child"]
+        # Always "--option=value": a URL-safe nonce starts with "-" one time in 64, and a
+        # separate argv token would then be parsed as an option (argparse exit code 2).
         command.extend(
             [
-                "--port",
-                str(metadata.port),
-                "--instance-nonce",
-                metadata.nonce,
-                "--owner-pid",
-                str(os.getpid()),
-                "--owner-created-at",
-                str(owner_created_at),
+                f"--port={metadata.port}",
+                f"--instance-nonce={metadata.nonce}",
+                f"--owner-pid={os.getpid()}",
+                f"--owner-created-at={owner_created_at}",
             ]
         )
         if self.options.portable:
             command.append("--portable")
         if self.options.data_dir:
-            command.extend(["--data-dir", self.options.data_dir])
+            command.append(f"--data-dir={self.options.data_dir}")
         if self.options.mock:
             command.append("--mock")
         return command

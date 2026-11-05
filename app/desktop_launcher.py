@@ -265,18 +265,12 @@ def _child_command(args: argparse.Namespace, metadata: InstanceMetadata) -> list
         command = [sys.executable, "--server-child"]
     else:
         command = [sys.executable, "-m", "app.desktop_launcher", "--server-child"]
-    command.extend(
-        [
-            "--port",
-            str(metadata.port),
-            "--instance-nonce",
-            metadata.nonce,
-        ]
-    )
+    # "--option=value" keeps a nonce or path that starts with "-" a value.
+    command.extend([f"--port={metadata.port}", f"--instance-nonce={metadata.nonce}"])
     if args.portable:
         command.append("--portable")
     if args.data_dir:
-        command.extend(["--data-dir", args.data_dir])
+        command.append(f"--data-dir={args.data_dir}")
     if args.mock:
         command.append("--mock")
     return command
