@@ -69,7 +69,8 @@ Installed mode uses `%LOCALAPPDATA%\InferBridge`. Portable mode uses `<portable 
 
 Those defaults and DPAPI persistence describe Windows. Linux normally uses XDG
 user data, with sibling data as an explicit `--portable` option. Linux GUI keys
-are currently memory-only; environment-provided keys are required across backend
-restarts. See [data paths](DATA_PATHS.md) and [Linux network setup](LINUX.md#first-model-chat-and-api).
+are kept in the desktop keyring (Secret Service via `secret-tool`) when one is
+available and otherwise for the session only; environment-provided keys work without a
+keyring. See [data paths](DATA_PATHS.md) and [Linux keys and the keyring](LINUX.md#hugging-face-api-keys-and-the-keyring).
 
 See [LAN and home-lab access](LAN_ACCESS.md) for configuration precedence, CORS, endpoint discovery, and firewall guidance.

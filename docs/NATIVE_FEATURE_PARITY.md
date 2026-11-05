@@ -1,5 +1,9 @@
 # Native WinUI ↔ web capability inventory
 
+The native WinUI client is Windows-only. Linux ships the browser UI (served on 127.0.0.1 and
+opened in the default browser or a Chromium app window) with the `inferbridge` controller,
+menu entries and optional systemd user service; every "web" capability below is the Linux UI.
+
 Source of truth: live `dev` code, not the older release notes. Review this inventory
 whenever native UI, FastAPI contracts or release packaging change. "Full native"
 describes comparable user functionality, **not** proof that a signed installer has

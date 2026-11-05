@@ -1,312 +1,315 @@
-# Linux desktop development distribution
+# InferBridge on Linux
 
-Linux support is experimental and currently supports Ubuntu and Fedora. InferBridge is still Windows-first, so start with CPU validation before spending time on GPU/NPU driver work.
+InferBridge for Linux is a local OpenVINO AI server with an OpenAI-compatible API on
+`127.0.0.1` and a browser UI for downloading, converting and chatting with models. It
+runs as your normal user, needs no system Python, and keeps models and settings in
+`~/.local/share/InferBridge`.
 
-## Download and launch
+- **Supported:** x86_64 with glibc 2.35 or newer. Tested in CI on Ubuntu 22.04 and 24.04,
+  Debian 12 and Fedora 44 (install, upgrade, run, uninstall as a fresh user; real CPU
+  inference with a tiny test model).
+- **CPU** inference works out of the box. **Intel GPU** (Arc, Iris Xe, Core Ultra graphics)
+  and **Intel NPU** (Core Ultra) need Intel's Linux drivers, below. GPU and NPU support on
+  Linux has not yet been verified on physical hardware by the project; please report results.
+- Not supported: ARM64, musl/Alpine, NVIDIA/AMD GPUs (CPU still works on those machines).
 
-The P0 format is a **Linux x86_64 portable archive with a private CPython runtime**.
-It includes the existing FastAPI backend, browser UI, OpenVINO GenAI and model
-conversion dependencies. It needs no source checkout, system Python, pip, virtual
-environment, root access, or Docker on the user's machine. Models and Intel drivers
-are separate. ARM64, Alpine/musl and macOS cannot run this Linux download.
+## Install
 
-Development artifacts live on successful
-[Linux development distribution runs](https://github.com/Quazmoz/InferBridge/actions/workflows/linux-distribution.yml)
-for `dev`, under **InferBridge-linux-x86_64-development**. GitHub requires sign-in
-to download Actions artifacts; downloads expire after seven days. There is no Linux
-GitHub Release or package repository yet. Do not substitute Windows release assets.
-
-After unzipping the Actions artifact, in that download directory:
-
-```bash
-sha256sum -c InferBridge-1.1.1-dev.1-linux-SHA256SUMS.txt
-tar -xzf InferBridge-1.1.1-dev.1-linux-x86_64-portable.tar.gz
-cd InferBridge-1.1.1-dev.1-linux-x86_64
-./InferBridge --install-desktop
-./InferBridge
-```
-
-Use the version in your actual artifact filename. Keep the entire extracted
-directory together. Paths containing spaces and Unicode are supported. The menu
-entries **InferBridge** and **Quit InferBridge** work in GNOME and KDE menus; the
-graphical desktop itself still needs manual qualification on Wayland and X11.
-The tray is optional. Closing the browser tab leaves the application running;
-choose **Quit InferBridge** or run `./InferBridge --quit` to stop the owned backend.
-Launching again reconnects to the same controller and server.
-
-Ubuntu 22.04/24.04 host libraries (usually present on a desktop):
+Download from the [GitHub release](https://github.com/Quazmoz/InferBridge/releases) for
+your version, together with `InferBridge-<version>-linux-SHA256SUMS.txt`, and verify:
 
 ```bash
-sudo apt install libstdc++6 libgcc-s1 libgomp1 libnuma1 libtbb12 libatomic1 ocl-icd-libopencl1
+sha256sum --ignore-missing -c InferBridge-*-linux-SHA256SUMS.txt
 ```
 
-Fedora 44 host libraries:
+Pre-release builds from `dev` are on the
+[Linux distribution workflow](https://github.com/Quazmoz/InferBridge/actions/workflows/linux-distribution.yml)
+runs as the **InferBridge-linux-x86_64-development** artifact (GitHub sign-in required,
+kept for seven days). Never install a Windows download on Linux.
+
+### Ubuntu 22.04 / 24.04 and Debian 12 (.deb)
 
 ```bash
-sudo dnf install libstdc++ libgcc libgomp numactl-libs tbb libatomic ocl-icd libxcrypt-compat
+sudo apt install ./InferBridge-<version>-linux-x86_64.deb
+inferbridge
 ```
 
-Only installing missing OS libraries/drivers needs administrator access. Portable
-application extraction, launch and desktop registration run as a normal user.
-These glibc builds target Ubuntu 22.04 or newer, with Fedora 44 tested separately
-by CI. Driver-dependent GPU/NPU execution is not certified by package startup.
+`apt` installs the few host libraries it needs (libstdc++, libgomp, libtbb, libnuma).
 
-## First model, chat and API
-
-Start without `--mock` for real inference. In first-run setup, inspect the actual
-OpenVINO device inventory and select **CPU** first. Choose a compatible catalog
-model only after reviewing download size, license and memory requirements. Use
-Model Library to download/convert a model, or import a complete local OpenVINO
-model directory. Wait for preparation and loading to finish, then send a chat
-message. Explicit NPU requests remain NPU requests and fail visibly if unavailable.
-Composite expressions remain experimental and model/runtime dependent.
-
-Model weights are never included in the base download. An offline installation can
-start and use previously imported compatible models; an uncached model download
-requires networking. Gated models require accepted terms and an `HF_TOKEN` in the
-launch environment. Do not put tokens in command-line arguments or support reports.
-
-The browser exposes models, context settings, diagnostics, chat and Network / API
-settings. Copy the active OpenAI endpoint there for VS Code clients or Open WebUI:
-normally `http://127.0.0.1:8000/v1`, with the actual selected port shown in the UI.
-Configure an API key before enabling LAN access; desktop startup remains loopback
-only unless explicitly configured otherwise. See [LAN access](LAN_ACCESS.md).
-Linux currently retains GUI-generated keys in memory only; Windows DPAPI remains
-Windows-only. Set `OV_LLM_API_KEY` in the launch environment for a key that must
-remain active across backend restarts. Keep it out of `.desktop` commands and shell
-history. Missing credentials keep LAN binding blocked after a restart.
-
-For an installation-only check without weights or inference:
+### Fedora (.rpm, tested on Fedora 44)
 
 ```bash
-./InferBridge --mock
-# Chat now uses deterministic mock output, not OpenVINO inference.
-./InferBridge --quit
+sudo dnf install ./InferBridge-<version>-linux-x86_64.rpm
+inferbridge
 ```
 
-## Data, upgrades and uninstall
-
-By default all models, config, cache, logs and diagnostics live under
-`$XDG_DATA_HOME/InferBridge` (absolute XDG path) or `~/.local/share/InferBridge`.
-Logs are `logs/tray.log` and `logs/desktop.log` under that directory. `--data-dir`
-and `OV_LLM_DATA_DIR` explicitly override it; `LOCALAPPDATA` remains a compatibility
-override. `--portable` opts into a sibling `data/` beside the extracted launcher.
-Without that flag, a writable install directory is not required.
-
-To upgrade, quit the old application, extract the new archive into a new directory,
-run the new `--install-desktop` command, then launch it. Default XDG user data is
-reused without replacing models or settings. If you used `--portable`, keep the old
-data directory and use the new launcher's `--data-dir /absolute/path/to/old/data`;
-do not extract a new application over your only copy of user data.
-
-To uninstall, run `./InferBridge --quit`, then `./InferBridge --uninstall-desktop`,
-and delete the extracted application directory. User data is preserved. With
-`--portable`, move its `data/` elsewhere before deleting the directory. Removing
-the old version's menu entries cannot remove entries registered by a newer version.
-With sibling data, quit using `./InferBridge --portable --quit`; with an explicit
-data root, include the same `--data-dir` when quitting. Desktop menu entries use
-default XDG mode. Autostart is not enabled unless you opt into the user service below.
-`.deb`, `.rpm`, AppImage and Flatpak are deferred until
-their separate installer/upgrade/uninstall paths can be qualified.
-
-## Background service and login startup
-
-The portable bundle can register an optional **systemd user service** on Ubuntu
-and Fedora. It uses the same backend, browser UI and user data as desktop mode,
-without a tray or browser window. No root access is needed. Installation writes
-the unit only; it does not start the app or enable login startup:
+### Any distribution, no root (portable tarball)
 
 ```bash
-./InferBridge --install-service
-./InferBridge --quit
-systemctl --user daemon-reload
-systemctl --user enable --now inferbridge.service
-systemctl --user status inferbridge.service
+tar -xzf InferBridge-<version>-linux-x86_64-portable.tar.gz -C ~/Applications
+~/Applications/InferBridge-<version>-linux-x86_64/InferBridge install
+inferbridge
 ```
 
-Open `http://127.0.0.1:8000/` in a browser, using the actual port recorded in
-`desktop-instance.json` under your data directory if the default was occupied.
-`systemctl` reports process state; `/health/ready` reports backend readiness.
-The unit captures the install command's absolute `XDG_DATA_HOME` (or its normal
-fallback) and any `OV_LLM_DATA_DIR` override. Other shell environment variables
-are not copied into it. The service uses saved application settings and remains
-subject to the normal API authentication and LAN safeguards. Do not put tokens
-in the unit or its command line. Use `systemctl --user edit inferbridge.service`
-for nonsecret overrides such as `Environment=OV_LLM_PORT=8000`.
+`install` adds `~/.local/bin/inferbridge`, the application menu entries and icon for your
+user only. The tarball also runs in place without `install`: `./InferBridge`.
+Host libraries if they are missing: Ubuntu/Debian
+`sudo apt install libstdc++6 libgomp1 libtbb12 libnuma1 libatomic1`, Fedora
+`sudo dnf install libstdc++ libgomp tbb numactl-libs libatomic libxcrypt-compat`.
 
-Backend crashes exit with an error so systemd can restart the service, with a
-five-second delay and at most three starts per two minutes. Intentional Quit
-and service stops remain clean exits. A competing desktop instance causes a
-visible service failure instead of a second server. After fixing a persistent
-startup error, run `systemctl --user reset-failed inferbridge.service` and
-`systemctl --user start inferbridge.service`. Review
-`journalctl --user -u inferbridge.service` plus the application's data-directory
-logs. Desktop readiness and control requests bypass HTTP proxies and refuse
-redirects, so proxy configuration cannot reroute local control credentials.
+The packages put the read-only application in `/opt/inferbridge`. Only installing the
+package or drivers needs `sudo`; InferBridge itself never runs as root and never writes to
+its install directory.
 
-To stop it and remove login startup:
+## First run
+
+Start **InferBridge** from the application menu or run `inferbridge`. The browser opens
+the local UI (normally `http://127.0.0.1:8000/`; another free port is chosen if 8000 is
+busy). The setup screen lists what OpenVINO actually detected. Pick **CPU** first, choose
+a catalog model after reviewing its size and license, and wait for the download and
+conversion to finish. Then chat, or point an OpenAI client at the endpoint shown under
+**Network / API** (normally `http://127.0.0.1:8000/v1`).
+
+Closing the browser tab leaves InferBridge running. Stop it with **Quit InferBridge** in the
+menu, the tray icon where your desktop shows one, or `inferbridge stop`.
+
+### Why a browser UI on Linux
+
+The Windows edition has a native WinUI app; WinUI is Windows-only. On Linux the same full
+browser UI (it is the reference UI that the native app mirrors) is served locally and opened
+in your default browser. It works the same on GNOME, KDE, X11, Wayland and over SSH
+port forwarding, and adds no second browser engine to the download. Prefer a separate
+window without tabs? `inferbridge open --app-window` uses Chromium, Chrome, Edge or Brave in
+app mode when one is installed.
+
+The tray icon is optional. It appears on KDE Plasma and other desktops with a system tray.
+Stock GNOME shows tray icons only with the AppIndicator extension; without it, use the
+menu entries or the commands below. Every function is in the browser UI.
+
+## Everyday commands
+
+| Command | What it does |
+|---|---|
+| `inferbridge` | Launch (or bring up) the app and open the browser UI |
+| `inferbridge start` / `stop` | Start in the background without a browser / stop it |
+| `inferbridge status [--json]` | URL, readiness, data and service state |
+| `inferbridge open [--app-window]` | Open the UI, starting InferBridge if needed |
+| `inferbridge logs [-f] [-n 100]` | Show the application logs |
+| `inferbridge doctor [--all-distros]` | Check drivers, permissions and setup, with fix commands |
+| `inferbridge service enable` / `disable` | Run as a systemd user service at login |
+| `inferbridge autostart enable` / `disable` | Start the tray app at login instead |
+| `inferbridge update-check` | Look for a newer release (contacts GitHub only when you run it) |
+| `inferbridge uninstall [--purge --yes]` | Remove your integration (and optionally data) |
+
+Only one InferBridge runs per data directory. Launching again reconnects to the running
+instance. A busy default port is skipped automatically; an explicit `--port` or
+`OV_LLM_PORT` that is busy fails clearly instead of disturbing the other program.
+
+## Run in the background (systemd user service)
 
 ```bash
-systemctl --user disable --now inferbridge.service
-./InferBridge --uninstall-service
-systemctl --user daemon-reload
+inferbridge stop                 # the service needs the data directory to itself
+inferbridge service enable       # enables and starts inferbridge.service for your user
+inferbridge status
 ```
 
-Stop and uninstall the old unit before registering an upgraded bundle. A
-different or manually edited unit is preserved; back it up and remove it
-explicitly if replacing it. Application data is retained. User services normally
-follow the user's login session; running before login or after logout requires
-separate host administration (`loginctl enable-linger`), which this installer
-does not change. Systems without systemd can run `./InferBridge --service` under
-their own process supervisor. `--service` stays in the foreground, disables the
-browser and tray, and requires exclusive ownership of its data directory.
+The service runs as you, starts at login, restarts after a crash (at most three times in
+two minutes) and uses the same models, settings and UI. To start it at boot before you log
+in, an administrator runs `sudo loginctl enable-linger "$USER"`. Logs:
+`journalctl --user -u inferbridge.service` and `inferbridge logs`. Disable with
+`inferbridge service disable`. Non-secret overrides go in
+`systemctl --user edit inferbridge.service` (for example `Environment=OV_LLM_PORT=8000`).
+Never put tokens in the unit. A unit you edited is never overwritten or removed by
+InferBridge.
 
-## Build and qualification
+## Intel GPU and NPU setup
 
-On a native Linux x86_64 development host, install `uv==0.11.21` and Python 3.12
-as build tools, commit qualified work, then run:
+Run `inferbridge doctor` first: it checks the kernel driver, device permissions, your
+groups, the user-space drivers and what OpenVINO sees, and prints the exact commands for
+your distribution. InferBridge only offers a device that OpenVINO lists; an explicit GPU or
+NPU request never silently falls back to CPU.
+
+### GPU (Arc, Iris Xe, Core Ultra graphics)
+
+Ubuntu 24.04 / Debian 12:
+
+```bash
+sudo apt install intel-opencl-icd libze-intel-gpu1 libze1 ocl-icd-libopencl1
+sudo usermod -aG render "$USER"     # then log out and back in
+```
+
+Newer GPUs (Arc B-series, Lunar Lake, Panther Lake) need a newer runtime and kernel than
+Ubuntu 24.04 ships: use the hardware-enablement kernel
+(`sudo apt install --install-recommends linux-generic-hwe-24.04`) and Intel's
+`ppa:kobuk-team/intel-graphics`. Ubuntu 22.04: install the compute runtime from
+[Intel's repository](https://dgpu-docs.intel.com/driver/client/overview.html).
+
+Fedora:
+
+```bash
+sudo dnf install intel-compute-runtime intel-opencl intel-level-zero oneapi-level-zero ocl-icd
+sudo usermod -aG render "$USER"     # then log out and back in
+```
+
+Check with `clinfo -l` (an Intel platform should be listed), then `inferbridge doctor`.
+
+### NPU (Intel Core Ultra)
+
+The `intel_vpu` kernel driver is in Linux 6.3+; Intel recommends 6.8 or newer and newer
+still for Lunar Lake and Panther Lake. The user-space driver is separate:
+
+- **Fedora 43+:** `sudo dnf install intel-npu-driver oneapi-level-zero`
+- **Ubuntu 24.04:** the `ubuntu2404` packages from
+  [intel/linux-npu-driver releases](https://github.com/intel/linux-npu-driver/releases)
+  (`sudo apt install ./intel-*.deb` plus `libze1`), or `sudo snap install intel-npu-driver`.
+  Intel no longer ships NPU packages for Ubuntu 22.04.
+
+Give your user access to `/dev/accel/accel0` (once):
+
+```bash
+echo 'SUBSYSTEM=="accel", KERNEL=="accel*", GROUP="render", MODE="0660"' | sudo tee /etc/udev/rules.d/10-intel-vpu.rules
+sudo udevadm control --reload-rules && sudo udevadm trigger --subsystem-match=accel
+sudo usermod -aG render "$USER"     # then log out and back in
+```
+
+The NPU runs one model at a time and only through the exact `NPU` device; combined device
+modes (`AUTO:…`, `HETERO:…`) and the resident chat/embedding/reranker slots behave exactly
+as on Windows, see [Device support](DEVICE_SUPPORT.md).
+
+## Hugging Face, API keys and the keyring
+
+Downloads and conversions run locally with the bundled converter; no system Python or pip
+is used. For gated models, accept the model's terms on Hugging Face and add your token in
+**Hugging Face access** in the UI. API keys you create under **Network / API** and the
+Hugging Face token are stored in your desktop keyring (GNOME Keyring, KWallet or
+KeePassXC through the Secret Service API, via `secret-tool`) when it is available, so they
+survive restarts. Install `secret-tool` with `sudo apt install libsecret-tools` (Ubuntu,
+Debian) or `sudo dnf install libsecret` (Fedora). Without a keyring they are kept for the
+current session only and never written to disk; for a key that must survive restarts on a
+headless machine, set `OV_LLM_API_KEY` (and `HF_TOKEN`) in the service environment with
+`systemctl --user edit inferbridge.service`. Keep tokens out of command lines.
+
+## Network access and firewall
+
+InferBridge listens on `127.0.0.1` only. To use it from another machine, set an API key
+first, then enable LAN access under **Network / API** (it refuses without a key). Then
+allow the port on trusted networks only:
+
+```bash
+sudo ufw allow from 192.168.1.0/24 to any port 8000 proto tcp                   # Ubuntu
+sudo firewall-cmd --zone=home --add-port=8000/tcp --permanent && sudo firewall-cmd --reload   # Fedora
+```
+
+See [LAN access](LAN_ACCESS.md).
+
+## Files and data
+
+| What | Where |
+|---|---|
+| Models, settings, caches, logs | `~/.local/share/InferBridge` (`$XDG_DATA_HOME/InferBridge`), private to you (0700) |
+| Logs | `~/.local/share/InferBridge/logs/` (`inferbridge logs`) |
+| Application (packages) | `/opt/inferbridge`, `/usr/bin/inferbridge`, `/usr/share/applications/inferbridge.desktop`, `/usr/lib/systemd/user/inferbridge.service` |
+| Your integration (tarball) | `~/.local/bin/inferbridge`, `~/.local/share/applications/inferbridge*.desktop`, `~/.config/systemd/user/inferbridge.service`, `~/.config/autostart/inferbridge.desktop` |
+
+`--data-dir PATH` or `OV_LLM_DATA_DIR` chooses another data directory; `--portable` keeps
+data in `data/` beside a tarball. Data written by an older version is upgraded in place
+with a backup of the small configuration files; a newer data schema than the app
+understands is refused rather than damaged.
+
+## Update
+
+Check with `inferbridge update-check`, or enable update checks under **About** in the UI.
+Quit InferBridge (and `inferbridge service disable` if you use the service), then:
+
+- **.deb / .rpm:** `sudo apt install ./InferBridge-<new>-linux-x86_64.deb` or
+  `sudo dnf install ./InferBridge-<new>-linux-x86_64.rpm`
+- **Tarball:** extract the new version next to the old one and run its `InferBridge install`.
+  Your menu entries, command, service unit and autostart entry move to the new version; a
+  file you edited is kept and reported. Then delete the old directory.
+
+Models and settings are reused. Re-enable the service if you disabled it.
+
+## Uninstall
+
+```bash
+inferbridge uninstall                 # stops it, removes the service, autostart and menu entries
+sudo apt remove inferbridge           # or: sudo dnf remove inferbridge
+```
+
+For a tarball, `inferbridge uninstall --remove-app` also deletes the extracted directory.
+Your models and settings are kept unless you add `--purge --yes`, which deletes
+`~/.local/share/InferBridge` (run it before removing the package). Removing the package
+never touches any user's data.
+
+## Troubleshooting
+
+| Symptom | What to do |
+|---|---|
+| `inferbridge: command not found` after a tarball install | Log out and back in, or add `~/.local/bin` to `PATH` |
+| The browser does not open | Open the URL from `inferbridge status`; install `xdg-utils` |
+| No tray icon on GNOME | Expected without the AppIndicator extension; use the menu or `inferbridge stop` |
+| GPU or NPU missing from the device list | `inferbridge doctor`, then follow its fix commands; log out and back in after group changes |
+| "Another application instance owns this data directory" | `inferbridge stop`, then start the service or app again |
+| Port 8000 in use | InferBridge picks another free port; `inferbridge status` shows it |
+| Startup fails | `inferbridge logs`; `inferbridge start` prints why; `journalctl --user -u inferbridge.service` for the service |
+| `error while loading shared libraries` | Install the host libraries listed under Install |
+| Keys forgotten after restart | Install `secret-tool` (see the keyring section) or set `OV_LLM_API_KEY` |
+
+When reporting a problem, attach `inferbridge doctor --json` and the sanitized diagnostics
+export from the UI after reviewing them for private data. For GPU/NPU reports include the
+CPU/GPU/NPU model, kernel, driver versions, model, precision and requested device.
+
+## For developers
+
+### Build and reproduce
+
+On native Linux x86_64 with Python 3.12 and `uv==0.11.21`, from a clean commit:
 
 ```bash
 python3.12 scripts/build_linux_distribution.py
-python3.12 scripts/validate_linux_bundle.py \
-  --archive dist/linux/InferBridge-1.1.1-dev.1-linux-x86_64-portable.tar.gz \
-  --evidence build/linux/evidence
+python3.12 scripts/validate_linux_bundle.py --archive dist/linux/*-portable.tar.gz --evidence build/linux/evidence
+sudo apt install rpm   # rpmbuild, for the .rpm
+python3.12 scripts/build_linux_packages.py --archive dist/linux/*-portable.tar.gz --output dist/linux --finalize
+python3.12 scripts/verify_linux_release.py --directory dist/linux --version "$(python3.12 -c 'from app.version import __version__; print(__version__)')"
 ```
 
-The builder uses a private relocatable CPython 3.12.12 from
-[python-build-standalone](https://github.com/astral-sh/python-build-standalone),
-verified by uv, and hash-locked Linux wheels from `requirements/linux.lock`.
-CPU-only PyTorch is used for conversion; OpenVINO GenAI remains the inference
-runtime. The Windows release requirements and Windows packaging remain separate.
-Archive order, ownership, permissions and timestamps are normalized; byte-for-byte
-reproducibility across different builders is not yet certified. Native libraries,
-Python/wheel licenses, dependency inventory and build provenance accompany the app.
-System glibc, graphics/NPU drivers and optional shell helpers are not bundled.
+The archive uses a private relocatable CPython 3.12.12
+([python-build-standalone](https://github.com/astral-sh/python-build-standalone), verified
+by uv) and hash-locked wheels from `requirements/linux.lock` (CPU-only PyTorch for
+conversion). File order, owners, modes and timestamps are normalized to the commit time
+(`SOURCE_DATE_EPOCH`) in the tarball, the .deb and the .rpm, and the same input archive
+produces byte-identical .deb files (tested). Byte-identical archives across different
+build machines are not yet certified, because uv and the wheel installer are only
+version-pinned. Each release carries an SPDX 2.3 SBOM (bundled CPython and every wheel,
+with purls), `THIRD-PARTY-NOTICES.txt`, the dependency freeze and `build-info.json` with
+the source commit; tag builds also get a GitHub build-provenance attestation
+(`gh attestation verify <file> -R Quazmoz/InferBridge`).
 
-| Environment | Source smoke | Packaged mock | Real CPU | Real GPU | Real NPU |
-|---|---|---|---|---|---|
-| Ubuntu 22.04 x86_64 / source Python 3.11, 3.12 | Passed | Passed | Random-model probe passed on AMD EPYC; Intel unverified | Not tested | Not tested |
-| Ubuntu 24.04 x86_64 / source Python 3.11, 3.12 | Passed | Passed | Not tested | Not tested | Not tested |
-| Fedora 44 x86_64 container | Not tested | Passed with the same archive | Not tested | Not tested | Not tested |
-| GNOME/KDE, Wayland/X11 | Not tested | Headless CI only | Not tested | Not tested | Not tested |
-| macOS ARM64 development host | Unit/static and Chromium browser checks | Unsupported Linux artifact host | Not tested | Unsupported | Unsupported |
+The [release workflow](../.github/workflows/github-release.yml) builds and attaches the
+Linux assets beside the Windows ones when a version tag is pushed. A manual run with
+`dry_run` builds and verifies them from a branch without publishing anything.
 
-Results above qualify code commit `fea8bf35529d34336ce9797954d664524fe866cd`
-on 30 October 2026: [Linux source matrix](https://github.com/Quazmoz/InferBridge/actions/runs/41072708478),
-[portable and real CPU jobs](https://github.com/Quazmoz/InferBridge/actions/runs/41072708370),
-and [Windows full source qualification](https://github.com/Quazmoz/InferBridge/actions/runs/41072708378).
-Local checks passed 1,697 unit tests (17 platform skips), all 44 Chromium tests,
-pinned Ruff lint/format, shell syntax and all 37 embedded JavaScript blocks.
-Each packaged mock API run passed 13 checks with one warning for optional
-tool/structured outputs, and no failures. The archive passed bootstrap, native
-library/converter import, CLI discovery, desktop registration/removal, duplicate
-launch, occupied-port refusal, restart, SIGINT, SIGTERM, owner crash recovery and
-no-installation-write checks from paths with spaces and Unicode.
+### Source checkout
 
-[Retained reports and SHA-256 hashes](certification/linux/2026-10-30-fea8bf3/README.md)
-record the CPU probe on **AMD EPYC 9V45**, Ubuntu **22.04.5**, kernel
-**6.8.0-1070-azure**, OpenVINO **2026.2.1**, GenAI/tokenizers **2026.2.1.0**,
-Optimum Intel **2.0.0** and CPU PyTorch **2.12.0+cpu**. The 6,476,069-byte
-FP16 test-model input converted and generated/streamed through the bundled
-application engine in 13.16 seconds; maximum single-process high-water RSS
-was 603,352 KiB. This is native x86_64 CI execution on AMD, not emulation,
-Intel CPU certification, useful-chat quality, or a full real-inference API run.
-No suitable physical Intel Linux CPU/GPU/NPU or graphical desktop was available.
+For development from a source checkout (Python 3.11+ virtual environment) see
+[Ubuntu](UBUNTU.md) and [Fedora](FEDORA.md): `./setup.sh --minimal`, then
+`./start_server.sh --mock` or `./.venv/bin/python -m app.desktop_launcher --mock`.
 
-Consult the exact commit and run conclusion before treating a CI gate as passed.
-The separate `cpu-probe` CI job downloads at most 16 MiB of files from the pinned
-`trl-internal-testing/tiny-random-LlamaForCausalLM` revision
-`2c542e4731d42d3bb68324c4eca16df9f93b8b33`, excludes pickle weights, converts FP16
-OpenVINO IR, and tests direct CPU generation, streaming and cleanup using the
-bundle's own interpreter and application engine. It uploads exact CPU, kernel,
-runtime, model, commit, elapsed-time and peak-process-RSS evidence. Random weights
-test runtime execution and do not establish useful chat quality or full CPU API
-certification. These models remain outside the downloadable application.
+### Qualification
 
-Mock output, native library imports and CPU enumeration do not certify real inference.
-Hardware reports must include the application commit, CPU/GPU/NPU model, OS/kernel,
-driver, OpenVINO/GenAI versions, requested and actual device, model revision,
-precision, peak memory, and real streaming/chat result. Review diagnostics for
-private data before attaching them to an issue.
+Every `dev` push runs [Linux source smoke](https://github.com/Quazmoz/InferBridge/actions/workflows/linux-smoke.yml)
+and the [Linux distribution workflow](https://github.com/Quazmoz/InferBridge/actions/workflows/linux-distribution.yml):
 
-## Troubleshooting downloads
+| Check | Where |
+|---|---|
+| Ruff, unit tests, shell syntax | Ubuntu 22.04 |
+| Archive: bootstrap, native imports, converter, menu entries, user unit, duplicate launch, occupied port, restart, SIGINT/SIGTERM, crash and orphan recovery, no writes to the install directory, mock OpenAI API | Ubuntu 22.04, Ubuntu 24.04, Fedora 44 (unprivileged user) |
+| .deb: install over an older-numbered package, fresh user, `inferbridge` start/status/stop, API-key enforcement, OpenAI chat/stream/embeddings/rerank/slots/lifecycle contract (mock), systemd `--user` enable/restart/stop/disable, uninstall and purge leave nothing | Ubuntu 22.04 and 24.04 VMs |
+| Same package checks without systemd, from minimal images (proves the declared dependencies) | ubuntu:22.04, ubuntu:24.04, debian:12 (.deb); fedora:44 (.rpm) |
+| Tarball: fresh-user `install`, upgrade from the previous `dev` build with data preserved, systemd user service, uninstall | Ubuntu 24.04 VM |
+| Real CPU inference: convert a 16 MiB random-weight Llama, generate and stream with the engine, then import, load, chat and stream through the packaged app's OpenAI API | Ubuntu 22.04 (GitHub-hosted, AMD EPYC) |
 
-Start `./InferBridge --headless --no-browser` in a terminal to review errors.
-Run `./InferBridge --check-devices` for actual OpenVINO inventory and GPU/NPU
-device-node access hints. A node's presence does not certify an accelerator.
-Use `./InferBridge --bootstrap-smoke` for import startup and `--native-smoke` for
-OpenVINO/tokenizer and converter import checks without weights. On an occupied
-default port, the controller selects a free port; an explicit `--port` or
-`OV_LLM_PORT` fails clearly rather than stopping another application. If a previous
-launcher crashed, allow its server owner monitor to finish cleanup, then relaunch.
-Relative XDG paths are ignored; unwritable data directories fail with an error.
-
-Optional `zenity`/`kdialog`, `xdg-utils`, `wl-clipboard` or `xclip` improve dialogs,
-folder opening and clipboard behavior. No tray extension is required. For GPU/NPU
-failures, check System Doctor and the device-node diagnostics below before changing
-the target; PCI detection alone does not establish OpenVINO support.
-
-## Choose Your Distro
-
-- [Ubuntu setup](UBUNTU.md): Ubuntu 22.04 or 24.04.
-- [Fedora setup](FEDORA.md): Fedora 40 or newer.
-
-## Common Commands
-
-```bash
-./setup.sh --minimal
-./start_server.sh --mock
-./start_server.sh --check-devices
-./start_server.sh --model tinyllama-1.1b-chat-fp16 --device CPU
-```
-
-Use the platform-owned setup helpers for direct calls:
-
-```bash
-./setup/linux/install_deps.sh --minimal
-./setup/linux/check_hardware.sh
-./setup/linux/convert_model.sh --id tinyllama-1.1b-chat-fp16
-```
-
-The older `setup/*.sh` paths remain compatibility wrappers.
-
-## Linux desktop controller
-
-The browser UI remains the primary Linux experience, but the desktop launcher can now be used from a source checkout:
-
-```bash
-./.venv/bin/python -m app.desktop_launcher --mock
-```
-
-If the desktop environment supports a compatible tray backend, InferBridge exposes the tray controls. If a tray backend is missing or fails to initialize, the launcher keeps the local server running instead of terminating it. The browser UI remains available at the local server URL.
-
-Linux desktop data follows the XDG Base Directory convention:
-
-- `$XDG_DATA_HOME/InferBridge` when `XDG_DATA_HOME` is an absolute path.
-- `~/.local/share/InferBridge` otherwise.
-- `OV_LLM_DATA_DIR` remains an explicit override.
-- Portable mode continues to use the launcher's local `data/` directory.
-
-Folder opening uses `xdg-open` with a `gio open` fallback. Clipboard actions support `wl-copy` on Wayland and `xclip`/`xsel` on X11 when those utilities are installed. Dialogs use `zenity` or `kdialog` when available and otherwise fall back to terminal/log output.
-
-## Hugging Face credentials
-
-Linux setup never copies a Hugging Face CLI token into the repository `.env` file. For gated-model access, accept the model terms and export the token in the environment used to start InferBridge:
-
-```bash
-export HF_TOKEN=hf_...
-./start_server.sh --model <model-id> --device CPU
-```
-
-This keeps the token user-controlled rather than duplicating it into the checkout.
-
-## Accelerator diagnostics
-
-`./setup/linux/check_hardware.sh` reports:
-
-- OpenVINO-visible CPU/GPU/NPU devices and driver versions when available.
-- `/dev/dri/renderD*` access for Intel GPU execution.
-- `/dev/accel/accel*` access for Intel NPU execution.
-- `render`/`video` group membership and relevant kernel-module hints.
-
-PCI visibility is only a hint. InferBridge only targets GPU or NPU when OpenVINO actually exposes that device.
+Not covered by CI: physical Intel GPU or NPU execution, graphical GNOME/KDE sessions
+(Wayland and X11), and the tray icon. Random weights prove runtime execution, not answer
+quality. Older evidence for commit `fea8bf3` is retained in
+[certification/linux](certification/linux/2026-10-30-fea8bf3/README.md).

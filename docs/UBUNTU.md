@@ -14,10 +14,9 @@ InferBridge remains Windows-first. Ubuntu support is an early CPU-first path for
 
 ## Install
 
-For the downloadable application with bundled Python and conversion tools, use the
-[Linux desktop download guide](LINUX.md#download-and-launch). Ubuntu 22.04 and 24.04
-x86_64 have separate native package smoke gates. Real Intel inference remains a
-separate hardware qualification. The instructions below install from source.
+To use InferBridge, install the .deb instead: see [InferBridge on Linux](LINUX.md#install).
+This page is the developer path from a source checkout. Real Intel GPU/NPU inference
+remains a separate hardware qualification. The instructions below install from source.
 
 ```bash
 sudo apt update

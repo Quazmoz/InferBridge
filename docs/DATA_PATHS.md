@@ -60,7 +60,7 @@ The Linux portable **application archive** uses XDG user data by default so the
 extracted application can be read-only. `./InferBridge --portable` explicitly opts
 into `<extracted directory>/data`. Use the same mode or `--data-dir` when quitting
 or relaunching. Preserve or move this sibling data before removing the application
-directory; see the [Linux upgrade/uninstall procedure](LINUX.md#data-upgrades-and-uninstall).
+directory; see the [Linux upgrade/uninstall procedure](LINUX.md#update).
 
 ## Overrides and development compatibility
 

@@ -3,7 +3,7 @@
 Only rows backed by retained certification reports belong here. Empty coverage means unverified, not failed.
 
 Linux development package/source smoke and the bounded random-model CPU probe
-are tracked separately in the [Linux qualification matrix](LINUX.md#build-and-qualification).
+are tracked separately in the [Linux qualification matrix](LINUX.md#qualification).
 They do not extend the physical Windows certification claims below.
 
 All rows below were produced by `scripts/validate_windows.ps1` with mock mode disabled on a single physical machine. Requested and actual devices were recorded independently; `AUTO` results are reported separately and are never used to infer a direct `GPU` or `NPU` claim. The sanitized reports are published under [`certification/0.6.0/`](certification/0.6.0/); raw reports, including server logs, remain local under the ignored `certification/results/` path. Verify any report against [`certification/0.6.0/SHA256SUMS.txt`](certification/0.6.0/SHA256SUMS.txt), and see [`certification/0.6.0/README.md`](certification/0.6.0/README.md) for full scope, meanings, and limitations.

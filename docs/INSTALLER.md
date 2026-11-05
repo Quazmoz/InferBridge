@@ -1,5 +1,7 @@
 # Windows installer guide
 
+Linux installs with a .deb, .rpm or portable tarball instead; see [InferBridge on Linux](LINUX.md).
+
 The Inno Setup configuration targets Windows x64-compatible systems on build 19041 or newer and installs the tray-enabled desktop build per-user.
 
 ## Installation behavior

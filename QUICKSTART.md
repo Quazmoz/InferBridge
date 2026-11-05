@@ -92,12 +92,13 @@ sanitized JSON and Markdown reports. Add `-IncludeEmbeddings` for the embedding 
 
 See [Windows hardware certification](docs/WINDOWS_CERTIFICATION.md).
 
-## Experimental Linux
+## Linux
 
-For a downloadable application without Git or Python dependency setup, follow the
-[Linux portable quickstart](docs/LINUX.md#download-and-launch). The archive bundles
+Install the .deb (Ubuntu, Debian), .rpm (Fedora) or portable tarball and run
+`inferbridge`: see [InferBridge on Linux](docs/LINUX.md#install). The download bundles
 Python, OpenVINO GenAI, conversion tools and the browser UI. Linux defaults to CPU;
-GPU and NPU require devices exposed by the installed OpenVINO runtime and drivers.
+GPU and NPU need Intel's Linux drivers (`inferbridge doctor` shows what is missing) and
+are not yet verified on hardware by the project.
 
 The commands below are the alternative developer/source installation.
 

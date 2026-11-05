@@ -31,13 +31,14 @@ def test_platform_setup_layout_is_explicit():
     device_doc = (ROOT / "docs" / "DEVICE_SUPPORT.md").read_text(encoding="utf-8")
 
     expected = "Linux support is experimental and currently supports Ubuntu and Fedora."
-    assert expected in setup_text
-    assert expected in linux_doc
+    assert expected in setup_text  # The source-checkout developer path.
     assert expected in ubuntu_doc
     assert expected in fedora_doc
+    # The packaged Linux app is supported on CPU; GPU/NPU stay honestly unverified.
+    assert "has not yet been verified on physical hardware" in linux_doc
     assert "setup/windows/" in setup_readme
     assert "setup/linux/" in setup_readme
-    assert "Fedora experimental" in device_doc
+    assert "| Fedora | Supported (CI-verified) |" in device_doc
 
 
 def test_linux_docs_keep_cpu_as_first_validation_target():
@@ -46,11 +47,10 @@ def test_linux_docs_keep_cpu_as_first_validation_target():
     fedora_doc = (ROOT / "docs" / "FEDORA.md").read_text(encoding="utf-8")
     device_doc = (ROOT / "docs" / "DEVICE_SUPPORT.md").read_text(encoding="utf-8")
 
-    assert "start with CPU validation" in linux_doc
+    assert "Pick **CPU** first" in linux_doc
     assert "CPU inference is the recommended first path." in ubuntu_doc
     assert "CPU inference is the recommended first path." in fedora_doc
-    assert "| Ubuntu experimental | Basic target | Experimental" in device_doc
-    assert "| Fedora experimental | Basic target | Experimental" in device_doc
+    assert "not yet hardware-verified" in device_doc
     assert "If OpenVINO does not list a device, the app cannot use it." in device_doc
 
 

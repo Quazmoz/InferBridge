@@ -1,22 +1,24 @@
 # Device Support Notes
 
-This project is Windows-first. Linux support is experimental and currently supports Ubuntu and Fedora.
+InferBridge supports Windows and Linux (x86_64: Ubuntu 22.04/24.04, Debian 12 and Fedora are
+tested). Intel GPU and NPU execution on Linux has not yet been verified on physical hardware.
 
 ## Target Matrix
 
 | Platform | CPU | GPU | NPU |
 |---|---|---|---|
 | Windows | Supported | Supported if OpenVINO sees it | Primary target with compatible Intel hardware/drivers |
-| Ubuntu experimental | Basic target | Experimental and driver-dependent | Experimental and driver-dependent |
-| Fedora experimental | Basic target | Experimental and driver-dependent | Experimental and driver-dependent |
+| Ubuntu / Debian | Supported (CI-verified) | Driver-dependent; not yet hardware-verified | Driver-dependent; not yet hardware-verified |
+| Fedora | Supported (CI-verified) | Driver-dependent; not yet hardware-verified | Driver-dependent; not yet hardware-verified |
 
 ## Device Discovery
 
 Linux configuration defaults to **CPU**, retaining explicit device selections and
 checking them against OpenVINO's inventory before loading. Windows retains its NPU
 default. A CPU default is not a claim that every host or model is supported. See
-the [Linux evidence matrix](LINUX.md#build-and-qualification) for separate source,
-packaged mock and real inference status.
+the [Linux qualification table](LINUX.md#qualification) for what CI verifies, and
+[Intel GPU and NPU setup](LINUX.md#intel-gpu-and-npu-setup) for drivers. On Linux,
+`inferbridge doctor` checks drivers, device permissions and groups and prints fix commands.
 
 Device visibility is ultimately determined by:
 
@@ -33,7 +35,8 @@ On Windows, you can use:
 On Linux, you can use:
 
 ```bash
-./start_server.sh --check-devices
+inferbridge doctor               # installed app: drivers, permissions, fix commands
+./start_server.sh --check-devices  # source checkout
 ```
 
 If OpenVINO does not list a device, the app cannot use it. `lspci`, Device Manager, or other system tools can provide useful hints, but OpenVINO discovery is the source of truth for this server.

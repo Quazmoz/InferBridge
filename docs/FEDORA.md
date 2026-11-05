@@ -14,10 +14,9 @@ InferBridge remains Windows-first. Fedora support is a CPU-first path for develo
 
 ## Install
 
-For a download without a source checkout or Python dependency setup, see the
-[Linux desktop download guide](LINUX.md#download-and-launch). The portable archive
-has a Fedora 44 x86_64 container gate; this does not certify a graphical desktop or
-Intel GPU/NPU drivers. RPM packaging is deferred. The commands below install source.
+To use InferBridge, install the .rpm instead: see [InferBridge on Linux](LINUX.md#install).
+This page is the developer path from a source checkout; CI does not certify a graphical
+desktop or Intel GPU/NPU drivers. The commands below install from source.
 
 ```bash
 sudo dnf install -y python3 python3-pip python3-devel git

@@ -1,8 +1,9 @@
 # Windows packaging and release
 
-Linux development downloads have a separate private-runtime builder and CI
-workflow; see [Linux packaging and qualification](LINUX.md#build-and-qualification).
-They do not invoke this Windows release/publishing pipeline.
+Linux assets (portable tarball, .deb, .rpm, SPDX SBOM and linux-SHA256SUMS) have their own
+private-runtime builder; see [Linux build and reproducibility](LINUX.md#build-and-reproduce).
+The tag-driven `github-release.yml` builds and verifies them in its `linux` job and attaches
+them beside the Windows assets; `dry_run` builds them from a branch without publishing.
 
 Use the production release entry point with the canonical version from `app/version.py`:
 
