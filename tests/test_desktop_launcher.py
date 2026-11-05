@@ -564,9 +564,42 @@ def test_native_runtime_smoke_loads_tokenizer_extension_by_name(monkeypatch):
     openvino_genai.LLMPipeline = FakePipeline
     monkeypatch.setitem(sys.modules, "openvino", openvino)
     monkeypatch.setitem(sys.modules, "openvino_genai", openvino_genai)
+    # Exercise the Windows DLL-name lookup on every host; Linux resolves the .so path.
+    monkeypatch.setattr(desktop_launcher.sys, "platform", "win32")
 
     assert desktop_launcher._native_runtime_smoke() == 0
     assert calls == ["openvino_tokenizers.dll"]
+
+
+def test_native_runtime_smoke_loads_linux_tokenizer_library_by_path(monkeypatch, tmp_path):
+    calls = []
+    openvino = ModuleType("openvino")
+    openvino_genai = ModuleType("openvino_genai")
+    openvino_tokenizers = ModuleType("openvino_tokenizers")
+    package = tmp_path / "openvino_tokenizers"
+    (package / "lib").mkdir(parents=True)
+    library = package / "lib" / "libopenvino_tokenizers.so"
+    library.write_bytes(b"")
+    openvino_tokenizers.__file__ = str(package / "__init__.py")
+
+    class FakeCore:
+        available_devices = ["CPU"]
+
+        def add_extension(self, path):
+            calls.append(path)
+
+    class FakePipeline:
+        pass
+
+    openvino.Core = FakeCore
+    openvino_genai.LLMPipeline = FakePipeline
+    monkeypatch.setitem(sys.modules, "openvino", openvino)
+    monkeypatch.setitem(sys.modules, "openvino_genai", openvino_genai)
+    monkeypatch.setitem(sys.modules, "openvino_tokenizers", openvino_tokenizers)
+    monkeypatch.setattr(desktop_launcher.sys, "platform", "linux")
+
+    assert desktop_launcher._native_runtime_smoke() == 0
+    assert calls == [str(library)]
 
 
 def test_resolve_desktop_port_precedence_and_fixed_policy():

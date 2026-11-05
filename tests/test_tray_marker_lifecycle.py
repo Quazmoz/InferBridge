@@ -79,6 +79,8 @@ def test_interactive_startup_failure_keeps_tray_available(monkeypatch, tmp_path)
     from app import tray_runtime
     from app.tray_state import TrayPhase
 
+    # Windows keeps the tray for recovery; Linux reports the failure and exits (below).
+    monkeypatch.setattr(tray_runtime.sys, "platform", "win32")
     stub = _FailingStartupStub(tmp_path)
     stub.args.headless = False
     tray_entered = []
@@ -127,3 +129,23 @@ def test_headless_startup_failure_tolerates_missing_stderr(monkeypatch, tmp_path
     monkeypatch.setattr("sys.stderr", None)
     stub = _FailingStartupStub(tmp_path)
     assert stub.run() == 6
+
+
+def test_interactive_startup_failure_on_linux_reports_and_exits(monkeypatch, tmp_path):
+    from app import tray_runtime
+    from app.tray_state import TrayPhase
+
+    monkeypatch.setattr(tray_runtime.sys, "platform", "linux")
+    stub = _FailingStartupStub(tmp_path)
+    stub.args.headless = False
+    tray_entered = []
+    dialogs = []
+    stub._run_tray = lambda: tray_entered.append(True) or 0
+    monkeypatch.setattr(tray_runtime, "show_dialog", lambda *args, **kw: dialogs.append((args, kw)))
+
+    assert stub.run() == 6
+    assert tray_entered == []
+    assert len(dialogs) == 1 and dialogs[0][1].get("error") is True
+    assert stub.snapshot.phase is TrayPhase.ERROR
+    assert stub.cleaned is True
+    assert stub.lock.released is True
