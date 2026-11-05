@@ -60,7 +60,7 @@ SCRIPT_LAB = r"""
         const runtimeModels = new Map((latestStatus?.models?.available || []).map(model => [model.id, model]));
         const mock = Boolean(latestStatus?.device?.mock);
         return (data.models || [])
-            .filter(model => !String(model.backend || '').includes('embedding'))
+            .filter(model => !/embedding|rerank/i.test(String(model.backend || '')))
             .map(model => {
                 const runtime = runtimeModels.get(model.id) || {};
                 return {

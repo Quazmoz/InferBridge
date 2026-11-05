@@ -224,7 +224,7 @@ SCRIPT_1 = r"""
 
     function modelRowsHtml(models) {
         const rows = [...models]
-            .filter(model => !String(model.backend || '').includes('embedding'))
+            .filter(model => !/embedding|rerank/i.test(String(model.backend || '')))
             .sort((a, b) => Number(b.fit_score || 0) - Number(a.fit_score || 0));
         if (!rows.length) return '<div class="advisor-empty">No generation models are registered.</div>';
         return `<div class="advisor-table-wrap" tabindex="0" aria-label="Model compatibility table"><table class="advisor-table"><thead><tr>
