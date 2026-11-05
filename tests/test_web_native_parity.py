@@ -404,3 +404,34 @@ def test_native_keeps_the_browser_app_preferences():
     assert "ovllm.device.v1" in INDEX.read_text(encoding="utf-8")
     for field in ("ChatDevice", "CombinedTarget", "AdvisorProfile", "ConversationRetentionDays"):
         assert f"valid.{field}" in prefs, field
+
+
+def test_native_preparation_progress_and_recovery_match_the_browser():
+    app_dir = INDEX.parents[1] / "app"
+    progress = (app_dir / "progress_reliability.py").read_text(encoding="utf-8")
+    recovery = (app_dir / "model_recovery_ui.py").read_text(encoding="utf-8")
+    cancel = (app_dir / "cancellation_ui.py").read_text(encoding="utf-8")
+    engine = (app_dir / "model_manager_core.py").read_text(encoding="utf-8")
+    client = (NATIVE / "ModelPreparationClient.cs").read_text(encoding="utf-8")
+    page = (NATIVE / "MainWindow.ModelPreparation.cs").read_text(encoding="utf-8")
+    # The same sanitized progress fields: the engine writes them, both clients read them.
+    for field in ("message", "log_tail", "updated_at"):
+        assert f'"{field}"' in engine and f'"{field}"' in client, field
+    for field in ("completed", "total"):
+        assert f"progress?.{field}" in progress and f'"{field}"' in client, field
+    assert "log_tail.filter(Boolean).slice(-8)" in progress and "TakeLast(8)" in client
+    # Same stale-progress thresholds and wording.
+    for threshold in ("staleFor >= 120", "staleFor >= 30"):
+        assert threshold in progress
+    assert "seconds >= 120" in client and "seconds >= 30" in client
+    for text in ("Taking longer than usual · last update ", "No recent progress update for "):
+        assert text in progress and f'"{text}' in client, text
+    assert "still running" in progress and " · still running" in client
+    # Recovery is discovered from the status rows and announced once per recovery id.
+    assert "model?.recovery" in recovery and "item?.available && item.recovery_id" in recovery
+    assert '"recovery"' in client and '"recommended_action"' in client
+    assert "models have recoverable preparation state." in recovery
+    assert " models have recoverable preparation state." in page
+    assert "_announcedRecoveries.Add" in page
+    # The engine's cancellation reason is shown when it declines.
+    assert "cancel_reason" in cancel and '"cancel_reason"' in client

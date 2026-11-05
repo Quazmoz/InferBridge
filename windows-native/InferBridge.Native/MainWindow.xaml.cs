@@ -1073,6 +1073,15 @@ public sealed partial class MainWindow : Window
     private void ModelsList_SelectionChanged(
         object sender, SelectionChangedEventArgs args) => UpdateModelButtons();
 
+    private static string RecoveryActionTitle(string action) => action switch
+    {
+        "resume" => "Resume preparation",
+        "retry_failed_stage" => "Retry failed stage",
+        "restart_download" => "Restart from download (remove cached source)",
+        "remove_incomplete_files" => "Remove incomplete output only",
+        _ => "Unknown action",
+    };
+
     private async void RecoverButton_Click(object sender, RoutedEventArgs args)
     {
         ModelInfo? model = SelectedLibraryModel;
@@ -1090,15 +1099,6 @@ public sealed partial class MainWindow : Window
             [
                 "resume", "retry_failed_stage", "restart_download", "remove_incomplete_files",
             ];
-            static string ActionTitle(string action) => action switch
-            {
-                "resume" => "Resume preparation",
-                "retry_failed_stage" => "Retry failed stage",
-                "restart_download" => "Restart from download (remove cached source)",
-                "remove_incomplete_files" => "Remove incomplete output only",
-                _ => "Unknown action",
-            };
-
             var layout = new StackPanel { Spacing = 10, MaxWidth = 540 };
             layout.Children.Add(new TextBlock
             {
@@ -1107,7 +1107,7 @@ public sealed partial class MainWindow : Window
                     + "\nCached source files: " + recovery.DownloadedFiles
                     + "\nConverted output: " + recovery.ConversionOutput
                     + (recovery.RecommendedAction.Length > 0
-                        ? "\nEngine recommendation: " + ActionTitle(recovery.RecommendedAction)
+                        ? "\nEngine recommendation: " + RecoveryActionTitle(recovery.RecommendedAction)
                         : ""),
                 TextWrapping = TextWrapping.Wrap,
                 IsTextSelectionEnabled = true,
@@ -1129,7 +1129,7 @@ public sealed partial class MainWindow : Window
             };
             foreach (string candidateAction in actions.Where(recovery.CanRun)
                 .OrderBy(name => name != recovery.RecommendedAction))
-                picker.Items.Add(new ComboBoxItem { Content = ActionTitle(candidateAction), Tag = candidateAction });
+                picker.Items.Add(new ComboBoxItem { Content = RecoveryActionTitle(candidateAction), Tag = candidateAction });
             if (picker.Items.Count > 0) picker.SelectedIndex = 0;
             layout.Children.Add(picker);
             if (picker.Items.Count == 0)
@@ -1343,7 +1343,11 @@ public sealed partial class MainWindow : Window
         UnloadButton.IsEnabled = idle && model?.CanUnload == true;
         DeleteButton.IsEnabled = idle && model?.CanDelete == true;
         DownloadButton.IsEnabled = idle && model?.CanDownload == true;
-        RecoverButton.IsEnabled = idle && _engineConnected && model is not null;
+        // Like the browser, only a model the engine reports as recoverable offers recovery;
+        // while live status is unavailable the engine still answers the request itself.
+        RecoverButton.IsEnabled = idle && _engineConnected && model is not null
+            && (!_modelPreparationAvailable
+                || _modelPreparations.GetValueOrDefault(model.Id)?.RecoveryId is not null);
         LibraryDevicePicker.IsEnabled = idle && _devicesAvailable;
         LibraryCombineDevicesButton.IsEnabled = idle && CombineDevicesReady;
         ModelLibraryToolsButton.IsEnabled = ModelLibraryToolsReady;

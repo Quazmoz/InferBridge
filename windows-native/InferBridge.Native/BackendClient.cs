@@ -1465,7 +1465,8 @@ internal sealed partial class BackendClient : IDisposable
         ValidateRecoveryModelId(selected.ModelId);
         if (!RecoveryActions.Contains(action) || !selected.CanRun(action))
             throw new ArgumentException("This recovery action is unavailable.", nameof(action));
-        if (device is not null && device is not ("NPU" or "GPU" or "CPU"))
+        // Any target the engine routes (the browser passes its device picker value).
+        if (device is not null && (device.Length == 0 || !IsSupportedInferenceDevice(device)))
             throw new ArgumentException("Unsupported inference device.", nameof(device));
         string origin = await RequireVerifiedOriginAsync(apiKey, cancellationToken);
         using var currentPayload = await GetJsonAsync(

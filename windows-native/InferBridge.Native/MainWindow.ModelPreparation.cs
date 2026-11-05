@@ -10,6 +10,7 @@ public sealed partial class MainWindow
     private bool _modelPreparationRefreshing;
     private bool _modelPreparationAvailable;
     private long _modelPreparationEpoch;
+    private readonly HashSet<string> _announcedRecoveries = new(StringComparer.Ordinal);
 
     private void ResetModelPreparations()
     {
@@ -32,14 +33,22 @@ public sealed partial class MainWindow
                     ? "No preparation state reported by the engine."
                     : operation.OperationId is null
                         ? "No active preparation. Model status: " + model.StatusLabel
-                        : "Stage: " + operation.Phase.Replace('_', ' ')
+                        : (operation.Message.Length > 0 ? operation.Message + "\n" : "")
+                            + "Stage: " + operation.Phase.Replace('_', ' ')
                             + (operation.Percent is double amount
                                 ? " · " + amount.ToString("0.#",
                                     System.Globalization.CultureInfo.InvariantCulture) + "%"
                                 : " · Percentage not reported")
+                            + (operation.Files is (int done, int total) ? " · " + done + " of " + total + " files" : "")
                             + (operation.CanCancel
                                 ? " · Cancellation available"
-                                : " · Cancellation unavailable at this stage");
+                                : " · " + operation.CancelReason)
+                            + (operation.StaleNotice(DateTimeOffset.UtcNow.ToUnixTimeSeconds()) is { Length: > 0 } stale
+                                ? "\n" + stale : "");
+        if (operation?.RecoveryId is not null)
+            label += "\nThis preparation was interrupted. Recommended: "
+                + (operation.RecoveryAction.Length > 0 ? RecoveryActionTitle(operation.RecoveryAction) : "review the options")
+                + ". Select Review interrupted preparation.";
         if (ModelPreparationSummary.Text != label)
             ModelPreparationSummary.Text = label;
         string details = "";
@@ -61,6 +70,9 @@ public sealed partial class MainWindow
                     ? "Not reported as supported" : "Unknown")
                 + "\nDevice preferences and model metadata do not certify local hardware compatibility.";
         }
+        if (hasProgress && operation!.OperationId is not null && operation.LogTail.Count > 0)
+            details = "Recent engine log (sanitized):\n" + string.Join("\n", operation.LogTail)
+                + (details.Length > 0 ? "\n\n" + details : "");
         if (ModelDetailsSummary.Text != details)
             ModelDetailsSummary.Text = details;
 
@@ -98,6 +110,7 @@ public sealed partial class MainWindow
                 return;
             _modelPreparations = current;
             _modelPreparationAvailable = true;
+            AnnounceRecoveries(current);
         }
         catch (Exception) when (_closing.IsCancellationRequested) { }
         catch (Exception) when (!_closing.IsCancellationRequested)
@@ -117,6 +130,21 @@ public sealed partial class MainWindow
                 UpdateGenerationSettingsInfo();
             }
         }
+    }
+
+    // The browser's recovery banner: announce each interrupted preparation once per session.
+    private void AnnounceRecoveries(IReadOnlyDictionary<string, ModelPreparationInfo> current)
+    {
+        var recoverable = current.Values.Where(item => item.RecoveryId is not null).ToList();
+        // Count, not Any: every new recovery is marked as announced in this pass.
+        if (recoverable.Count(item => _announcedRecoveries.Add(item.RecoveryId!)) == 0) return;
+        ModelPreparationInfo first = recoverable[0];
+        string name = _shownModels.FirstOrDefault(model => model.Id == first.ModelId)?.Name ?? first.ModelId;
+        ShowModelsInfo(recoverable.Count > 1
+            ? recoverable.Count + " models have recoverable preparation state. Select one and choose Review interrupted preparation."
+            : name + " preparation was interrupted. Recommended: "
+                + (first.RecoveryAction.Length > 0 ? RecoveryActionTitle(first.RecoveryAction) : "review the options")
+                + ". Select it and choose Review interrupted preparation.", InfoBarSeverity.Warning);
     }
 
     private async void CancelPreparationButton_Click(object sender, RoutedEventArgs args)

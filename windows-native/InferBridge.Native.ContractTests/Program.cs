@@ -107,6 +107,7 @@ try
     await HuggingFaceAccessContractTests.RunAsync(root);
     await OnboardingContractTests.RunAsync(root);
     AppSettingsContractTests.Run(root);
+    await ConversionRecoveryContractTests.RunAsync(root);
     return 0;
 }
 finally

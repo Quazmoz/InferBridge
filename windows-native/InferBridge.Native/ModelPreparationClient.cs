@@ -13,6 +13,26 @@ internal sealed record ModelPreparationInfo(
     double? Percent, bool CanCancel, string CancelReason)
 {
     public ModelLibraryDetails? Details { get; init; }
+    // Browser progress detail (app/progress_reliability.py). The engine sanitizes these
+    // (secrets redacted, paths shortened, length capped); native re-checks them.
+    public string Message { get; init; } = "";
+    public IReadOnlyList<string> LogTail { get; init; } = [];
+    public (int Completed, int Total)? Files { get; init; }
+    public long? UpdatedAt { get; init; }
+    /// <summary>Set when the engine reports a recoverable interrupted preparation.</summary>
+    public string? RecoveryId { get; init; }
+    public string RecoveryAction { get; init; } = "";
+
+    /// <summary>The browser's stale-progress wording: 30 s warns, 120 s is "longer than usual".</summary>
+    public string StaleNotice(long nowUnixSeconds)
+    {
+        if (UpdatedAt is not long updated || Phase is "idle" or "ready" or "cancelled" or "error" or "unknown"
+            || OperationId is null) return "";
+        long seconds = Math.Max(0, nowUnixSeconds - updated);
+        string ago = seconds < 120 ? seconds + "s" : (seconds / 60) + "m " + (seconds % 60) + "s";
+        return seconds >= 120 ? "Taking longer than usual · last update " + ago + " ago"
+            : seconds >= 30 ? "No recent progress update for " + ago + " · still running" : "";
+    }
 }
 
 internal sealed partial class BackendClient
@@ -88,9 +108,26 @@ internal sealed partial class BackendClient
         string operationId = "";
         string phase = "idle";
         double? percent = null;
+        string message = "";
+        string[] logTail = [];
+        (int, int)? files = null;
+        long? updatedAt = null;
         if (item.TryGetProperty("progress", out var progress)
             && progress.ValueKind == JsonValueKind.Object)
         {
+            message = SafeProgressText(ReadString(progress, "message"), 180);
+            if (progress.TryGetProperty("log_tail", out var tail) && tail.ValueKind == JsonValueKind.Array)
+                logTail = tail.EnumerateArray().TakeLast(8)
+                    .Select(line => line.ValueKind == JsonValueKind.String ? SafeProgressText(line.GetString(), 240) : "")
+                    .Where(line => line.Length > 0).ToArray();
+            if (progress.TryGetProperty("completed", out var done) && done.ValueKind == JsonValueKind.Number
+                && done.TryGetInt32(out int completed)
+                && progress.TryGetProperty("total", out var all) && all.ValueKind == JsonValueKind.Number
+                && all.TryGetInt32(out int total) && total > 0 && completed >= 0 && completed <= total)
+                files = (completed, total);
+            if (progress.TryGetProperty("updated_at", out var stamp) && stamp.ValueKind == JsonValueKind.Number
+                && stamp.TryGetInt64(out long seconds) && seconds > 0)
+                updatedAt = seconds;
             operationId = ReadString(progress, "operation_id");
             phase = ReadString(progress, "phase");
             if (phase is not ("idle" or "queued" or "resolving" or "downloading"
@@ -124,15 +161,43 @@ internal sealed partial class BackendClient
         if (cancel && !CancellablePhases.Contains(phase, StringComparer.Ordinal))
             cancel = false;
 
-        // Never put free-form server messages or operation IDs into the view:
-        // progress details could inadvertently contain local paths or tokens.
+        string? recoveryId = null;
+        string recoveryAction = "";
+        if (item.TryGetProperty("recovery", out var recovery) && recovery.ValueKind == JsonValueKind.Object
+            && recovery.TryGetProperty("available", out var recoverable) && recoverable.ValueKind == JsonValueKind.True
+            && ReadString(recovery, "recovery_id") is { Length: > 0 and <= 128 } id && !id.Any(char.IsControl))
+        {
+            recoveryId = id;
+            string recommended = ReadString(recovery, "recommended_action");
+            recoveryAction = RecoveryActions.Contains(recommended) ? recommended : "";
+        }
+        string engineReason = SafeProgressText(ReadString(item, "cancel_reason"), 200);
+
+        // Operation IDs never reach the view. Messages and log lines are the engine's
+        // sanitized progress text (the browser shows the same), re-checked above.
         return new ModelPreparationInfo(modelId,
             operationId.Length > 0 ? operationId : null,
             phase, percent, cancel,
-            cancel ? "" : "The engine does not offer cancellation for this stage.")
+            cancel ? "" : engineReason.Length > 0 ? engineReason
+                : "The engine does not offer cancellation for this stage.")
         {
             Details = ParseLibraryDetails(item),
+            Message = message,
+            LogTail = logTail,
+            Files = files,
+            UpdatedAt = updatedAt,
+            RecoveryId = recoveryId,
+            RecoveryAction = recoveryAction,
         };
+    }
+
+    // Defense in depth over the engine's own sanitizer: no control characters, no
+    // Hugging Face token pattern, bounded length.
+    internal static string SafeProgressText(string? text, int limit)
+    {
+        string line = new string((text ?? "").Where(c => !char.IsControl(c)).ToArray()).Trim();
+        if (Regex.IsMatch(line, @"hf_[A-Za-z0-9]{8,}", RegexOptions.CultureInvariant)) return "";
+        return line.Length <= limit ? line : line[..(limit - 1)] + "…";
     }
 
     private static IReadOnlyDictionary<string, ModelPreparationInfo> ParsePreparations(JsonElement root)
