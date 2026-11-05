@@ -46,6 +46,105 @@ def selected_files(siblings) -> list[str]:
     return [item.rfilename for item in files]
 
 
+def api_probe(bundle: Path, model_dir: Path, work: Path) -> dict:
+    """Serve the converted model through the packaged app's real (not mock) HTTP API."""
+    import secrets
+    import signal
+    import subprocess
+    import urllib.request
+
+    key = secrets.token_hex(24)
+    data = work / "app-data"
+    environment = {
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith(("PYTHON", "OV_LLM_", "LD_"))
+    }
+    environment.update({"OV_LLM_API_KEY": key, "XDG_DATA_HOME": str(work / "xdg")})
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    launcher = [str(bundle / "InferBridge"), "--service", f"--data-dir={data}"]
+    log = (work / "api-server.log").open("w", encoding="utf-8")
+    server = subprocess.Popen(launcher, env=environment, stdout=log, stderr=log)
+
+    def call(method: str, path: str, body: dict | None = None, *, raw: bool = False):
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{port}{path}",
+            data=None if body is None else json.dumps(body).encode("utf-8"),
+            method=method,
+            headers={
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json",
+                "X-OV-LLM-UI": "1",
+            },
+        )
+        with opener.open(request, timeout=120) as response:
+            payload = response.read()
+        return payload if raw else json.loads(payload)
+
+    try:
+        deadline = time.monotonic() + 180
+        port = None
+        while time.monotonic() < deadline and server.poll() is None:
+            try:
+                port = json.loads((data / "desktop-instance.json").read_text())["port"]
+                if call("GET", "/health/ready").get("status") == "ready":
+                    break
+            except (OSError, ValueError, KeyError):
+                pass
+            time.sleep(0.5)
+        else:
+            raise RuntimeError("The packaged server did not become ready for the API probe.")
+        started = time.monotonic()
+        call(
+            "POST",
+            "/v1/model-library/import-converted",
+            {
+                "model_id": "linux-cpu-probe",
+                "name": "Linux CPU probe",
+                "source_path": str(model_dir),
+            },
+        )
+        call("POST", "/v1/models/load", {"model": "linux-cpu-probe", "device": "CPU"})
+        while time.monotonic() < deadline + 120:
+            entries = call("GET", "/v1/system/status").get("models", {}).get("available", [])
+            entry = next(item for item in entries if item.get("id") == "linux-cpu-probe")
+            if entry.get("error"):
+                raise RuntimeError(f"API model load failed: {entry['error']}")
+            if entry.get("is_loaded") and not entry.get("is_loading"):
+                break
+            time.sleep(0.5)
+        else:
+            raise RuntimeError("The API model load did not finish in time.")
+        request = {
+            "model": "linux-cpu-probe",
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_tokens": 8,
+            "temperature": 0,
+        }
+        chat = call("POST", "/v1/chat/completions", request)
+        assert isinstance(chat["choices"][0]["message"]["content"], str)
+        assert chat["usage"]["completion_tokens"] > 0
+        events = call("POST", "/v1/chat/completions", {**request, "stream": True}, raw=True)
+        lines = [line for line in events.decode("utf-8").splitlines() if line.startswith("data:")]
+        assert lines and lines[-1].strip() == "data: [DONE]", "SSE stream did not finish"
+        call("POST", "/v1/models/unload", {"model": "linux-cpu-probe"})
+        return {
+            "api_device": entry.get("device"),
+            "api_completion_tokens": chat["usage"]["completion_tokens"],
+            "api_stream_events": len(lines),
+            "api_seconds": round(time.monotonic() - started, 2),
+        }
+    finally:
+        if server.poll() is None:
+            server.send_signal(signal.SIGTERM)
+            try:
+                server.wait(timeout=60)
+            except subprocess.TimeoutExpired:
+                server.kill()
+        log.close()
+        print((work / "api-server.log").read_text(encoding="utf-8")[-3000:], file=sys.stderr)
+
+
 def probe(bundle: Path, output: Path) -> None:
     if sys.platform != "linux" or platform.machine() != "x86_64":
         raise RuntimeError("This probe requires native Linux x86_64.")
@@ -113,6 +212,7 @@ def probe(bundle: Path, output: Path) -> None:
         finally:
             engine.close()
         assert engine._closed and engine._pipe is None
+        api = api_probe(bundle, Path(model), work)
         cpu = {}
         for line in Path("/proc/cpuinfo").read_text(encoding="utf-8").splitlines():
             if ":" in line:
@@ -150,9 +250,10 @@ def probe(bundle: Path, output: Path) -> None:
                 resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss,
             ),
             "memory_scope": "Maximum process high-water RSS of probe or child converter, not simultaneous process-tree RSS",
+            **api,
             "mock": False,
             "passed": True,
-            "limits": "Untrained random test weights; no language-quality, full application CPU API, GPU or NPU certification",
+            "limits": "Untrained random test weights; checks runtime execution through the engine and the packaged OpenAI chat API (import, load, chat, SSE stream, unload), not language quality, embeddings/rerank, GPU or NPU",
         }
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
