@@ -337,6 +337,14 @@ def qualify_archive(args: argparse.Namespace, user: FreshUser) -> dict:
         user.run(str(old / "InferBridge"), "--uninstall-desktop")
         user.run("rm", "-rf", str(old))
         report["previous_archive"] = args.previous.name
+        # Files an *older* build left outside its data directory (for example the
+        # ~/intel OpenVINO telemetry IDs written before abd4cb6) are recorded, then
+        # excluded: the uninstall checks below judge only the build under test.
+        stray = [
+            item for item in user.leftovers() if not item.startswith(".local/share/InferBridge/")
+        ]
+        report["left_by_previous_build"] = stray
+        user.baseline |= set(stray)
     bundle = extract(args.package)
     user.run(str(bundle / "InferBridge"), "install")
     assert (user.home / ".local/bin/inferbridge").resolve() == (bundle / "InferBridge").resolve()
