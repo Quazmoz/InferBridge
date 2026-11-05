@@ -598,14 +598,21 @@ def main(argv: list[str] | None = None) -> int:
     if args.check_devices:
         from runtime import device_check
 
+        linux = sys.platform.startswith("linux")
+        if linux:
+            from runtime import linux_doctor
         print(
             json.dumps(
                 {
                     "available": device_check.available_devices(),
                     "details": device_check.device_details(),
-                    "linux_device_nodes": device_check.linux_device_nodes()
-                    if sys.platform.startswith("linux")
-                    else {},
+                    "linux_device_nodes": device_check.linux_device_nodes() if linux else {},
+                    # Driver, library, group and kernel checks with per-distro fix commands.
+                    "linux_diagnostics": linux_doctor.diagnose(
+                        openvino_devices=device_check.available_devices()
+                    )["findings"]
+                    if linux
+                    else [],
                     "note": "Device nodes are hints. GPU requires render-node access and Intel drivers; NPU requires accel-node access, a compatible driver and OpenVINO plugin. Only OpenVINO-visible devices can be selected.",
                 },
                 indent=2,

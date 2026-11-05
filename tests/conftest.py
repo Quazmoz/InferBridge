@@ -23,3 +23,9 @@ from runtime.device_check import cleanup_cached_core  # noqa: E402
 def cleanup_ov_core():
     yield
     cleanup_cached_core()
+
+
+@pytest.fixture(autouse=True)
+def isolate_desktop_keyring(monkeypatch):
+    # Never read or write a developer's real Secret Service keyring from unit tests.
+    monkeypatch.setenv("OV_LLM_DISABLE_SECRET_SERVICE", "1")

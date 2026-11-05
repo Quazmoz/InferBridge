@@ -190,6 +190,17 @@ else
 fi
 echo
 
+if [ -n "$PYTHON_BIN" ]; then
+    echo "Driver, permission and kernel checks (inferbridge doctor):"
+    (cd "$REPO_ROOT" && "$PYTHON_BIN" - <<'PY'
+from runtime import device_check, linux_doctor
+
+print(linux_doctor.render(linux_doctor.diagnose(openvino_devices=device_check.available_devices())))
+PY
+    ) || echo "  Doctor unavailable from this Python environment."
+    echo
+fi
+
 echo "Notes:"
 echo "  - CPU should work once Python/OpenVINO packages install."
 echo "  - GPU requires Intel's Linux GPU runtime/driver stack and usable /dev/dri render nodes."

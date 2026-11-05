@@ -1,147 +1,49 @@
-"""Linux bundle desktop integration; application behavior stays in app.desktop_launcher."""
+"""Linux bundle entry point: ``inferbridge`` subcommands, legacy flags, then the app.
+
+Integration logic lives in ``app.linux_cli`` and application behavior in
+``app.desktop_launcher``. This file stays tiny so the bundle layout is easy to audit.
+"""
 
 from __future__ import annotations
 
-import os
 import sys
-import tempfile
 from pathlib import Path
 
+from app.linux_cli import (  # noqa: F401 - re-exported for the bundle and its tests
+    COMMANDS,
+    desktop_entry,
+    desktop_quote,
+    integrate,
+    integrate_service,
+    main as cli_main,
+    service_entry,
+    unit_quote,
+    write_entry,
+)
 
-def desktop_quote(value: str) -> str:
-    if any(character in value for character in "\r\n\0"):
-        raise ValueError("Desktop paths cannot contain newlines or NUL.")
-    # Exec quoting is parsed after desktop-value escape processing.
-    for character in ("\\", '"', "`", "$"):
-        value = value.replace(character, "\\" + character)
-    return '"' + value.replace("\\", "\\\\").replace("%", "%%") + '"'
-
-
-def desktop_entry(root: Path, *, quit: bool = False) -> str:
-    executable = desktop_quote(str(root / "InferBridge"))
-    icon = str(root / "resources" / "InferBridge.png")
-    if any(character in str(root) for character in "\r\n\0"):
-        raise ValueError("Desktop paths cannot contain newlines or NUL.")
-    # General string values have a separate escape rule from Exec arguments.
-    icon = icon.replace("\\", "\\\\")
-    return (
-        "[Desktop Entry]\nType=Application\n"
-        f"Name={'Quit InferBridge' if quit else 'InferBridge'}\n"
-        "Comment=Local OpenVINO AI server and model manager\n"
-        f"Exec={executable}{' --quit' if quit else ''}\n"
-        f"Icon={icon}\nTerminal=false\nStartupNotify=false\n"
-        "Categories=Development;\n"
-        f"X-InferBridge-Root={str(root).replace(chr(92), chr(92) * 2)}\n"
-    )
-
-
-def write_entry(target: Path, contents: str) -> None:
-    target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", dir=target.parent, prefix=f".{target.name}.", delete=False
-        ) as stream:
-            temporary = Path(stream.name)
-            stream.write(contents)
-        temporary.chmod(0o644)
-        temporary.replace(target)
-    finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
-
-
-def integrate(root: Path, *, remove: bool = False) -> int:
-    configured = Path(os.environ.get("XDG_DATA_HOME", ""))
-    data_home = configured if configured.is_absolute() else Path.home() / ".local" / "share"
-    directory = data_home / "applications"
-    for quit in (False, True):
-        target = directory / ("inferbridge-quit.desktop" if quit else "inferbridge.desktop")
-        contents = desktop_entry(root, quit=quit)
-        if remove:
-            if target.is_file() and target.read_text(encoding="utf-8") == contents:
-                target.unlink()
-        else:
-            write_entry(target, contents)
-    print(
-        "Desktop entries removed; application data preserved."
-        if remove
-        else "Desktop entries installed."
-    )
-    return 0
-
-
-def unit_quote(value: str) -> str:
-    if any(ord(character) < 32 or ord(character) == 127 for character in value):
-        raise ValueError("Service paths cannot contain control characters.")
-    return '"' + value.replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%") + '"'
-
-
-def service_entry(root: Path) -> str:
-    # ':' disables environment substitution in ExecStart; '%' still needs escaping.
-    # systemd syntax differs from both shell and .desktop quoting.
-    launcher = unit_quote(str(root / "InferBridge"))
-    configured = Path(os.environ.get("XDG_DATA_HOME", ""))
-    data_home = configured if configured.is_absolute() else Path.home() / ".local" / "share"
-    data_dir = os.environ.get("OV_LLM_DATA_DIR")
-    data_option = (
-        " --data-dir " + unit_quote(str(Path(data_dir).expanduser().resolve())) if data_dir else ""
-    )
-    return (
-        "[Unit]\nDescription=InferBridge local AI server\n"
-        "StartLimitIntervalSec=120\nStartLimitBurst=3\n\n"
-        "[Service]\nType=exec\n"
-        # systemd restricts executable names; the bundle path is a literal Bash argument.
-        f"ExecStart=:/bin/bash -- {launcher} --service{data_option}\n"
-        f"Environment={unit_quote('XDG_DATA_HOME=' + str(data_home))}\n"
-        "Restart=on-failure\nRestartSec=5\nTimeoutStopSec=60\n"
-        "KillMode=mixed\nUMask=0077\n\n"
-        "[Install]\nWantedBy=default.target\n"
-    )
-
-
-def integrate_service(root: Path, *, remove: bool = False) -> int:
-    configured = Path(os.environ.get("XDG_CONFIG_HOME", ""))
-    config_home = configured if configured.is_absolute() else Path.home() / ".config"
-    target = config_home / "systemd" / "user" / "inferbridge.service"
-    contents = service_entry(root)
-    if remove:
-        if target.is_file() and target.read_text(encoding="utf-8") == contents:
-            target.unlink()
-            print(
-                "Service unit removed; application data preserved. Run systemctl --user daemon-reload."
-            )
-        else:
-            print("No matching service unit removed; a different or edited unit is preserved.")
-    else:
-        if target.exists() and target.read_text(encoding="utf-8") != contents:
-            print(
-                "An existing service unit differs. Stop and uninstall it with its owning "
-                "launcher, or back up and remove the unit before installing this version.",
-                file=sys.stderr,
-            )
-            return 2
-        write_entry(target, contents)
-        print(
-            "User service installed (not started). Quit any running InferBridge instance, then run:\n"
-            "  systemctl --user daemon-reload\n"
-            "  systemctl --user enable --now inferbridge.service\n"
-            "Stop and disable it before uninstalling:\n"
-            "  systemctl --user disable --now inferbridge.service"
-        )
-    return 0
+SUBCOMMANDS = frozenset({*COMMANDS, "desktop", "version"})
+LEGACY_FLAGS = {
+    "--install-desktop": ["desktop", "install"],
+    "--uninstall-desktop": ["desktop", "uninstall"],
+}
 
 
 def main() -> int:
     root = Path(__file__).resolve().parent.parent
     arguments = sys.argv[1:]
-    if arguments in (["--install-desktop"], ["--uninstall-desktop"]):
-        return integrate(root, remove=arguments == ["--uninstall-desktop"])
+    if arguments and arguments[0] in SUBCOMMANDS:
+        return cli_main(arguments, root)
+    if len(arguments) == 1 and arguments[0] in LEGACY_FLAGS:
+        return cli_main(LEGACY_FLAGS[arguments[0]], root)
     if arguments in (["--install-service"], ["--uninstall-service"]):
         return integrate_service(root, remove=arguments == ["--uninstall-service"])
     if arguments in (["-h"], ["--help"]):
         print(
-            "Linux bundle integration:\n"
+            "Usage: inferbridge [COMMAND]  (no command launches the app)\n\n"
+            "Commands: start, stop, status, open, logs, doctor, service, autostart,\n"
+            "  desktop, install, uninstall, update-check, version.\n"
+            "  Run `inferbridge COMMAND --help` for details.\n\n"
+            "Legacy integration flags:\n"
             "  --install-desktop / --uninstall-desktop  Application menu entries\n"
             "  --install-service / --uninstall-service  Optional systemd user unit\n"
         )

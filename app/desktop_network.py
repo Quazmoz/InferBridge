@@ -20,6 +20,7 @@ from fastapi import Depends, Header, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import Settings
+from app.linux_secrets import SecretServiceStore
 from app.local_request_security import require_safe_browser_origin
 
 LOOPBACK_BIND_HOST = "127.0.0.1"
@@ -77,10 +78,19 @@ class DesktopApiKeyStore:
         self.key_path = Path(config_dir) / "api-key.dpapi"
         self._memory_key: str | None = None
         self._lock = threading.RLock()
+        # Linux: the desktop keyring when available, otherwise this session's memory.
+        self._keyring = (
+            SecretServiceStore("desktop-api-key", config_dir) if os.name != "nt" else None
+        )
+        self._keyring_refused = False
 
     @property
     def persistence(self) -> str:
-        return "windows_dpapi" if os.name == "nt" else "memory_only"
+        if os.name == "nt":
+            return "windows_dpapi"
+        if self._keyring and not self._keyring_refused and self._keyring.available():
+            return "secret_service"
+        return "memory_only"
 
     @staticmethod
     def validate_user_key(value: str) -> str:
@@ -163,6 +173,9 @@ class DesktopApiKeyStore:
         with self._lock:
             if os.name != "nt":
                 self._memory_key = key
+                if self._keyring is not None:
+                    stored = self._keyring.store("InferBridge local API key", key)
+                    self._keyring_refused = not stored
                 return key
             self.key_path.parent.mkdir(parents=True, exist_ok=True)
             encoded = base64.b64encode(self._protect_windows(key.encode("utf-8")))
@@ -180,7 +193,13 @@ class DesktopApiKeyStore:
             return key
 
     def _stored_key(self) -> str | None:
-        if os.name != "nt" or not self.key_path.is_file() or self.key_path.is_symlink():
+        if os.name != "nt":
+            try:
+                stored = self._keyring.lookup() if self._keyring else None
+                return self.validate_user_key(stored) if stored else None
+            except ValueError:
+                return None
+        if not self.key_path.is_file() or self.key_path.is_symlink():
             return None
         try:
             encrypted = base64.b64decode(self.key_path.read_bytes(), validate=True)
@@ -209,6 +228,8 @@ class DesktopApiKeyStore:
 
         with self._lock:
             existed = bool(self._memory_key) or self.key_path.exists()
+            if self._keyring is not None:
+                existed = self._keyring.clear() or existed
             try:
                 self.key_path.unlink()
             except FileNotFoundError:

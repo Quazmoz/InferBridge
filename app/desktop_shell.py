@@ -10,6 +10,42 @@ import time
 import webbrowser
 from pathlib import Path
 
+# Set by the Linux bundle launcher so the private runtime is never inherited by desktop
+# helpers (xdg-open, the browser, zenity, systemctl, secret-tool) or a system python3.
+_BUNDLE_ONLY_VARIABLES = (
+    "PYTHONPATH",
+    "PYTHONSAFEPATH",
+    "PYTHONNOUSERSITE",
+    "PYTHONDONTWRITEBYTECODE",
+    "PYTHONHOME",
+)
+# Credentials the engine reads must not leak into a browser or helper process.
+_PRIVATE_VARIABLES = (
+    "OV_LLM_API_KEY",
+    "OV_LLM_DESKTOP_CONTROL_TOKEN",
+    "HF_TOKEN",
+    "HUGGING_FACE_HUB_TOKEN",
+)
+
+
+def host_environment(base: dict[str, str] | None = None) -> dict[str, str] | None:
+    """Environment for host programs started on Linux; ``None`` (inherit) elsewhere."""
+    if base is None and not sys.platform.startswith("linux"):
+        return None
+    environment = dict(os.environ if base is None else base)
+    for name in _PRIVATE_VARIABLES:
+        environment.pop(name, None)
+    if "INFERBRIDGE_HOST_PATH" in environment:
+        environment["PATH"] = environment.pop("INFERBRIDGE_HOST_PATH")
+        library_path = environment.pop("INFERBRIDGE_HOST_LD_LIBRARY_PATH", "")
+        if library_path:
+            environment["LD_LIBRARY_PATH"] = library_path
+        else:
+            environment.pop("LD_LIBRARY_PATH", None)
+        for name in _BUNDLE_ONLY_VARIABLES:
+            environment.pop(name, None)
+    return environment
+
 
 def _graphical_session_available() -> bool:
     if os.name == "nt" or sys.platform == "darwin":
@@ -56,6 +92,7 @@ def show_dialog(title: str, message: str, *, error: bool = False) -> None:
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     check=False,
+                    env=host_environment(),
                 )
                 if result.returncode == 0:
                     return
@@ -84,6 +121,7 @@ def confirm_dialog(title: str, message: str) -> bool:
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     check=False,
+                    env=host_environment(),
                 )
                 return result.returncode == 0
             except OSError:
@@ -92,6 +130,15 @@ def confirm_dialog(title: str, message: str) -> bool:
 
 
 def open_browser(url: str) -> bool:
+    if sys.platform.startswith("linux"):
+        # xdg-open honors the desktop's default browser and gets the host environment.
+        for candidate in ("xdg-open", "gio"):
+            if shutil.which(candidate):
+                command = (
+                    [candidate, str(url)] if candidate == "xdg-open" else ["gio", "open", str(url)]
+                )
+                if _spawn_detached(command):
+                    return True
     return bool(webbrowser.open(str(url), new=1, autoraise=True))
 
 
@@ -104,6 +151,7 @@ def _spawn_detached(command: list[str]) -> bool:
             stderr=subprocess.DEVNULL,
             close_fds=os.name != "nt",
             start_new_session=os.name != "nt",
+            env=host_environment(),
         )
         return True
     except OSError:
@@ -150,6 +198,7 @@ def _copy_with_command(command: list[str], text: str) -> bool:
             stderr=subprocess.DEVNULL,
             timeout=5,
             check=False,
+            env=host_environment(),
         )
         return result.returncode == 0
     except (OSError, subprocess.TimeoutExpired):

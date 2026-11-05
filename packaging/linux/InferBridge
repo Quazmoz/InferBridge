@@ -6,6 +6,11 @@ if [ "$(uname -m)" != x86_64 ]; then
     exit 2
 fi
 unset PYTHONHOME PYTHONSTARTUP PYTHONUSERBASE
+# Desktop helpers (xdg-open, browser, systemctl, secret-tool) get these back, never the
+# private runtime below. See app.desktop_shell.host_environment.
+export INFERBRIDGE_HOST_PATH="${INFERBRIDGE_HOST_PATH:-$PATH}"
+export INFERBRIDGE_HOST_LD_LIBRARY_PATH="${INFERBRIDGE_HOST_LD_LIBRARY_PATH-${LD_LIBRARY_PATH-}}"
+export INFERBRIDGE_APP_ROOT="$APP_ROOT"
 export PYTHONPATH="$APP_ROOT/resources"
 export PYTHONSAFEPATH=1 PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1
 export PATH="$APP_ROOT/python/bin:$PATH"

@@ -109,7 +109,7 @@ modal.innerHTML = `
       <label class="dn-toggle"><input type="checkbox" id="dn-lan"><span><strong>Allow access from other devices on my local network</strong><span>When enabled, InferBridge listens on available network interfaces. An API key is required. This is not a public internet mode.</span></span></label>
       <div class="dn-env" id="dn-host-env"></div>
     </section>
-    <section class="dn-section"><h4>API authentication</h4><p class="dn-copy">LAN access requires a strong API key. InferBridge stores desktop-managed keys with Windows DPAPI and never returns a stored key after it has been saved.</p>
+    <section class="dn-section"><h4>API authentication</h4><p class="dn-copy">LAN access requires a strong API key. InferBridge stores desktop-managed keys with Windows DPAPI, or on Linux in the desktop keyring (Secret Service) when one is available (otherwise for this session only), and never returns a stored key after it has been saved.</p>
       <div class="dn-row"><input class="dn-input" id="dn-key" type="password" autocomplete="new-password" maxlength="512" placeholder="Enter a new API key (24+ characters)"><button type="button" class="dn-btn" id="dn-generate">Generate strong key</button><button type="button" class="dn-btn danger" id="dn-remove-key">Remove stored key</button></div>
       <div class="dn-env" id="dn-key-env"></div>
       <div class="dn-secret" id="dn-secret"><strong>Generated API key, shown once</strong><code id="dn-secret-value"></code><button type="button" class="dn-btn" id="dn-copy-secret">Copy API key</button><p class="dn-copy">Store it in your remote client now. InferBridge will not display the stored secret again.</p></div>

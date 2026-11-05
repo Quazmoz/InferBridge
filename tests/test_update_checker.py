@@ -205,6 +205,7 @@ def test_beta_user_sees_beta_release_and_installed_artifact(tmp_path):
         store=store,
         installation_mode="installed",
         opener=opener,
+        platform="win32",
     ).check(force=True)
     assert result.status == "available"
     assert result.selected_artifact_type == "installer"
@@ -224,6 +225,7 @@ def test_portable_user_receives_portable_artifact(tmp_path):
         store=store,
         installation_mode="portable",
         opener=opener,
+        platform="win32",
     ).check(force=True)
     assert result.status == "available"
     assert result.selected_artifact_type == "portable"
@@ -333,3 +335,15 @@ def test_malformed_cached_manifest_is_cleared_and_refetched(tmp_path):
     assert len(calls) == 2
     assert "If-none-match" not in calls[0][2]
     assert store.load_cache().latest_checked_version == published
+
+
+def test_linux_installation_is_never_offered_a_windows_artifact(tmp_path):
+    store = UpdateStore(tmp_path)
+    store.save_preferences(UpdatePreferences(enabled=True))
+    opener, _calls = opener_for(newer_version(), "stable")
+    result = UpdateChecker(
+        store=store, installation_mode="installed", opener=opener, platform="linux"
+    ).check(force=True)
+    assert result.status == "available"
+    assert result.selected_artifact_type is None
+    assert "linux-SHA256SUMS.txt" in (result.compatibility_warning or "")

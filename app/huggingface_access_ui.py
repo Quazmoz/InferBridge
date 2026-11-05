@@ -228,6 +228,8 @@ function renderStatus(status) {
     : 'Remove the locally stored token';
   note.textContent = status?.persistence === 'windows_dpapi'
     ? 'The token is encrypted for this Windows user with DPAPI. The browser never stores or receives it.'
+    : status?.persistence === 'secret_service'
+      ? 'The token is kept in your desktop keyring (Secret Service). The browser never stores or receives it.'
     : status?.source === 'environment'
       ? 'HF_TOKEN is active as an advanced environment fallback. The browser never receives it.'
       : 'Tokens are sent only to this local InferBridge server and are never stored in the browser.';

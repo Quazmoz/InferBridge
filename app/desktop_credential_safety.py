@@ -27,6 +27,9 @@ def install_desktop_credential_safety() -> None:
         def remove_with_verified_delete(self: Any) -> bool:
             with self._lock:
                 existed = bool(self._memory_key) or self.key_path.exists()
+                keyring = getattr(self, "_keyring", None)
+                if keyring is not None:  # Linux Secret Service copy (app.linux_secrets).
+                    existed = keyring.clear() or existed
                 # Do not clear the live key until durable deletion succeeds. In
                 # particular, antivirus/indexer locks on Windows must be reported to the
                 # caller rather than silently leaving a credential behind on disk.

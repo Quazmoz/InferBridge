@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import threading
 import urllib.error
 import urllib.request
@@ -235,9 +236,11 @@ class UpdateChecker:
         opener: Callable[..., Any] = urllib.request.urlopen,
         now: Callable[[], datetime] = _utc_now,
         timeout_seconds: float = 4.0,
+        platform: str | None = None,
     ) -> None:
         self.store = store
         self.installation_mode = installation_mode
+        self.platform = sys.platform if platform is None else platform
         self.opener = opener
         self.now = now
         self.timeout_seconds = max(float(timeout_seconds), 0.1)
@@ -373,6 +376,20 @@ class UpdateChecker:
             DATA_SCHEMA_VERSION, manifest.data_compatibility
         )
         platform_ok, platform_warning = platform_compatibility(manifest)
+        if self.platform.startswith("linux") and schema_ok:
+            # Manifest artifacts are the Windows installer and ZIP. Never offer them to a
+            # Linux installation; point to the release page and its Linux SHA256SUMS.
+            return UpdateCheckResult(
+                status="available",
+                latest_version=manifest.version,
+                checked_at=checked_at,
+                manifest=manifest,
+                compatibility_warning=(
+                    "Download the Linux package (.deb, .rpm or portable .tar.gz) for this "
+                    "version from the release notes page and verify it with its "
+                    "linux-SHA256SUMS.txt file. Windows downloads do not run on Linux."
+                ),
+            )
         artifact = manifest.select_artifact(self.installation_mode)
         if not schema_ok or not platform_ok or artifact is None:
             return UpdateCheckResult(

@@ -1,6 +1,7 @@
 """Secure Hugging Face credentials and gated-model access preflight.
 
-Windows persists user-supplied tokens with DPAPI. Other platforms keep tokens in
+Windows persists user-supplied tokens with DPAPI. Linux uses the desktop keyring
+(Secret Service via ``secret-tool``) when available and otherwise keeps tokens in
 memory for the current process only. ``HF_TOKEN`` remains a read-only advanced
 fallback and is never returned by an API response.
 """
@@ -30,6 +31,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, ValidationError
 
 from app.brand import DISPLAY_NAME, LEGACY_DISPLAY_NAME
+from app.linux_secrets import SecretServiceStore
 from app.local_request_security import (
     matches_any_secret,
     require_safe_browser_origin,
@@ -157,10 +159,18 @@ class HuggingFaceCredentialStore:
         self.metadata_path = config_dir / "huggingface-access.json"
         self._memory_token: str | None = None
         self._lock = threading.RLock()
+        self._keyring = (
+            SecretServiceStore("huggingface-token", config_dir) if os.name != "nt" else None
+        )
+        self._keyring_refused = False
 
     @property
     def persistence(self) -> str:
-        return "windows_dpapi" if os.name == "nt" else "memory_only"
+        if os.name == "nt":
+            return "windows_dpapi"
+        if self._keyring and not self._keyring_refused and self._keyring.available():
+            return "secret_service"
+        return "memory_only"
 
     def _environment_token(self) -> str | None:
         value = (
@@ -242,6 +252,9 @@ class HuggingFaceCredentialStore:
         with self._lock:
             if os.name != "nt":
                 self._memory_token = clean
+                if self._keyring is not None:
+                    stored = self._keyring.store("InferBridge Hugging Face token", clean)
+                    self._keyring_refused = not stored
                 return
 
             self.token_path.parent.mkdir(parents=True, exist_ok=True)
@@ -259,7 +272,13 @@ class HuggingFaceCredentialStore:
             self._memory_token = clean
 
     def _stored_token(self) -> str | None:
-        if os.name != "nt" or not self.token_path.is_file():
+        if os.name != "nt":
+            try:
+                stored = self._keyring.lookup() if self._keyring else None
+                return self.validate_token(stored) if stored else None
+            except ValueError:
+                return None
+        if not self.token_path.is_file():
             return None
         try:
             encrypted = base64.b64decode(self.token_path.read_bytes(), validate=True)
@@ -293,7 +312,7 @@ class HuggingFaceCredentialStore:
     def remove(self) -> bool:
         with self._lock:
             had_memory_token = bool(self._memory_token)
-            removed_persisted_token = False
+            removed_persisted_token = bool(self._keyring and self._keyring.clear())
             try:
                 self.token_path.unlink()
                 removed_persisted_token = True
@@ -858,6 +877,8 @@ def register_huggingface_access_routes(app: FastAPI) -> None:
         message = (
             "Hugging Face token saved with Windows DPAPI."
             if status_payload.get("persistence") == "windows_dpapi"
+            else "Hugging Face token saved in your desktop keyring."
+            if status_payload.get("persistence") == "secret_service"
             else "Hugging Face token stored for this server session."
         )
         return _json_response({"status": status_payload, "message": message})
