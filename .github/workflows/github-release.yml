@@ -96,7 +96,7 @@ jobs:
           python scripts/verify_linux_release.py --directory dist/linux-release --version "${{ steps.version.outputs.version }}" --commit "$(git rev-parse HEAD)"
       - name: Attest build provenance
         if: ${{ !inputs.dry_run }}
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: dist/linux-release/*
       - uses: actions/upload-artifact@v7
@@ -210,7 +210,7 @@ jobs:
           retention-days: 14
 
       - name: Download the verified Linux release assets
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: inferbridge-${{ needs.linux.outputs.version }}-linux-x86_64
           path: artifacts/linux-release
