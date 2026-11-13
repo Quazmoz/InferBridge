@@ -237,8 +237,8 @@ def test_dev_ci_launches_the_installed_structural_msix_window():
 
 
 def test_packaged_client_loads_its_own_resource_index_before_any_xaml():
-    # MRT Core prefers the package-root resources.pri (logos only) to the client's
-    # [exe name].pri, which is what crashed the 1.1.1.0 Store submission at launch.
+    # In the package MRT Core defaults to the root resources.pri; XAML's file resources
+    # must still resolve beside the executable, so the client supplies its own index.
     app = (PROJECT / "App.xaml.cs").read_text(encoding="utf-8")
     constructor = app.split("public App()", 1)[1].split("protected override", 1)[0]
     assert "NativeDataPaths.HasPackageIdentity()" in constructor

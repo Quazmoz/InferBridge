@@ -2,7 +2,8 @@
 
 The package launches the native client from native/ and keeps the installed-mode
 PyInstaller engine at the root. Writes AppxManifest.xml and the scaled logo
-assets under layout/ (indexed into resources.pri by build_msix.ps1), and a
+assets under layout/ (indexed with the client's own PRI into resources.pri by
+build_msix.ps1), and a
 MakeAppx mapping file that points at the built files in place (no multi-gigabyte
 staging copy). scripts/build_msix.ps1 packs it.
 """
@@ -11,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import shutil
 import sys
 from pathlib import Path
 from xml.sax.saxutils import escape
@@ -49,8 +51,9 @@ def _asset_sizes() -> dict[str, tuple[int, int, float]]:
 
 
 ASSETS = _asset_sizes()
-LAYOUT = "layout"  # MakePri indexes only this folder: the manifest and Assets\.
+LAYOUT = "layout"  # MakePri indexes only this folder: the manifest, Assets\ and CLIENT_PRI.
 RESOURCES_PRI = "resources.pri"
+CLIENT_PRI = "InferBridge.Native.pri"
 
 
 def msix_version(version: str) -> str:
@@ -124,9 +127,8 @@ def native_entries(native_publish: Path) -> list[tuple[Path, str]]:
         "InferBridge.Native.runtimeconfig.json",
         "coreclr.dll",
         "Microsoft.UI.Xaml.dll",
-        # The client's XAML index. App.xaml.cs loads it explicitly because the
-        # package-root resources.pri (logos only) would otherwise shadow it.
-        "InferBridge.Native.pri",
+        # The client's XAML and WinUI string index; stage() merges it into the root PRI.
+        CLIENT_PRI,
     ):
         if not (native_publish / required).is_file():
             raise FileNotFoundError(f"Native publish output is missing {required}.")
@@ -217,6 +219,10 @@ def stage(
     layout.mkdir(parents=True, exist_ok=True)
     manifest = layout / "AppxManifest.xml"
     manifest.write_text(manifest_xml, encoding="utf-8")
+    # In a packaged process every default MRT lookup (WinUI's control strings included)
+    # reads the root resources.pri, never [exe name].pri. Logos alone there crash the
+    # client at launch, so MakePri's PRI indexer merges the client's index from this copy.
+    shutil.copyfile(native_publish / CLIENT_PRI, layout / CLIENT_PRI)
     entries = [(manifest, "AppxManifest.xml")]
     entries += [(path, f"Assets\\{path.name}") for path in write_assets(layout / "Assets")]
     # build_msix.ps1 runs MakePri over the layout before packing.

@@ -247,4 +247,7 @@ def test_stage_packs_resources_pri_for_scaled_logos(tmp_path):
     text = mapping.read_text(encoding="utf-8")
     assert '"resources.pri"' in text
     assert (tmp_path / "msix" / "layout" / "AppxManifest.xml").is_file()
+    # MakePri merges the client's index into the root PRI; the copy itself is not packed.
+    assert (tmp_path / "msix" / "layout" / "InferBridge.Native.pri").read_bytes() == b"MZ"
+    assert text.count("InferBridge.Native.pri") == 2  # source and native\ target, one line
     assert not (tmp_path / "msix" / "layout" / "mapping.txt").exists()
