@@ -131,7 +131,9 @@ def is_tls_certificate_error(exc: BaseException) -> bool:
 
 
 NPU_DRIVER_DOWNLOAD_URL = (
-    "https://www.intel.com/content/www/us/en/download/794734/intel-npu-driver-windows.html"
+    "https://github.com/intel/linux-npu-driver/releases"
+    if sys.platform.startswith("linux")
+    else "https://www.intel.com/content/www/us/en/download/794734/intel-npu-driver-windows.html"
 )
 NPU_COMPILE_REJECTED = "npu_compile_rejected"
 KV_CACHE_PRECISION_REJECTED = "kv_cache_precision_rejected"

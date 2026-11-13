@@ -125,7 +125,7 @@ modal.innerHTML = `
       <div class="dn-status-row"><span>API key</span><span class="dn-value" id="dn-key-status">Checking...</span></div>
       <div class="dn-status-row"><span>CORS</span><span class="dn-value" id="dn-cors-status">Checking...</span></div>
     </div><div id="dn-warnings"></div>
-      <div class="dn-warning">Windows Firewall may prompt after LAN mode is applied. Allow InferBridge only on trusted <strong>Private</strong> network profiles. Do not create an unrestricted Public-network rule.</div>
+      <div class="dn-warning">Your firewall decides whether other devices can connect: Windows Firewall may prompt after LAN mode is applied, and on Linux you open the port yourself (ufw or firewalld). Allow InferBridge only on trusted <strong>private</strong> networks. Do not create an unrestricted public-network rule.</div>
     </section>
     <div class="dn-message" id="dn-message" role="status" aria-live="polite"></div>
   </div>
@@ -146,9 +146,9 @@ function render() {
   key.disabled = Boolean(status.api_key_environment_override);
   $('#dn-generate').disabled = Boolean(status.api_key_environment_override);
   $('#dn-remove-key').disabled = Boolean(status.api_key_environment_override || !status.api_key_configured || status.api_key_source !== 'secure_store');
-  $('#dn-host-env').textContent = status.host_environment_override ? 'OV_LLM_HOST is set in the Windows environment and overrides the desktop LAN toggle.' : '';
-  $('#dn-key-env').textContent = status.api_key_environment_override ? 'OV_LLM_API_KEY is set in the Windows environment. The desktop UI will not replace or reveal it.' : '';
-  $('#dn-cors-env').textContent = status.cors_environment_override ? 'OV_LLM_CORS_ORIGINS is set in the Windows environment and overrides this field.' : '';
+  $('#dn-host-env').textContent = status.host_environment_override ? 'OV_LLM_HOST is set in the environment and overrides the desktop LAN toggle.' : '';
+  $('#dn-key-env').textContent = status.api_key_environment_override ? 'OV_LLM_API_KEY is set in the environment. The desktop UI will not replace or reveal it.' : '';
+  $('#dn-cors-env').textContent = status.cors_environment_override ? 'OV_LLM_CORS_ORIGINS is set in the environment and overrides this field.' : '';
   $('#dn-local').textContent = status.local_endpoint || 'Unavailable';
   $('#dn-lan-endpoints').textContent = status.lan_active ? ((status.lan_endpoints || []).join('\n') || 'LAN listener active, but no private IPv4 address was detected.') : 'Disabled';
   $('#dn-listener').textContent = `${status.active_bind_host} · ${status.host_source}${status.restart_required ? ' · restart pending' : ''}`;

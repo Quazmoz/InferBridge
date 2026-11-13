@@ -181,6 +181,8 @@ console.log(JSON.stringify({
   contOpen: setup.snippets('continue', open)[0][1],
   cli: setup.snippets('copilot-cli', secured)[0][1],
   cliQuote: setup.snippets('copilot-cli', quote)[0][1],
+  cliPosix: setup.snippets('copilot-cli', quote, true)[0],
+  cliPosixSteps: setup.steps('copilot-cli', secured, true).join(' '),
   env: setup.copilotEnv(open),
   vscode: setup.snippets('vscode-copilot', open),
   vscodeSecured: setup.snippets('vscode-copilot', secured)[0][1],
@@ -197,6 +199,13 @@ console.log(JSON.stringify({
     assert "SetEnvironmentVariable('COPILOT_PROVIDER_API_KEY'" not in out["cli"]
     assert "$env:COPILOT_PROVIDER_API_KEY" in out["cli"]
     assert "'o''brien'" in out["cliQuote"]
+    # Linux and macOS browsers get POSIX shell commands, never PowerShell.
+    label, posix = out["cliPosix"]
+    assert label == "Shell commands"
+    assert "export COPILOT_PROVIDER_BASE_URL='http://127.0.0.1:19437/v1'\n" in posix
+    assert "export COPILOT_MODEL='o'\\''brien'\n" in posix
+    assert "SetEnvironmentVariable" not in posix and "PowerShell" not in posix
+    assert "PowerShell" not in out["cliPosixSteps"] and "Windows" not in out["cliPosixSteps"]
     assert ["COPILOT_PROVIDER_MAX_PROMPT_TOKENS", "28672"] in out["env"]
     custom = json.loads(out["vscode"][0][1])[0]
     assert custom["vendor"] == "customendpoint"
@@ -222,4 +231,7 @@ def test_tool_setup_cards_are_accessible_and_reuse_the_self_test():
     assert "rel = 'noopener noreferrer'" in javascript
     # The browser never writes files or variables; one-click lives in the native app.
     assert "One-click in the Windows app" in javascript
+    # Copied curl commands follow the browser's OS: curl.exe/PowerShell only on Windows.
+    assert "${POSIX ? 'curl' : 'curl.exe'}" in javascript
+    assert "setup.snippets(client.id, v, POSIX)" in javascript
     assert connection_hub_ui.EXTENSION.javascript.startswith(connection_hub_ui.TOOL_SETUP_JS)

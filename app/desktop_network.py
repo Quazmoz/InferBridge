@@ -564,6 +564,9 @@ class DesktopNetworkService:
             warnings.append(
                 "Windows Firewall may prompt when LAN access starts. Allow InferBridge only on "
                 "trusted Private network profiles, not Public profiles."
+                if os.name == "nt"
+                else "A firewall (ufw, firewalld) may block other devices until you allow this "
+                "port. Allow it only from trusted private networks."
             )
         return DesktopNetworkStatusResponse(
             active_bind_host=active.settings.host,

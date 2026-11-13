@@ -36,7 +36,7 @@ The Quick configuration section provides:
 - model ID
 - API-key placeholder
 - a minimal OpenAI Python SDK example
-- a Windows-friendly `curl.exe` model-list request
+- a model-list request for the shell of the machine showing the page: `curl.exe` for PowerShell in a Windows browser, plain `curl` in a Linux or macOS browser (the rerank example and Copilot CLI variables follow the same rule)
 
 These generic values are intended for Open WebUI, n8n, scripts, and other applications that support a custom OpenAI-compatible Base URL. Existing product-specific setup notes remain in [External Client Integrations](INTEGRATIONS.md).
 

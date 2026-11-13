@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import os
 import threading
 import webbrowser
 from collections.abc import Callable
@@ -146,6 +147,8 @@ class TrayMenuMixin:
                 self._toggle_startup,
                 checked=lambda _item: self._startup_enabled(),
                 enabled=self._enabled("start_with_windows"),
+                # Linux: `inferbridge autostart enable` or `inferbridge service enable`.
+                visible=os.name == "nt",
             ),
             # Microsoft Store installs update only through the Store (Store Policies 10.1.5 and 10.2).
             Item("Check for Updates", self._action(self.open_updates), visible=not is_packaged()),
@@ -330,7 +333,7 @@ class TrayMenuMixin:
         show_dialog(
             APP_TITLE,
             f"{APP_TITLE} {__version__}\n\n"
-            "A local-first OpenVINO GenAI server for Windows. The tray controls only the "
+            "A local-first OpenVINO GenAI server. The tray controls only the "
             "server process it started. Prompts and chat history are not included in diagnostics. "
             "Use Help > Send Feedback for the simple support form, or Help > GitHub Issues for "
             "technical discussion. "

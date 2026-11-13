@@ -218,7 +218,7 @@ understands is refused rather than damaged.
 
 ## Update
 
-Check with `inferbridge update-check`, or enable update checks under **About** in the UI.
+Check with `inferbridge update-check` (the UI does not check for updates on Linux).
 Quit InferBridge (and `inferbridge service disable` if you use the service), then:
 
 - **.deb / .rpm:** `sudo apt install ./InferBridge-<new>-linux-x86_64.deb` or

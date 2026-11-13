@@ -39,6 +39,22 @@ def test_hardware_without_plugin_is_distinct_from_no_npu():
     assert result.fallback_device == "CPU"
 
 
+def test_linux_npu_without_plugin_names_the_doctor_finding_and_command():
+    data = snapshot(devices=["CPU"])
+    data["os"] = {"system": "Linux", "release": "6.8.0"}
+    finding = "Intel NPU user-space driver missing: Level Zero loader (libze_loader.so.1)"
+    result = classify_npu_readiness(
+        data,
+        pnp_devices=[
+            {"name": "Intel NPU (Meteor Lake): kernel driver intel_vpu", "status": "ok"},
+            {"name": finding, "status": "error"},
+        ],
+    )
+    assert result.state is NpuState.HARDWARE_PLUGIN_UNAVAILABLE
+    assert finding in result.explanation and "kernel driver" not in result.explanation
+    assert "inferbridge doctor" in result.explanation and "Windows" not in result.explanation
+
+
 def test_mock_mode_never_claims_hardware_support():
     result = classify_npu_readiness(snapshot(mock=True, devices=["CPU", "NPU"]), pnp_devices=[])
     assert result.state is NpuState.MOCK

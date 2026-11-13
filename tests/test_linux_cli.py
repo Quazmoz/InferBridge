@@ -72,7 +72,9 @@ def test_install_upgrade_and_uninstall_leave_only_user_data(env, tmp_path):
     assert link.resolve() == (old / "InferBridge").resolve()
     assert linux_cli.install_kind(old) == "user"
     assert _cli(old, "service", "install") == 0
+    assert not linux_cli.starts_at_login()
     assert _cli(old, "autostart", "enable") == 0
+    assert linux_cli.starts_at_login()  # what the UI's "Start at login" card reports
     unit = home / ".config/systemd/user/inferbridge.service"
     assert str(old) in unit.read_text()
 

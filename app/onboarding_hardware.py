@@ -6,9 +6,11 @@ import json
 import os
 import platform
 import subprocess
+import sys
 from collections.abc import Mapping
 from typing import Any
 
+from app.errors import NPU_DRIVER_DOWNLOAD_URL as INTEL_NPU_SUPPORT_URL
 from app.hardware_advisor.common import utc_now
 from app.onboarding_models import (
     ItemStatus,
@@ -16,10 +18,6 @@ from app.onboarding_models import (
     NpuState,
     SystemItem,
     SystemScanResponse,
-)
-
-INTEL_NPU_SUPPORT_URL = (
-    "https://www.intel.com/content/www/us/en/download/794734/intel-npu-driver-windows.html"
 )
 
 
@@ -84,6 +82,25 @@ def detect_windows_npu_hardware() -> list[dict[str, str]]:
     ]
 
 
+def detect_linux_npu_hardware(available: list[str]) -> list[dict[str, str]]:
+    """Linux doctor findings about an Intel NPU that is present; empty when there is none."""
+
+    # os.name: the doctor reads POSIX accounts and /sys, so a faked sys.platform is not enough.
+    if not sys.platform.startswith("linux") or os.name != "posix":
+        return []
+    from runtime import linux_doctor
+
+    try:
+        findings = linux_doctor.diagnose(openvino_devices=available)["findings"]
+    except OSError:
+        return []
+    return [
+        {"name": finding["title"], "status": finding["status"]}
+        for finding in findings
+        if finding["id"].startswith("npu-")
+    ]
+
+
 def classify_npu_readiness(
     snapshot: Mapping[str, Any], *, pnp_devices: list[dict[str, str]] | None = None
 ) -> NpuReadinessResponse:
@@ -125,14 +142,24 @@ def classify_npu_readiness(
             support_url=INTEL_NPU_SUPPORT_URL,
         )
 
-    pnp = detect_windows_npu_hardware() if pnp_devices is None else pnp_devices
+    system = str(snapshot.get("os", {}).get("system") or platform.system()).lower()
+    pnp = pnp_devices
+    if pnp is None:
+        pnp = detect_windows_npu_hardware() or detect_linux_npu_hardware(available)
     if pnp:
+        problems = "; ".join(
+            item["name"] for item in pnp if item.get("status") in {"error", "warning"}
+        )
         return NpuReadinessResponse(
             state=NpuState.HARDWARE_PLUGIN_UNAVAILABLE,
             usable=False,
             title="NPU hardware appears present but OpenVINO cannot use it",
             explanation=(
-                "Windows reports NPU-class hardware, but the active OpenVINO runtime does not "
+                "Linux reports an Intel NPU, but the active OpenVINO runtime does not list an "
+                f"NPU device{': ' + problems if problems else ''}. Run `inferbridge doctor` in "
+                "a terminal for the exact fix commands, then rescan."
+                if system == "linux"
+                else "Windows reports NPU-class hardware, but the active OpenVINO runtime does not "
                 "list an NPU device. Check the Intel NPU driver, supported platform, and the "
                 "installed OpenVINO release, then rescan."
             ),
@@ -158,7 +185,6 @@ def classify_npu_readiness(
             support_url=INTEL_NPU_SUPPORT_URL,
         )
 
-    system = str(snapshot.get("os", {}).get("system") or platform.system()).lower()
     state = NpuState.NOT_DETECTED if system == "windows" else NpuState.NOT_EXPECTED
     return NpuReadinessResponse(
         state=state,

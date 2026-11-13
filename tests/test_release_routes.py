@@ -92,7 +92,10 @@ def test_linux_bundle_never_offers_windows_updates(paths, monkeypatch):
     app = FastAPI()
     register_release_routes(app, paths=paths)
     with TestClient(app, base_url="http://127.0.0.1:8000") as client:
-        assert client.get("/desktop/release/status").json()["update_checks"]["enabled"] is False
+        status = client.get("/desktop/release/status").json()
+        assert status["update_checks"]["enabled"] is False
+        # The UI shows this instead of an Enable button the server would refuse.
+        assert "inferbridge update-check" in status["update_message"]
         result = client.post("/desktop/release/check", headers=LOCAL_UI)
         assert result.json()["status"] == "disabled"
         assert "Linux" in result.json()["message"]

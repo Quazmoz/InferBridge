@@ -576,6 +576,12 @@ def command_autostart(root: Path, args: argparse.Namespace) -> int:
     return 0
 
 
+def starts_at_login() -> bool:
+    """Autostart entry or enabled user service. File checks only: cheap enough to poll."""
+    wants = config_home() / "systemd" / "user" / "default.target.wants" / SERVICE_NAME
+    return autostart_path().exists() or wants.is_symlink()
+
+
 # ------------------------------------------------------------- install/uninstall
 
 

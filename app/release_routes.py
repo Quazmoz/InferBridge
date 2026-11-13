@@ -21,7 +21,10 @@ from app.update_checker import (
 from app.version import DATA_SCHEMA_VERSION
 
 STORE_UPDATE_MESSAGE = "Microsoft Store delivers updates for this installation."
-LINUX_UPDATE_MESSAGE = "Linux development builds are upgraded manually. Download a qualified Linux archive and preserve the existing data directory."
+LINUX_UPDATE_MESSAGE = (
+    "On Linux, run `inferbridge update-check` in a terminal to look for a newer release, then "
+    "install its .deb, .rpm or portable archive over this one. Models and settings are kept."
+)
 
 _LOOPBACK_CLIENTS = frozenset({"127.0.0.1", "::1", "localhost", "testclient"})
 
@@ -44,8 +47,10 @@ def register_release_routes(app, *, paths, packaged: bool | None = None) -> None
     store = UpdateStore(paths.config_dir)
     store_managed = is_packaged() if packaged is None else packaged
     linux_bundle = (paths.resource_root / "linux-build.json").is_file()
+    update_message = LINUX_UPDATE_MESSAGE if linux_bundle else None
     if store_managed:
         installation_mode = "store"
+        update_message = STORE_UPDATE_MESSAGE
     else:
         installation_mode = "portable" if paths.portable else "installed"
     release_check_lock = asyncio.Lock()
@@ -64,6 +69,9 @@ def register_release_routes(app, *, paths, packaged: bool | None = None) -> None
             "installation_mode": installation_mode,
             "data_schema_version": DATA_SCHEMA_VERSION,
             "update_checks": preferences.model_dump(mode="json"),
+            # Set when this installation is updated outside the UI; the UI shows it instead
+            # of update-check controls that would be refused.
+            "update_message": update_message,
             "latest_checked_version": (
                 cache.latest_checked_version if cache_matches_channel else None
             ),

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -194,6 +195,10 @@ class DesktopOperationsService:
             )
         except Exception:
             startup = False
+        if sys.platform.startswith("linux"):
+            from app.linux_cli import starts_at_login
+
+            startup = starts_at_login()
         ready = self.manager.loading_count() == 0
         return DesktopOperationsStatus(
             application_version=__version__,

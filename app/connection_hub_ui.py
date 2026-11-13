@@ -54,11 +54,13 @@ function fields(id, v) {
     }
     return rows;
 }
-function steps(id, v) {
+function steps(id, v, posix = false) {
     const key = v.auth ? 'Authentication is on: replace YOUR_INFERBRIDGE_API_KEY with your own key. InferBridge never writes it.' : 'Authentication is off, so the API key value is not-required.';
     return ({
-        'continue': ['One-click setup with backup and Undo is in the InferBridge Windows app (Local API page). In the browser, copy the entry below.', 'Open Continue\u2019s config selector, select the gear next to Local Config to open config.yaml.', 'Paste the entry under models: and save. Continue reloads automatically.', key],
-        'copilot-cli': ['One-click setup with Undo is in the InferBridge Windows app (Local API page). In the browser, copy the commands below.', 'Run them in PowerShell, then open a new terminal and run copilot.', v.auth ? 'In that terminal run $env:COPILOT_PROVIDER_API_KEY = "<your key>". InferBridge never stores it.' : 'Authentication is off, so no API key variable is needed.'],
+        'continue': [posix ? 'Copy the entry below.' : 'One-click setup with backup and Undo is in the InferBridge Windows app (Local API page). In the browser, copy the entry below.', 'Open Continue\u2019s config selector, select the gear next to Local Config to open config.yaml.', 'Paste the entry under models: and save. Continue reloads automatically.', key],
+        'copilot-cli': posix
+            ? ['Copy the commands below.', 'Add them to your shell profile (~/.bashrc, ~/.zshrc or ~/.profile), then open a new terminal and run copilot.', v.auth ? 'In that terminal run export COPILOT_PROVIDER_API_KEY="<your key>". InferBridge never stores it.' : 'Authentication is off, so no API key variable is needed.']
+            : ['One-click setup with Undo is in the InferBridge Windows app (Local API page). In the browser, copy the commands below.', 'Run them in PowerShell, then open a new terminal and run copilot.', v.auth ? 'In that terminal run $env:COPILOT_PROVIDER_API_KEY = "<your key>". InferBridge never stores it.' : 'Authentication is off, so no API key variable is needed.'],
         'vscode-copilot': ['In VS Code run Chat: Manage Language Models from the Command Palette.', 'Select Add Models \u2192 Custom Endpoint and enter a group name such as InferBridge.', 'Enter a display name and the API key value below, and choose the Chat Completions API type.', 'VS Code opens chatLanguageModels.json: paste the entry below and save.', 'Pick the model in the chat model picker. Restart VS Code if it does not appear.'],
         'copilot-app': ['Open the GitHub Copilot app settings and select Model providers.', 'Select Add provider and choose OpenAI-compatible (any OpenAI-compatible HTTP endpoint).', 'Paste the Base URL and API key below, then select Add provider.', 'Choose the model ID below in a new session.'],
         'cline': ['Open Cline settings and set API Provider to OpenAI Compatible.', 'Paste the Base URL, API key and Model ID below.', 'Under Model Configuration set Context Window and Max Output Tokens to the values below.', 'Use Verify or start a task to confirm the connection.'],
@@ -67,6 +69,7 @@ function steps(id, v) {
 }
 const q = value => JSON.stringify(value);
 const ps = value => `'${String(value).replace(/'/g, "''")}'`;
+const sh = value => `'${String(value).replace(/'/g, "'\\''")}'`;
 function continueSnippet(v) {
     const lines = ['models:', `  ${START}`, `  - name: ${q(MANAGED)}`, '    provider: openai', `    model: ${q(v.model)}`, `    apiBase: ${q(v.base)}`, `    apiKey: ${q(v.key)}`, '    roles:', '      - chat', '      - edit', '      - apply'];
     if (v.context) { lines.push('    defaultCompletionOptions:', `      contextLength: ${v.context}`); if (v.output) lines.push(`      maxTokens: ${v.output}`); }
@@ -79,7 +82,13 @@ function copilotEnv(v) {
     if (v.output) plan.push(['COPILOT_PROVIDER_MAX_OUTPUT_TOKENS', String(v.output)]);
     return plan;
 }
-function copilotCli(v) {
+function copilotCli(v, posix = false) {
+    if (posix) {
+        let text = '# Add to ~/.bashrc, ~/.zshrc or ~/.profile, then open a new terminal.\n';
+        for (const [name, value] of copilotEnv(v)) text += `export ${name}=${sh(value)}\n`;
+        if (v.auth) text += "# In each terminal: export COPILOT_PROVIDER_API_KEY='YOUR_INFERBRIDGE_API_KEY'\n";
+        return text;
+    }
     let text = '# Run in PowerShell, then open a new terminal.\n';
     for (const [name, value] of copilotEnv(v)) text += `[Environment]::SetEnvironmentVariable(${ps(name)}, ${ps(value)}, 'User')\n`;
     if (v.auth) text += "# In each terminal: $env:COPILOT_PROVIDER_API_KEY = 'YOUR_INFERBRIDGE_API_KEY'\n";
@@ -95,9 +104,9 @@ function vscodeDeprecated(v) {
     model.requiresAPIKey = v.auth;
     return '// Deprecated: github.copilot.chat.customOAIModels. Prefer Custom Endpoint.\n"github.copilot.chat.customOAIModels": ' + JSON.stringify({[v.model]: model}, null, 2) + '\n';
 }
-function snippets(id, v) {
+function snippets(id, v, posix = false) {
     if (id === 'continue') return [['config.yaml entry', continueSnippet(v)]];
-    if (id === 'copilot-cli') return [['PowerShell commands', copilotCli(v)]];
+    if (id === 'copilot-cli') return [[posix ? 'Shell commands' : 'PowerShell commands', copilotCli(v, posix)]];
     if (id === 'vscode-copilot') return [['chatLanguageModels.json entry (Custom Endpoint)', vscodeCustomEndpoint(v)], ['Deprecated: settings.json customOAIModels (older VS Code only)', vscodeDeprecated(v)]];
     return [];
 }
@@ -108,7 +117,7 @@ function agenticNote(context) {
     if (context < 131072) return {warning:true, text:`Context window ${n} tokens. Fine for chat; agentic tools also need tool calling, and GitHub recommends at least 128k tokens for Copilot CLI.`};
     return {warning:false, text:`Context window ${n} tokens. Agentic tools also need a model that supports tool calling.`};
 }
-window.__ovllmToolSetup = Object.freeze({clients, values, fields, steps, snippets, copilotEnv, agenticNote});
+window.__ovllmToolSetup = Object.freeze({clients, values, fields, steps, snippets, copilotEnv, agenticNote, sh});
 })();
 """
 
@@ -118,6 +127,9 @@ CONNECTION_HUB_JS = r"""
 if (window.__ovllmConnectionHubInstalled) return;
 window.__ovllmConnectionHubInstalled = true;
 const META_PATH = '/internal/connection-hub';
+// Copied commands run in a shell on the machine showing this page (over LAN that is not
+// the server's OS): PowerShell on Windows, a POSIX shell on Linux and macOS.
+const POSIX = !/win/i.test(navigator.platform || navigator.userAgent || '');
 const TEST_PATH = '/internal/connection-hub/self-test';
 const TESTS = [
     ['models', 'Model listing'],
@@ -322,7 +334,7 @@ function pythonSnippet() {
 function curlSnippet() {
     const base = metadata?.base_url || 'http://127.0.0.1:8000/v1';
     const auth = metadata?.authentication?.required ? ' -H "Authorization: Bearer YOUR_INFERBRIDGE_API_KEY"' : '';
-    return `curl.exe "${base}/models"${auth}`;
+    return `${POSIX ? 'curl' : 'curl.exe'} "${base}/models"${auth}`;
 }
 let rerankModel = '';
 function rerankSnippet() {
@@ -331,6 +343,7 @@ function rerankSnippet() {
     const body = JSON.stringify({model: rerankModel || 'bge-reranker-base', query: 'What is the capital of France?', documents: ['Paris is the capital of France.', 'Bananas are yellow.'], top_n: 2});
     // Pipe the JSON on stdin: Windows PowerShell 5.1 strips the inner double quotes
     // from a JSON argument passed to a native program (curl.exe -d '{"a":1}' sends {a:1}).
+    if (POSIX) return `curl -sS "${base}/rerank" -H "Content-Type: application/json"${auth} -d ${window.__ovllmToolSetup.sh(body)}`;
     return `'${body.replace(/'/g, "''")}' | curl.exe -sS "${base}/rerank" -H "Content-Type: application/json"${auth} --data-binary '@-'`;
 }
 async function loadRerankSlot() {
@@ -389,7 +402,7 @@ function renderTools() {
     toolCopies = [];
     container.replaceChildren();
     $('#ch-tools-hint').textContent = v
-        ? `Ready. Settings use ${v.model} at ${v.base}. One-click Continue and Copilot CLI setup (with preview and Undo) is in the InferBridge Windows app.`
+        ? `Ready. Settings use ${v.model} at ${v.base}.${POSIX ? '' : ' One-click Continue and Copilot CLI setup (with preview and Undo) is in the InferBridge Windows app.'}`
         : 'Not ready: the engine must be available and a loaded chat model selected above.';
     const text = (tag, value, className = '') => { const node = document.createElement(tag); node.textContent = value; if (className) node.className = className; return node; };
     const copyButton = (value, label) => {
@@ -405,7 +418,7 @@ function renderTools() {
         card.setAttribute('aria-labelledby', headingId);
         const heading = text('h5', client.title); heading.id = headingId; card.appendChild(heading);
         const badges = document.createElement('div'); badges.className = 'ch-badges';
-        badges.append(text('span', v ? 'Ready' : 'Not ready', `ch-badge ${v ? 'ready' : 'warn'}`), text('span', client.native ? 'One-click in the Windows app' : 'Guided setup', 'ch-badge'));
+        badges.append(text('span', v ? 'Ready' : 'Not ready', `ch-badge ${v ? 'ready' : 'warn'}`), text('span', client.native && !POSIX ? 'One-click in the Windows app' : 'Guided setup', 'ch-badge'));
         card.append(badges, text('p', client.summary));
         if (v) {
             if (client.id !== 'generic') { const note = setup.agenticNote(v.context); card.appendChild(text('p', note.text, note.warning ? 'ch-tool-warn' : '')); }
@@ -417,9 +430,9 @@ function renderTools() {
             }
             card.appendChild(config);
             const list = document.createElement('ol'); list.setAttribute('aria-label', `${client.title} setup steps`);
-            setup.steps(client.id, v).forEach(step => list.appendChild(text('li', step)));
+            setup.steps(client.id, v, POSIX).forEach(step => list.appendChild(text('li', step)));
             card.appendChild(list);
-            for (const [title, code] of setup.snippets(client.id, v)) {
+            for (const [title, code] of setup.snippets(client.id, v, POSIX)) {
                 card.appendChild(text('p', title));
                 const wrap = document.createElement('div'); wrap.className = 'ch-code-wrap';
                 wrap.append(text('pre', code, 'ch-code'), copyButton(code, `${title} for ${client.title}`));
