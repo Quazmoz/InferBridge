@@ -11,6 +11,13 @@ public partial class App : Application
 
     public App()
     {
+        // The Store package's root resources.pri indexes only the logos, but MRT Core
+        // prefers it to this app's own index beside the executable, so no XAML resolves
+        // and the app dies at launch. Unpackaged installs find [exe name].pri by default.
+        string resources = Path.ChangeExtension(Environment.ProcessPath ?? "", ".pri");
+        if (NativeDataPaths.HasPackageIdentity() && File.Exists(resources))
+            ResourceManagerRequested += (_, args) => args.CustomResourceManager =
+                new Microsoft.Windows.ApplicationModel.Resources.ResourceManager(resources);
         InitializeComponent();
     }
 

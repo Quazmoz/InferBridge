@@ -124,6 +124,9 @@ def native_entries(native_publish: Path) -> list[tuple[Path, str]]:
         "InferBridge.Native.runtimeconfig.json",
         "coreclr.dll",
         "Microsoft.UI.Xaml.dll",
+        # The client's XAML index. App.xaml.cs loads it explicitly because the
+        # package-root resources.pri (logos only) would otherwise shadow it.
+        "InferBridge.Native.pri",
     ):
         if not (native_publish / required).is_file():
             raise FileNotFoundError(f"Native publish output is missing {required}.")

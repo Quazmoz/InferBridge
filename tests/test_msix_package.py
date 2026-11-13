@@ -22,6 +22,7 @@ NATIVE_RUNTIME = (
     "InferBridge.Native.runtimeconfig.json",
     "coreclr.dll",
     "Microsoft.UI.Xaml.dll",
+    "InferBridge.Native.pri",
 )
 
 
@@ -150,6 +151,12 @@ def test_stage_rejects_incomplete_native_or_engine_payload_without_partial_outpu
         _stage(tmp_path, output="staging", native_publish=native_ok)
     assert not (tmp_path / "staging").exists()
     (native_ok / "Microsoft.UI.Xaml.dll").write_bytes(b"MZ")
+
+    # Without its own resource index the packaged client cannot load any XAML.
+    (native_ok / "InferBridge.Native.pri").unlink()
+    with pytest.raises(FileNotFoundError, match="InferBridge.Native.pri"):
+        _stage(tmp_path, output="staging", native_publish=native_ok)
+    (native_ok / "InferBridge.Native.pri").write_bytes(b"mrm_pri2")
 
     (dist / "_internal" / "python311.dll").unlink()
     with pytest.raises(FileNotFoundError, match="Python runtime DLL"):
