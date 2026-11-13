@@ -4,7 +4,8 @@ param(
     [string]$EvidenceDirectory = "",
     [int]$TimeoutSeconds = 300,
     [switch]$RunCertificationKit,
-    [switch]$RequireFreshProfile
+    [switch]$RequireFreshProfile,
+    [switch]$WindowOnly
 )
 
 # Installed-package smoke test for the Store MSIX: signs a copy with a throwaway
@@ -16,6 +17,8 @@ param(
 # It never deletes user data; %USERPROFILE%\InferBridgeStoreData is only read.
 # -RequireFreshProfile fails closed before installation if the profile already
 # contains Store data, rather than reporting a reused profile as first-run evidence.
+# -WindowOnly stops once the packaged native window has stayed open: the launch gate
+# for a structural package whose engine is a placeholder (no engine, relaunch or WACK).
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
@@ -181,6 +184,16 @@ try {
     } "the native InferBridge window"
     Write-Host "Native window visible: '$($Window.MainWindowTitle)' (PID $($Window.Id))"
     if ($Window.MainWindowTitle -ne "InferBridge") { throw "Unexpected window title '$($Window.MainWindowTitle)'." }
+
+    if ($WindowOnly) {
+        # A launch crash can show a window for a moment; it must still be there.
+        Start-Sleep -Seconds 15
+        $Window.Refresh()
+        if ($Window.HasExited) { throw "The native window closed within 15 s of launch." }
+        Save-Screenshot "native-window-only.png"
+        Write-Host "MSIX window-only smoke test passed: the packaged native window stays open."
+        return
+    }
 
     # The window starts the bundled engine; it must publish verified session metadata.
     $Metadata = Join-Path $env:USERPROFILE "InferBridgeStoreData\desktop-instance.json"

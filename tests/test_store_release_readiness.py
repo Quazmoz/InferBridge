@@ -216,3 +216,21 @@ def test_msix_cleanup_continues_after_package_uninstall_failure():
         "if ($PackageCleanupFailure)"
     )
     assert "if ($PackageCleanupFailure) { throw $PackageCleanupFailure }" in cleanup
+
+
+def test_dev_ci_launches_the_installed_structural_msix_window():
+    # The 2026-10-30 Store rejection was a launch crash that no source check could see.
+    script = (ROOT / "scripts" / "smoke_test_msix.ps1").read_text(encoding="utf-8")
+    gate = script.split("if ($WindowOnly) {", 1)[1].split("\n    }\n", 1)[0]
+    assert "if ($Window.HasExited) { throw" in gate
+    assert gate.rstrip().endswith("return")
+    assert (
+        script.index('"the native InferBridge window"')
+        < script.index("if ($WindowOnly) {")
+        < script.index("$Session = Wait-Until")
+    )
+    workflow = (ROOT / ".github" / "workflows" / "python312-windows.yml").read_text(
+        encoding="utf-8"
+    )
+    launch = workflow.split("smoke_test_msix.ps1 -Package $package", 1)[1].splitlines()[0]
+    assert "-WindowOnly" in launch
