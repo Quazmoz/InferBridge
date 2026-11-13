@@ -161,4 +161,12 @@ jobs:
         shell: powershell
         run: |
           $package = Join-Path $env:RUNNER_TEMP 'inferbridge-msix-out\InferBridge-1.1.0-windows-x64.msix'
-          .\scripts\smoke_test_msix.ps1 -Package $package -EvidenceDirectory (Join-Path $env:RUNNER_TEMP 'inferbridge-msix-window') -WindowOnly -TimeoutSeconds 90
+          $evidence = Join-Path $env:RUNNER_TEMP 'inferbridge-msix-window'
+          try {
+            .\scripts\smoke_test_msix.ps1 -Package $package -EvidenceDirectory $evidence -WindowOnly -TimeoutSeconds 90
+          } catch {
+            # Nothing is uploaded from this workflow; put the crash events in the log.
+            $events = Join-Path $evidence 'store-activation-events.json'
+            if (Test-Path -LiteralPath $events) { Get-Content -LiteralPath $events -Raw }
+            throw
+          }
