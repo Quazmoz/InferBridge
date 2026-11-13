@@ -12,6 +12,8 @@ The Store previously rejected InferBridge because its primary interface was a we
 | `InferBridge.exe` | The installed-mode PyInstaller engine and tray. The native window starts it on launch; it owns the OpenVINO server, models and lifecycle. |
 | `Assets\*.png`, `resources.pri` | Store logo, app icon, small/medium/wide/large tiles and splash screen at 100/125/150/200/400% scale, plus plain and `altform-unplated` taskbar icons (16–256 px). They are generated from `scripts/generate_brand_assets.py` by `scripts/msix_package.py` and indexed with MakePri. |
 
+The root `resources.pri` also carries the native client's own index (`native\InferBridge.Native.pri`: its XAML and WinUI's control strings). In a packaged process every default resource lookup reads the root `resources.pri`, so `scripts/msix_package.py` copies the client's PRI into the MakePri layout to be merged. A root index holding only logos crashes the client at launch; see [the 2026-10-30 rejection](#certification-rejection-2026-10-30).
+
 `scripts/build_msix.ps1` publishes the native client (or takes `-NativePublishDirectory`), `scripts/msix_package.py` validates both payloads and fills `packaging/msix/AppxManifest.xml`, and MakeAppx packs an unsigned `InferBridge-<version>-windows-x64.msix`.
 
 Behavior that differs from the standalone installer build:
@@ -96,8 +98,12 @@ A signed smoke-test copy must **not** be submitted; the Store submission
 must stay unsigned.
 No GitHub Actions workflow builds a releasable package. On `dev`, the Windows
 source qualification workflow packs a *structural* MSIX from the real WinUI
-publish and a placeholder engine with the Windows SDK's MakePri and MakeAppx,
+publish and a stand-in engine with the Windows SDK's MakePri and MakeAppx,
 which validates the manifest, every logo and `resources.pri`; it is never uploaded.
+The same job then installs that package with a temporary certificate, activates it
+through its package identity and requires the native window to stay open
+(`smoke_test_msix.ps1 -WindowOnly`). That catches a launch crash in the client; it
+does not start the real engine, exercise first run, or run WACK.
 The Azure build validates source and package structure, **not** installed MSIX
 behavior, Store certification, or real inference. A `dev` or `beta` MSIX is an
 evaluation candidate only; submit only a reviewed stable-version package
@@ -177,21 +183,36 @@ exception `0xC000027B` (stowed exception), and offset `0x3A9DBD`. The event
 does **not** contain the inner stowed error or a stack trace; it does not establish
 which application XAML statement, if any, caused the fault.
 
-The **module, version, exception and offset exactly match** Microsoft
-[microsoft-ui-xaml#12169](https://github.com/microsoft/microsoft-ui-xaml/issues/12169),
-which affected several Microsoft applications on Windows 11 26H2. That issue
-concerns a *framework-dependent* runtime path, whereas the InferBridge MSIX
-**bundles its own** XAML.dll under `native\`: a shared runtime defect is a
-credible hypothesis, not a demonstrated identical root cause. The other
-reporter's recovery after a restart had no confirmed causal explanation.
+**Root cause (found 2026-11-13).** The package launches
+`native\InferBridge.Native.exe`, whose XAML and WinUI control strings are indexed in
+`native\InferBridge.Native.pri`. On 2026-10-28 (`9e634ba`) the package gained a root
+`resources.pri` that indexed only the logos. For a process with package identity,
+MRT Core's default `ResourceManager` uses the package-root `resources.pri` whenever
+it exists and falls back to `[exe name].pri` only when it does not, so the client
+could no longer find its own resources. The last installed-package launch in CI
+ran on 2026-10-20, before that change.
 
-The `dev` remediation candidate upgrades `Microsoft.WindowsAppSDK` from
-`2.5.1` to Microsoft's stable `2.6.4` (released 2026-10-27), disallows
-trimming and single-file publication, and requires the self-contained
-`Microsoft.UI.Xaml.dll` in package staging. **This is not yet proof that
-the Store crash is fixed**: qualify the updated *installed MSIX* before
-resubmitting. If it persists, collect the stowed exception with a private
-user-mode dump/WinDbg instead of guessing at a XAML control.
+An installed launch of the structural MSIX on `windows-2022` reproduced the
+certification signature with Windows App SDK `2.6.4` (`Microsoft.UI.Xaml.dll`
+`3.3.0.0`, `0xC000027B`). The inner exception was `COMException 0x80073B1F`
+"ResourceMap Not Found" from `NavigationView.set_SelectedItem` in the `MainWindow`
+constructor: WinUI's controls create their own default `ResourceManager` for their
+strings. The same build launched normally unpackaged.
+
+The earlier attribution to
+[microsoft-ui-xaml#12169](https://github.com/microsoft/microsoft-ui-xaml/issues/12169)
+and Windows 11 26H2 was wrong, and the `2.5.1` to `2.6.4` SDK upgrade did not fix
+the crash: `0xC000027B` in `Microsoft.UI.Xaml.dll` is how any unhandled XAML-thread
+failure is reported.
+
+The fix: `scripts/msix_package.py` copies the client's PRI into the MakePri layout,
+so the root `resources.pri` carries the logos **and** the client's maps, and refuses
+a native payload without that PRI. `App` also gives XAML the client's own index so
+WinUI's file resources resolve beside the executable. With both, the installed
+structural MSIX opens the `InferBridge` window and stays open
+([run 43477221244](https://github.com/Quazmoz/InferBridge/actions/runs/43477221244)).
+That run used a stand-in engine. **Still required before resubmitting:** the full
+installed smoke test with the real engine and WACK on a stable-version candidate.
 
 On a Windows machine, extract the Microsoft ZIP and inspect the actual event log:
 
