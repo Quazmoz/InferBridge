@@ -104,6 +104,9 @@ The same job then installs that package with a temporary certificate, activates 
 through its package identity and requires the native window to stay open
 (`smoke_test_msix.ps1 -WindowOnly`). That catches a launch crash in the client; it
 does not start the real engine, exercise first run, or run WACK.
+For those, dispatch the manual **Packaged Windows smoke** workflow with `store_msix`
+enabled: it packs the Store MSIX from its release build, runs the full installed
+smoke test and WACK, and uploads screenshots and the WACK report as evidence.
 The Azure build validates source and package structure, **not** installed MSIX
 behavior, Store certification, or real inference. A `dev` or `beta` MSIX is an
 evaluation candidate only; submit only a reviewed stable-version package
@@ -211,8 +214,21 @@ a native payload without that PRI. `App` also gives XAML the client's own index 
 WinUI's file resources resolve beside the executable. With both, the installed
 structural MSIX opens the `InferBridge` window and stays open
 ([run 43477221244](https://github.com/Quazmoz/InferBridge/actions/runs/43477221244)).
-That run used a stand-in engine. **Still required before resubmitting:** the full
-installed smoke test with the real engine and WACK on a stable-version candidate.
+That run used a stand-in engine.
+
+The complete package was then built from `dev` (`73ad0c6`, package version `1.1.1.0`)
+and installed on `windows-2022` ([run 43574626614](https://github.com/Quazmoz/InferBridge/actions/runs/43574626614)): the native window opened, the bundled engine
+reported a verified session, the Model library listed the catalog with a recommendation,
+a second launch kept the single window, and the Windows App Certification Kit
+(`10.0.26100.9457`) reported overall **PASS**. Its two optional package-sanity tests
+failed as in earlier evidence: *Archive files usage* (scikit-learn's bundled `.gz`
+sample and test data) and *Blocked executables* (process-launch references in
+setuptools launchers, OpenVINO and Windows App SDK binaries).
+
+**Still required before resubmitting:** a stable version (this was `1.1.1-dev.1`), the
+Azure-built candidate itself put through the same installed smoke test and WACK, and
+the manual Windows 11 checks at the end of this page (first model download and chat,
+keyboard and Narrator, scaling). That run was on Windows Server 2022, not Windows 11.
 
 On a Windows machine, extract the Microsoft ZIP and inspect the actual event log:
 
