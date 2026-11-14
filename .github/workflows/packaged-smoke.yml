@@ -20,6 +20,10 @@ on:
         description: "Optional CPU affinity mask for the build and smoke processes, e.g. 3 = two cores like Azure hosted agents"
         type: string
         default: ''
+      store_msix:
+        description: "Also pack the Store MSIX from this build, install it with a temporary certificate, run the installed smoke test and WACK"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -150,6 +154,28 @@ jobs:
           }
           Write-Host "Extra packaged smoke failures: $failures of $($runs * 2)"
           if ($failures) { throw "$failures extra packaged smoke run(s) failed." }
+
+      - name: Store MSIX installed smoke test and Windows App Certification Kit
+        if: ${{ inputs.store_msix }}
+        # The real client and engine, launched through the package identity like a Start-menu
+        # launch. Evaluation evidence only: the package is unsigned, never uploaded, and a
+        # dev version is not a Store candidate. Windows PowerShell has the Appx cmdlets.
+        shell: powershell
+        run: |
+          $version = (& python -c "from app.version import __version__; print(__version__)").Trim()
+          & ./scripts/build_msix.ps1 -Version $version -DistributionPath 'dist\InferBridge' -OutputDirectory 'artifacts/msix-candidate' `
+            -IdentityName 'QuinnFavo.InferBridge' -Publisher 'CN=CAC9A06A-996E-4DC7-9079-45803515E811' -PublisherDisplayName 'Quinn Favo' -Python python
+          $package = (Get-ChildItem artifacts/msix-candidate/*.msix | Select-Object -First 1).FullName
+          ./scripts/smoke_test_msix.ps1 -Package $package -EvidenceDirectory artifacts/msix-smoke -RunCertificationKit
+
+      - name: Upload Store MSIX smoke and certification evidence
+        if: ${{ always() && inputs.store_msix }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: store-msix-installed-evidence
+          path: artifacts/msix-smoke/
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Upload build timing and summary
         if: always()

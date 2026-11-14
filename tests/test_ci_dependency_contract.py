@@ -231,6 +231,11 @@ def test_manual_packaged_smoke_runs_both_packaged_modes_through_release_builder(
     workflow = _read(".github/workflows/packaged-smoke.yml")
     builder = _read("scripts/build_release.ps1")
     assert "./scripts/build_release.ps1 @arguments" in workflow
+    # Opt-in: the only automated installed launch of the real Store package and WACK.
+    store = workflow.split("if: ${{ inputs.store_msix }}", 1)[1].split("- name:", 1)[0]
+    assert "shell: powershell" in store
+    assert "./scripts/build_msix.ps1" in store
+    assert "smoke_test_msix.ps1 -Package $package" in store and "-RunCertificationKit" in store
     assert "Unsigned = $true" in workflow
     assert "MockSmokeTest = $true" in workflow
     assert "secrets." not in workflow
